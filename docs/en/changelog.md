@@ -19,6 +19,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A `partial` parity cell is a registered hole, not a footnote** — the parity column already
+  derived its verdict from the oracle imports in each `test_*_crosslib.py` and the marker
+  `pyproject.toml` gives them, and it read `partial` for the JSON family because `orjson` and
+  `pyjson5` are both declared `python_version >= '3.9' and python_version < '3.14'` with
+  armv7l/s390x/ppc64le excluded. The page explained that in prose while the registry stayed silent,
+  so the sentence "the JSON family has a cross-library tier" was quotable about the 3.8 leg this
+  package promises, where the module imports nothing, skips, and reports the same green as a leg
+  that ran 198 assertions. `parity_gaps()` emits `parity-tier:json-jsonc-json5` from the same
+  derivation, `.ci/quality-holes.json` carries it with the exit that removes it (an empty
+  `restricted` list, measured the same way), and the hole-id slug is now derived from a label's
+  alphanumerics so `JSON / JSONC / JSON5` cannot spell itself into an id nobody can read.
+
 - **The tier table's counts are now written by the measurement that checks them** — the row was
   already pinned to the probe by a comparison test, so a stale digit was a red run rather than a
   lie; what was missing was a way to *produce* the right one. That gap cost PR #549 all 14 test

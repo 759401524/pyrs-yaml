@@ -18,6 +18,12 @@
    "opened": "2026-10-20",
    "exit": "a tests/test_*_suite.py or tests/test_*_spec_table.py asks this surface of something the repository does not own - in practice, the JSON Schema evaluation designed in PR #517 replayed against an official corpus whose source and version are recorded with the result",
    "why": "the schema language validate() judges was invented here, so the unit, property and fuzz tiers all ask the engine what it believes, and parity has no second implementation to disagree with"
+  },
+  {
+   "id": "parity-tier:json-jsonc-json5",
+   "opened": "2026-10-20",
+   "exit": "the row's `restricted` list is empty, which `format_matrix()` derives from pyproject.toml: an outside reader whose marker covers every leg this package is tested on (Python 3.8 and 3.14+ included), or a comparison that covers the RFC 8259 dialect on the excluded legs with a stdlib reader the repository does not own and records that JSONC/JSON5 stay schedule-only there",
+   "why": "orjson and pyjson5 are both declared with `python_version >= '3.9' and python_version < '3.14'` plus armv7l/s390x/ppc64le exclusions, so on the floor leg and on 3.14+ the cross-library module imports nothing and skips, and the leg that compares zero assertions reports the same green as one that compares 198"
   }
  ]
 }

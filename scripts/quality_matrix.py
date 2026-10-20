@@ -300,6 +300,11 @@ def format_matrix() -> dict:
     return rows
 
 
+def _slug(label: str) -> str:
+    """A format label as a hole-id name: `JSON / JSONC / JSON5` -> `json-jsonc-json5`."""
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+
+
 def authority_gaps(rows: dict) -> list[str]:
     """The format labels whose external-authority column is empty, slugified for a hole id.
 
@@ -308,7 +313,21 @@ def authority_gaps(rows: dict) -> list[str]:
     with. Reading it off `format_matrix()` keeps `holes: []` from being quoted as "no short board"
     while a cell in the same file quietly reads `no`.
     """
-    return sorted(label.lower().replace(" ", "-") for label, row in rows.items() if not row["authority"])
+    return sorted(_slug(label) for label, row in rows.items() if not row["authority"])
+
+
+def parity_gaps(rows: dict) -> list:
+    """The format labels whose cross-library column reads `partial`, with the oracles that cause it.
+
+    `partial` is measured today but only *described*: the tier runs where the oracle is installed and
+    skips where `pyproject.toml` bounds it, so a leg that compares nothing reports the same green as
+    a leg that compared 198 assertions. Emitting it is what stops the column reading as a score.
+    """
+    return sorted(
+        (_slug(label), row["cross_library"]["restricted"])
+        for label, row in rows.items()
+        if row["cross_library"]["verdict"] == "partial"
+    )
 
 
 def check_scripts() -> list[str]:
@@ -763,6 +782,19 @@ def measure() -> dict:
                 label,
                 "no test asks this surface's rules of something this repository does not own, so a grammar "
                 "invented here and implemented here has nobody left to contradict it",
+            ]
+        )
+
+    # A `partial` parity cell is a tier that runs on some legs and not others, and the skipped legs are
+    # the green ones. Registering it keeps "the JSON family has a cross-library tier" from being read as
+    # "on every leg this package promises".
+    for slug, restricted in parity_gaps(formats):
+        holes.append(
+            [
+                "parity-tier",
+                slug,
+                "the outside readers of this family are bounded by pyproject.toml ({}), so the legs those "
+                "bounds exclude compare nothing and still report green".format(", ".join(restricted)),
             ]
         )
 

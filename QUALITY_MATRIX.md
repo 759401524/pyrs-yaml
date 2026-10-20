@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 763 Rust `#[test]`, 1,824 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 763 Rust `#[test]`, 1,825 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -134,7 +134,10 @@ unjudged.
 declared interpreter or architecture bound - `pyjson5` and `orjson` both carry
 `python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, while
 `tomlkit` is unbounded, which is why TOML reads `yes` and the JSON family does not. On a leg where all
-three are installed the modules run in full: measured 198 cross-library assertions, 0 skipped.
+three are installed the modules run in full: measured 198 cross-library assertions, 0 skipped. The
+cell is emitted as `parity-tier:json-jsonc-json5` too, because a bound that only describes which legs
+compare nothing still leaves those legs green: the floor interpreter is one of them, and this package
+promises it.
 
 **What this row first said was wrong, and the correction is the interesting part.** It
 claimed a parse-only target cannot see a writer. Measured: `parse_json` calls
@@ -536,6 +539,7 @@ measurement no longer reproduces fails CI.
 | hole | why it matters | exit |
 | --- | --- | --- |
 | `authority-tier:schema-validation` | the language `validate()` judges was invented in this repository, so the unit, property and fuzz tiers all ask the engine what it believes and the parity column has no second implementation to disagree with; the table said `no` while the registry stayed empty, which let `holes: []` be read as "no short board" | a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` that asks this surface of something the repository does not own - in practice the JSON Schema evaluation designed in PR #517, replayed against an official corpus whose source and version are recorded with the result |
+| `parity-tier:json-jsonc-json5` | the cross-library tier for the JSON family exists only where its oracles are installed: `orjson` and `pyjson5` are both declared with `python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, so the 3.8 leg this package promises, and 3.14+ and 3.15t, import nothing, skip, and report the same green as a leg that ran 198 assertions | the row's `restricted` list is empty as `format_matrix()` derives it — an outside reader whose marker covers every tested leg, or an RFC 8259 comparison on the excluded legs through a reader this repository does not own, with JSONC/JSON5 recorded as schedule-only there |
 | *none measured* | the site configuration declared the Python docstring handler, its load paths and fourteen render options while not one page under any locale contained a `:::` directive — `mkdocstrings_directives()` found zero, so `docs/<locale>/api/*.md` were hand-typed signatures, nothing compared them with the generated `python/pyrs_yaml/pyrs_yaml.pyi`, and a bump of the docs toolchain could not be checked against output it never produced | satisfied: five API pages per locale now carry directives and the four-locale `--strict` build renders them (`yaml-document` 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48), while the page that names no directive stays at zero — measured by `mkdocstrings_directives()` against `mkdocstrings_declared()` |
 | *none measured* | the site was rendered only by a workflow that triggers on push to `main`, so a page that fails when *rendered* was found by whoever opened it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | satisfied by `ci.yml`'s `docs-gates` job, which runs the page-metadata, heading, mirror, purity and i18n gates and then `scripts/build-docs.py` for all four locales under `--strict` on every pull request; `renders_the_site()` measures it off the declaring files rather than off a list kept beside them |
 | *none measured* | a required check that never reports is not a green light but a deadlock: branch protection names `Test matrix (all legs)`, `ci.yml` excluded `*.md` and `docs/**` from its triggers, and PR #319 arrived with every check it produced passing and the merge refused with `Required status check "Test matrix (all legs)" is expected` — a documentation change could not merge by any route an ordinary contributor has | satisfied by the same change: `ci.yml` triggers on every pull request, a `changes` job classifies the changeset, and the verdict tolerates a skipped heavy leg only while the classifier reports `code=false` — tested in both directions in `tests/test_matrix_verdict_gate.py` |

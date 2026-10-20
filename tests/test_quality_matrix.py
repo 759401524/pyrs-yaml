@@ -572,6 +572,27 @@ def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not(measured):
     assert ["authority-tier", "schema-validation"] in [hole[:2] for hole in measured["holes"]], measured["holes"]
 
 
+def test_a_partial_parity_column_is_a_hole_and_a_full_one_is_not(measured):
+    """`partial` means the tier is absent on the legs its oracles exclude, and those legs are green.
+
+    The column was already measured - `format_matrix()` reads the oracle imports and their markers - but
+    it stayed a description, so the site could say "the JSON family has a cross-library tier" about a
+    floor interpreter where nothing imports an outside reader. Both directions: a `yes` row must not
+    emit, an empty `restricted` list must not either.
+    """
+    matrix = _load_module()
+    rows = {
+        "JSON / JSONC / JSON5": {"cross_library": {"verdict": "partial", "restricted": ["orjson", "pyjson5"]}},
+        "YAML": {"cross_library": {"verdict": "yes", "restricted": []}},
+        "schema validation": {"cross_library": {"verdict": "n/a", "restricted": []}},
+    }
+    assert matrix.parity_gaps(rows) == [("json-jsonc-json5", ["orjson", "pyjson5"])]
+    assert matrix.parity_gaps({"TOML": {"cross_library": {"verdict": "yes", "restricted": []}}}) == []
+    holes = [hole[:2] for hole in measured["holes"]]
+    assert ["parity-tier", "json-jsonc-json5"] in holes, measured["holes"]
+    assert ["parity-tier", "yaml"] not in holes, holes
+
+
 DECLARED_HANDLER = """\
 [project]
 docs_dir = "docs/en"

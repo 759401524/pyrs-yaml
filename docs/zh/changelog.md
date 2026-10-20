@@ -19,6 +19,15 @@ status: new
 
 ### 变更
 
+- **`partial` 的对拍格是已登记的洞，不再只是脚注** — 对拍列本就从每个 `test_*_crosslib.py` 的 oracle
+  导入以及 `pyproject.toml` 给它们的 marker 推出结论，而 JSON 家族读作 `partial`，因为 `orjson` 与
+  `pyjson5` 都声明为 `python_version >= '3.9' and python_version < '3.14'` 并排除 armv7l/s390x/
+  ppc64le。页面用散文解释这件事，登记表却保持沉默，于是「JSON 家族有跨库层」这句话可以被拿去说本包承
+  诺的 3.8 腿——那里模块什么都不导入、跳过、并报告与跑了 198 条断言的腿一样的绿。`parity_gaps()` 用同
+  一推导发出 `parity-tier:json-jsonc-json5`，`.ci/quality-holes.json` 记下它并给出消除它的出口
+  （`restricted` 为空，按同一方式测量）；洞 id 的 slug 现在由标签里的字母数字推出，
+  `JSON / JSONC / JSON5` 无法再拼成没人读得懂的 id。
+
 - **分层表格的计数现在由执行校验的那次测量直接写入** — 该行此前已被一个比较测试钉在探针上，所以过期
   数字会红而不是撒谎；缺的是*产出*正确数字的途径。这个缺口让 PR #549 的 14 条测试腿全红：新增测试文
   件推动 Python 计数，作者得自己记得重打，而两个都改这一行的未合 PR 会逼着后落地的那个重放。
