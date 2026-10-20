@@ -21,8 +21,9 @@ The rules being held:
 
 * the version list is read from `pyproject.toml`'s trove classifiers - the matrix cannot drift away
   from the range the package publishes, and cannot quietly drop a version added there;
-* every declared version runs the suite on ubuntu; the first, the last and the coverage version run it
-  on every OS;
+* every declared version runs the suite on ubuntu; the first and the last run it on every OS, and the
+  coverage version runs it on ubuntu alone - the role is one leg, and re-running ~2 500 assertions on a
+  runner that bills 10x for the same document is the part this file's own measurement says yields;
 * the remaining cells are not dropped but demoted to a wheel smoke that installs the real artefact and
   round-trips each dialect - so the cross product is still executed per pull request, at the cost of a
   setup rather than a suite;
@@ -114,20 +115,41 @@ def test_every_declared_version_runs_the_suite_on_the_cheapest_runner() -> None:
     assert set(versions) <= ubuntu, sorted(set(versions) - ubuntu)
 
 
-def test_the_boundary_versions_run_the_suite_on_every_os() -> None:
-    """First supported, last supported, and the coverage carrier.
+def test_the_floor_and_the_top_run_the_suite_on_every_os() -> None:
+    """The two cells an expensive runner owes: what the package promises, and where abi3 breaks.
 
-    These are where an interpreter and a platform can disagree: the floor is what the package promises
-    and what `check_matrix_verdict.py` itself runs on, the top is where the abi3 boundary claims break,
-    and dropping a middle version costs nothing that the schedule does not recover.
+    The floor is also what `check_matrix_verdict.py` itself runs on, and the top is where the
+    stable-ABI claims fail first. Measured over the last 30 runs, no failure was confined to one
+    interpreter version or to one OS, so the mid-range is the part that yields on a runner that bills
+    10x (macOS) or 2x (Windows) for the same assertions.
     """
     versions = declared_versions()
-    boundaries = plan_owner.boundary_versions(versions)
-    assert set(boundaries) == {"3.8", versions[-1], plan_owner.COVERAGE_VERSION}, boundaries
-    assert boundaries[0] == "3.8", "the floor leads, because it is the cell the checkers break on"
-    for version in boundaries:
+    owed = plan_owner.expensive_suite_versions(versions)
+    assert owed == [versions[0], versions[-1]], owed
+    for version in owed:
         for os_name in plan_owner.OS_ALL:
-            assert (os_name, version) in cells(pr_plan()), f"{os_name} lost the boundary version {version}"
+            assert (os_name, version) in cells(pr_plan()), f"{os_name} lost the {version} suite leg"
+
+
+def test_the_coverage_carrier_runs_the_suite_on_the_cheap_runner_only() -> None:
+    """The role is one leg, and the same version is a smoke leg on the other two OSes.
+
+    Demoted, not dropped: `(macos-latest, 3.12)` still installs the wheel that platform built and
+    round-trips a document through every dialect, it just does not re-run the ~2 500 assertions that
+    ubuntu runs with the threshold attached.
+    """
+    versions = declared_versions()
+    carrier = [leg for leg in pr_plan() if leg["coverage"]]
+    assert len(carrier) == 1 and carrier[0]["os"] == plan_owner.CHEAP_OS, carrier
+    suite = cells(pr_plan())
+    for os_name in plan_owner.OS_ALL:
+        if os_name == plan_owner.CHEAP_OS:
+            assert (os_name, plan_owner.COVERAGE_VERSION) in suite
+            continue
+        assert (os_name, plan_owner.COVERAGE_VERSION) not in suite, (
+            f"{os_name} still runs the suite at the role version"
+        )
+        assert (os_name, plan_owner.COVERAGE_VERSION) in cells(plan_owner.smoke_plan(versions))
 
 
 def test_the_remaining_cells_are_demoted_not_dropped() -> None:
@@ -210,12 +232,28 @@ def test_check_reports_a_version_that_runs_nothing() -> None:
 def test_check_reports_a_lost_boundary_cell_on_an_expensive_os() -> None:
     versions = declared_versions()
     legs = plan_owner.plan("pull_request", versions)
-    kept = [leg for leg in legs if (leg["os"], leg["python-version"]) != ("windows-latest", "3.8")]
-    assert len(kept) == len(legs) - 1
-    problems = plan_owner.check(versions, legs=kept, smoke=plan_owner.smoke_plan(versions))
-    assert any(problem.startswith("windows-latest does not run the boundary version 3.8") for problem in problems), (
-        problems
-    )
+    for os_name, version in (("windows-latest", "3.8"), ("macos-latest", versions[-1])):
+        kept = [leg for leg in legs if (leg["os"], leg["python-version"]) != (os_name, version)]
+        assert len(kept) == len(legs) - 1, (os_name, version)
+        problems = plan_owner.check(versions, legs=kept, smoke=plan_owner.smoke_plan(versions))
+        assert any(
+            problem.startswith(f"{os_name} does not run the suite on the {version} it owes") for problem in problems
+        ), (os_name, version, problems)
+
+
+def test_check_reports_a_gate_role_moved_onto_an_expensive_runner() -> None:
+    """The invariant this change introduces, proven in both directions.
+
+    `--cov-fail-under` counts exactly one leg, so moving the role to macOS keeps the count at one and
+    would pass a validator that only counts. The runner it bills on has to be part of the rule.
+    """
+    versions = declared_versions()
+    legs = [dict(leg) for leg in plan_owner.plan("pull_request", versions)]
+    for leg in legs:
+        leg["coverage"] = (leg["os"], leg["python-version"]) == ("macos-latest", versions[0])
+    problems = plan_owner.check(versions, legs=legs, smoke=plan_owner.smoke_plan(versions))
+    assert any("'coverage' role sits on macos-latest" in problem for problem in problems), problems
+    assert plan_owner.check(versions) == [], plan_owner.check(versions)
 
 
 def test_check_reports_two_tiers_overlapping_one_cell() -> None:
@@ -317,7 +355,7 @@ def test_the_plan_is_valid_json_for_a_matrix_include() -> None:
 
 
 def test_the_workflow_checks_the_plan_before_spending_legs() -> None:
-    """`--check` in the planner job: an unsound plan must fail before 14 runners start."""
+    """`--check` in the planner job: an unsound plan must fail before any leg is paid for."""
     WORKFLOW.read_text(encoding="utf-8")
     job = workflow_document()["jobs"]["matrix-plan"]
     runs = " ".join(str(step.get("run", "")) for step in job["steps"])
