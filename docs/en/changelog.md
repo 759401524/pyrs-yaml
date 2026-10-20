@@ -514,6 +514,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   crash-b22d0653). Pinned by `an_anchored_items_note_settles_above_its_header` and the replayed
   seed `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed`.
 
+- **A YAML float spelling TOML refuses is written in TOML's grammar** — Core YAML resolves `083e6`
+  as a float: its exponent form allows a leading zero in the integer part, while TOML's
+  `float-int-part` is a `dec-int` and has no such spelling. The writer's pass-through gate only
+  looked for an `e`, so exporting a document whose value is `083e6` wrote `lis6 = 083e6`, and the
+  TOML reader refused its own writer's text (libFuzzer `edit_yaml` crash-71feb9d9). The gate now
+  validates the whole float grammar before passing a spelling through; a spelling TOML cannot read
+  is rendered from the value instead. Pinned by
+  `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` and the replayed seed
+  `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed`.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

@@ -392,6 +392,13 @@ status: new
   `edit_yaml` crash-b22d0653）。由 `an_anchored_items_note_settles_above_its_header` 与重放的种子
   `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed` 固定。
 
+- **TOML 拒绝的 YAML 浮点写法会按 TOML 语法写出** — Core YAML 把 `083e6` 解析为浮点数：其指数形式
+  允许整数部分带前导零，而 TOML 的 `float-int-part` 是 `dec-int`，没有这种写法。写入器的直通判定
+  只检查是否含 `e`，因此导出值为 `083e6` 的文档时写出了 `lis6 = 083e6`，TOML 读取器拒绝了自己写入
+  器的文本（libFuzzer `edit_yaml` crash-71feb9d9）。判定现在先校验完整的浮点语法再直通；TOML 无法
+  读取的写法改为按值渲染。由 `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` 与
+  重放的种子 `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed` 固定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增
