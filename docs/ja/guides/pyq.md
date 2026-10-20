@@ -160,8 +160,15 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 `--stream` と jq モードでのすべての編集式（pyq は YAML を書き jq は JSON を書く）、yq の `-n`、
 `-e`、`-P`、`--expression`、`--split-exp`、`--front-matter`、`--xml-*`/`--lua-*`/`--csv-*`
 の各群と文字列補間、
-末尾の `select` 1 本以外のパイプ、そしてすべての関数（`keys`、`length`、`map`、`to_entries`、
+末尾の `select` 1 本以外のパイプ、シーケンスのスライス（`[a:b]` — 実物 2 つとも受け付けるが
+この選択子は辿れない）、そしてすべての関数（`keys`、`length`、`map`、`to_entries`、
 `env` など）です。
+
+二つの形は実物と同じ答え方をします。文書にないパスは `null` を
+出力して 0 で終わり、何も選ばれなかった `select` は何も出力せず 0 で終わる。
+ネイティブの `pyq get` はこの両方を失敗として報告します。見た目の違いを一つ、
+あえて残しています：引用符つきリテラルの代入（`yq '.a.b = "x"'`）は pyq が受け取った
+綴りを保ち、yq v4 は素の形に書き直します。読み直した文書は同一です。
 
 受け入れ表は手書きの期待値ではありません。
 `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` は `PATH` に本物の `jq` と `yq` があれば
