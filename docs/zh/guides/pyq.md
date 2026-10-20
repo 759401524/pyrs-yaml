@@ -133,6 +133,33 @@ pyq completion fish | source                        # fish
 pyq completion powershell > pyq.ps1                 # PowerShell
 ```
 
+## jq / yq 兼容壳
+
+首个参数不是 pyq 子命令的 argv 会按 `jq` 1.8 或 mikefarah `yq` v4 解读，并翻译成等价子命令，为
+这两个工具写的脚本可以原样跑在本二进制上。方言由二进制被调用的名字决定，所以指向本二进制的 `jq`
+或 `yq` 软链接就像它替代的那个工具；`--as jq|yq` 可显式指定。
+
+| 接受 | 含义 |
+|------|------|
+| `.a.b`、`.list[]`、`$.a`、`[0]` | 路径 → `pyq get`（yq 的 `[]` 即 pyq 的 `[*]`） |
+| `.a.b = <字面量>` | 赋值 → `pyq set --create-missing` |
+| `del(<路径>)` | 单个路径 → `pyq delete` |
+| `select(<相对路径 OP 字面量>)` | → `pyq get --select`，以及单个尾部 `\| select` 管道 |
+| `jq -r`、`yq -r/--unwrapScalar` | 裸标量（yq 下默认开启） |
+| `yq -i/--inplace` | 原地改写文件 |
+| `yq -N/--no-doc` | 打印流时不带 `---` 分隔符（yq 下默认开启） |
+| `-o json\|yaml`、`-p json\|yaml\|toml\|ini` | 输出与输入格式 |
+
+凡是壳无法给出与真工具同一份文档的，一律**点名拒绝**、退出码 2、stdout 为空，绝不静默忽略：jq 的
+`--arg`/`--argjson`、`-s`、`-c`、`-S`、`--stream` 以及 jq 模式下的任何编辑表达式（pyq 写 YAML，
+jq 写 JSON）；yq 的 `-n`、`-e`、`-P`、`--split-exp`、`--front-matter`、`--xml-*`/`--lua-*`/
+`--csv-*` 各家族与字符串插值；除单个尾部 `select` 之外的管道；以及一切函数（`keys`、`length`、
+`map`、`to_entries`、`env` 等）。
+
+接受表不是手写的期望值。`crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` 在 `PATH` 上能找到
+真 `jq` 与真 `yq` 时就去跑它们，并逐字节比较 stdout；它拒绝把工作区内的任何文件当参考——拿自己的
+副本做比较对象的探针什么都证明不了。
+
 ## 能力范围
 
 | 能力 | pyq | pyrs-yaml CLI（Python） |
