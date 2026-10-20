@@ -28,7 +28,7 @@ $ pyq get '.servers[-1].host' inventory.yaml
 web-3
 
 # wildcards expand to ALL matches, streamed like jq: one YAML document
-# each (or one JSON value per line with --json)
+# each (or one JSON value per match with --json)
 $ pyq get '.servers[*].port' --json inventory.yaml
 8080
 8081
