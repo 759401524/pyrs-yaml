@@ -19,6 +19,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The speed claims outside the gated tables now come from the same reading** — the index pages,
+  the round-trip guides and the PyYAML compatibility pages still quoted 21–43×, 55–177×, 48–100×,
+  123–371×, 37× and 85× after the performance tables withdrew them: the gate added beside those
+  tables read only the twelve table pages, so prose kept the old numbers. `tests/test_perf_docs.py`
+  now collects every speed range on those pages and requires it to equal a range derived from
+  `.ci/perf-snapshot.json`, so a stale figure anywhere is a red run. The pages now state 29–34×
+  parsing and 223–368× serialization against PyYAML, 68–81× and 541–876× against ruamel.yaml, and
+  45–59× / 102–125× on the round-trip guides.
+
 - **The performance pages quote a committed measurement, and a gate keeps them there** — the
   wall-clock tables on the four locales' performance and feature pages were transcribed by hand; the
   2026-08-17 figures had no script or record behind them, and the same calls now measure 22–108×

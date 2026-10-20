@@ -6,6 +6,8 @@ nothing read the pages, so nothing noticed. Every wall-clock number on the four 
 performance and feature pages now comes from `.ci/perf-snapshot.json`, written by
 `scripts/bench_snapshot.py`. This gate compares the rendered cells against that file, so a
 page can only change by re-measuring first, and a stale snapshot fails by naming the row.
+The index, round-trip and PyYAML-compatibility pages state the same speedups as prose; their
+ranges are derived here too, so a withdrawn figure cannot survive outside the tables.
 """
 
 from __future__ import annotations
@@ -26,6 +28,11 @@ PAGES = tuple(
     for locale in LOCALES
     for name in ("performance/benchmarks.md", "performance/comparison.md", "features.md")
 )
+CLAIM_PAGES = tuple(
+    REPO_ROOT / "docs" / locale / name
+    for locale in LOCALES
+    for name in ("index.md", "guides/round-trip.md", "guides/pyyaml-compat.md")
+)
 OPERATIONS = ("parse", "serialize", "roundtrip")
 FIXTURES = {"small": BENCHMARK_SMALL, "medium": BENCHMARK_MEDIUM, "large": BENCHMARK_LARGE}
 
@@ -43,6 +50,12 @@ WITHDRAWN = (
     "55\u2013177",
     "48\u2013100",
     "123\u2013371",
+    "21-43",
+    "55-177",
+    "48-100",
+    "123-371",
+    "21\u301c43",
+    "55\u301c177",
     "20\u201340\u00d7",
     "20\u201340 倍",
     "20〜40 倍",
@@ -56,6 +69,7 @@ TIME_CELL = re.compile(r"^\**([\d.]+)\s*(ns|µs|μs|us|ms)\**$")
 SCALE = {"ns": 0.001, "µs": 1.0, "μs": 1.0, "us": 1.0, "ms": 1000.0}
 SIZE_CELL = re.compile(r"([\d.]+)\s*(B|KB)")
 SPEEDUP_CELL = re.compile(r"(\d+)\u00d7")
+RANGE_CLAIM = re.compile(r"(\d+)\s*[\u2013\u301c~-]\s*(\d+)\s*(?:\u00d7|\u500d|\ubc30)")
 
 
 def snapshot() -> dict:
@@ -111,6 +125,11 @@ def size_key(label: str) -> str:
 
 def page(path: Path) -> str:
     return str(path.relative_to(REPO_ROOT))
+
+
+def speedup_range(data: dict, operation: str, library: str) -> str:
+    values = [times[library] / times["pyrs-yaml"] for times in data["operations"][operation].values()]
+    return f"{round(min(values))}\u2013{round(max(values))}"
 
 
 @pytest.fixture(scope="module")
@@ -193,8 +212,33 @@ def test_features_table_matches_snapshot(data):
                 )
 
 
+def test_prose_claims_match_the_snapshot(data):
+    ranges = {
+        "index.md": (
+            speedup_range(data, "parse", "PyYAML"),
+            speedup_range(data, "serialize", "PyYAML"),
+            speedup_range(data, "parse", "ruamel.yaml"),
+            speedup_range(data, "serialize", "ruamel.yaml"),
+        ),
+        "round-trip.md": (
+            speedup_range(data, "roundtrip", "PyYAML"),
+            speedup_range(data, "roundtrip", "ruamel.yaml"),
+        ),
+        "pyyaml-compat.md": (
+            speedup_range(data, "parse", "PyYAML"),
+            speedup_range(data, "serialize", "PyYAML"),
+        ),
+    }
+    for path in CLAIM_PAGES:
+        text = path.read_text(encoding="utf-8")
+        claimed = {f"{match.group(1)}\u2013{match.group(2)}" for match in RANGE_CLAIM.finditer(text)}
+        expected = set(ranges[path.name])
+        assert claimed <= expected, f"{page(path)} cites ranges outside the snapshot: {sorted(claimed - expected)}"
+        assert expected <= claimed, f"{page(path)} omits the snapshot ranges: {sorted(expected - claimed)}"
+
+
 def test_pages_cite_the_snapshot_and_no_withdrawn_measurement():
-    for path in PAGES:
+    for path in PAGES + CLAIM_PAGES:
         text = path.read_text(encoding="utf-8")
         for stale in WITHDRAWN:
             assert stale not in text, f"{page(path)} still cites {stale!r}"
