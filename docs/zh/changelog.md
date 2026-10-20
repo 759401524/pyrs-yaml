@@ -399,6 +399,14 @@ status: new
   读取的写法改为按值渲染。由 `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` 与
   重放的种子 `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed` 固定。
 
+- **紧凑条目的注释落在其序列头部之上** — 作为紧凑形式 `- key: value` 的条目，若其行尾已被自身注释
+  占用，条目自身的注释会向上写到达线之上。当序列同时写出 `&a` / `!tag` 头部时，这一行位于头部与
+  正文之间，读取器会把那里的注释视为序列的*前导*注释，于是下一次输出把它上提到头部之前：第一轮
+  写出 `&a0` / `# note` / `- k: v  # note`，第二轮是 `# note` / `&a0` / `- k: v  # note`。首个条目
+  现在记录头部的行首，并把该注释写在头部之上，也就是读取器交还它的位置（libFuzzer `edit_yaml`
+  crash-2fc59020）。由 `a_compact_items_note_settles_above_the_sequences_header` 与重放的种子
+  `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed` 固定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增
