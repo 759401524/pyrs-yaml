@@ -22,6 +22,7 @@ Usage:
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import re
@@ -182,14 +183,43 @@ FORMAT_ROWS = (
 )
 
 #: An import in a cross-library module, mapped to the project dependency that has to be installed for
-#: it to run. `json` and `tomllib` are stdlib and answer for themselves.
+#: it to run. `json` is the one reader no dependency declaration can bound, and is listed because the
+#: parity cell has to be able to find it at a call site.
 ORACLE_IMPORTS = {
     "yaml": "PyYAML",
     "ruamel.yaml": "ruamel.yaml",
     "orjson": "orjson",
     "pyjson5": "pyjson5",
     "tomlkit": "tomlkit",
+    "json": "json",
 }
+
+#: Readers that ship with the interpreter. Answered before `_dependency_marker`, never through it:
+#: that search matches any requirement that *starts with* the name, and
+#: `jsonschema>=4.25.1; python_version >= '3.9'` starts with `json` - so a reader present on every leg
+#: would be reported as bounded by a third-party package that is not even imported here. `tomllib` is
+#: deliberately absent, because it arrives with 3.11 and cannot vouch for the 3.8 floor.
+STDLIB_READERS = ("json",)
+
+_IMPORT_LINE = re.compile(
+    r"^\s*import ([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)(?: as ([a-z_][a-z0-9_]*))?",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _oracle_locals(text: str) -> dict:
+    """`{distribution: [the names the module calls it by]}` for the outside readers it imports.
+
+    Aliases are resolved because a call site writes the alias: `import yaml as pyyaml` is PyYAML and
+    `_ruamel` is ruamel.yaml, and crediting a dialect has to find the reader where the test touches it.
+    """
+    found: dict[str, list[str]] = {}
+    for match in _IMPORT_LINE.finditer(text):
+        distribution = ORACLE_IMPORTS.get(match.group(1))
+        if distribution is None:
+            continue
+        found.setdefault(distribution, []).append(match.group(2) or match.group(1))
+    return found
 
 
 def _dependency_marker(package: str) -> str | None:
@@ -219,6 +249,97 @@ def _leg_restricted(marker: str | None) -> bool:
     if not marker:
         return False
     return "python_version" in marker or "platform_machine" in marker
+
+
+#: The shapes a comparison can be switched off by, inside a body. A decorator is judged on its own
+#: (below), because a skip marker reached through a name - `@needs_pyjson5` - carries no such word.
+SKIP_SHAPES = ("skipif", "xfail", "importorskip", "pytest.skip(")
+
+#: The dialect a pyrs call asks for, read off the loader's own name. The alternation is ordered so
+#: `load_json5` cannot be credited to the narrower `json`.
+DIALECT_CALL = re.compile(r"pyrs_yaml\.[a-z0-9_]*_(json5|jsonc|json|toml|yaml)\b")
+
+
+def _test_units(text: str) -> tuple:
+    """Each `def test_*` as `(decorators, body)`, and whether the whole module is gated.
+
+    Parsed rather than sliced by line: a unit ends at its own last statement, so a constant or a
+    helper defined after the test is not read as part of it - measured on the JSON module, where the
+    next block after a test held an oracle call and would have handed that test a reader it never
+    used. A docstring that mentions a reader is excluded the same way, and a module that does not
+    parse is reported as gated: an unreadable file cannot vouch for a tier.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return [], True
+    lines = text.splitlines()
+    units = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test"):
+            continue
+        decorators = "\n".join(ast.get_source_segment(text, item) or "" for item in node.decorator_list)
+        start = node.body[0].lineno - 1
+        first = node.body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            start = first.end_lineno  # past the docstring, which is prose about calls, not a call
+        units.append((decorators, "\n".join(lines[start : node.end_lineno])))
+    blanket = any(
+        isinstance(node, ast.Assign) and any(getattr(target, "id", "") == "pytestmark" for target in node.targets)
+        for node in tree.body
+    )
+    return units, blanket
+
+
+def _credited(decorators: str, body: str, free: list) -> bool:
+    """Does this unit compare its dialect against a reader that no leg is missing?
+
+    Credit needs a call to a reader no marker bounds, in a test whose only decorators are ones that
+    cannot gate it. Nothing about a guard is resolved by name here, deliberately: a denied credit leaves
+    a hole registered, which is the safe error, while an undetected one closes a hole that is open.
+    """
+    if any(shape in body for shape in SKIP_SHAPES):
+        return False
+    for line in decorators.splitlines():
+        if line.strip() and "parametrize" not in line:
+            return False
+    return any(re.search(rf"\b{re.escape(local)}\.\w+\(", body) for local in free)
+
+
+def crosslib_parity(label: str, module) -> dict:
+    """The parity cell of one family: which readers it asks, and which dialects they cover everywhere.
+
+    `partial` used to be a property of the family, decided by the markers of its readers alone. That
+    cannot describe a family whose dialects have different readers, and the JSON family is exactly
+    that: RFC 8259 is asked of `json`, which every leg has, while JSONC and JSON5 are asked of
+    `pyjson5`, which `pyproject.toml` keeps off the floor interpreter. So the cell is per dialect, and
+    a dialect counts as covered everywhere when some test asks it of an unbounded reader in a unit
+    nothing can skip.
+    """
+    text = read(module)
+    readers = _oracle_locals(text)
+    oracles = sorted(readers)
+    bounded = {name for name in oracles if name not in STDLIB_READERS and _leg_restricted(_dependency_marker(name))}
+    markers = {name: (None if name in STDLIB_READERS else _dependency_marker(name)) for name in oracles}
+    if not bounded:
+        return {"verdict": "yes", "oracles": oracles, "restricted": [], "marker": markers}
+
+    units, blanket = _test_units(text)
+    free = [local for name, aliases in readers.items() if name not in bounded for local in aliases]
+    covered: set = set()
+    if not blanket:
+        for decorators, body in units:
+            if _credited(decorators, body, free):
+                covered.update(match.group(1) for match in DIALECT_CALL.finditer(body))
+    dialects = [_slug(part) for part in label.split("/") if _slug(part)]
+    restricted = sorted(name for name in dialects if name not in covered)
+    return {
+        "verdict": "partial" if restricted else "yes",
+        "oracles": oracles,
+        "restricted": restricted,
+        "covered": sorted(covered),
+        "marker": markers,
+    }
 
 
 #: A test file that asks the format's own grammar, or an official suite's cases, against an authority
@@ -267,17 +388,7 @@ def format_matrix() -> dict:
         if crosslib_stem:
             module = crosslib_dir / f"test_{crosslib_stem}_crosslib.py"
             if module.exists():
-                imports = re.findall(
-                    r"^\s*import (yaml|ruamel\.yaml|orjson|pyjson5|tomlkit)", read(module), re.MULTILINE
-                )
-                oracles = sorted({ORACLE_IMPORTS.get(name, name) for name in imports})
-                restricted = sorted(name for name in oracles if _leg_restricted(_dependency_marker(name)))
-                parity = {
-                    "verdict": "partial" if restricted else "yes",
-                    "oracles": oracles,
-                    "restricted": restricted,
-                    "marker": {name: _dependency_marker(name) for name in oracles},
-                }
+                parity = crosslib_parity(label, module)
 
         # Which dialects have their grammar asked of an outside authority, derived from the file names
         # so that adding one is measured rather than remembered. The JSON row counts
@@ -317,11 +428,12 @@ def authority_gaps(rows: dict) -> list[str]:
 
 
 def parity_gaps(rows: dict) -> list:
-    """The format labels whose cross-library column reads `partial`, with the oracles that cause it.
+    """The format labels whose cross-library column reads `partial`, with the dialects that cause it.
 
-    `partial` is measured today but only *described*: the tier runs where the oracle is installed and
-    skips where `pyproject.toml` bounds it, so a leg that compares nothing reports the same green as
-    a leg that compared 198 assertions. Emitting it is what stops the column reading as a score.
+    `partial` is measured but only *described* unless it is emitted: a dialect whose outside reader is
+    absent on some leg compares nothing there, and that leg reports the same green as one where the
+    comparison ran. The names are dialects, not readers - a family can cover one of its three dialects
+    everywhere and none of another - so the hole says which half of the family is unjudged.
     """
     return sorted(
         (_slug(label), row["cross_library"]["restricted"])
@@ -787,14 +899,14 @@ def measure() -> dict:
 
     # A `partial` parity cell is a tier that runs on some legs and not others, and the skipped legs are
     # the green ones. Registering it keeps "the JSON family has a cross-library tier" from being read as
-    # "on every leg this package promises".
+    # "on every leg this package promises", and names the dialects that do not hold that second half.
     for slug, restricted in parity_gaps(formats):
         holes.append(
             [
                 "parity-tier",
                 slug,
-                "the outside readers of this family are bounded by pyproject.toml ({}), so the legs those "
-                "bounds exclude compare nothing and still report green".format(", ".join(restricted)),
+                "{} has no outside reader that every tested leg installs, so the legs that skip the "
+                "comparison report the same green as the ones that ran it".format(", ".join(restricted)),
             ]
         )
 
