@@ -1140,6 +1140,7 @@ impl Serializer {
             // the line starting here is the last line a note of this container may sit above
             // without splitting a tag line from the body it tags.
             let body_start = self.output.len();
+            let mut wrote_header = false;
 
             if !in_value_context && (meta.anchor().is_some() || meta.tag().is_some()) {
                 for note in preamble_note.unwrap_or_default() {
@@ -1148,6 +1149,7 @@ impl Serializer {
                 self.write_indent(indent_width);
                 self.write_anchor_tag(meta);
                 self.output.push('\n');
+                wrote_header = true;
             }
 
             if self.sort_keys {
@@ -1187,6 +1189,14 @@ impl Serializer {
                         // `lift_first_item_notes` already relies on.
                         let at = self.output[..body_start].rfind('\n').map_or(0, |k| k + 1);
                         self.note_line_above(at, &c.text);
+                    } else if wrote_header {
+                        // A note between this mapping's own `&a` / `!tag` line and the body
+                        // re-reads as the mapping's *leading* note, which the next emission
+                        // hoists above the header - so writing it above the last pair costs a
+                        // round (libFuzzer `edit_yaml` crash-b22d0653: an anchored item whose
+                        // `~` pair ended in a tagged empty scalar). Above the header is where
+                        // the reader files it; `body_start` is that header's line start.
+                        self.note_line_above(body_start, &c.text);
                     } else {
                         self.note_line_above_last_pair(&c.text);
                     }
