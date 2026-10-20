@@ -488,16 +488,16 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
         }
         Kind::Whole | Kind::Select(_) => None,
     };
-    if let Some(path) = checked {
-        if let Err(why) = crate::paths::parse_path(&path) {
-            return Err(refuse(
-                &format!("the path {path:?}"),
-                dialect,
-                &format!(
-                    "{why} - this shell selects by key, index and `[]`/`[*]`, and a range needs the real engine"
-                ),
-            ));
-        }
+    if let Some(path) = checked
+        && let Err(why) = crate::paths::parse_path(&path)
+    {
+        return Err(refuse(
+            &format!("the path {path:?}"),
+            dialect,
+            &format!(
+                "{why} - this shell selects by key, index and `[]`/`[*]`, and a range needs the real engine"
+            ),
+        ));
     }
     // An edit in jq mode would have to print JSON, and pyq's edit commands print
     // YAML: the document would be right and the answer wrong. yq mode is where the
