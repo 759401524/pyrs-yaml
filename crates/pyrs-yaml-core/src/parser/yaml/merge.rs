@@ -1,4 +1,5 @@
 use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle};
+use crate::parser::is_null_key;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
@@ -284,35 +285,34 @@ fn resolve_mapping_merges(
             }
         }
 
-        expanded = Some(
-            pending
-                .into_iter()
-                // A mapping's own key always wins over a merged one (YAML 1.1), and
-                // keeping both was not merely wrong precedence: `IndexMap` keys whole
-                // nodes, so a merged `y` and an own `y # :` sat side by side and the
-                // writer emitted the same key twice at one level — text our own
-                // parser then rejected as a duplicate key, breaking the contract that
-                // `to_yaml` never emits unparseable output (libFuzzer `yaml_roundtrip`
-                // crash-3495cc86, minimised to 19 bytes: `:` LF `# &` LF `y: #:` LF
-                // `<<:` LF `  y:`). Identity here is the same one `push_node`'s
-                // duplicate check uses — the emitted value of an untagged scalar key —
-                // so the two rules cannot drift apart. A dropped pair's notes are
-                // content, so they re-home instead of disappearing with it.
-                .filter(|(key, value): &(_, (String, CustomNode))| {
-                    if owns_owning_key(pairs, merge_index, key) {
-                        for carried in [key, &value.1] {
-                            overridden_notes.extend(carried.leading_comments().iter().cloned());
-                            overridden_notes
-                                .extend(carried.comment().filter(|c| !c.standalone).cloned());
-                        }
-                        false
-                    } else {
-                        true
-                    }
-                })
-                .map(|(key, (_source, value))| (key, value))
-                .collect(),
-        );
+        // A mapping's own key always wins over a merged one (YAML 1.1), and two merge
+        // sources do not get to name the same key twice: the first to supply it wins.
+        // Deciding that by whole-node equality alone was not enough — keeping both was
+        // not merely wrong precedence: `IndexMap` keys whole nodes, so a merged `y` and an
+        // own `y # :` sat side by side and the writer emitted the same key twice at one
+        // level — text our own parser then rejected as a duplicate key, breaking the
+        // contract that `to_yaml` never emits unparseable output (libFuzzer
+        // `yaml_roundtrip` crash-3495cc86, minimised to 19 bytes: `:` LF `# &` LF `y: #:`
+        // LF `<<:` LF `  y:`). Identity here is the same one `push_node`'s duplicate check
+        // and null-key fold use — the emitted value of an untagged scalar key, and one
+        // null key for every spelling of null — so the three rules cannot drift apart. A
+        // dropped pair's notes are content, so they re-home instead of disappearing with
+        // it.
+        let mut kept: NodeMap<CustomNode, CustomNode> =
+            NodeMap::with_capacity_and_hasher(pending.len(), Default::default());
+        for (key, (_source, value)) in pending {
+            let overridden = owns_owning_key(pairs, merge_index, &key)
+                || kept.keys().any(|own| same_emitted_key(own, &key));
+            if overridden {
+                for carried in [&key, &value] {
+                    overridden_notes.extend(carried.leading_comments().iter().cloned());
+                    overridden_notes.extend(carried.comment().filter(|c| !c.standalone).cloned());
+                }
+            } else {
+                kept.insert(key, value);
+            }
+        }
+        expanded = Some(kept);
     }
 
     // Recursively resolve in the mapping's own nested children (never the
@@ -350,7 +350,22 @@ fn owns_owning_key(
         .any(|(index, (own, _))| Some(index) != merge_index && same_emitted_key(own, key))
 }
 
+/// Whether two keys are the *same key as far as a re-read is concerned*.
+///
+/// Two untagged scalars of one text emit one text, so they collide whatever their
+/// style or note. The null family needs the same rule from a different place: `~`,
+/// `null` and the empty key are three texts that all resolve to null, and the reader
+/// folds two null keys into one entry (`crate::parser::is_null_key`, the rule
+/// `push_node` applies), while whole-node equality splits them by anchor and comment.
+/// So the fold's predicate is asked here rather than a fourth spelling of it: a
+/// mapping holds one null key, and a merge that contributed a second one wrote a pair
+/// the re-read then dropped — anchor and value with it (property tier CI seed
+/// `c9ef4fd3…`, where `prop_mapping_order_preserved` and `prop_tag_preserved` failed on
+/// the same tree for exactly that reason).
 fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
+    if is_null_key(a) && is_null_key(b) {
+        return true;
+    }
     match (a, b) {
         (
             CustomNode::Scalar {
@@ -792,6 +807,43 @@ mod tests {
                 one.contains(text.as_str()),
                 "note {text:?} was lost; wanted {wanted:?}, got {kept:?} in {one:?}"
             );
+        }
+    }
+
+    /// Every spelling of null is one key, so a merge may not bring a second one into a
+    /// mapping that owns a null key, and two sources may not both name it. Whole-node and
+    /// text comparison both kept `~` beside `null`: the writer printed two null lines at
+    /// one level and the reader folded them (the same `is_null_key` rule `push_node`
+    /// applies), so a pair left the document with its value — and with any anchor it
+    /// carried. Property tier CI seed `c9ef4fd3…` reached this through a `Null` key with a
+    /// comment and an anchor on each side, which is why the rule is the fold's predicate
+    /// rather than a fourth spelling of it; the shapes below are the same rule in the
+    /// fewest bytes that parse.
+    #[test]
+    fn a_merge_never_repeats_a_null_key_the_mapping_owns() {
+        for src in [
+            "~: 1\n<<:\n  null: 2\n",
+            "null: 1\n<<:\n  ~: 2\n",
+            ": 1\n<<:\n  null: 2\n",
+            "b1: &x {~: 1}\nb2: &y {null: 2}\n<<: [*x, *y]\n",
+        ] {
+            let root = parse(src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            let pairs = get_mapping(&root);
+            assert_eq!(
+                pairs.keys().filter(|k| is_null_key(k)).count(),
+                1,
+                "{src:?} resolves to exactly one null key: {pairs:?}"
+            );
+            let one = crate::serializer::to_yaml(&root);
+            let again = crate::parser::parse(&one, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("emission must re-parse: {e}\n{one:?}"));
+            assert_eq!(
+                get_mapping(&again).len(),
+                pairs.len(),
+                "the re-read keeps every pair the resolved tree holds: {one:?}"
+            );
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(twice, one, "{one:?} must be a fixed point: {twice:?}");
         }
     }
 

@@ -472,6 +472,20 @@ status: new
 
 ### 修正
 
+- **マージは同じマッピングに二つ目の null キーを与えない** — `~`、`null`、空キー、素の `Null`
+  ノードはすべて null に解決され、読み取り側は意図して null キーを一つに畳み込む（それが
+  `: a` + `: b` を通している理由）。ところがマージ側の判定は別の問いをしていました：タグなし
+  スカラーはテキストで、ほかはノード全体で比較する。そのため `<<` のソースが自分の null キーを
+  すでに一つ持つマッピングへ差し込み、二つのソースが同じキーを名乗れました — 出力は同じ段に
+  `~:` を二度書き、読み直すとその組は値もそこに載っていたアンカーも失います。
+  `same_emitted_key` は読み取り側自身の述語を問うようになり、マージ集合も同じ同一性で畳み込む
+  ので、「先にそのキーを与えたソースが勝つ」は null のあらゆる綴りに対して成り立ち、もともと
+  等しかったキーだけにしか成り立たなかった以前と違いが出ます。20,000 例のproperty tierが
+  見つけました（CI シード `c9ef4fd3...`、一つのツリーで `prop_mapping_order_preserved` と
+  `prop_tag_preserved` がこの一つの理由で失敗）。
+  `a_merge_never_repeats_a_null_key_the_mapping_owns` と
+  `crates/pyrs-yaml-core/proptest-regressions/pbt.txt` から再生するシードで固定しています。
+
 - **API ページがスタブの宣言どおりの引数列表を書く** — `docs/{zh,ja,ko}/api/reference.md` は
   `parse_file`、`parse_all_docs`、`safe_load`、`safe_loads` を 1〜2 個の引数で掲載していましたが、公
   開スタブは 5〜6 個を宣言しています。また `%YAML` のバージョン交渉の旗 `honor_version_directive` は

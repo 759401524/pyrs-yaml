@@ -390,6 +390,17 @@ status: new
 
 ### 修复
 
+- **合并不能再给同一个映射第二个空键** — `~`、`null`、空键与裸 `Null` 节点都解析为 null，
+  读取器会刻意把两个空键折成一个条目（这正是 `: a` + `: b` 能解析的原因）。合并过滤器问的却是
+  另一个问题：未加标签的标量按文本比较，其余按整节点比较。于是 `<<` 源会把自己的空键放进已经
+  持有一个空键的映射，两个合并源也都能命名它 — 写出的文本在同一层出现两次 `~:`，重读时那一对
+  连同它的值与所携带的锚点一起被丢掉。`same_emitted_key` 现在改用读取器自己的谓词，合并集合也
+  按同一身份折叠，所以"先提供该键的源获胜"对 null 的每一种拼法都成立，而不只对本就相等的键
+  成立。由 20,000 例的属性层发现（CI 种子 `c9ef4fd3...`，同一棵树上 `prop_mapping_order_preserved`
+  与 `prop_tag_preserved` 因这一个原因失败），并由
+  `a_merge_never_repeats_a_null_key_the_mapping_owns` 与从
+  `crates/pyrs-yaml-core/proptest-regressions/pbt.txt` 重放的种子钉住。
+
 - **API 页现在照桩文件声明的参数表书写** —— `docs/{zh,ja,ko}/api/reference.md` 把 `parse_file`、
   `parse_all_docs`、`safe_load`、`safe_loads` 只写了一两个参数，而发布的桩声明了五到六个；`%YAML` 版
   本协商开关 `honor_version_directive` 在用户文档里完全没出现；`reparse()` 还写着一个扩展并不使用的

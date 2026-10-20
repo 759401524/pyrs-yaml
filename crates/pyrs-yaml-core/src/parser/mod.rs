@@ -31,7 +31,10 @@ use yaml::{
 ///
 /// The yaml-test-suite allows duplicate null keys (e.g. `: a\n: b`, see 2JQS),
 /// so duplicate-key detection must not reject them.
-fn is_null_key(key: &CustomNode) -> bool {
+///
+/// Merge expansion asks the same question (`yaml::merge::same_emitted_key`): a
+/// mapping holds one null key, so a merge must not contribute a second spelling of it.
+pub(crate) fn is_null_key(key: &CustomNode) -> bool {
     match key {
         CustomNode::Null { meta, .. } if meta.tag().is_none() => true,
         CustomNode::Scalar {
