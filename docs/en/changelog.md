@@ -19,6 +19,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The mid-range interpreters stop re-running the suite on the paid runners** — the planner made
+  the floor, the top *and* the coverage carrier run the suite on every OS, so
+  `test (macos-latest, 3.12)` spent 173 s (run 39424748440) asserting what
+  `test (ubuntu-latest, 3.12)` already asserts with the threshold attached, on a runner GitHub bills
+  at 10x. Measured on PR #550's green run (47 jobs, 96.8 wall-min of legs): macOS is 22.3 of those
+  minutes but ~223 of the ~300 billed minute-equivalents, and the two mid-range cells on the costly
+  OSes were the only suite legs whose role is defined to sit on ubuntu. `scripts/ci_matrix_plan.py`
+  now derives what an expensive runner owes from the declared range alone — first and last — in
+  `expensive_suite_versions`, the demoted cell stays in the grid as a wheel smoke instead of
+  disappearing, and `check()` refuses a plan that moves a gate role onto a costlier OS. 14 suite
+  legs become 12; the weekly schedule still runs all 24 cells with the suite, which is what licenses
+  the demotion rather than hiding it.
+
 - **The test matrix stopped waiting for a wheel it never installs** — `build` compiled two artifacts
   in one job: the abi3 wheel the suite legs install, and the `--find-interpreter` release recipe the
   compliance report reads. Measured on two pull-request runs of 44 jobs each: the abi3 wheel was

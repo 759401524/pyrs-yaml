@@ -15,8 +15,13 @@ The rules, all of them derived:
 * the version list is read from `pyproject.toml`'s trove classifiers, so the matrix cannot drift away
   from the range the package publishes, and cannot silently drop a version added there;
 * every supported version runs the suite on the cheapest runner (ubuntu) on every pull request;
-* the boundary versions - the first supported, the last supported, and the one carrying the coverage
-  gate - run the suite on every OS, because that is where an interpreter and a platform can disagree;
+* the first supported version and the last run the suite on every OS, because that is where an
+  interpreter and a platform can disagree — the floor is what the package promises and what
+  `check_matrix_verdict.py` itself runs on, the top is where the abi3 boundary claims break;
+* the coverage carrier runs the suite on ubuntu alone. Its assertions are the ones ubuntu already makes
+  for that version, re-run on a runner that bills 10x (macOS) or 2x (Windows) for the same document, and
+  the mid-range is the part this file's own measurement says yields: no failure in the last 30 runs was
+  confined to one interpreter version or one OS;
 * the remaining (OS, version) pairs are not dropped but demoted to a wheel smoke: install the abi3
   wheel that platform built, import it, and round-trip one document through every dialect. That is the
   cross product kept, at the price of a setup rather than the price of a suite;
@@ -95,10 +100,11 @@ def supported_versions(text: str) -> list:
 
 
 def boundary_versions(versions: list) -> list:
-    """First, last, and the coverage carrier: the versions every OS must run the suite on.
+    """First, last, and the coverage carrier - the versions the *roles* of this plan name.
 
-    The middle of the range is where an OS-specific interaction is least likely to appear and most
-    likely to duplicate a cell already covered on ubuntu, so that is the part that yields.
+    Kept as the validator it always was: a role pointing at a version `pyproject.toml` does not declare
+    is an error here rather than a plan that quietly carries no gate. Which of these a runner that bills
+    more than ubuntu must run the suite on is the narrower `expensive_suite_versions`.
     """
     wanted = [versions[0], versions[-1], COVERAGE_VERSION]
     out = []
@@ -113,6 +119,21 @@ def boundary_versions(versions: list) -> list:
     return out
 
 
+def expensive_suite_versions(versions: list) -> list:
+    """The two versions a runner that bills more than ubuntu must run the suite on: floor and top.
+
+    Derived from the declared range, never from a literal, and deliberately narrower than
+    `boundary_versions`: the coverage carrier is a *gate role* attached to one ubuntu leg, and
+    re-running ~2 500 assertions on macOS (10x) or Windows (2x) for the same document buys an
+    interpreter-platform interaction that the floor and the top are the recorded places to find.
+    """
+    out = []
+    for version in (versions[0], versions[-1]):
+        if version not in out:
+            out.append(version)
+    return out
+
+
 def _leg(os_name: str, version: str, versions: list, event: str = "pull_request") -> dict:
     full = event in ("schedule", "workflow_dispatch")
     return {
@@ -120,11 +141,11 @@ def _leg(os_name: str, version: str, versions: list, event: str = "pull_request"
         "python-version": version,
         "coverage": os_name == CHEAP_OS and version == COVERAGE_VERSION,
         "compliance": os_name == CHEAP_OS and version == COMPLIANCE_VERSION,
-        # The suite runs in full on ubuntu at every version and on the boundary versions elsewhere. A
+        # The suite runs in full on ubuntu at every version and on the floor and top elsewhere. A
         # leg with `suite: false` is the smoke shape: the same artefact, imported and exercised,
         # without ~2 500 assertions re-run per OS. The scheduled tier asks for the full grid, so there
         # every cell runs the suite and the distinction is switched off rather than re-derived.
-        "suite": full or os_name == CHEAP_OS or version in boundary_versions(versions),
+        "suite": full or os_name == CHEAP_OS or version in expensive_suite_versions(versions),
     }
 
 
@@ -138,7 +159,7 @@ def plan(event: str, versions: list | None = None) -> list:
     for os_name in OS_ALL:
         if os_name == CHEAP_OS:
             continue
-        for version in boundary_versions(versions):
+        for version in expensive_suite_versions(versions):
             legs.append(_leg(os_name, version, versions, event))
     order = {name: index for index, name in enumerate(OS_ALL)}
     return sorted(legs, key=lambda leg: (order[leg["os"]], _key(leg["python-version"])))
@@ -187,13 +208,22 @@ def check(versions: list, legs: list | None = None, smoke: list | None = None) -
     for role, count in sorted(roles.items()):
         if count != 1:
             problems.append(f"exactly one leg must carry the {role!r} role; the plan has {count}")
+    for role in roles:
+        carriers = [leg for leg in legs if leg[role]]
+        if len(carriers) == 1 and carriers[0]["os"] != CHEAP_OS:
+            problems.append(
+                f"the {role!r} role sits on {carriers[0]['os']}, not on {CHEAP_OS}: "
+                f"the gate would run on a runner that bills more for the same assertions"
+            )
     for version in versions:
         if not any(leg["python-version"] == version and leg["suite"] for leg in legs):
             problems.append(f"{version} runs no suite on any OS of the pull-request tier")
     for os_name in OS_ALL:
-        for version in boundary_versions(versions):
-            if not any(leg["os"] == os_name and leg["python-version"] == version for leg in legs):
-                problems.append(f"{os_name} does not run the boundary version {version}")
+        if os_name == CHEAP_OS:
+            continue
+        for version in expensive_suite_versions(versions):
+            if not any(leg["os"] == os_name and leg["python-version"] == version and leg["suite"] for leg in legs):
+                problems.append(f"{os_name} does not run the suite on the {version} it owes")
     if len(full) != len(OS_ALL) * len(versions):
         problems.append(f"the scheduled tier should be the full cross product, got {len(full)} legs")
     if len(legs) + len(smoke) != len(full):
