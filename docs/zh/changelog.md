@@ -24,7 +24,7 @@ status: new
   实测：第一次的 abi3 wheel 于 +134 秒（Windows）、+135 秒（macOS）、+151 秒（ubuntu）上传，第二
   次在同一三个系统上是 +172、+192、+167 秒，而其后的发布构建按操作系统还要多花 45–346 秒，于是
   `build` 到 +485 秒与 +477 秒才结束，`test` 与 `wheel-smoke` 的 24 条腿全都在它唯一读取的产物早已
-  存在之后再空等 355–471 秒才起步。发布配方现在自成一个作业 `release-wheels`，而
+  存在之后再空等 291–471 秒才起步。发布配方现在自成一个作业 `release-wheels`，而
   `tests/test_ci_artifact_wiring.py` 靠读取每个作业自己的 `upload-artifact` 与
   `download-artifact` 输入把两个生产者钉开：一个作业同时上传两族产物，或某条腿等待一个它根本不安装
   其产物的生产者，都会被点名。拿改动前的 `ci.yml` 跑这条检查，它报出的正是那个合并的作业，所以它
