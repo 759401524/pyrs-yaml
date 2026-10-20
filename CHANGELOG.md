@@ -34,6 +34,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   all earn nothing - and the hole stays registered, naming `json5` and `jsonc` rather than the whole
   family.
 
+- **A bound the interpreter draws is now a bound the row reports** - the parity column asked only
+  `pyproject.toml` whether a reader could be missing from a leg, and it looked for readers only in
+  module-level imports. `tomllib` is invisible to both halves: no file declares it, and
+  `tests/test_toml_crosslib.py` binds it with `pytest.importorskip` inside the one test that wants a
+  second opinion. The leg's own skip counts said what the cell could not - CI's floor leg ran 13 of
+  that module's comparisons and skipped 11, and 3.9 and 3.10 skip the same 11 - so the row named one
+  reader while the file asks two. `STDLIB_SINCE` bounds a stdlib reader against the floor read out
+  of `requires-python`, and `_oracle_locals()` now takes an `importorskip` binding from the syntax.
+  The TOML verdict stays `yes`, and stays honest: `tomlkit` is declared unbounded and reaches every
+  leg, so what 3.8 through 3.10 lose is the three-way agreement, not a dialect judged by nothing.
+  That module imports `tomlkit` outright now - a guard no marker bounds is dead code while it is
+  green and a silent skip the moment it is not, and once `tomllib` counts as bounded its blanket
+  `pytestmark` would have denied the credit and manufactured a hole that does not exist. Seen by
+  mutation: setting `tomllib`'s arrival version to the floor's reddens both new controls.
+
 - **The tier table's counts are now written by the measurement that checks them** — the row was
   already pinned to the probe by a comparison test, so a stale digit was a red run rather than a
   lie; what was missing was a way to *produce* the right one. That gap cost PR #549 all 14 test

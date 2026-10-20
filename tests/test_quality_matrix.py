@@ -697,6 +697,50 @@ def test_the_strict_dialect_is_credited_and_the_other_two_are_not(measured):
     assert row["verdict"] == "partial", row
 
 
+def test_a_reader_the_interpreter_bounds_is_found_and_bounded(matrix, tmp_path):
+    """An oracle can be kept off a leg by the interpreter, not only by a dependency marker.
+
+    Measured on the tree: `tests/test_toml_crosslib.py` ran 13 of its 24 comparisons and skipped 11 on the floor
+    leg while its cell named one reader. The reader it skipped is `tomllib`, which no `pyproject.toml`
+    marker bounds and no module-level `import` line binds - the test takes it through
+    `pytest.importorskip` - so neither half of the derivation was asked about it. The version that
+    introduces a stdlib reader is compared against the floor the project states in `requires-python`,
+    so moving the floor moves this answer instead of leaving a remembered number behind.
+    """
+    module = tmp_path / "test_crosslib.py"
+    module.write_text(
+        CROSSLIB_HEADER + '@pytest.mark.parametrize("doc", ["{}"])\n'
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n"
+        "def test_load_json_matches_a_later_reader(doc):\n"
+        '    tomllib = pytest.importorskip("tomllib")\n'
+        "    assert pyrs_yaml.load_json(doc) == tomllib.loads(doc)\n",
+        encoding="utf-8",
+    )
+    row = matrix.crosslib_parity("JSON / JSONC / JSON5", module)
+    assert "tomllib" in row["oracles"], row
+    assert row["marker"]["tomllib"].startswith("arrives with python"), row
+    assert row["marker"]["json"] is None, row
+    assert row["covered"] == ["json"], row
+
+
+def test_the_toml_row_names_both_readers_and_the_bound_of_each(measured):
+    """The tree, not a fixture: a second reader that does not reach the floor, and a verdict that holds.
+
+    The row read `oracles: ["tomlkit"]` while the file asks two readers, and the 11 comparisons the
+    floor and the two next legs skip were therefore invisible. Reporting `tomllib` must not overcorrect
+    into a hole: `tomlkit` is declared with no marker and judges the dialect on every leg, so the cell
+    still reads `yes` - the credit that keeps it there is the blanket `pytestmark` that used to gate the
+    whole file on an oracle nothing bounds, which is dead code while it is green and a silent skip the
+    moment it is not.
+    """
+    row = measured["format_matrix"]["TOML"]["cross_library"]
+    assert row["oracles"] == ["tomlkit", "tomllib"], row
+    assert row["marker"]["tomlkit"] is None, row
+    assert "3.11" in row["marker"]["tomllib"], row
+    assert row["verdict"] == "yes", row
+
+
 DECLARED_HANDLER = """\
 [project]
 docs_dir = "docs/en"
