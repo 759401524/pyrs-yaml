@@ -471,7 +471,8 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
         return Err(refuse(
             "an edit expression",
             dialect,
-            "pyq's set and delete write YAML, which is not what jq prints - the same edit reads              as `pyq --as yq del(.a.n)` or `pyq delete .a.n`",
+            "pyq's set and delete write YAML, which is not what jq prints - the same edit reads \
+             as `pyq --as yq del(.a.n)` or `pyq delete .a.n`",
         ));
     }
 
@@ -523,7 +524,10 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
         ));
     }
     if on_get {
-        if c.json && !c.raw {
+        // `--json` stays set under `-r`: jq unwraps scalars and still renders a
+        // container as JSON, and `emit_value` gives `raw` the first look, so the
+        // pair is what says which of the two the answer is.
+        if c.json {
             push("--json");
         }
         if c.raw {
@@ -553,8 +557,10 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
 const DIALECT_FLAG: &str = "--as";
 
 /// What the binary asks for: pass a native argv through, translate a shell-shaped
-/// one. `Err` is the refusal, and nothing runs in that case.
-pub fn plan(argv: &[OsString]) -> Result<Vec<OsString>, String> {
+/// one. `Err` is the refusal, and nothing runs in that case. The second half names
+/// the dialect the shell served, which is how the entry point knows it owes the
+/// answer the tool it imitates gives rather than pyq's own.
+pub fn plan(argv: &[OsString]) -> Result<(Vec<OsString>, Option<Dialect>), String> {
     let mut rest = argv.to_vec();
     let mut forced: Option<Dialect> = None;
     if let Some(pos) = rest
@@ -572,17 +578,17 @@ pub fn plan(argv: &[OsString]) -> Result<Vec<OsString>, String> {
         rest.remove(pos);
     }
     let Some(head) = rest.get(1) else {
-        return Ok(rest);
+        return Ok((rest, None));
     };
     let head = head.to_string_lossy().to_string();
     if forced.is_none()
         && (NATIVE_COMMANDS.contains(&head.as_str())
             || matches!(head.as_str(), "-h" | "--help" | "-V" | "--version"))
     {
-        return Ok(rest);
+        return Ok((rest, None));
     }
     let dialect = forced.unwrap_or_else(|| dialect_of(&rest[0]).unwrap_or(Dialect::Yq));
-    translate(&rest, dialect)
+    Ok((translate(&rest, dialect)?, Some(dialect)))
 }
 
 #[cfg(test)]
@@ -596,7 +602,7 @@ mod tests {
     fn translated(args: &[&str]) -> Vec<String> {
         let argv = os(args);
         plan(&argv)
-            .map(|out| {
+            .map(|(out, _)| {
                 out.iter()
                     .map(|a| a.to_string_lossy().to_string())
                     .collect()
@@ -607,7 +613,7 @@ mod tests {
     fn refused(args: &[&str]) -> String {
         let argv = os(args);
         match plan(&argv) {
-            Ok(out) => panic!("{args:?}: expected a refusal, got {out:?}"),
+            Ok((out, _)) => panic!("{args:?}: expected a refusal, got {out:?}"),
             Err(e) => e,
         }
     }
@@ -615,14 +621,16 @@ mod tests {
     #[test]
     fn a_native_subcommand_is_never_touched() {
         let argv = os(&["pyq", "get", ".a", "f.yaml"]);
-        assert_eq!(plan(&argv).unwrap(), argv);
+        let (out, dialect) = plan(&argv).unwrap();
+        assert_eq!(out, argv);
+        assert_eq!(dialect, None, "a native run owes the native answer");
     }
 
     #[test]
     fn help_and_version_reach_clap_unchanged() {
         for arg in ["--help", "-h", "--version", "-V"] {
             let argv = os(&["pyq", arg]);
-            assert_eq!(plan(&argv).unwrap(), argv, "{arg}");
+            assert_eq!(plan(&argv).unwrap().0, argv, "{arg}");
         }
     }
 
@@ -667,9 +675,12 @@ mod tests {
             translated(&["jq", ".a", "x.json"]),
             vec!["jq", "get", ".a", "--json", "x.json"]
         );
+        // `-r` keeps `--json` beside it: jq unwraps a scalar and still renders a
+        // container as JSON, so the pair is what tells the emitter which of the two
+        // the answer is - dropping one silently re-styled the value.
         assert_eq!(
             translated(&["jq", "-r", ".a", "x.json"]),
-            vec!["jq", "get", ".a", "--raw", "x.json"]
+            vec!["jq", "get", ".a", "--json", "--raw", "x.json"]
         );
         assert_eq!(
             translated(&["jq", ".", "x.json"]),
@@ -844,7 +855,7 @@ mod tests {
         );
         // A bare `pyq` is clap's own usage screen, not a refusal.
         let bare = os(&["pyq"]);
-        assert_eq!(plan(&bare).unwrap(), bare);
+        assert_eq!(plan(&bare).unwrap().0, bare);
         assert!(refused(&["pyq", "-r"]).contains("no expression"));
     }
 }

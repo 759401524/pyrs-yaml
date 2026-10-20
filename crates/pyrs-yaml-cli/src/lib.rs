@@ -371,14 +371,32 @@ impl From<SchemaKind> for Schema {
 /// whole output - nothing runs.
 pub fn main_from_env() -> ! {
     let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    let planned = match compat::plan(&argv) {
+    let (planned, dialect) = match compat::plan(&argv) {
         Ok(planned) => planned,
         Err(why) => {
             let _ = writeln!(std::io::stderr(), "pyq: {why}");
             std::process::exit(2);
         }
     };
-    run(Cli::parse_from(planned))
+    let cli = Cli::parse_from(planned);
+    let Some(_dialect) = dialect else {
+        run(cli)
+    };
+    // A path the document does not carry is an answer rather than a failure for
+    // either tool this shell imitates: jq and mikefarah yq both print `null` and
+    // exit 0, while native `get` keeps reporting one. The check is on the error's
+    // type, not its text, so an unrelated failure cannot be turned into `null`.
+    match run_command(cli.command) {
+        Ok(()) => std::process::exit(0),
+        Err(e) if e.downcast_ref::<PathNotFound>().is_some() => {
+            println!("null");
+            std::process::exit(0)
+        }
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "pyq: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Process entry: parse argv, dispatch, map errors to `pyq: <msg>` + exit 1.
@@ -759,16 +777,40 @@ fn emit_with_verbs(
     no_doc: bool,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let stream = verbs.apply(stream, path)?;
+    let missed = stream.is_empty();
+    let stream = verbs.apply(stream, path).map_err(|e| {
+        // The verb pipeline reports its own failures as sentences and keeps its
+        // fail-fast on a broken predicate, so the one case the shell has to tell
+        // apart - a plain selector miss - is turned into the typed error here.
+        if missed && e == format!("path not found: {path}") {
+            Box::new(PathNotFound(path.to_string())) as Box<dyn std::error::Error>
+        } else {
+            e.into()
+        }
+    })?;
     if let Some(text) = verbs.render_join(&stream)? {
         return emit_value(&CustomNode::plain_scalar(text), json, raw);
     }
     emit_matched(&stream, json, raw, no_doc, path)
 }
 
-/// jq-stream output: zero matches is an error, one match prints plainly,
-/// many print as a multi-document YAML stream (or one JSON value per line,
-/// matching `jq` output for piping).
+/// jq-stream output: zero matches is an error, one match prints plainly, many print
+/// as a multi-document YAML stream (or, with `--json`, each match rendered the way
+/// one match is rendered - the shape `jq` writes per output value).
+/// A path the document does not carry. Typed rather than a bare string because the
+/// compatibility shell has to tell this one failure from every other one it reports:
+/// `jq` and mikefarah `yq` answer `null` and exit 0, while native `get` keeps exiting 1.
+#[derive(Debug)]
+struct PathNotFound(String);
+
+impl std::fmt::Display for PathNotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "path not found: {}", self.0)
+    }
+}
+
+impl std::error::Error for PathNotFound {}
+
 fn emit_matched(
     found: &[&CustomNode],
     json: bool,
@@ -777,7 +819,7 @@ fn emit_matched(
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match found.len() {
-        0 => Err(format!("path not found: {path}").into()),
+        0 => Err(Box::new(PathNotFound(path.to_string()))),
         1 => {
             emit_value(found[0], json, raw)?;
             Ok(())
@@ -785,17 +827,19 @@ fn emit_matched(
         _ => {
             let mut out = String::new();
             if json {
+                // One rendered value per match, exactly as one match is rendered:
+                // `jq` pretty-prints every top-level output and never emits the
+                // compact form a shared loop here used to write.
                 for node in found {
-                    out.push_str(&json::node_to_json(node)?);
-                    out.push('\n');
+                    emit_value(node, true, raw)?;
                 }
-            } else {
-                for node in found {
-                    if !no_doc {
-                        out.push_str("---\n");
-                    }
-                    out.push_str(&serializer::to_yaml(node));
+                return Ok(());
+            }
+            for node in found {
+                if !no_doc {
+                    out.push_str("---\n");
                 }
+                out.push_str(&serializer::to_yaml(node));
             }
             emit_str(&out)
         }
@@ -1039,13 +1083,15 @@ fn read_input(file: &Option<PathBuf>) -> Result<String, Box<dyn std::error::Erro
 }
 
 fn emit_value(node: &CustomNode, json: bool, raw: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // `raw` wins over `json` the way it does in jq and in yq v4's default: a bare
+    // scalar is unwrapped, a container is still rendered in the requested format.
+    if raw && let CustomNode::Scalar { value, .. } = node {
+        println!("{value}");
+        return Ok(());
+    }
     if json {
         let text = json::node_to_json_pretty(node, 2)?;
         println!("{text}");
-        return Ok(());
-    }
-    if raw && let CustomNode::Scalar { value, .. } = node {
-        println!("{value}");
         return Ok(());
     }
     print!("{}", serializer::to_yaml(node));

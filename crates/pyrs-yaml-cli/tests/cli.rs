@@ -96,7 +96,7 @@ fn verbs_pipeline_select_sort_unique_slice() {
     assert_eq!(code, Some(0), "{err}");
     assert_eq!(
         out,
-        "{\"name\":\"b\",\"port\":1500}\n{\"name\":\"c\",\"port\":1800}\n"
+        "{\n  \"name\": \"b\",\n  \"port\": 1500\n}\n{\n  \"name\": \"c\",\n  \"port\": 1800\n}\n"
     );
     // desc reverses, take slices
     let (_, out, _) = run_with_stdin(
