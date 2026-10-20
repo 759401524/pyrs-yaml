@@ -390,6 +390,11 @@ status: new
 
 ### 修复
 
+- **`no_std` 门禁只能和自己对齐** - `tests/test_no_std_gate.py` 把 `ci.yml` 里的 crate 名单与一份
+  抄进测试的集合相比，于是新增了 `#![no_std]` 却没有裸机构建、或删掉属性却仍在构建的 crate，
+  都能让这个 job 保持绿。集合现在从各 crate 的根文件读出来。两条对照守住它：一条在合成的源文件
+  上跑读取器，把属性和引用它的句子分开；另一条拒绝空集合——空与空相配看起来就像通过。
+
 - **权威列为空只是散文，不是度量** - `QUALITY_MATRIX.md` 写着 schema 这层没有外来的读者问它的规则，
   可 `scripts/quality_matrix.py` 对空权威列派生不出任何洞，于是 `.ci/quality-holes.json` 一直停在
   `holes: []`，也就能被读成「没有短板」。探针现在会对它发出 `authority-tier:schema-validation`，
