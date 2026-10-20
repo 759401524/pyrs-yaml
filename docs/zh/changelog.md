@@ -382,6 +382,16 @@ status: new
   改勾（按 6.0.3 实测），类型存根行按各包实际内容标注：PyYAML 无，ryaml 与 yaml_edit 有。
   ABI3 行改为真实地板 py3.8+。
 
+### 修复
+
+- **带锚点条目的注释落在它无法拆开的头部之上** — 对一个作为序列条目、且其块以只有标签的行结尾
+  （`- a: !o`）的块映射调用 `set_comment_path` 时，映射自身的行内注释被写在 `&a` 头部与正文之间。
+  读取器把那里的注释视为映射的*前导*注释，于是下一次输出会把它上提到头部之前：第一次输出是
+  `&a0` / `# note` / `a: !o`，第二次是 `# note` / `&a0` / `a: !o`，这次编辑因此需要两轮才稳定。
+  写入器现在把该注释放到头部行之上，也就是读取器交还它的位置，第一次输出即为不动点（libFuzzer
+  `edit_yaml` crash-b22d0653）。由 `an_anchored_items_note_settles_above_its_header` 与重放的种子
+  `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed` 固定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

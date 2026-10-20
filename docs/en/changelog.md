@@ -502,6 +502,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the type-stub row says what the packages ship: PyYAML none, ryaml and yaml_edit yes. The ABI3
   row names the real floor, py3.8+.
 
+### Fixed
+
+- **An anchored item's note settles above the header it cannot split** — `set_comment_path` on a
+  block mapping that is a sequence item and whose block ends in a tag-only line (`- a: !o`) wrote
+  the mapping's inline note between its `&a` header and the body. The reader files a note there as
+  the mapping's *leading* comment, so the next emission hoisted it above the header: the first
+  output was `&a0` / `# note` / `a: !o` and the second `# note` / `&a0` / `a: !o`, so the edit
+  needed two rounds to settle. The writer now puts that note above the header line, where the
+  reader hands it back from, and the first emission is the fixed point (libFuzzer `edit_yaml`
+  crash-b22d0653). Pinned by `an_anchored_items_note_settles_above_its_header` and the replayed
+  seed `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed`.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

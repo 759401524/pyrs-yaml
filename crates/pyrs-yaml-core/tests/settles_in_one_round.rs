@@ -328,6 +328,55 @@ fn the_roots_own_note_settles_in_one_round() {
     }
 }
 
+/// libFuzzer `edit_yaml` crash-b22d0653: an anchored block mapping item whose block ends in a
+/// tag-only line.
+///
+/// `pending_line_is_last` sends a container's own inline note above the pair that ended the
+/// block. Under a `&a` / `!tag` header that pair line is *below* the header, and the reader files
+/// a note there as the mapping's leading note — so the second emission hoisted it above the
+/// header: round one wrote `&a0` / `# fuzz 119` / `a: !o`, round two `# fuzz 119` / `&a0` /
+/// `a: !o`. Above the header is the line the reader hands the note back from, so the mapping now
+/// writes it there and the first emission is the fixed point. The sequence branch of the same
+/// decision already inserts above `body_start`; only the mapping needed the header case.
+#[test]
+fn an_anchored_items_note_settles_above_its_header() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+    use std::sync::Arc;
+
+    for (src, expected) in [
+        ("- a: !o\n", "- \n  # fuzz 119\n  &a0 \n  a: !o\n"),
+        ("- a: &b !o\n", "- \n  # fuzz 119\n  &a0 \n  a: &b !o\n"),
+    ] {
+        let path = [Segment::Index(0)];
+        let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+        set_anchor_path(&mut node, &path, "a0", src, None).expect("the anchor is set");
+        set_comment_path(
+            &mut node,
+            &path,
+            Comment {
+                text: Arc::from("fuzz 119"),
+                standalone: false,
+            },
+            src,
+            None,
+        )
+        .expect("the note is set");
+
+        let one = to_yaml(&node);
+        assert_eq!(
+            one, expected,
+            "the note belongs above the header it cannot split: {src:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}
+
 /// A mapping whose block ends inside a nested sequence has no pair line of its own at the tail:
 /// the last line belongs to one of the sequence's items. `write_mapping_pair` left
 /// `pair_line_start` pointing there, so the mapping's note was written above that item's dash -
