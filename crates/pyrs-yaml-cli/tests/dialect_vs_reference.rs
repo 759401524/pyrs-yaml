@@ -142,6 +142,7 @@ const YQ_ACCEPTED: &[&[&str]] = &[
     &[".a.n", "doc.yaml"],
     &["-o", "yaml", ".a", "doc.yaml"],
     &[".missing", "doc.yaml"],
+    &["select(.n > 1)", "doc.yaml"],
 ];
 
 const JQ_ACCEPTED: &[&[&str]] = &[
@@ -153,6 +154,7 @@ const JQ_ACCEPTED: &[&[&str]] = &[
     &["-r", ".list[].x", "doc.json"],
     &[".a[\"b\"]", "doc.json"],
     &[".missing", "doc.json"],
+    &["select(.n > 1)", "doc.json"],
 ];
 
 /// The forms the shell claims, answered the way the reference answers them.
@@ -219,6 +221,8 @@ fn refused_invocations_print_nothing_and_name_the_construct() {
         ("yq", &["-n", ".a = 1"], "-n"),
         ("yq", &["-o", "csv", ".a", "doc.yaml"], "csv"),
         ("yq", &[".a", "doc.yaml", "doc.json"], "2 input files"),
+        ("yq", &[".list[0:2]", "doc.yaml"], "slice"),
+        ("jq", &[".list[0:2]", "doc.json"], "slice"),
         ("jq", &["-S", ".", "doc.json"], "-S"),
         ("jq", &["-c", ".", "doc.json"], "-c"),
         ("jq", &["--arg", "k", "v", ".$k", "doc.json"], "--arg"),
