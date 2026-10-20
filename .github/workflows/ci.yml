@@ -484,12 +484,38 @@ jobs:
           name: wheel-${{ matrix.os }}
           path: dist-test/*.whl
 
-      # The same recipe and the same compiler `publish.yml` ships, so the artifact the test jobs
-      # install is the artifact users download, and the pinned toolchain is exercised on three OSes
-      # per pull request rather than for the first time on a tag push. `maturin-action` takes the
-      # toolchain as its `rust-toolchain` input; if that name or value ever stops resolving, this
-      # leg fails instead of Release. `tests/test_publish_toolchain.py` keeps the pin equal to
-      # `.ci/ir-baseline.json`, which is the compiler the instruction-count floors were measured on.
+  # The release recipe is a separate job because it is a separate consumer. Measured on run
+  # 39424748440 (44 jobs, 856 s from first runner to verdict): the abi3 wheel the test legs install is
+  # uploaded at +134 s (Windows), +135 s (macOS) and +151 s (ubuntu), while the `--find-interpreter`
+  # build that follows it in the same job needs +285 s on macOS and +346 s on Windows, so `build` only
+  # completes at +485 s and every one of the 24 legs that wait on it starts 355-471 s after the artifact
+  # it actually needs already exists. Splitting the two producers moves the test surface behind the
+  # fast one; nothing here changes the work performed, so runner-minutes are the same and wall clock is
+  # not. The rehearsal the split preserves is the point of this job: the same recipe and the same
+  # compiler `publish.yml` ships, exercised on three OSes per pull request rather than for the first
+  # time on a tag push. `maturin-action` takes the toolchain as its `rust-toolchain` input; if that name
+  # or value ever stops resolving, this leg fails instead of Release.
+  # `tests/test_publish_toolchain.py` keeps the pin equal to `.ci/ir-baseline.json`, which is the
+  # compiler the instruction-count floors were measured on.
+  release-wheels:
+    name: release wheel recipe (${{ matrix.os }})
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.os }}
+
       - name: Build release wheels (find-interpreter)
         uses: PyO3/maturin-action@v1
         with:
@@ -620,7 +646,7 @@ jobs:
   matrix-verdict:
     name: Test matrix (all legs)
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [changes, matrix-plan, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, wheel-smoke, test-freethreaded, compliance-report, i18n-check, ir]
+    needs: [changes, matrix-plan, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, release-wheels, test, wheel-smoke, test-freethreaded, compliance-report, i18n-check, ir]
     runs-on: ubuntu-latest
     steps:
       # No checkout of the tree is needed for the verdict itself, but the checker lives in
@@ -642,7 +668,7 @@ jobs:
         run: python scripts/check_matrix_verdict.py
 
   compliance-report:
-    needs: [build, changes]
+    needs: [release-wheels, changes]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
