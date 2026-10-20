@@ -724,5 +724,5 @@ jobs:
           echo "and commit the artifact it uploads. Pair the printed sha256 digests before comparing any";
           echo "two runs - matching bytes make movement an environment question, differing bytes make it";
           echo "code. Measured 2026-10-11, the two jobs agreed to 21 instructions on";
-          echo "`serialize_block_scalars` while their digests matched."
+          echo "\`serialize_block_scalars\` while their digests matched."
 
