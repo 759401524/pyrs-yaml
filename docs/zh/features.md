@@ -24,17 +24,17 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 - **流式/块式格式** — 保留 `[]`/`{}` 与块式风格
 
 !!! note "基准测试环境"
-    以下性能数据通过 CodSpeed CI（`pytest-codspeed`，WallTime 模式）测得。绝对时间可能因环境而异，但相对加速比在不同硬件上保持一致。
+    CodSpeed CI 以模拟模式运行（统计指令数而非墙钟时间）。下表的数字由 `scripts/bench_snapshot.py` 于 2026-10-20 分批计时记录；相对加速比仅供参考，会随解释器、硬件和文档变化。
 
 ## 性能
 
-Rust 后端比 PyYAML 解析快 **21–43 倍**、序列化快 **55–177 倍**：
+Rust 后端比 PyYAML 解析快 **29–34 倍**、序列化快 **223–368 倍**：
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 1.5 ms | 57.7 ms |
-| Serialize (large) | 0.17 ms | 30.2 ms |
-| Round-trip | 1.6 ms | 87.9 ms |
+| Parse (large) | 67 µs | 2.0 ms |
+| Serialize (large) | 4.5 µs | 1.2 ms |
+| Round-trip | 70 µs | 3.5 ms |
 
 ## 自定义 AST
 

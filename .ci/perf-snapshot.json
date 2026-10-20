@@ -1,0 +1,82 @@
+{
+  "generated_at": "2026-10-20T00:09:07+00:00",
+  "environment": {
+    "python": "3.12.15",
+    "platform": "Windows-11-10.0.26220-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel"
+  },
+  "libraries": {
+    "pyrs-yaml": "0.18.1",
+    "PyYAML": "6.0.3",
+    "ruamel.yaml": "0.19.1"
+  },
+  "parameters": {
+    "rounds": 9,
+    "target_seconds": 0.1
+  },
+  "fixtures": {
+    "small": {
+      "bytes": 95
+    },
+    "medium": {
+      "bytes": 687
+    },
+    "large": {
+      "bytes": 1949
+    }
+  },
+  "operations": {
+    "parse": {
+      "small": {
+        "pyrs-yaml": 4.554,
+        "PyYAML": 133.667,
+        "ruamel.yaml": 311.412
+      },
+      "medium": {
+        "pyrs-yaml": 24.354,
+        "PyYAML": 839.385,
+        "ruamel.yaml": 1983.644
+      },
+      "large": {
+        "pyrs-yaml": 67.498,
+        "PyYAML": 2041.144,
+        "ruamel.yaml": 5038.53
+      }
+    },
+    "serialize": {
+      "small": {
+        "pyrs-yaml": 0.371,
+        "PyYAML": 82.715,
+        "ruamel.yaml": 200.779
+      },
+      "medium": {
+        "pyrs-yaml": 1.307,
+        "PyYAML": 480.66,
+        "ruamel.yaml": 1144.842
+      },
+      "large": {
+        "pyrs-yaml": 4.508,
+        "PyYAML": 1193.523,
+        "ruamel.yaml": 2628.084
+      }
+    },
+    "roundtrip": {
+      "small": {
+        "pyrs-yaml": 5.321,
+        "PyYAML": 237.539,
+        "ruamel.yaml": 544.818
+      },
+      "medium": {
+        "pyrs-yaml": 25.956,
+        "PyYAML": 1522.703,
+        "ruamel.yaml": 3252.47
+      },
+      "large": {
+        "pyrs-yaml": 70.201,
+        "PyYAML": 3517.919,
+        "ruamel.yaml": 7795.758
+      }
+    }
+  }
+}

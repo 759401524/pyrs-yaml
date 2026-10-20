@@ -152,12 +152,13 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 
 ## Benchmark Standards
 
-- All benchmarks use CodSpeed (`pytest-codspeed`) in WallTime mode
+- All benchmarks use CodSpeed (`pytest-codspeed`); CI runs in `simulation` mode (instruction counts), not WallTime
 - Cross-library comparison in `tests/test_benchmark_crosslib.py` (pyrs-yaml vs PyYAML vs ruamel vs ryaml vs yaml_edit vs yaml_rs)
 - API benchmarks in `tests/test_benchmark_api.py` (safe_load, parse_stream, validate, etc.)
 - Run benchmarks: `uv run pytest tests/test_benchmark_crosslib.py tests/test_benchmark_api.py --codspeed`
 - Optional dependencies (yaml_rs, ryaml, yaml_edit) use `try/except` + `skipif`
 - Bench files are excluded from normal `pytest` runs (require `--codspeed` flag)
+- **Documented wall-clock numbers come only from the committed snapshot** — `scripts/bench_snapshot.py --update` measures the Python tables in batches (nine batches of at least 0.1 s, fastest reported) and records the environment with the reading in `.ci/perf-snapshot.json`; `--docs` rewrites all twelve locale tables from it. `tests/test_perf_docs.py` compares every cell back to the snapshot; it also derives every speedup range that appears as prose, on all 24 pages that carry one, and rejects the withdrawn 2026-08-17 date and ranges, so a hand-edited number is a red run, not a docs edit.
 - **Instruction-count gate** (`.ci/ir-baseline.json`) — `python scripts/ir_gate.py` measures the hot paths in counted instructions and fails past the tolerance recorded in the baseline (its `tolerance_hint`, currently 0.5%; the 2% this file used to name was the WSL-vs-GitHub-runner drift, which the refresh channel now closes by measuring on the enforcing image instead of absorbing it in the line); `--update` re-baselines deliberately. Prefer it over CodSpeed numbers when judging whether *your own change* made the hot path do more work: CodSpeed compares against a baseline recorded on different hardware and is not reproducible below ~10% (three pushes doing strictly less work once read −7.7%, −10.5%, −9.8%). Needs valgrind — on this Windows box run it in WSL: `wsl -e bash -lc "cd /mnt/d/PycharmProjects/pyrs-yaml && python3 scripts/ir_gate.py"`. Both harnesses read the same documents from `pyrs_yaml_core::bench_inputs` — add a scenario there, never a second copy of a fixture.
 
 ## CLI (`pyrs-yaml` command)

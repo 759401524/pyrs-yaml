@@ -42,7 +42,7 @@ yaml_str = yaml.safe_dump(data)
 | 기능 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
 | 순환 보존 | :material-close: 주석/앵커 잃음 | :material-check: 모든 것 보존 |
-| 성능 | 기준 | **파싱 21-43배, 직렬화 55-177배 빠름** |
+| 성능 | 기준 | **파싱 29–34배, 직렬화 223–368배 빠름** |
 | 타입 힌트 | 부분적 | :material-check: 완전한 `.pyi` 스텁 |
 | ABI3 wheel | 해당 없음 | :material-check: 모든 Python 버전에 단일 wheel |
 | i18n 오류 | :material-close: 영어만 | :material-check: 영어 + 중국어 |
