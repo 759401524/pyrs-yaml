@@ -452,18 +452,53 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
             Kind::Get(path)
         }
     } else {
-        return Err(refuse(
-            &format!("the expression {expression:?}"),
-            dialect,
-            "this shell selects with a path, assigns a literal, deletes one path or passes one \
-             select() predicate - pipes, functions and arithmetic need the real engine \
-             (see `pyq get --help` for the verbs it can reach)",
-        ));
+        // The shape test above rejects a path this grammar cannot address, and the
+        // grammar's own reason is the better refusal: `[0:2]` is a slice, not a
+        // function, and naming it is what tells a user which feature is missing.
+        let named = crate::paths::parse_path(&wildcard_form(&expression))
+            .err()
+            .filter(|why| why.contains("slice"))
+            .map(|why| {
+                refuse(
+                    &format!("the path {expression:?}"),
+                    dialect,
+                    &format!("{why} - a range needs the real engine"),
+                )
+            });
+        return Err(named.unwrap_or_else(|| {
+            refuse(
+                &format!("the expression {expression:?}"),
+                dialect,
+                "this shell selects with a path, assigns a literal, deletes one path or passes one \
+                 select() predicate - pipes, functions and arithmetic need the real engine \
+                 (see `pyq get --help` for the verbs it can reach)",
+            )
+        }));
     };
 
     // Only `get` carries the input-format and output-form knobs; on any other
     // command they would be a clap usage error rather than a decision.
     let on_get = matches!(kind, Kind::Get(_) | Kind::Select(_) | Kind::SelectOn(_, _));
+    // A path the selector grammar cannot address is refused here rather than sent
+    // downstream: `get` answers a miss with `null`, and an unsupported segment must
+    // not be reported as a document that lacks the key.
+    let checked = match &kind {
+        Kind::Get(path) | Kind::SelectOn(path, _) | Kind::Set(path, _) | Kind::Delete(path) => {
+            Some(path.clone())
+        }
+        Kind::Whole | Kind::Select(_) => None,
+    };
+    if let Some(path) = checked {
+        if let Err(why) = crate::paths::parse_path(&path) {
+            return Err(refuse(
+                &format!("the path {path:?}"),
+                dialect,
+                &format!(
+                    "{why} - this shell selects by key, index and `[]`/`[*]`, and a range needs the real engine"
+                ),
+            ));
+        }
+    }
     // An edit in jq mode would have to print JSON, and pyq's edit commands print
     // YAML: the document would be right and the answer wrong. yq mode is where the
     // two agree, so the edit forms are refused as jq rather than re-styled.
@@ -616,6 +651,24 @@ mod tests {
             Ok((out, _)) => panic!("{args:?}: expected a refusal, got {out:?}"),
             Err(e) => e,
         }
+    }
+
+    #[test]
+    fn a_slice_path_is_refused_because_the_shell_cannot_answer_it() {
+        // `.list[0:2]` is valid jq and valid yq, and neither answer is reachable
+        // through this selector grammar. It must be refused by name: sending it
+        // downstream made it a key lookup that misses, and the dialect answers a
+        // miss with `null` - a wrong document presented as a result.
+        for dialect in ["jq", "yq"] {
+            let why = refused(&[dialect, ".list[0:2]", "doc.json"]);
+            assert!(why.contains("slice"), "{dialect}: {why}");
+            assert!(why.contains("path"), "{dialect}: {why}");
+        }
+        // The colon spelling that *is* a key still translates.
+        assert_eq!(
+            translated(&["jq", ".a[\"k:v\"]", "doc.json"]),
+            vec!["jq", "get", ".a[\"k:v\"]", "--json", "doc.json"]
+        );
     }
 
     #[test]

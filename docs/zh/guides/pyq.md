@@ -154,8 +154,15 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 凡是壳无法给出与真工具同一份文档的，一律**点名拒绝**、退出码 2、stdout 为空，绝不静默忽略。集合至少包含 jq 的
 `--arg`/`--argjson`、`-s`、`-c`、`-S`、`--stream` 以及 jq 模式下的任何编辑表达式（pyq 写 YAML，
 jq 写 JSON）；yq 的 `-n`、`-e`、`-P`、`--expression`、`--split-exp`、`--front-matter`、
-`--xml-*`/`--lua-*`/`--csv-*` 各家族与字符串插值；除单个尾部 `select` 之外的管道；以及一切函数（`keys`、`length`、
+`--xml-*`/`--lua-*`/`--csv-*` 各家族与字符串插值；除单个尾部 `select` 之外的管道；序列切片
+（`[a:b]`，两个真工具都收，而这个选择器无法寻址）；以及一切函数（`keys`、`length`、
 `map`、`to_entries`、`env` 等）。
+
+两种形状按真工具的方式作答：文档里没有的路径打印 `null`
+并以 0 退出，一条都没选中的 `select` 什么都不打印并以 0 退出，而原生
+`pyq get` 把这两者都报成失败。有一处外观差异是有意保留的：字面量带引号的
+赋值（`yq '.a.b = "x"'`）照 pyq 收到的写法保留引号，yq v4 则改写成不带引号
+的形式；重新读入的文档完全一致。
 
 接受表不是手写的期望值。`crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` 在 `PATH` 上能找到
 真 `jq` 与真 `yq` 时就去跑它们，并逐字节比较 stdout；它拒绝把工作区内的任何文件当参考——拿自己的

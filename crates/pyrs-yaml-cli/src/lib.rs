@@ -379,19 +379,19 @@ pub fn main_from_env() -> ! {
         }
     };
     let cli = Cli::parse_from(planned);
-    let Some(_dialect) = dialect else {
-        run(cli)
-    };
+    let Some(_dialect) = dialect else { run(cli) };
     // A path the document does not carry is an answer rather than a failure for
     // either tool this shell imitates: jq and mikefarah yq both print `null` and
-    // exit 0, while native `get` keeps reporting one. The check is on the error's
-    // type, not its text, so an unrelated failure cannot be turned into `null`.
+    // exit 0, while native `get` keeps reporting one. A stream the filters emptied
+    // prints nothing and exits 0. Both checks are on the error's type, not its
+    // text, so an unrelated failure cannot be turned into either answer.
     match run_command(cli.command) {
         Ok(()) => std::process::exit(0),
         Err(e) if e.downcast_ref::<PathNotFound>().is_some() => {
             println!("null");
             std::process::exit(0)
         }
+        Err(e) if e.downcast_ref::<NoMatchesAfterFilters>().is_some() => std::process::exit(0),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "pyq: {e}");
             std::process::exit(1);
@@ -778,16 +778,21 @@ fn emit_with_verbs(
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let missed = stream.is_empty();
-    let stream = verbs.apply(stream, path).map_err(|e| {
-        // The verb pipeline reports its own failures as sentences and keeps its
-        // fail-fast on a broken predicate, so the one case the shell has to tell
-        // apart - a plain selector miss - is turned into the typed error here.
-        if missed && e == format!("path not found: {path}") {
-            Box::new(PathNotFound(path.to_string())) as Box<dyn std::error::Error>
-        } else {
-            e.into()
-        }
-    })?;
+    let stream = verbs
+        .apply(stream, path)
+        .map_err(|e| -> Box<dyn std::error::Error> {
+            // The verb pipeline reports its own failures as sentences and keeps its
+            // fail-fast on a broken predicate, so the two cases the shell has to tell
+            // apart - a plain selector miss and a stream the filters emptied - are
+            // turned into their types here.
+            if e == format!("no matches after filters: {path}") {
+                Box::new(NoMatchesAfterFilters(path.to_string()))
+            } else if missed && e == format!("path not found: {path}") {
+                Box::new(PathNotFound(path.to_string()))
+            } else {
+                e.into()
+            }
+        })?;
     if let Some(text) = verbs.render_join(&stream)? {
         return emit_value(&CustomNode::plain_scalar(text), json, raw);
     }
@@ -810,6 +815,20 @@ impl std::fmt::Display for PathNotFound {
 }
 
 impl std::error::Error for PathNotFound {}
+
+/// The verbs emptied a stream that was not empty. Native `get` reports it as a
+/// failure; `jq` and mikefarah `yq` print nothing and answer 0, so the shell needs
+/// this apart from a selector miss - which is a `null`, while this is silence.
+#[derive(Debug)]
+struct NoMatchesAfterFilters(String);
+
+impl std::fmt::Display for NoMatchesAfterFilters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no matches after filters: {}", self.0)
+    }
+}
+
+impl std::error::Error for NoMatchesAfterFilters {}
 
 fn emit_matched(
     found: &[&CustomNode],

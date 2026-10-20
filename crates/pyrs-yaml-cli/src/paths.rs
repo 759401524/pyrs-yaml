@@ -77,6 +77,12 @@ pub fn parse_path(input: &str) -> Result<Selector, String> {
                 segs.push(Seg::Wildcard);
             } else if let Ok(i) = inner.parse::<i64>() {
                 segs.push(Seg::Index(i));
+            } else if !inner.starts_with(['\'', '"', '[']) && inner.contains(':') {
+                // `jq` and `yq` both spell a slice `[a:b]`, and a `:` inside a
+                // bracket is the only way to spell one. Falling through to the key
+                // branch turned `[0:2]` into a key literally named "0:2", so the
+                // selector reported a miss for syntax it never tried to read.
+                return Err(format!("slice segment {inner:?} in path: {input}"));
             } else {
                 segs.push(Seg::Key(unquote(inner)));
             }
@@ -309,6 +315,24 @@ mod tests {
             Schema::Core,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn a_slice_bracket_is_refused_not_read_as_a_key() {
+        // The fall-through this replaces made `[0:2]` a key named "0:2", so a
+        // selector miss and an unsupported construct answered the same way.
+        for slice in [".list[0:2]", ".list[1:]", ".list[:2]", ".list[-1:]"] {
+            let err = parse_path(slice)
+                .err()
+                .unwrap_or_else(|| panic!("{slice} parsed"));
+            assert!(err.contains("slice"), "{slice}: {err}");
+        }
+        // A colon inside a quoted bracket is still a key: that is how `a."x:y"`
+        // and `["x:y"]` spell a name that contains one.
+        assert_eq!(
+            parse_path(".a[\"k:v\"]").unwrap().segments(),
+            &[Seg::Key("a".into()), Seg::Key("k:v".into())]
+        );
     }
 
     #[test]
