@@ -16,10 +16,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   armv7l/s390x/ppc64le excluded. The page explained that in prose while the registry stayed silent,
   so the sentence "the JSON family has a cross-library tier" was quotable about the 3.8 leg this
   package promises, where the module imports nothing, skips, and reports the same green as a leg
-  that ran 198 assertions. `parity_gaps()` emits `parity-tier:json-jsonc-json5` from the same
-  derivation, `.ci/quality-holes.json` carries it with the exit that removes it (an empty
+  that ran all 43 of its comparisons. `parity_gaps()` emits `parity-tier:json-jsonc-json5` from the
+  same derivation, `.ci/quality-holes.json` carries it with the exit that removes it (an empty
   `restricted` list, measured the same way), and the hole-id slug is now derived from a label's
   alphanumerics so `JSON / JSONC / JSON5` cannot spell itself into an id nobody can read.
+
+- **RFC 8259 is now judged on the legs that cannot install a JSON reader** - the JSON cross-library
+  module gated itself as a whole file, so on the 3.8 floor this package promises, and on 3.14+, all
+  43 of its comparisons skipped, including the ones that need no third-party reader. stdlib `json`
+  is one of them now: `parse_constant` refuses the three literals the stdlib accepts by default,
+  which makes it an RFC 8259 oracle that no dependency declaration bounds and that every leg has.
+  Measured on a simulated excluded leg (`orjson` and `pyjson5` both unimportable): 29 comparisons
+  run and 44 skip, where the same leg ran 0 of 43 before; 73 run where both readers install. The
+  parity cell had to become per dialect for that to be reportable - `crosslib_parity()` credits a
+  dialect only when a test calls an unbounded reader itself, in a test nothing can skip, so
+  `@needs_pyjson5`, a module `pytestmark`, a docstring mention, or a helper defined after the test
+  all earn nothing - and the hole stays registered, naming `json5` and `jsonc` rather than the whole
+  family.
 
 - **The tier table's counts are now written by the measurement that checks them** — the row was
   already pinned to the probe by a comparison test, so a stale digit was a red run rather than a
