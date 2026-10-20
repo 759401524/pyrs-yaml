@@ -449,6 +449,48 @@ def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
     assert claimed == measured_counts, f"QUALITY_MATRIX.md claims {claimed}, the probe measures {measured_counts}"
 
 
+def test_the_committed_rows_are_what_the_derivation_writes(matrix, measured):
+    """The row is now generated from the measurement, so the page and the probe cannot disagree.
+
+    The test above compares a parsed number with the probe, which catches a stale row but leaves the
+    author to type the new one: PR #549 reddened all 14 test legs because a new test file moved the
+    count and nobody re-derived the digit. `--write-rows` removes that step, and this asserts the
+    committed page is byte-identical to what the same code writes.
+    """
+    text = DOC_PATH.read_text(encoding="utf-8")
+    assert matrix.row_drift(text, measured) == []
+    written, changed = matrix.apply_rows(text, measured)
+    assert written == text and changed == [], f"the page is not in derived form: {changed}"
+
+
+def test_a_stale_digit_and_a_reworded_row_are_both_named(matrix, measured):
+    """Both failure directions of the derivation, proven on the real page.
+
+    A checker that only fires when the number is wrong would pass on a table reworded until no rule
+    matches it - the same silent-off shape this file keeps refusing for role conditions.
+    """
+    text = DOC_PATH.read_text(encoding="utf-8")
+    stale_number = re.search(r"\| unit / integration \| ([\d,]+) Rust", text)
+    assert stale_number, "the unit row no longer states its Rust count where the rule expects it"
+    wrong = "{:,}".format(int(stale_number.group(1).replace(",", "")) - 20)
+    problems = matrix.row_drift(text.replace(stale_number.group(1), wrong, 1), measured)
+    assert any(problem.startswith("unit / integration row") for problem in problems), problems
+
+    reworded = text.replace("| unit / integration |", "| unit tests |", 1)
+    problems = matrix.row_drift(reworded, measured)
+    assert any("no sentence matches" in problem for problem in problems), problems
+
+    # A rewrite repairs a stale number and is idempotent; a sentence the rules cannot find is not
+    # something it can invent, so the reworded row stays reported.
+    fixed, changed = matrix.apply_rows(text.replace(stale_number.group(1), wrong, 1), measured)
+    assert matrix.row_drift(fixed, measured) == []
+    assert "unit / integration row" in changed, changed
+    again, second = matrix.apply_rows(fixed, measured)
+    assert again == fixed and second == [], second
+    unfixed, changed = matrix.apply_rows(reworded, measured)
+    assert unfixed == reworded and changed == [], changed
+
+
 def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):
     """The probe is a measurement, in both the open and the closed direction.
 

@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The tier table's counts are now written by the measurement that checks them** — the row was
+  already pinned to the probe by a comparison test, so a stale digit was a red run rather than a
+  lie; what was missing was a way to *produce* the right one. That gap cost PR #549 all 14 test
+  legs: a new test file moved the Python count and the author had to know to retype it, and two open
+  pull requests that both move the row force a replay of whichever lands second.
+  `python scripts/quality_matrix.py --write-rows` now rewrites the sentences from the same
+  measurement, keeps the prose around each number, and refuses to report success on a table it can
+  no longer parse; `--check-rows` prints the drift instead. Demonstrated on this branch: replaying
+  onto `47349338` (which carries #553's tests) moved the Python count 1,822 → 1,824 and one flag
+  wrote the row.
+
 - **`pyq` answers the `jq` and `yq` command line** - an argv that is not one of pyq's own
   subcommands is now read as `jq` 1.8 or mikefarah `yq` v4 (chosen by the name the binary was
   invoked as, or forced with `--as jq|yq`) and translated into the equivalent subcommand. Accepted
