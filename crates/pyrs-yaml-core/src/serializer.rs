@@ -156,6 +156,10 @@ struct Serializer {
     /// is the only slot in that entry a reader reports a comment from, and only the
     /// block writer knows where it ended.
     block_header_break: Option<usize>,
+    /// Line start of the `&a` / `!tag` header the container being written put down, for its first
+    /// item only: that item's note cannot be spelled between the header and the body, because the
+    /// reader files a note there as the container's own leading note. Taken by the first item.
+    container_header_start: Option<usize>,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -366,6 +370,7 @@ impl Serializer {
             pending_tag_insert_at: None,
             pair_line_start: 0,
             block_header_break: None,
+            container_header_start: None,
         }
     }
 
@@ -1152,11 +1157,16 @@ impl Serializer {
                 wrote_header = true;
             }
 
+            // Only the first item can sit between this header and the body; the first item
+            // consumes the line start, so a later item's note still goes above its own dash.
+            let saved_header = self.container_header_start.take();
+            self.container_header_start = wrote_header.then_some(body_start);
             if self.sort_keys {
                 block_sorted(self)?
             } else {
                 block(self)?
             }
+            self.container_header_start = saved_header;
 
             if let Some(c) = meta.comment()
                 && !c.standalone
@@ -1580,6 +1590,9 @@ impl Serializer {
         // Measured once: `is_compact_item` walks every pair, and this is a hot path, so the
         // branch below reuses one answer rather than asking twice.
         let compact = is_compact_item(item);
+        // Taken by the first item of a container that wrote a `&a` / `!tag` header: a note this
+        // item cannot keep on its own line may not be spelled between the header and the body.
+        let header_start = self.container_header_start.take();
         self.pair_line_start = self.output.len();
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
@@ -1693,7 +1706,11 @@ impl Serializer {
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
                 } else {
-                    self.note_line_above(dash_line_start, &c.text);
+                    // Above the dash is between a header and the body when this item is the
+                    // first of an anchored sequence, and the reader files a note there as the
+                    // sequence's leading note - the second emission hoists it above the header
+                    // (libFuzzer `edit_yaml` crash-2fc59020). Above the header is that slot.
+                    self.note_line_above(header_start.unwrap_or(dash_line_start), &c.text);
                 }
             }
         } else if !Self::is_empty_container(item)

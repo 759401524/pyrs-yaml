@@ -484,6 +484,16 @@ status: new
   `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` と再実行したシード
   `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed` で固定。
 
+- **コンパクトな項目の注記は所属シーケンスのヘッダーの上に落ち着く** — 行末がすでに自身の注記で
+  埋まっているコンパクト形式 `- key: value` の項目は、その注記をダッシュの上の行に書きます。
+  シーケンスが同時に `&a` / `!tag` ヘッダーを書く場合、その行はヘッダーと本文の間にあり、読み手は
+  そこにある注記をシーケンスの*先頭*注記として扱うため、次の出力でヘッダーの上へ持ち上がりました。
+  最初の出力は `&a0` / `# note` / `- k: v  # note`、二度目は `# note` / `&a0` / `- k: v  # note`
+  です。先頭の項目はヘッダーの行頭を記録し、その注記をヘッダーの上に書くようになりました。読み手が
+  それを返す位置です（libFuzzer `edit_yaml` crash-2fc59020）。
+  `a_compact_items_note_settles_above_the_sequences_header` と再実行したシード
+  `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed` で固定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
