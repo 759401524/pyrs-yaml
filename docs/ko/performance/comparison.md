@@ -14,36 +14,34 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **1.5 ms** | — |
-| PyYAML | 57.7 ms | 38× 느림 |
-| ruamel.yaml | 127.9 ms | 85× 느림 |
+| **pyrs-yaml** | 67 µs | — |
+| PyYAML | 2.0 ms | 30× slower |
+| ruamel.yaml | 5.0 ms | 75× slower |
 
 #### Serialize 속도 (대규모 YAML, ~2 KB)
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **0.17 ms** | — |
-| PyYAML | 30.2 ms | 177× 느림 |
-| ruamel.yaml | 63.1 ms | 371× 느림 |
+| **pyrs-yaml** | 4.5 µs | — |
+| PyYAML | 1.2 ms | 265× slower |
+| ruamel.yaml | 2.6 ms | 583× slower |
 
 #### Round-Trip 속도 (대규모 YAML, ~2 KB)
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **1.6 ms** | — |
-| PyYAML | 87.9 ms[^1] | 55× 느림 |
-| ruamel.yaml | 191.0 ms[^1] | 119× 느림 |
-
-[^1]: PyYAML/ruamel의 라운드트립 시간은 동일 벤치마크의 파싱·직렬화 합계로 추정한 값입니다.
+| **pyrs-yaml** | 70 µs | — |
+| PyYAML | 3.5 ms | 50× slower |
+| ruamel.yaml | 7.8 ms | 111× slower |
 
 ## 네이티브 객체만 만드는 Rust 파서와의 트레이드오프
 
 pyrs-yaml은 **라운드트립 AST**(주석·앵커·태그·소스 span이 load→edit→dump 이후에도 보존됨)를 유지하는 YAML 라이브러리 중 가장 빠릅니다. 플레인 Python 객체로만 역직렬화하고 라운드트립 편집을 **제공하지 않는** Rust 파서(저희 라이브러리 간 벤치마크의 `yaml-rs`)와 비교하면 결과는 갈립니다.
 
-- **직렬화:** pyrs-yaml이 약 2~3배 빠름(위 표 참조).
-- **`YamlDocument`로 파싱:** `yaml-rs`가 만들지 않는 더 풍부한 라운드트립 구조를 만들기 때문에 pyrs-yaml이 `yaml-rs`보다 약 2배 느립니다. 이는 의도된 설계 트레이드입니다—추가 작업이 주석/앵커/순서 보존을 만들어내며, 없애야 할 회귀가 아닙니다.
+- **직렬화:** pyrs-yaml이 같은 픽스처에서 약 2~4배 빠름(위 표 참조).
+- **`YamlDocument`로 파싱:** `yaml-rs`가 만들지 않는 더 풍부한 라운드트립 구조를 만들기 때문에 pyrs-yaml이 `yaml-rs`보다 약 2.5배 느립니다. 이는 의도된 설계 트레이드입니다—추가 작업이 주석/앵커/순서 보존을 만들어내며, 없애야 할 회귀가 아닙니다.
 
-YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 사항을 원본 서식으로 되쓸 일이 전혀 없다면 `yaml-rs` 같은 네이티브 전용 파서를, 라운드트립 충실도가 중요하면 pyrs-yaml을 선택하세요—그 경우에도 위 순수 Python 대안보다 20~40배 빠릅니다.
+YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 사항을 원본 서식으로 되쓸 일이 전혀 없다면 `yaml-rs` 같은 네이티브 전용 파서를, 라운드트립 충실도가 중요하면 pyrs-yaml을 선택하세요—그 경우에도 PyYAML보다 파싱 29~34배, 직렬화 223~368배 빠릅니다.
 
 ## 기능 비교
 
@@ -52,16 +50,16 @@ YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 �
 | **YAML 1.2 준수** | :material-check: | :material-check: | :material-check: |
 | **주석 (standalone)** | :material-check: | :material-close: | :material-check: |
 | **주석 (inline)** | :material-check: | :material-close: | :material-check: |
-| **Anchor/alias** | :material-check: | :material-close: | :material-check: |
-| **Tag (explicit)** | :material-check: | :material-close: | :material-check: |
+| **Anchor/alias** | :material-check: | :material-check: | :material-check: |
+| **Tag (explicit)** | :material-check: | :material-check: | :material-check: |
 | **Block scalar** | :material-check: | :material-check: | :material-check: |
 | **Flow collection** | :material-check: | :material-check: | :material-check: |
-| **Merge key (<<)** | :material-check: | :material-close: | :material-check: |
+| **Merge key (<<)** | :material-check: | :material-check: | :material-check: |
 | **복잡한 키** | :material-check: | :material-check: | :material-check: |
 | **Round-trip 보존** | :material-check: | :material-close: | :material-check: |
 | **Python 바인딩** | :material-check: | :material-check: | :material-check: |
 | **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
-| **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
+| **Type stubs (.pyi)** | :material-check: | :material-close: | :material-close: |
 | **i18n 오류 메시지** | :material-check: | :material-close: | :material-close: |
 | **Rust 백엔드** | :material-check: | :material-close: | :material-close: |
 | **성능** | :material-rocket-launch: 가장 빠름 | :material-snail: 느림 | :material-snail: 느림 |
@@ -70,7 +68,7 @@ YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 �
 
 ### pyrs-yaml을 선택할 때
 
-- **성능이 중요합니다** — PyYAML보다 파싱 21~43×, 직렬화 55~177× 빠름
+- **성능이 중요합니다** — PyYAML보다 파싱 29~34×, 직렬화 223~368× 빠름
 - **Round-trip 보존이 중요합니다** — 주석, anchor, tag 보존
 - **PyYAML 호환성을 원합니다** — 즉시 교체 가능한 API
 - **Type hints가 필요합니다** — 완전한 `.pyi` stubs

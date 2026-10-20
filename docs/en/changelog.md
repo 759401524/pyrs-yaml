@@ -19,6 +19,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Every performance number on the site now comes from one committed measurement** — the
+  wall-clock tables on the four locales' performance and feature pages were transcribed by hand;
+  the 2026-08-17 figures had no script or record behind them, and the same calls now measure
+  22–108× faster than those readings. `scripts/bench_snapshot.py` times batches of calls (nine
+  batches of at least 0.1 s, fastest reported) and commits the reading with its interpreter,
+  library versions and fixture sizes to `.ci/perf-snapshot.json`; `--docs` rewrites all twelve
+  tables from it, and `tests/test_perf_docs.py` compares every cell back, so a table cannot drift.
+  The prose had drifted separately: the index, round-trip, PyYAML-compatibility, benchmark,
+  comparison and feature pages still quoted 21–43×, 55–177×, 48–100×, 123–371×, 37× and 85× after
+  the tables withdrew them, so the gate now derives every speed range quoted as prose on all 24
+  pages that carry one and refuses the withdrawn date and ranges by name. The pages now state
+  29–34× parsing and 223–368× serialization against PyYAML, 68–81× and 541–876× against
+  ruamel.yaml, and 45–59× / 102–125× on the round-trip guides. The yaml-rs trade-off paragraphs
+  say 2–4× faster serialization and about 2.5× slower `YamlDocument` parsing, measured with the
+  same timer; the 2–4× is named rather than derived because it comes from the cross-library
+  benchmark, not the snapshot.
+
 - **The Rust benchmark set now measures TOML, JSON and the 1.1 resolver** — the CodSpeed Rust leg
   ran one file in which every case was YAML text in, YAML or Python out, so the two engines this
   tree has grown most since and the profile that decides what a plain scalar means had no
@@ -473,6 +490,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (flag off, Core resolution, no directive in the output); `schema` now defaults to `None` so
   "not given" and "explicitly Core" are distinguishable. Pinned by
   `TestYamlVersionNegotiation`.
+
+- **The benchmark pages now name the measurement they actually use** — `codspeed.yml` has run
+  `mode: simulation` since the workflow was added, but `AGENTS.md` and all four locale benchmark
+  and features pages said "WallTime". The pages now say simulation counts instructions, and the
+  millisecond tables are marked as wall-clock readings recorded on one machine on 2026-08-17, not
+  CodSpeed output. The medium fixture is 687 B, not ~500 B; the Rust table is labelled as the
+  `cargo codspeed` simulation leg over `pyrs_yaml_core::bench_inputs`, whose "small" document is
+  19 B against the Python table's 95 B, so same-named rows are not comparable. In the feature
+  matrix PyYAML now checks anchors/aliases, explicit tags and merge keys (measured on 6.0.3), and
+  the type-stub row says what the packages ship: PyYAML none, ryaml and yaml_edit yes. The ABI3
+  row names the real floor, py3.8+.
 
 ### [v0.18.1] — 2026-10-17
 

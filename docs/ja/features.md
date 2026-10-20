@@ -24,17 +24,17 @@ PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデ�
 - **フロー/ブロックフォーマット** — `[]`/`{}` とブロックスタイルを保持
 
 !!! note "ベンチマーク環境"
-    ベンチマークは CodSpeed CI（`pytest-codspeed`、WallTime モード）で測定されたものです。実際のパフォーマンスは環境によって異なります。
+    CodSpeed CI はシミュレーションモード（実時間ではなく命令数）で実行されます。以下の数値は `scripts/bench_snapshot.py` が 2026-10-20 にバッチ計時で記録したものです。相対的な高速化率は目安であり、インタープリタ、ハードウェア、文書によって変動します。
 
 ## パフォーマンス
 
-Rust バックエンドは PyYAML より解析で **21–43 倍**、シリアライズで **55–177 倍高速**：
+Rust バックエンドは PyYAML より解析で **29–34 倍**、シリアライズで **223–368 倍高速**：
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 1.5 ms | 57.7 ms |
-| Serialize (large) | 0.17 ms | 30.2 ms |
-| Round-trip | 1.6 ms | 87.9 ms |
+| Parse (large) | 67 µs | 2.0 ms |
+| Serialize (large) | 4.5 µs | 1.2 ms |
+| Round-trip | 70 µs | 3.5 ms |
 
 ## カスタム AST
 
