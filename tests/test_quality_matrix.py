@@ -725,20 +725,40 @@ def test_a_reader_the_interpreter_bounds_is_found_and_bounded(matrix, tmp_path):
 
 
 def test_the_toml_row_names_both_readers_and_the_bound_of_each(measured):
-    """The tree, not a fixture: a second reader that does not reach the floor, and a verdict that holds.
+    """The tree, not a fixture: three readers, two of them split across the 3.11 line, and a verdict that holds.
 
     The row read `oracles: ["tomlkit"]` while the file asks two readers, and the 11 comparisons the
-    floor and the two next legs skip were therefore invisible. Reporting `tomllib` must not overcorrect
-    into a hole: `tomlkit` is declared with no marker and judges the dialect on every leg, so the cell
-    still reads `yes` - the credit that keeps it there is the blanket `pytestmark` that used to gate the
-    whole file on an oracle nothing bounds, which is dead code while it is green and a silent skip the
-    moment it is not.
+    floor and the two next legs skip were therefore invisible. `tomllib` arrives with 3.11 and `tomli`
+    is declared below it, so each reader is bounded to one side of the same line and the pair covers
+    every leg; `tomlkit` carries no marker and judges the dialect everywhere, which is what keeps the
+    cell at `yes` rather than turning a reader bound into a hole.
     """
     row = measured["format_matrix"]["TOML"]["cross_library"]
-    assert row["oracles"] == ["tomlkit", "tomllib"], row
+    assert row["oracles"] == ["tomli", "tomlkit", "tomllib"], row
     assert row["marker"]["tomlkit"] is None, row
-    assert "3.11" in row["marker"]["tomllib"], row
+    assert row["marker"]["tomli"] == "python_version < '3.11'", row
+    assert row["marker"]["tomllib"].startswith("arrives with python"), row
     assert row["verdict"] == "yes", row
+
+
+def test_a_marker_is_read_off_the_declared_name_and_not_a_longer_one(matrix, tmp_path, monkeypatch):
+    """`tomli-w` is a different distribution from `tomli`, and the search must not answer with it.
+
+    The tree declares `tomli` for `python_version < '3.11'` in the test group and `tomli-w`
+    unconditionally in the docs group. A search that only constrained the prefix answered whichever
+    line came first, so the backport's bound was read off a package no test imports - the column
+    claiming how a reader is bounded would report someone else's requirement.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nrequires-python = ">=3.8"\n'
+        "[dependency-groups]\n"
+        'docs = ["tomli-w>=1.0.0"]\n'
+        "test = [\"tomli>=2.0; python_version < '3.11'\"]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(matrix, "REPO", tmp_path)
+    assert matrix._dependency_marker("tomli") == "python_version < '3.11'"
+    assert matrix._dependency_marker("tomli-w") is None
 
 
 DECLARED_HANDLER = """\

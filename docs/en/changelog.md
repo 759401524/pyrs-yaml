@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The TOML three-way agreement now runs on every leg, not only above 3.11** — the cross-library
+  module skipped its eleven pyrs/tomlkit/tomllib comparisons on 3.8 through 3.10, because `tomllib`
+  arrives with 3.11 and nothing installed a reference reader below it. The backport `tomli>=2.0` is
+  now declared for `python_version < '3.11'` in the test group and imported under the `tomllib`
+  name, so every leg runs all 24 comparisons; the row names `tomli` and `tomllib` separately with
+  their own bounds, and `tomlkit` still judges the dialect everywhere, which keeps the verdict at
+  `yes`. The reader search also stops at the end of a distribution name:
+  `_dependency_marker("tomli")` used to answer the docs group's `tomli-w` requirement and report a
+  marker that belongs to a package no test imports. A control now pins `tomli` to its own marker and
+  `tomli-w` to none.
+
 - **A `partial` parity cell is a registered hole, not a footnote** — the parity column already
   derived its verdict from the oracle imports in each `test_*_crosslib.py` and the marker
   `pyproject.toml` gives them, and it read `partial` for the JSON family because `orjson` and

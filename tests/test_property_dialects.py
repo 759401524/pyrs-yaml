@@ -23,6 +23,11 @@ from hypothesis import strategies as st
 import pyrs_yaml
 from tests.strategies import roundtrip_safe_text
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
 pytestmark = pytest.mark.slow
 
 try:  # optional reference parser, same guard style as test_json_crosslib
@@ -284,6 +289,5 @@ def test_toml_roundtrip_via_pyrs(value):
 @settings(**MAX)
 @given(toml_doc)
 def test_toml_matches_tomllib(value):
-    tomllib = pytest.importorskip("tomllib")
     out = pyrs_yaml.to_toml(pyrs_yaml.safe_dump(value))
     assert strict_eq(tomllib.loads(out), value, order_matters=False)

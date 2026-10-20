@@ -61,6 +61,11 @@ import pytest
 
 import pyrs_yaml
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
 SUITE_DIR = Path("Reference/toml-test/tests")
 
 pytestmark = pytest.mark.skipif(
@@ -298,7 +303,6 @@ def test_toml_test_encodes_and_reference_decodes():
     that two halves of one implementation agree with each other, which is exactly the kind of claim
     a conformance suite exists to refuse.
     """
-    tomllib = pytest.importorskip("tomllib", reason="reference TOML decoder needs Python 3.11+")
     total = 0
     matched = 0
     failures: list[str] = []

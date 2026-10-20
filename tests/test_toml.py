@@ -12,6 +12,11 @@ import pytest
 import pyrs_yaml
 from tests.data.yaml_samples import BENCHMARK_CONFIG_TOML
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
 
 @pytest.fixture(autouse=True)
 def _ensure_builtin_plugins():
@@ -559,7 +564,6 @@ class TestIntegerSpellingFidelity:
         ],
     )
     def test_value_is_the_same_for_load_and_tomllib(self, src, want):
-        tomllib = pytest.importorskip("tomllib")
         assert pyrs_yaml.load_toml(src) == {"a": want}
         assert tomllib.loads(src) == {"a": want}
         assert tomllib.loads(pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))) == {"a": want}
