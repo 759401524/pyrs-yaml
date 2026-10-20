@@ -40,6 +40,7 @@ __init__(
 | `schema` | `str \| dict` | `"core"` | YAML 模式。可选 `"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`，或内联 schema dict（参见 [YAML Schema Language](reference.md#yaml-schema-language)）。 |
 | `max_depth` | `int` | `1000` | 解析的最大嵌套深度。 |
 | `allow_duplicate_keys` | `bool` | `False` | 是否允许重复的映射键。 |
+| `honor_version_directive` | `bool` | `False` | 对显式 `%YAML` 指令做版本协商。取 `True` 时，声明 `%YAML 1.1` 的文档按 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。 |
 
 **Raises:** 如果 `typ` 或 `schema` 无效，抛出 `YamlTypeError`。
 

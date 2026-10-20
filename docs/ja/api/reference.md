@@ -18,7 +18,7 @@ status: new
 YAML 文字列またはバイト列をパースして `YamlDocument` に変換します。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **パラメータ:**
@@ -28,6 +28,7 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
 - `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
 - `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **戻り値:** パースされた YAML を含む `YamlDocument`
 
@@ -53,7 +54,7 @@ doc = pyrs_yaml.parse(
 YAML ファイルをパースします。
 
 ```python
-parse_file(path: str) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **パラメータ:**
@@ -78,8 +79,17 @@ doc = pyrs_yaml.parse_file("config.yaml")
 文字列から複数の YAML ドキュメントをパースします。
 
 ```python
-parse_all_docs(yaml: str) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
 ```
+
+**パラメータ:**
+
+- `yaml` — `str` または `bytes` の YAML コンテンツ
+- `resolve_merges` — パース後にマージキー (`<<: *alias`) を解決するかどうか (デフォルト: `True`)
+- `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
+- `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **戻り値:** `YamlDocument` オブジェクトのリスト
 
@@ -96,8 +106,16 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML をパースしてネイティブ Python 型を返します。
 
 ```python
-safe_load(yaml: str) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
 ```
+
+**パラメータ:**
+
+- `yaml` — `str` または `bytes` の YAML コンテンツ
+- `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
+- `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **以下と同等:** PyYAML の `yaml.safe_load()`
 
@@ -112,8 +130,16 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 複数の YAML ドキュメントをパースします。
 
 ```python
-safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
 ```
+
+**パラメータ:**
+
+- `yaml` — `str` または `bytes` の YAML コンテンツ
+- `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
+- `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **以下と同等:** PyYAML の `yaml.safe_loads()`
 

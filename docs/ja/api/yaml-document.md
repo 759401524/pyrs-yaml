@@ -167,18 +167,30 @@ validate(schema: dict[str, Any]) -> None
 
 **スロー:** `YamlValidateError` — 検証エラー
 
+### `flush_source()`
+
+```python
+flush_source() -> None
+```
+
+編集が発生したあと、AST を `source` へ遅延再シリアライズして現在のツリーを反映します。変更のたびにフル ダンプを強制しません。
+
 ### `reparse()`
 
 保存されたソーステキストをその場で再パースし、スキーマやマージ動作の変更を可能にします。
 
 ```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
+reparse(resolve_merges: bool = True, schema: str | None = None, honor_version_directive: bool | None = None) -> None
 ```
 
 **パラメータ:**
 
 - `resolve_merges` — `<<: *alias` マージキーを解決するかどうか (デフォルト: `True`)
-- `schema` — 型解決スキーマ: `"core"`, `"json"`, `"failsafe"`, または `"yaml1.1"` (デフォルト: `"core"`)
+- `schema` — 型解決スキーマ: `"core"`, `"json"`, `"failsafe"`, または `"yaml1.1"`。`None` は文書を読み込
+  んだときのスキーマのままです。
+- `honor_version_directive` — 宣言された `%YAML` のバージョン交渉。`True` なら `%YAML 1.1` を宣言する文
+  書は 1.1 プロファイルで解決され、ディレクティブも再出力されます。`False` は宣言を無視して選んだ
+  スキーマを保ちます。`None` は文書の現在の設定を保ちます。
 
 **スロー:**
 

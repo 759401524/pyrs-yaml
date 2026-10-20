@@ -279,6 +279,30 @@ fn has_later_document_separator(src: &str) -> bool {
     lines.any(|l| l == "---" || l == "..." || l.starts_with("--- ") || l.starts_with("... "))
 }
 
+/// The veto exactly as [`try_direct_load`] reaches it: the two cheap byte/line pre-vetoes, then the
+/// collector's own answer.
+///
+/// Pinned here rather than only in `tests/test_reader_parity.py`, which mirrors these rules to floor
+/// its corpus: a mirror is only trustworthy next to the decision it mirrors, and until now this
+/// crate had no Rust test tier at all, so nothing asserted about the surface that decides whether
+/// the fast path answers an input.
+#[cfg(test)]
+fn would_bail(src: &str) -> bool {
+    if src.as_bytes().contains(&b'&') || has_later_document_separator(src) {
+        return true;
+    }
+    let mut collector = Collector {
+        events: Vec::new(),
+        bail: false,
+        docs: 0,
+    };
+    let mut parser = SaphyrParser::new_from_str(src);
+    match parser.load(&mut collector, true) {
+        Ok(()) => collector.bail,
+        // A parse error bails here and the AST path reruns for the authoritative diagnostic.
+        Err(_) => true,
+    }
+}
 /// Outcome of a direct load attempt.
 pub(crate) enum DirectOutcome {
     /// Fully materialized Python value.
@@ -368,4 +392,39 @@ pub(crate) fn try_direct_load(
         return DirectOutcome::Fail(ParseError::DuplicateKey(key));
     }
     DirectOutcome::Done(root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_only_documents_stay_on_the_direct_surface() {
+        for src in [
+            "a: 1\n",
+            "a:\n  b: [1, 2]\n  c: {d: e}\n",
+            "list:\n  - one\n  - two\n",
+            "block: |\n  line\n  more\n",
+            "quoted: \"an exclamation mark!\"\n",
+        ] {
+            assert!(!would_bail(src), "{src:?} is replicable and must not bail");
+        }
+    }
+
+    #[test]
+    fn everything_outside_the_replicable_surface_bails() {
+        for (src, reason) in [
+            ("a: &x 1\n", "anchor definition"),
+            ("a: &x 1\nb: *x\n", "alias"),
+            ("a: !!str 1\n", "tag on a scalar"),
+            ("a: !!seq [1]\n", "tag on a collection"),
+            ("a: 1\n<<: {b: 2}\n", "merge key"),
+            ("a: 1\n---\nb: 2\n", "second document"),
+            ("a: [1\n", "parse error"),
+            // The byte scan's accepted false positive: a quoted `&` costs this document the fast path.
+            ("a: \"x & y\"\n", "ampersand inside a quoted scalar"),
+        ] {
+            assert!(would_bail(src), "{src:?} ({reason}) must bail");
+        }
+    }
 }

@@ -490,7 +490,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the type-stub row says what the packages ship: PyYAML none, ryaml and yaml_edit yes. The ABI3
   row names the real floor, py3.8+.
 
+- **`safe_dumps_async` is published in `pyrs_yaml.__all__`** — the alias is assigned next to
+  `safe_dumps` in `python/pyrs_yaml/__init__.py`, and three locales' API pages already documented it
+  as a member, but only its three async siblings were declared:
+  `from pyrs_yaml import safe_dumps_async` resolved while the declared public surface said the name
+  did not exist. No behaviour changes, the name was already importable;
+  `tests/test_api_doc_signatures.py` now compares the same 35 names across all four locales'
+  `reference.md` with no exception for this one.
+
 ### Fixed
+
+- **The API pages state the parameter list the stub declares** — `docs/{zh,ja,ko}/api/reference.md`
+  documented `parse_file`, `parse_all_docs`, `safe_load` and `safe_loads` with one or two parameters
+  while the shipped stub declares five and six, and the `%YAML` version-negotiation gate
+  `honor_version_directive` appeared in no user-facing page at all; `reparse()` was documented with
+  a `schema` default the extension does not use. All four locales now agree with the stub, the
+  parameter is documented in the pages that own it, and `tests/test_api_doc_signatures.py` compares
+  both sides through `ast` — so a shortened signature is a red run, not a reader's surprise.
+  `YamlDocument.flush_source()`, the one public callable named nowhere in the prose pages, is now
+  documented in all four locales, and the gate also asserts every public name a stub declares
+  appears in each locale's pages.
+
+- **An anchor the duplicate-key fold removes is inlined, not abandoned** — `: abase: &x 1` +
+  `use: *x` + a second empty key duplicates the first, so the fold drops the entry whose *value
+  subtree* defines `&x`. The repair pass was handed only the dropped entry's own anchor, the name
+  lost its definition, and the emission was `use: *x` — text this library's own reader refused
+  ("found unknown anchor"), which the engine promises never to produce. The fold now registers
+  every definition leaving the tree, so the surviving use is inlined with its anchor and the
+  output reads back and settles in one round (libFuzzer `edit_yaml` crash-68617eaf). Pinned by
+  `a_definition_folded_away_from_inside_the_dropped_value_is_still_emitted`, the Python-visible
+  `test_a_folded_away_anchor_definition_still_reaches_the_output`, the new anchor-graph corpus
+  gate and the replayed seed `fuzz/seeds/edit_yaml/former-crash-68617eaf.seed`.
+
+- **A headed item's note goes above the outermost header of the chain** — a note a block container
+  cannot spell above its own `&a` / `!tag` line was written above the *nearest* header, and the
+  reader hoists a first item's leading note one level per emission, so the note kept climbing: on
+  `- &a3\n  - &a0 !fuzz2\n    - {"-(.0bb:": v6}  # fuzz 47`, annotating the innermost item emitted
+  it under `&a0` and the second round moved it under `&a3`. The writer now follows the outermost
+  header whose gap the value starts and writes the note above that one, so the first emission is
+  the fixed point (libFuzzer `edit_yaml` crash-2d978c7b). Pinned by
+  `a_headed_items_note_settles_above_the_outer_sequences_header` and the replayed seed
+  `fuzz/seeds/edit_yaml/former-crash-2d978c7b.seed`. The header target travels as an argument
+  through the item writers rather than as serializer state, because the state version was not
+  free: measured on the instruction gate's Rust harness against the committed floors, it cost
+  +0.92% on `serialize_small` and +0.75% on `serialize_block`, while the argument version costs
+  +0.0006% and +0.19%.
 
 - **An anchored item's note settles above the header it cannot split** — `set_comment_path` on a
   block mapping that is a sequence item and whose block ends in a tag-only line (`- a: !o`) wrote

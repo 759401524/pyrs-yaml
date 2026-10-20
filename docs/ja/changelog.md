@@ -463,7 +463,46 @@ status: new
   （6.0.3 で実測）、型スタブ行は各パッケージの実体に合わせました：PyYAML なし、ryaml と
   yaml_edit はあり。ABI3 行は実際の下限 py3.8+ を記載します。
 
+- **`safe_dumps_async` を `pyrs_yaml.__all__` に追加** — この別名は
+  `python/pyrs_yaml/__init__.py` で `safe_dumps` とともに代入され、3 ヵ所のローカライズ版 API
+  ページも成员として載せていたが、宣言済みの公開面には async 兄弟 3 つしか並んでいなかった。
+  つまり `from pyrs_yaml import safe_dumps_async` は動くのに、公開面はその名前が存在しないと
+  言っていた。挙動は変わらない（もともと import 可能）。`tests/test_api_doc_signatures.py` は
+  4 ヵ所の `reference.md` で同じ 35 の名前を、この件に関する例外なしに比較する。
+
 ### 修正
+
+- **API ページがスタブの宣言どおりの引数列表を書く** — `docs/{zh,ja,ko}/api/reference.md` は
+  `parse_file`、`parse_all_docs`、`safe_load`、`safe_loads` を 1〜2 個の引数で掲載していましたが、公
+  開スタブは 5〜6 個を宣言しています。また `%YAML` のバージョン交渉の旗 `honor_version_directive` は
+  利用者向けページに一度も現れず、`reparse()` は拡張が使わない `schema` 既定値を掲げていました。4 言
+  語ともスタブと一致し、引数は所属ページに補い、`tests/test_api_doc_signatures.py` が両側を `ast` で
+  比べるので、省略された署名は読者の意外ではなく赤い実行になります。本文ページで一度も触れられていな
+  かった唯一の公開メンバー `YamlDocument.flush_source()` も 4 言語すべてに補い、門はスタブが宣言する
+  各公開名が各言語のページに現れるかも検証します。
+
+- **重複キーの畳み込みが外すアンカー定義は、捨てられず展開される** — `: abase: &x 1` に `use: *x`
+  を足してもう 1 行空キーを続けると先頭と重複し、畳み込みは `&x` を*値の下*に持つ項目を落とします。
+  修復処理は落とした項目自身のアンカーしか受け取らなかったため名前が定義を失い、出力は `use: *x`
+  でした —— このライブラリ自身の読み手が拒否する（found unknown anchor）テキストで、エンジンは
+  決して作らないと約束しています。畳み込みはツリーから去る定義をすべて登録するようになり、残った
+  参照はアンカーとともに展開されるので、出力は読み直せて 1 回りで不動点になります（libFuzzer
+  `edit_yaml` crash-68617eaf）。
+  `a_definition_folded_away_from_inside_the_dropped_value_is_still_emitted`、Python 側の
+  `test_a_folded_away_anchor_definition_still_reaches_the_output`、新しいアンカー図のコーパス門、
+  再実行するシード `fuzz/seeds/edit_yaml/former-crash-68617eaf.seed` で固定。
+
+- **見出し付き項目の注釈は連鎖の最も外側の見出しの上に書く** — ブロックコンテナが自分の `&a` /
+  `!tag` 行の上に出せない注釈を、これまで*最も近い*見出しの上置いていました。読み手は最初の項目の
+  先頭注釈を出力ごとに 1 層ずつ上へ移すため、注釈は登り続けます：
+  `- &a3\n  - &a0 !fuzz2\n    - {"-(.0bb:": v6}  # fuzz 47` で最も内側の項目に注釈を付けると、
+  最初の出力は `&a0` の下、2 回目の出力は `&a3` の下になります。書き手は値が始まる隙間の最も外側の
+  見出しを追跡し、その見出しの上に注釈を書くので、最初の出力が不動点になります（libFuzzer
+  `edit_yaml` crash-2d978c7b）。`a_headed_items_note_settles_above_the_outer_sequences_header` と
+  再実行したシード `fuzz/seeds/edit_yaml/former-crash-2d978c7b.seed` で固定。見出しの位置は
+  シリアライザの状態ではなく項目の書き手に渡す引数にしました。状態版は無料でなかったためです：
+  命令ゲートの Rust ハーネスで確定済みのフロアに対して実測すると、状態版は `serialize_small` で
+  +0.92%、`serialize_block` で +0.75% を費やし、引数版は +0.0006% と +0.19% です。
 
 - **アンカー付き項目の注記は分割できないヘッダーの上に落ち着く** — シーケンス項目であるブロック
   マッピングがタグのみの行（`- a: !o`）でブロックを終えるとき、`set_comment_path` はそのマッピング

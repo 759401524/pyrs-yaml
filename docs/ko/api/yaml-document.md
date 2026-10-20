@@ -161,18 +161,30 @@ validate(schema: dict[str, Any]) -> None
 
 **발생:** `YamlValidateError` — 검증 오류
 
+### `flush_source()`
+
+```python
+flush_source() -> None
+```
+
+편집이 일어난 뒤 AST를 `source`에 지연 재직렬화하여 현재 트리를 `source`에 반영합니다. 바꿀 때마다 전체 내보내기를 강요하지 않습니다.
+
 ### `reparse()`
 
 저장된 소스 텍스트를 제자리에서 재파싱하여 스키마 또는 병합 동작 변경을 허용합니다.
 
 ```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
+reparse(resolve_merges: bool = True, schema: str | None = None, honor_version_directive: bool | None = None) -> None
 ```
 
 **매개변수:**
 
 - `resolve_merges` — `<<: *alias` 병합 키를 해석할지 여부 (기본값: `True`)
-- `schema` — 타입 해석 스키마: `"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` (기본값: `"core"`)
+- `schema` — 타입 해석 스키마: `"core"`, `"json"`, `"failsafe"`, `"yaml1.1"`. `None`이면 문서를 읽을 때 쓴
+  스키마를 그대로 유지합니다.
+- `honor_version_directive` — 선언된 `%YAML`에 대한 버전 협상. `True`면 `%YAML 1.1`을 선언한 문서를 1.1
+  프로파일로 해석하고 지시문도 다시 씁니다. `False`면 선언을 무시하고 고른 스키마를 지킵니다. `None`이면
+  문서의 현재 설정을 그대로 둡니다.
 
 **발생:**
 

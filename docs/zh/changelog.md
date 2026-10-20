@@ -382,7 +382,40 @@ status: new
   改勾（按 6.0.3 实测），类型存根行按各包实际内容标注：PyYAML 无，ryaml 与 yaml_edit 有。
   ABI3 行改为真实地板 py3.8+。
 
+- **`safe_dumps_async` 已进入 `pyrs_yaml.__all__`** — 该别名在 `python/pyrs_yaml/__init__.py`
+  中与 `safe_dumps` 一并赋值，三种本地化语言的 API 页也已把它当成员写出，但声明的公开面只列了另外
+  三个 async 兄弟：`from pyrs_yaml import safe_dumps_async` 一直可用，而公开面说这个名字不存在。
+  行为没有变化，这个名字本来就可导入；`tests/test_api_doc_signatures.py` 现在对四种语言的
+  `reference.md` 比较同一组 35 个名字，不再为此留例外。
+
 ### 修复
+
+- **API 页现在照桩文件声明的参数表书写** —— `docs/{zh,ja,ko}/api/reference.md` 把 `parse_file`、
+  `parse_all_docs`、`safe_load`、`safe_loads` 只写了一两个参数，而发布的桩声明了五到六个；`%YAML` 版
+  本协商开关 `honor_version_directive` 在用户文档里完全没出现；`reparse()` 还写着一个扩展并不使用的
+  `schema` 默认值。四语种现已与桩文件一致，该参数在归属页里补齐，`tests/test_api_doc_signatures.py`
+  用 `ast` 比对两侧，于是签名被写短会是一次红运行，而不是读者遇到的意外。
+  `YamlDocument.flush_source()`——正文页里唯一从未被点名的公开可调用对象——现已在四语种补齐，门还断言
+  桩声明的每个公开名都要出现在各语种页面里。
+
+- **重复键折叠移走的锚点定义会被内联，而不是被抛弃** —— `: abase: &x 1` + `use: *x` 再加第二个空键
+  会与第一个重复，于是折叠丢掉的条目，其*值子树*里定义着 `&x`。修补趟此前只拿到被丢条目自身的锚点，
+  这个名字因此失去定义，发射出 `use: *x`——自家 reader 会拒收（found unknown anchor），而引擎承诺永不
+  产出这种文本。现在折叠会登记离开语法树每个定义，存活的引用被连同锚点一起内联，输出可复读且一轮即
+  不动点（libFuzzer `edit_yaml` crash-68617eaf）。由
+  `a_definition_folded_away_from_inside_the_dropped_value_is_still_emitted`、Python 侧的
+  `test_a_folded_away_anchor_definition_still_reaches_the_output`、新增的锚点图语料门，以及重放种子
+  `fuzz/seeds/edit_yaml/former-crash-68617eaf.seed` 固定。
+
+- **带锚点条目的注释落在整条链最外层的 header 之上** —— 块容器无法在自己的 `&a` / `!tag` 行上方
+  拼出的注释，此前被写在*最近*的 header 之上；而读取端每次输出都会把首项的前导注释上移一层，于是
+  注释不断上爬：对 `- &a3\n  - &a0 !fuzz2\n    - {"-(.0bb:": v6}  # fuzz 47` 给最内层条目加注释时，
+  第一次输出把它写在 `&a0` 之下，第二次又移到 `&a3` 之下。写入端现在跟踪值所在间隙的最外层 header，
+  并把注释写到那条 header 之上，第一次输出即不动点（libFuzzer `edit_yaml` crash-2d978c7b）。由
+  `a_headed_items_note_settles_above_the_outer_sequences_header` 与重放的种子
+  `fuzz/seeds/edit_yaml/former-crash-2d978c7b.seed` 固定。header 位置改为随条目写入器传递的参数，
+  而不再是序列化器状态，因为状态版本并不免费：在指令门禁的 Rust harness 上对已提交的地板实测，
+  状态版本让 `serialize_small` +0.92%、`serialize_block` +0.75%，参数版本只有 +0.0006% 与 +0.19%。
 
 - **带锚点条目的注释落在它无法拆开的头部之上** — 对一个作为序列条目、且其块以只有标签的行结尾
   （`- a: !o`）的块映射调用 `set_comment_path` 时，映射自身的行内注释被写在 `&a` 头部与正文之间。
