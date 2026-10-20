@@ -60,11 +60,16 @@ pub enum Dialect {
 /// Decide the dialect from the invoked name. A `.exe` suffix must not hide the jq
 /// reading on Windows.
 pub fn dialect_of(argv0: &OsStr) -> Option<Dialect> {
+    // The stem alone is not enough: only Windows treats `.exe` as a suffix to
+    // strip, so a `jq.exe` seen on a Unix host (a mounted volume, a fixture, a
+    // cross-compiled check) would answer `None` and be read as yq. Trimming the
+    // suffix here makes the reading the same on every platform.
     let stem = Path::new(argv0)
         .file_stem()
         .map(|s| s.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    match stem.as_str() {
+    let stem = stem.strip_suffix(".exe").unwrap_or(&stem);
+    match stem {
         "jq" => Some(Dialect::Jq),
         "yq" => Some(Dialect::Yq),
         _ => None,
