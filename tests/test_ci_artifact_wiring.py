@@ -4,7 +4,7 @@ The wheel the Python legs test is not the wheel the release builds. Measured on 
 jobs, 856 s from first runner to verdict): the abi3 wheel is uploaded at +134 s (Windows), +135 s
 (macOS) and +151 s (ubuntu), while the `--find-interpreter` recipe that shared that job needed +285 s
 more on macOS and +346 s on Windows. `build` therefore completed at +485 s, and all 24 legs of the
-test matrix and the wheel smoke started 355-471 s *after* the only artifact they read already existed.
+test matrix and the wheel smoke started 291-471 s *after* the only artifact they read already existed.
 
 That is a graph fact, so it is guarded as one: the families are derived from each job's own
 `upload-artifact` and `download-artifact` inputs rather than from job names, which means the rule
