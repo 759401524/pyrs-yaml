@@ -235,19 +235,32 @@ jobs:
           PYO3_PYTHON: python
         run: cargo test --workspace --locked
 
-  # The property tier above runs at proptest's default 256 cases, which is a sampling budget
-  # sized for speed. `prop_toml_writer_is_fixed_point` needed more than 256 cases to reach the
-  # shape that relocates a note inside a multi-line inline table: at the default count the
-  # generator never produced two members where the first carries a same-line note, so the writer
-  # looked stable. This job pays for the wider net with the one resource the default tier is
-  # saving - about a minute of measured work per PR, on top of the compile already cached.
-  # It is blocking because all three writer fixed points hold at 20 000 cases; the case count is
-  # written inline rather than in an `env:` block so the defence measurement can see it.
+  # The tier exists because 256 cases is a sampling budget sized for speed:
+  # `prop_toml_writer_is_fixed_point` needed more than 256 cases to reach the shape that relocates a
+  # note inside a multi-line inline table - at the default count the generator never produced two
+  # members where the first carries a same-line note, so the writer looked stable. It is blocking
+  # because all three writer fixed points hold at 20 000 cases; the case count is written inline
+  # rather than in an `env:` block so the defence measurement can see it.
+  #
+  # It is sharded because of what it actually costs. Measured on run 39387605046: the leg read 745 s,
+  # of which 18 s was the build (the Rust cache restores the dependency graph in seconds) and 714 s
+  # was ONE test binary — `cargo test` runs each binary after the last, and the widened sampling lives
+  # almost entirely in `pyrs-yaml-core`'s lib target. So the wall does not fall by compiling faster; it
+  # falls by running the same 20 000-case budget in pieces at once. `cargo nextest` is what this
+  # repository's own testing discipline names (AGENTS: `cargo nextest run --all`, not `cargo test`) and
+  # it is the only harness here that partitions a test *list*, so each shard takes a quarter of the
+  # tests rather than a hand-kept filter of names that would silently stop matching a property.
+  # `fail-fast: false` is load-bearing: a cancelled sibling is a refusal in `check_matrix_verdict.py`,
+  # and the verdict must report the failure that happened instead of the run that got cancelled.
   property-tier:
-    name: property tier (20k cases)
+    name: property tier (20k cases, shard ${{ matrix.shard }}/4)
     needs: [changes]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
 
@@ -259,10 +272,15 @@ jobs:
         with:
           key: property-tier
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
       - name: Elevated property tier
         env:
           PYO3_PYTHON: python
-        run: PROPTEST_CASES=20000 cargo test --workspace --locked
+        run: PROPTEST_CASES=20000 cargo nextest run --workspace --locked --partition count:${{ matrix.shard }}/4
 
   msrv-check:
     needs: [changes]
