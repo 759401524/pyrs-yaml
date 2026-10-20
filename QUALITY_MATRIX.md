@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 764 Rust `#[test]`, 1,825 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 764 Rust `#[test]`, 1,830 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -129,15 +129,24 @@ neither side ever accepted - a path that does not exist has nothing to disagree 
 empty is now a measured hole, so `holes: []` means nothing is unmeasured rather than nothing is
 unjudged.
 
-`partial` in the parity column is also measured, not judged: the column reads the oracles each
-`test_*_crosslib.py` imports and then reads how `pyproject.toml` declares them, so `partial` means a
-declared interpreter or architecture bound - `pyjson5` and `orjson` both carry
+`partial` in the parity column is measured per dialect, not per family. The column reads the readers
+each `test_*_crosslib.py` imports, resolves how `pyproject.toml` bounds each one, and then asks a
+narrower question of every dialect in the row's own label: does some test call a reader that no marker
+bounds, in a unit nothing can skip? A `skipif` in the body, a decorator that is not `parametrize` (a
+skip marker wearing a name - `@needs_pyjson5`), or a module-level `pytestmark` all deny the credit,
+because each of those is a comparison a leg can lose while still reporting green.
+
+The JSON family is why the question had to be per dialect. `pyjson5` and `orjson` both carry
 `python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, while
-`tomlkit` is unbounded, which is why TOML reads `yes` and the JSON family does not. On a leg where all
-three are installed the modules run in full: measured 198 cross-library assertions, 0 skipped. The
-cell is emitted as `parity-tier:json-jsonc-json5` too, because a bound that only describes which legs
-compare nothing still leaves those legs green: the floor interpreter is one of them, and this package
-promises it.
+`tomlkit` is unbounded, which is why TOML reads `yes`. Strict JSON now reads as covered everywhere:
+stdlib `json` is an RFC 8259 reader this repository does not own and no dependency declaration bounds,
+and `tests/test_json_crosslib.py` asks it the grammar with `parse_constant` refusing the three
+literals the stdlib accepts by default. JSONC and JSON5 have no such reader - `pyjson5` is the only
+reference for them - so those two dialects are what `partial` still names, and the cell is emitted as
+`parity-tier:json-jsonc-json5`. Measured on the module: 73 comparisons where both readers install, 29
+of them still running where neither does. Before the file-level guard was split, that same leg ran 0 of
+43 - the blanket `pytestmark` skipped the whole module, the comparisons that needed no third-party
+reader along with the ones that did.
 
 **What this row first said was wrong, and the correction is the interesting part.** It
 claimed a parse-only target cannot see a writer. Measured: `parse_json` calls
@@ -539,7 +548,7 @@ measurement no longer reproduces fails CI.
 | hole | why it matters | exit |
 | --- | --- | --- |
 | `authority-tier:schema-validation` | the language `validate()` judges was invented in this repository, so the unit, property and fuzz tiers all ask the engine what it believes and the parity column has no second implementation to disagree with; the table said `no` while the registry stayed empty, which let `holes: []` be read as "no short board" | a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` that asks this surface of something the repository does not own - in practice the JSON Schema evaluation designed in PR #517, replayed against an official corpus whose source and version are recorded with the result |
-| `parity-tier:json-jsonc-json5` | the cross-library tier for the JSON family exists only where its oracles are installed: `orjson` and `pyjson5` are both declared with `python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, so the 3.8 leg this package promises, and 3.14+ and 3.15t, import nothing, skip, and report the same green as a leg that ran 198 assertions | the row's `restricted` list is empty as `format_matrix()` derives it — an outside reader whose marker covers every tested leg, or an RFC 8259 comparison on the excluded legs through a reader this repository does not own, with JSONC/JSON5 recorded as schedule-only there |
+| `parity-tier:json-jsonc-json5` | the strict dialect is compared everywhere now - stdlib `json`, with `parse_constant` refusing the three literals the stdlib accepts by default, is a reader no dependency declaration bounds and `tests/test_json_crosslib.py` calls it from a test that carries nothing but `parametrize` - but JSONC and JSON5 still have one outside reader between them, `pyjson5`, declared `python_version >= '3.9' and python_version < '3.14'` and excluding armv7l, s390x and ppc64le, so on the 3.8 floor this package promises and on 3.14+ those two dialects are compared against nothing and the leg still reports green | the row's `restricted` list is empty as `format_matrix()` derives it: each of jsonc and json5 is called by an unskippable test against a reader every tested leg installs - in practice the pure-Python `json5` package, which serves the floor interpreter, rather than `pyjson5`, whose wheel does not |
 | *none measured* | the site configuration declared the Python docstring handler, its load paths and fourteen render options while not one page under any locale contained a `:::` directive — `mkdocstrings_directives()` found zero, so `docs/<locale>/api/*.md` were hand-typed signatures, nothing compared them with the generated `python/pyrs_yaml/pyrs_yaml.pyi`, and a bump of the docs toolchain could not be checked against output it never produced | satisfied: five API pages per locale now carry directives and the four-locale `--strict` build renders them (`yaml-document` 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48), while the page that names no directive stays at zero — measured by `mkdocstrings_directives()` against `mkdocstrings_declared()` |
 | *none measured* | the site was rendered only by a workflow that triggers on push to `main`, so a page that fails when *rendered* was found by whoever opened it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | satisfied by `ci.yml`'s `docs-gates` job, which runs the page-metadata, heading, mirror, purity and i18n gates and then `scripts/build-docs.py` for all four locales under `--strict` on every pull request; `renders_the_site()` measures it off the declaring files rather than off a list kept beside them |
 | *none measured* | a required check that never reports is not a green light but a deadlock: branch protection names `Test matrix (all legs)`, `ci.yml` excluded `*.md` and `docs/**` from its triggers, and PR #319 arrived with every check it produced passing and the merge refused with `Required status check "Test matrix (all legs)" is expected` — a documentation change could not merge by any route an ordinary contributor has | satisfied by the same change: `ci.yml` triggers on every pull request, a `changes` job classifies the changeset, and the verdict tolerates a skipped heavy leg only while the classifier reports `code=false` — tested in both directions in `tests/test_matrix_verdict_gate.py` |

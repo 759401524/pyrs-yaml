@@ -22,8 +22,8 @@
   {
    "id": "parity-tier:json-jsonc-json5",
    "opened": "2026-10-20",
-   "exit": "the row's `restricted` list is empty, which `format_matrix()` derives from pyproject.toml: an outside reader whose marker covers every leg this package is tested on (Python 3.8 and 3.14+ included), or a comparison that covers the RFC 8259 dialect on the excluded legs with a stdlib reader the repository does not own and records that JSONC/JSON5 stay schedule-only there",
-   "why": "orjson and pyjson5 are both declared with `python_version >= '3.9' and python_version < '3.14'` plus armv7l/s390x/ppc64le exclusions, so on the floor leg and on 3.14+ the cross-library module imports nothing and skips, and the leg that compares zero assertions reports the same green as one that compares 198"
+   "exit": "the row's `restricted` list is empty as `format_matrix()` derives it: each of jsonc and json5 is asked of a reader that every tested leg installs, in a test that carries no skip decorator. In practice the pure-Python `json5` package, which serves the floor interpreter, rather than `pyjson5`, whose wheel does not",
+   "why": "the strict dialect is compared everywhere now - stdlib `json` with `parse_constant` refusing the non-standard literals is a reader this repository does not own and no marker bounds - but JSONC and JSON5 still have only `pyjson5`, declared `python_version >= '3.9' and python_version < '3.14'` and excluding armv7l, s390x and ppc64le, so on the 3.8 floor this package promises, and on 3.14+, those two dialects are compared against nothing and the leg still reports green"
   }
  ]
 }
