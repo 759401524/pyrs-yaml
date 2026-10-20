@@ -181,7 +181,9 @@ and `#` runs to end of line, so the reader hands that note to the *following* ke
 emission moved it. Withdrawing the fixed rule leaves all 354 tests green at proptest's default
 256 cases once the persisted shrink case is removed: that count never generates two members
 whose first carries a same-line note, so the case count was load-bearing, not decorative. `ci.yml`
-now runs a blocking `property tier (20k cases)` job. That closed the last hole then open; the registry
+now runs a blocking `property tier (20k cases, shard N/4)` job: four shards over the same case
+budget, because the single leg measured 745 s on run 39387605046 and 714 s of that was one test
+binary, not the compile. That closed the last hole then open; the registry
 carried a new one, found by measuring what the instrument compiles rather than what it names — and
 that hole is closed too, by the second harness described under *Registered blind spots*, not by an
 edit to the registry.
@@ -195,7 +197,8 @@ honest could not tell an invalid input from a settling one from a real defect, s
 removed rather than trusted, and what is left here is the weaker, truer claim: a probe
 that prints values caught in one run what three readings of test output did not.
 Blocking on every pull request, measured: `clippy` (with `--all-targets`, since this
-measurement), `cargo test --workspace`, the 20k-case property tier, MSRV
+measurement), `cargo test --workspace`, the sharded 20k-case property tier (nextest, four partitions),
+MSRV
 check, `no_std` bare-metal build, pytest on 3 OSes × 7 Python versions, free-threaded
 pytest, coverage floor, CodSpeed (Rust + Python), the callgrind Ir gate, the medium hot paths'
 heap allocation ceilings (`crates/pyrs-yaml-core/tests/alloc_gate.rs`), the fuzz seed
