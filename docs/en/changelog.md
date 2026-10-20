@@ -581,6 +581,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The dialect tier shared one fixture directory between its comparisons** -
+  `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` named its temporary fixture directory after
+  the process, and the Rust harness runs a test binary's tests on threads inside that one process,
+  so every comparison rewrote `doc.yaml` and `doc.json` in the same place while another was reading
+  them. `fs::write` truncates before it writes, so a reference could be handed a half-written
+  document. Only `ci.yml`'s `rust-lint` installs the real `jq` and `yq`, so this tier runs in that
+  one job: a collision here can only ever surface as a red `rust-lint`, never as a skipped test.
+  Each call now gets its own directory (process id plus a counter), and
+  `each_comparison_gets_a_fixture_directory_no_other_comparison_reads` refuses a shared path -
+  putting the pid-only name back fails that test, which is how the control was checked.
+
 - **The `no_std` gate could only disagree with itself** - `tests/test_no_std_gate.py` compared the
   crate lists in `ci.yml` against a set copied into the test, so a crate that gained `#![no_std]`
   with no bare-metal build, or lost the attribute while still being built, kept the job green. The
