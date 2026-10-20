@@ -445,11 +445,12 @@ status: new
 - **方言对拍的各条比较共用同一个 fixture 目录** -
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` 用进程 id 给临时 fixture 目录命名，而 Rust 框
   架会把一个测试二进制的各用例放进同一进程的多条线程并发跑，于是每条比较都在同一处反复重写
-  `doc.yaml` 与 `doc.json`，彼此正在读取它们。`fs::write` 先截断再写入，参考实现就可能拿到只写了一半
-  的文档。只有装了真 `jq`/`yq` 的 `ci.yml` 的 `rust-lint` 会跑到这一层，所以这里的冲突只可能表现为
-  `rust-lint` 变红，而不会表现为跳过。现在每次调用都拿到自己的目录（进程 id 加计数器），
-  `each_comparison_gets_a_fixture_directory_no_other_comparison_reads` 拒绝共享路径；把 pid 单独命名
-  的写法放回去，这条测试就会失败——控制项是这样验过的。
+  `doc.yaml` 与 `doc.json`，彼此正在读取它们。`fs::write` 先截断再写入，代价在 PR #556 的
+  `rust-lint` 上量到了：`jq [".a", "doc.json"] answered differently`，我们这边 `(0, "")`，参照那边
+  `(0, "null\n")`——两侧在同一时刻之外各自读了同一个文件。只有那个 job 会装 `jq` 与 `yq`，所以这里的
+  冲突只会表现为 `rust-lint` 变红，不会表现为跳过。现在每次调用都拿到自己的目录（进程 id 加计数
+  器），`each_comparison_gets_a_fixture_directory_no_other_comparison_reads` 拒绝共享路径；把 pid 单
+  独命名的写法放回去，这条测试就会失败——控制项是这样验过的。
 
 - **`no_std` 门禁只能和自己对齐** - `tests/test_no_std_gate.py` 把 `ci.yml` 里的 crate 名单与一份
   抄进测试的集合相比，于是新增了 `#![no_std]` 却没有裸机构建、或删掉属性却仍在构建的 crate，

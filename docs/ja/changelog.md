@@ -539,11 +539,13 @@ status: new
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` は一時ディレクトリをプロセス id で名付けてい
   たため、Rust のハーネスが一つのテストバイナリを同じプロセス上のスレッドで走らせると、すべての比較
   が同じ場所の `doc.yaml` と `doc.json` を互いに読んでいるあいだ書き換えていました。`fs::write` は先
-  に切り詰めてから書くので、参照側は書きかけのドキュメントを受け取り得ます。本物の `jq` と `yq` を入
-  れるのは `ci.yml` の `rust-lint` だけなので、この層はそのジョブでしか走らず、衝突は `rust-lint` の
-  赤としてしか現れず、スキップとしては現れません。いまは呼び出しごとに専用のディレクトリ（プロセス
-  id とカウンタ）を使い、`each_comparison_gets_a_fixture_directory_no_other_comparison_reads` が共有
-  パスを拒否します。プロセス id のみの名前に戻すとこのテストが失敗する形で制御項を検証しました。
+  に切り詰めてから書き、その代价は PR #556 の `rust-lint` で実測されました：
+  `jq [".a", "doc.json"] answered differently`、こちらが `(0, "")`、参照側が `(0, "null\n")` ——二つ
+  の側が同じファイルを別々の瞬間に読んだということです。`jq` と `yq` を入れるのはそのジョブだけなの
+  で、衝突は `rust-lint` の赤として現れ、スキップとしては現れません。いまは呼び出しごとに専用のディ
+  レクトリ（プロセス id とカウンタ）を使い、
+  `each_comparison_gets_a_fixture_directory_no_other_comparison_reads` が共有パスを拒否します。プロ
+  セス id のみの名前に戻すとこのテストが失敗する形で制御項を検証しました。
 
 - **`no_std` ゲートは自分としか突き合わせできていなかった** - `tests/test_no_std_gate.py` は
   `ci.yml` の crate 一覧を、テストに写し込んだ集合と比べていたため、`#![no_std]` を増やしても
