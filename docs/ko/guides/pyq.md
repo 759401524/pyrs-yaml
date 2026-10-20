@@ -160,8 +160,16 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 `--stream`과 jq 모드의 모든 편집 식 (pyq는 YAML을 쓰고 jq는 JSON을 씀), yq의 `-n`, `-e`, `-P`,
 `--expression`, `--split-exp`, `--front-matter`, `--xml-*`/`--lua-*`/`--csv-*` 각 계열과
 문자열 보간, 끝에 붙은
-`select` 하나를 뺀 모든 파이프, 그리고 모든 함수 (`keys`, `length`, `map`, `to_entries`, `env` 등)
+`select` 하나를 뺀 모든 파이프, 순서열 슬라이스
+(`[a:b]` — 실제 두 도구 모두 받지만 이 선택자는 찾지 못함), 그리고 모든 함수 (`keys`, `length`, `map`, `to_entries`, `env` 등)
 입니다.
+
+두 가지 모양은 실제 도구가 답하는 대로 답합니다. 문서에 없는
+경로는 `null`을 출력하고 0으로 끝나고, 하나도 고르지 못한 `select`는 아무것도
+출력하지 않고 0으로 끝납니다. 네이티브 `pyq get`은 둘 다 실패로 보고합니다.
+겉모습 차이 하나는 의도적으로 남겼습니다: 따옴표가 있는 리터럴의
+대입(`yq '.a.b = "x"'`)은 pyq가 받은 철자를 유지하고 yq v4는 평문으로 다시
+씁니다. 다시 읽은 문서는 동일합니다.
 
 받아들임 표는 손으로 쓴 기대값이 아닙니다.
 `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs`는 `PATH`에 진짜 `jq`와 `yq`가 있으면 그것들을

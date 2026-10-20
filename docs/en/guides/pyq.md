@@ -163,8 +163,15 @@ Everything the shell cannot answer with the same document the real tool prints i
 name**, with exit code 2 and empty stdout — never ignored. The set includes jq's `--arg`/`--argjson`,
 `-s`, `-c`, `-S`, `--stream`, and any edit expression (pyq writes YAML where jq writes JSON); yq's
 `-n`, `-e`, `-P`, `--expression`, `--split-exp`, `--front-matter`, the
-`--xml-*`/`--lua-*`/`--csv-*` families and string interpolation; pipe chains other than one trailing `select`; and every function
-(`keys`, `length`, `map`, `to_entries`, `env`, …).
+`--xml-*`/`--lua-*`/`--csv-*` families and string interpolation; pipe chains other than one
+trailing `select`; sequence slices (`[a:b]`, which both tools accept and this selector does not
+address); and every function (`keys`, `length`, `map`, `to_entries`, `env`, …).
+
+Two shapes are answered the way the tools answer them: a path the document does not carry prints
+`null` and exits 0, and a `select` that matches nothing prints nothing and exits 0, where native
+`pyq get` reports both as failures. One cosmetic difference is kept on purpose: an assignment
+whose literal is quoted (`yq '.a.b = "x"'`) stays quoted, because pyq preserves the spelling it was
+given while yq v4 rewrites it plain; the document re-reads identically.
 
 The accepted table is not a hand-written expectation. `crates/pyrs-yaml-cli/tests/`
 `dialect_vs_reference.rs` runs the real `jq` and `yq` when they are on `PATH` and compares stdout

@@ -529,6 +529,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`pyq` read a sequence slice as a key** - `[0:2]` is how both `jq` and mikefarah
+  `yq` spell a range, but the bracket parser fell through to its key branch, so
+  `.list[0:2]` looked up a key named `0:2`, missed, and the compatibility shell answered
+  `null` for it. The grammar now rejects a `:` it cannot address and the shell refuses
+  the construct by name; a quoted bracket (`["k:v"]`) is still a key. Under
+  `--as jq|yq` a `select` that matches nothing also stopped being an error: both tools
+  print nothing and exit 0, and so does the shell now, while native `pyq get` keeps
+  reporting both.
+
 - **`pyq get --json` answered one match and many matches differently** — a single
   match went through the indented writer while a multi-match stream wrote each value
   on one line, so `.servers` and `.servers[*]` disagreed about what `--json` means.
