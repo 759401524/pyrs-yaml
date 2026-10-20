@@ -20,6 +20,8 @@ needs instrumentation inside the binding — but a corpus that drifts entirely i
 would narrow the claim to the AST agreeing with itself, and that drift is now a red run.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 

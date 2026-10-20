@@ -45,6 +45,8 @@ set below is measured, and a new name there means a page documents something the
 publish.
 """
 
+from __future__ import annotations
+
 import ast
 import pathlib
 import re
