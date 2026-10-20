@@ -16,6 +16,8 @@ Usage:
     python scripts/quality_matrix.py            # human-readable report
     python scripts/quality_matrix.py --json     # machine-readable dump
     python scripts/quality_matrix.py --holes    # derived hole ids, one per line
+    python scripts/quality_matrix.py --check-rows   # fail if QUALITY_MATRIX.md's counts drifted
+    python scripts/quality_matrix.py --write-rows   # rewrite them from this measurement
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 WORKFLOWS = REPO / ".github" / "workflows"
+MATRIX_DOC = REPO / "QUALITY_MATRIX.md"
 
 # A crate exporting one of these owns a writer, so a round-trip invariant exists in
 # it and a parse-only fuzz target structurally cannot reach it. Prefix matching, not
@@ -1027,7 +1030,119 @@ SUMMARY_KEYS = (
 )
 
 
+#: The count-bearing sentences of `QUALITY_MATRIX.md`, each with the numbers the probe owns.
+#:
+#: The page was pinned to the measurement by a test that compared a parsed number with the probe, so a
+#: stale row is a red run rather than a lie - which is also how PR #549 came to redden all 14 test legs:
+#: the author had to *type* the new number. These rules let the same code write the row it checks, so
+#: growing a tier costs one flag instead of a hand-transcribed digit that two open pull requests then
+#: disagree about.
+#:
+#: Each rule keeps the prose around the number: group 1 is the text before it, the last group the text
+#: after, and everything in between is what this file recomputes.
+ROW_RULES = (
+    (
+        "unit / integration row",
+        re.compile(r"^(\| unit / integration \| )([\d,]+) Rust `#\[test\]`, ([\d,]+) Python test functions( \|)", re.M),
+        lambda data: "{:,} Rust `#[test]`, {:,} Python test functions".format(
+            data["rust_test_count"], data["python_test_function_count"]
+        ),
+    ),
+    (
+        "property row",
+        re.compile(r"^(\| property \| )(\d+)( proptest properties)", re.M),
+        lambda data: "{:d}".format(data["property_function_count"]),
+    ),
+    (
+        "fuzz row",
+        re.compile(r"^(\| fuzz \| )(\d+) targets, (\d+) seeds of which (\d+)( are `former-crash-\*`)", re.M),
+        lambda data: "{:d} targets, {:d} seeds of which {:d}".format(
+            len(data["fuzz_targets"]), data["fuzz_seed_count"], data["fuzz_former_crash_count"]
+        ),
+    ),
+    (
+        "section-4 former-crash sentence",
+        re.compile(r"(former-crash-<hash>\.seed` \()(\d+)( of them\))"),
+        lambda data: "{:d}".format(data["fuzz_former_crash_count"]),
+    ),
+)
+
+
+def _rebuilt(match: re.Match, pattern: re.Pattern, expected: str) -> str:
+    """The sentence with its number replaced by the measurement, prose around it untouched.
+
+    Group 1 is everything before the number and the last group everything after it, which is how
+    `ROW_RULES` can rewrite a count without restating the sentence that carries it.
+    """
+    return match.group(1) + expected + match.group(pattern.groups)
+
+
+def row_drift(text: str, data: dict) -> list:
+    """How each count-bearing sentence differs from what the probe measures.
+
+    A rule whose pattern no longer matches is reported as drift too: the silent failure here is a page
+    whose table is reworded until no number is checked at all, which is the hole this file exists to
+    close.
+    """
+    problems = []
+    for label, pattern, expected_fn in ROW_RULES:
+        match = pattern.search(text)
+        if match is None:
+            problems.append(f"{label}: no sentence matches, so the page no longer states this count")
+            continue
+        rebuilt = _rebuilt(match, pattern, expected_fn(data))
+        if rebuilt != match.group(0):
+            problems.append(f"{label}: page reads {match.group(0)!r}, the probe measures {rebuilt!r}")
+    return problems
+
+
+def apply_rows(text: str, data: dict) -> tuple:
+    """Rewrite the count-bearing sentences from the measurement. Returns (new text, changed labels)."""
+    changed = []
+    for label, pattern, expected_fn in ROW_RULES:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        rebuilt = _rebuilt(match, pattern, expected_fn(data))
+        if rebuilt == match.group(0):
+            continue
+        text = text[: match.start()] + rebuilt + text[match.end() :]
+        changed.append(label)
+    return text, changed
+
+
 def main(argv: list[str]) -> int:
+    if "--check-rows" in argv or "--write-rows" in argv:
+        data = measure()
+        page = MATRIX_DOC
+        text = page.read_text(encoding="utf-8")
+        problems = row_drift(text, data)
+        if "--write-rows" in argv:
+            new_text, changed = apply_rows(text, data)
+            remaining = row_drift(new_text, data)
+            if remaining:
+                for problem in remaining:
+                    print(f"cannot write: {problem}", file=sys.stderr)
+                return 2
+            if new_text != text:
+                with page.open("w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(new_text)
+            print(
+                "wrote {:d} row sentence(s): {}".format(
+                    len(changed), ", ".join(changed) if changed else "none - already current"
+                )
+            )
+            return 0
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        if problems:
+            print(
+                "run: python scripts/quality_matrix.py --write-rows",
+                file=sys.stderr,
+            )
+            return 1
+        print("OK: every count in QUALITY_MATRIX.md's tier table is what the probe measures")
+        return 0
     data = measure()
     if "--holes" in argv:
         for kind, name, _why in data["holes"]:
