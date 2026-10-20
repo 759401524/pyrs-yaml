@@ -527,11 +527,13 @@ status: new
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs`는 임시 디렉터리에 프로세스 id로 이름을
   붙였기에, Rust 하네스가 하나의 테스트 바이너리를 같은 프로세스 안에서 스레드로 돌릴 때 모든 비교가
   같은 위치의 `doc.yaml`과 `doc.json`을 서로 읽는 중에 다시 씁니다. `fs::write`는 먼저 잘라낸 뒤
-  쓰므로 참조 실행이 절반만 쓰인 문서를 받을 수 있습니다. 진짜 `jq`와 `yq`를 설치하는 것은
-  `ci.yml`의 `rust-lint`뿐이라 이 계층은 그 잡에서만 달리므로, 여기서의 충돌은 `rust-lint`가
-  빨개지는 것으로만 드러나고 건너뛰기로는 드러나지 않습니다. 이제 호출마다 자기 디렉터리(프로세스
-  id와 카운터)를 쓰고, `each_comparison_gets_a_fixture_directory_no_other_comparison_reads`가 공유
-  경로를 거부합니다. 프로세스 id만으로 되돌리면 그 테스트가 실패함을 확인해 제어항으로 삼았습니다.
+  쓰고, 그 대가는 PR #556의 `rust-lint`에서 실측됐습니다:
+  `jq [".a", "doc.json"] answered differently`, 우리 쪽 `(0, "")` 대비 참조 쪽 `(0, "null\n")` — 두
+  쪽이 같은 파일을 서로 다른 순간에 읽은 것입니다. `jq`와 `yq`를 설치하는 것은 그 잡뿐이므로,
+  여기서의 충돌은 `rust-lint`가 빨개지는 것으로만 드러나고 건너뛰기로는 드러나지 않습니다. 이제
+  호출마다 자기 디렉터리(프로세스 id와 카운터)를 쓰고,
+  `each_comparison_gets_a_fixture_directory_no_other_comparison_reads`가 공유 경로를 거부합니다.
+  프로세스 id만으로 되돌리면 그 테스트가 실패함을 확인해 제어항으로 삼았습니다.
 
 - **`no_std` 게이트가 자기 자신 말고는 비교하지 못했다** - `tests/test_no_std_gate.py`는
   `ci.yml`의 크레이트 목록을 테스트에 옮겨 적어 넣은 집합과 견줬기 때문에, `#![no_std]`를
