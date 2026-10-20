@@ -136,6 +136,36 @@ pyq completion fish | source                        # fish
 pyq completion powershell > pyq.ps1                 # PowerShell
 ```
 
+## jq / yq 호환 셸
+
+첫 인수가 pyq 자체 하위 명령이 아닌 argv는 `jq` 1.8 또는 mikefarah `yq` v4로 읽혀 같은 의미의 하위
+명령으로 번역됩니다. 두 도구를 위해 작성된 스크립트는 이 바이너리에서 그대로 동작합니다. 방언은
+실행 이름이 정하므로, 이 바이너리를 가리키는 `jq`/`yq` 심볼릭 링크가 대체하는 도구처럼 행동합니다.
+`--as jq|yq`로 명시할 수도 있습니다.
+
+| 받아들임 | 의미 |
+|----------|------|
+| `.a.b`, `.list[]`, `$.a`, `[0]` | 경로 → `pyq get` (yq의 `[]`는 pyq의 `[*]`) |
+| `.a.b = <리터럴>` | 대입 → `pyq set --create-missing` |
+| `del(<경로>)` | 단일 경로 → `pyq delete` |
+| `select(<상대 경로 OP 리터럴>)` | → `pyq get --select`, 그리고 끝에 붙은 `\| select` 하나 |
+| `jq -r`, `yq -r/--unwrapScalar` | 스칼자를 맨 값으로 (yq에서는 기본 켜짐) |
+| `yq -i/--inplace` | 파일을 그 자리에서 갱신 |
+| `yq -N/--no-doc` | 스트림을 `---` 구분자 없이 출력 (yq에서는 기본 켜짐) |
+| `-o json\|yaml`, `-p json\|yaml\|toml\|ini` | 출력·입력 형식 |
+
+실제 도구와 같은 문서를 돌려줄 수 없는 것은 모두 **이름을 짚어 거부**하고 종료 코드 2에 stdout은 비워
+둡니다. 묵묵히 무시하는 일은 없습니다. 대상은 jq의 `--arg`/`--argjson`, `-s`, `-c`, `-S`,
+`--stream`과 jq 모드의 모든 편집 식 (pyq는 YAML을 쓰고 jq는 JSON을 씀), yq의 `-n`, `-e`, `-P`,
+`--split-exp`, `--front-matter`, `--xml-*`/`--lua-*`/`--csv-*` 각 계열과 문자열 보간, 끝에 붙은
+`select` 하나를 뺀 모든 파이프, 그리고 모든 함수 (`keys`, `length`, `map`, `to_entries`, `env` 등)
+입니다.
+
+받아들임 표는 손으로 쓴 기대값이 아닙니다.
+`crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs`는 `PATH`에 진짜 `jq`와 `yq`가 있으면 그것들을
+실행해 stdout을 바이트 단위로 비교하고, 이 워크스페이스 안의 파일을 참조로 쓰는 것을 거부합니다 —
+자기 자신의 사본을 비교 대상으로 삼는 프로브는 아무것도 증명하지 못하기 때문입니다.
+
 ## 지원 범위
 
 | 기능 | pyq | pyrs-yaml CLI (Python) |

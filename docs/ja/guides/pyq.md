@@ -136,6 +136,36 @@ pyq completion fish | source                        # fish
 pyq completion powershell > pyq.ps1                 # PowerShell
 ```
 
+## jq / yq 互換シェル
+
+先頭の引数が pyq 自身のサブコマンドではない argv は `jq` 1.8 か mikefarah `yq` v4 として読まれ、
+等価なサブコマンドへ翻訳されます。両者のために書かれたスクリプトはこのバイナリでそのまま動きます。
+方言は実行時の名前が決まるので、このバイナリを指す `jq` や `yq` のシンボリックリンクは置き換える
+側と同じ振る舞いをします。`--as jq|yq` で明示することもできます。
+
+| 受け入れる | 意味 |
+|------------|------|
+| `.a.b`、`.list[]`、`$.a`、`[0]` | 経路 → `pyq get`（yq の `[]` は pyq の `[*]`） |
+| `.a.b = <リテラル>` | 代入 → `pyq set --create-missing` |
+| `del(<経路>)` | 単一の経路 → `pyq delete` |
+| `select(<相対経路 OP リテラル>)` | → `pyq get --select`、および末尾の `\| select` 1 本 |
+| `jq -r`、`yq -r/--unwrapScalar` | スカラーを素の値で（yq では既定で有効） |
+| `yq -i/--inplace` | ファイルをその場で更新 |
+| `yq -N/--no-doc` | ストリームを `---` 区切りなしで出力（yq では既定で有効） |
+| `-o json\|yaml`、`-p json\|yaml\|toml\|ini` | 出力・入力形式 |
+
+実物と同じ文書を返せないものは、すべて**名前を挙げて拒否**し、終了コード 2 で stdout は空です。
+黙って無視することはありません。該当するのは jq の `--arg`/`--argjson`、`-s`、`-c`、`-S`、
+`--stream` と jq モードでのすべての編集式（pyq は YAML を書き jq は JSON を書く）、yq の `-n`、
+`-e`、`-P`、`--split-exp`、`--front-matter`、`--xml-*`/`--lua-*`/`--csv-*` の各群と文字列補間、
+末尾の `select` 1 本以外のパイプ、そしてすべての関数（`keys`、`length`、`map`、`to_entries`、
+`env` など）です。
+
+受け入れ表は手書きの期待値ではありません。
+`crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` は `PATH` に本物の `jq` と `yq` があれば
+それらを実行し、stdout を 1 バイトから比較します。そしてこのワークスペース内のファイルを
+参照として受け付けません——自分自身の写しを比較対象にするプローブは何も証明しないからです。
+
 ## 対応範囲
 
 | 機能 | pyq | pyrs-yaml CLI（Python） |
