@@ -28,9 +28,10 @@ asserted explicitly rather than hidden:
 
 `tomlkit` is imported outright, not guarded. `pyproject.toml` declares it with no marker, so a leg
 without it is a broken environment, and a broken environment has to be a red run rather than a file of
-skips that reports the same green as the legs that compared. `tomllib` is the one reader here that a
-supported interpreter may lack - it arrives with 3.11 - so only its comparisons are skipped, by
-`importorskip`, and the matrix reports that bound against the 3.8 floor.
+skips that reports the same green as the legs that compared. `tomllib` arrives with 3.11, so below that
+the `tomli` backport stands in for it - declared with `python_version < '3.11'` in `pyproject.toml`,
+with no skip to fall back on, so every leg runs the same eleven three-way comparisons instead of the
+two legs below 3.11 skipping them.
 """
 
 from __future__ import annotations
@@ -41,6 +42,11 @@ import pytest
 import tomlkit
 
 import pyrs_yaml
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 
 TOML_PARITY_DOCS: list[tuple[str, dict]] = [
     # primitives, arrays, tables, datetimes, radix integers, escapes
@@ -77,9 +83,8 @@ def test_load_toml_matches_tomlkit(src, expected):
 
 @pytest.mark.parametrize("src,expected", TOML_PARITY_DOCS)
 def test_tomlkit_and_tomllib_agree_with_pyrs(src, expected):
-    """Three-way parity: pyrs, tomlkit, and stdlib tomllib (3.11+) all
-    agree on the canonical TOML domain."""
-    tomllib = pytest.importorskip("tomllib")
+    """Three-way parity: pyrs, tomlkit, and stdlib tomllib (or the tomli
+    backport below 3.11) all agree on the canonical TOML domain."""
     assert tomllib.loads(src) == expected
     assert dict(tomlkit.parse(src)) == expected
     assert pyrs_yaml.load_toml(src) == expected
