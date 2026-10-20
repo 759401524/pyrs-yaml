@@ -157,12 +157,13 @@ run against this binary unchanged. The dialect follows the name the binary was i
 | `yq -i/--inplace` | rewrite the file in place |
 | `yq -N/--no-doc` | a stream without `---` separators (on by default for yq) |
 | `-o json\|yaml`, `-p json\|yaml\|toml\|ini` | output and input format |
+| `-f PROG`, `--from-file F` | the expression read from a file, then classified like any other |
 
 Everything the shell cannot answer with the same document the real tool prints is **refused by
-name**, with exit code 2 and empty stdout — never ignored. That set: jq's `--arg`/`--argjson`,
+name**, with exit code 2 and empty stdout — never ignored. The set includes jq's `--arg`/`--argjson`,
 `-s`, `-c`, `-S`, `--stream`, and any edit expression (pyq writes YAML where jq writes JSON); yq's
-`-n`, `-e`, `-P`, `--split-exp`, `--front-matter`, the `--xml-*`/`--lua-*`/`--csv-*` families and
-string interpolation; pipe chains other than one trailing `select`; and every function
+`-n`, `-e`, `-P`, `--expression`, `--split-exp`, `--front-matter`, the
+`--xml-*`/`--lua-*`/`--csv-*` families and string interpolation; pipe chains other than one trailing `select`; and every function
 (`keys`, `length`, `map`, `to_entries`, `env`, …).
 
 The accepted table is not a hand-written expectation. `crates/pyrs-yaml-cli/tests/`
