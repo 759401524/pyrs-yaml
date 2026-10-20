@@ -140,6 +140,36 @@ pyq completion fish | source                        # fish
 pyq completion powershell > pyq.ps1                 # PowerShell
 ```
 
+## jq / yq Compatibility Shell
+
+An argument vector that does not start with one of pyq's own subcommands is read as `jq` 1.8 or
+mikefarah `yq` v4 and translated into the equivalent subcommand, so scripts written for either tool
+run against this binary unchanged. The dialect follows the name the binary was invoked as, so a
+`jq` or `yq` symlink behaves like the tool it replaces; `--as jq|yq` states it explicitly.
+
+| Accepted | Meaning |
+|----------|---------|
+| `.a.b`, `.list[]`, `$.a`, `[0]` | a path → `pyq get` (yq's `[]` is pyq's `[*]`) |
+| `.a.b = <literal>` | an assignment → `pyq set --create-missing` |
+| `del(<path>)` | one path → `pyq delete` |
+| `select(<relpath OP literal>)` | → `pyq get --select`, and one trailing `\| select` pipe |
+| `jq -r`, `yq -r/--unwrapScalar` | bare scalars (on by default for yq) |
+| `yq -i/--inplace` | rewrite the file in place |
+| `yq -N/--no-doc` | a stream without `---` separators (on by default for yq) |
+| `-o json\|yaml`, `-p json\|yaml\|toml\|ini` | output and input format |
+
+Everything the shell cannot answer with the same document the real tool prints is **refused by
+name**, with exit code 2 and empty stdout — never ignored. That set: jq's `--arg`/`--argjson`,
+`-s`, `-c`, `-S`, `--stream`, and any edit expression (pyq writes YAML where jq writes JSON); yq's
+`-n`, `-e`, `-P`, `--split-exp`, `--front-matter`, the `--xml-*`/`--lua-*`/`--csv-*` families and
+string interpolation; pipe chains other than one trailing `select`; and every function
+(`keys`, `length`, `map`, `to_entries`, `env`, …).
+
+The accepted table is not a hand-written expectation. `crates/pyrs-yaml-cli/tests/`
+`dialect_vs_reference.rs` runs the real `jq` and `yq` when they are on `PATH` and compares stdout
+byte for byte, and it rejects any reference found inside this workspace, because a probe that finds
+the copy of itself proves nothing.
+
 ## Scope
 
 | Capability | pyq | pyrs-yaml CLI (Python) |
