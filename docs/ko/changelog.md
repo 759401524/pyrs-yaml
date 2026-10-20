@@ -473,6 +473,15 @@ status: new
   `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar`와 재실행한 시드
   `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed`가 이를 고정합니다.
 
+- **컴팩트 항목의 주석은 해당 시퀀스 헤더 위에 안정됩니다** — 줄 끝이 이미 자신의 주석으로 채워진
+  컴팩트 형식 `- key: value` 항목은 그 주석을 대시 위 줄에 씁니다. 시퀀스가 `&a` / `!tag` 헤더도
+  쓴다면 그 줄은 헤더와 본문 사이에 놓이고, 읽기는 그 자리의 주석을 시퀀스의 *선행* 주석으로
+  취급하므로 다음 출력에서 헤더 위로 올라갔습니다. 첫 출력은 `&a0` / `# note` / `- k: v  # note`,
+  두 번째는 `# note` / `&a0` / `- k: v  # note`였습니다. 첫 항목은 이제 헤더의 줄 시작을 기록하고
+  그 주석을 헤더 위에 씁니다. 읽기가 주석을 돌려주는 위치입니다(libFuzzer `edit_yaml`
+  crash-2fc59020). `a_compact_items_note_settles_above_the_sequences_header`와 재실행한 시드
+  `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed`가 이를 고정합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

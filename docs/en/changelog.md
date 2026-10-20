@@ -524,6 +524,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` and the replayed seed
   `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed`.
 
+- **A compact item's note settles above its sequence's header** — a compact `- key: value` item
+  whose pair line already carries a note of its own writes the item's note one line up, above the
+  dash. When the sequence also writes an `&a` / `!tag` header, that line sits between the header
+  and the body, where the reader files the note as the sequence's *leading* comment, so the next
+  emission hoisted it above the header: round one wrote `&a0` / `# note` / `- k: v  # note` and
+  round two `# note` / `&a0` / `- k: v  # note`. The first item now takes the header's line start
+  and writes that note above it, which is where the reader reports it from (libFuzzer `edit_yaml`
+  crash-2fc59020). Pinned by `a_compact_items_note_settles_above_the_sequences_header` and the
+  replayed seed `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed`.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

@@ -377,6 +377,50 @@ fn an_anchored_items_note_settles_above_its_header() {
     }
 }
 
+/// libFuzzer `edit_yaml` crash-2fc59020: an anchored sequence whose compact first item carries an
+/// inline note of its own while its pair line's tail slot is already claimed.
+///
+/// `write_sequence_item` sends that item note one line up, above the dash. Under a `&a` header the
+/// line above the dash sits between the header and the body, where the reader files a note as the
+/// sequence's *leading* note - so the second emission hoisted it above the header: round one wrote
+/// `&a0` / `# fuzz 47` / `- "-((0bb:": 3  # fuzz 47`, round two `# fuzz 47` / `&a0` / the item.
+/// Above the header is where the reader reports it from, so the first emission is the fixed point.
+#[test]
+fn a_compact_items_note_settles_above_the_sequences_header() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+    use std::sync::Arc;
+
+    let src = "- - - \"-((0bb:\": 3  # keep\n";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let seq = [Segment::Index(0), Segment::Index(0)];
+    set_anchor_path(&mut node, &seq, "a0", src, None).expect("the anchor is set");
+    let item = [Segment::Index(0), Segment::Index(0), Segment::Index(0)];
+    set_comment_path(
+        &mut node,
+        &item,
+        Comment {
+            text: Arc::from("fuzz 47"),
+            standalone: false,
+        },
+        src,
+        None,
+    )
+    .expect("the note is set");
+
+    let one = to_yaml(&node);
+    assert_eq!(
+        one, "- \n  - \n    # fuzz 47\n    &a0 \n    - \"-((0bb:\": 3  # keep\n",
+        "the item's note belongs above the header it cannot split"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
 /// A mapping whose block ends inside a nested sequence has no pair line of its own at the tail:
 /// the last line belongs to one of the sequence's items. `write_mapping_pair` left
 /// `pair_line_start` pointing there, so the mapping's note was written above that item's dash -
