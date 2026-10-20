@@ -192,19 +192,74 @@ ORACLE_IMPORTS = {
     "pyjson5": "pyjson5",
     "tomlkit": "tomlkit",
     "json": "json",
+    "tomllib": "tomllib",
 }
 
-#: Readers that ship with the interpreter. Answered before `_dependency_marker`, never through it:
-#: that search matches any requirement that *starts with* the name, so `_dependency_marker("json")`
-#: answers `python_version < '3.9'` - the first hit, from `jsonschema>=4.18.0,<4.25.1` - and a reader
-#: present on every leg would be reported as bounded by a package nobody imports here. `tomllib` is
-#: deliberately absent, because it arrives with 3.11 and cannot vouch for the 3.8 floor.
-STDLIB_READERS = ("json",)
+#: Readers that ship with the interpreter, and the version that introduced each. These are bounded by
+#: the interpreter, not by `pyproject.toml`, and the question is answered against the floor the project
+#: states: `tomllib` arrives with 3.11, so it cannot vouch for a `requires-python = ">=3.8"` package,
+#: while `json` predates every tested leg. Neither is answered through `_dependency_marker`, whose
+#: search matches any requirement that *starts with* the name - `_dependency_marker("json")` answers
+#: `python_version < '3.9'`, from `jsonschema>=4.18.0,<4.25.1`, and would report the always-present
+#: reader as bounded by a package nobody imports here.
+STDLIB_SINCE = {"json": (3, 0), "tomllib": (3, 11)}
 
 _IMPORT_LINE = re.compile(
     r"^\s*import ([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)(?: as ([a-z_][a-z0-9_]*))?",
     re.IGNORECASE | re.MULTILINE,
 )
+
+_FLOOR_LINE = re.compile(r'requires-python\s*=\s*">=\s*(\d+)\.(\d+)')
+
+
+def _declared_floor() -> tuple:
+    """The interpreter this package promises, read off `requires-python`.
+
+    A gate that cannot find the floor it is comparing readers against has no answer, so it says so
+    rather than defaulting: a remembered `(3, 8)` would keep reporting `tomllib` as reaching the floor
+    after the floor moved, which is the same class of stale constant this file exists to remove.
+    """
+    match = _FLOOR_LINE.search(read(REPO / "pyproject.toml"))
+    if match is None:
+        raise ValueError("pyproject.toml states no `requires-python >= X.Y` floor to read readers against")
+    return int(match.group(1)), int(match.group(2))
+
+
+def _importorskip_locals(text: str) -> list:
+    """`(distribution, local name)` for readers a test asks for inside its own body.
+
+    Read off the syntax, not the text: `tomllib` is not imported at module level anywhere, it is bound
+    by `tomllib = pytest.importorskip("tomllib")` in the test that needs it, and a reader introduced
+    that way is exactly as real - and as skippable - as one imported at the top.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    found = []
+    for node in ast.walk(tree):
+        call = None
+        local = None
+        if isinstance(node, ast.Call):
+            call = node
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            call = node.value
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                local = node.targets[0].id
+        if call is None:
+            continue
+        func = call.func
+        if (func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")) != "importorskip":
+            continue
+        if not call.args or not isinstance(call.args[0], ast.Constant):
+            continue
+        requested = call.args[0].value
+        if not isinstance(requested, str):
+            continue
+        distribution = ORACLE_IMPORTS.get(requested)
+        if distribution is not None:
+            found.append((distribution, local or requested))
+    return found
 
 
 def _oracle_locals(text: str) -> dict:
@@ -219,6 +274,10 @@ def _oracle_locals(text: str) -> dict:
         if distribution is None:
             continue
         found.setdefault(distribution, []).append(match.group(2) or match.group(1))
+    for distribution, local in _importorskip_locals(text):
+        locals_of = found.setdefault(distribution, [])
+        if local not in locals_of:
+            locals_of.append(local)
     return found
 
 
@@ -249,6 +308,31 @@ def _leg_restricted(marker: str | None) -> bool:
     if not marker:
         return False
     return "python_version" in marker or "platform_machine" in marker
+
+
+def _reader_bounded(name: str) -> bool:
+    """Can this reader be missing from a leg the matrix tests?
+
+    Two independent sources say no: a `pyproject.toml` marker, and the interpreter itself. Measured
+    before the second was consulted, `tests/test_toml_crosslib.py` ran 13 of its 24 comparisons and skipped 11 on
+    the floor leg while the cell read `yes`, because the reader it skipped - `tomllib`, new in 3.11 -
+    was neither declared nor marker-bounded, and so was never asked about.
+    """
+    since = STDLIB_SINCE.get(name)
+    if since is not None:
+        return since > _declared_floor()
+    return _leg_restricted(_dependency_marker(name))
+
+
+def _reader_bound(name: str):
+    """How this reader is bounded, in the words the row reports, or `None` when nothing bounds it."""
+    since = STDLIB_SINCE.get(name)
+    if since is None:
+        return _dependency_marker(name)
+    floor = _declared_floor()
+    if since <= floor:
+        return None
+    return f"arrives with python {since[0]}.{since[1]}, above the {floor[0]}.{floor[1]} floor"
 
 
 #: The shapes a comparison can be switched off by, inside a body. A decorator is judged on its own
@@ -319,8 +403,8 @@ def crosslib_parity(label: str, module) -> dict:
     text = read(module)
     readers = _oracle_locals(text)
     oracles = sorted(readers)
-    bounded = {name for name in oracles if name not in STDLIB_READERS and _leg_restricted(_dependency_marker(name))}
-    markers = {name: (None if name in STDLIB_READERS else _dependency_marker(name)) for name in oracles}
+    bounded = {name for name in oracles if _reader_bounded(name)}
+    markers = {name: _reader_bound(name) for name in oracles}
     if not bounded:
         return {"verdict": "yes", "oracles": oracles, "restricted": [], "marker": markers}
 

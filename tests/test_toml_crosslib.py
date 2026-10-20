@@ -26,8 +26,11 @@ asserted explicitly rather than hidden:
    on the load side, the value is the same int, so parity holds here
    even though source-text style is not preserved through the round trip.
 
-Deps are optional (`skipif(tomlkit is None)`) so the suite runs cleanly
-where tomlkit is not installed.
+`tomlkit` is imported outright, not guarded. `pyproject.toml` declares it with no marker, so a leg
+without it is a broken environment, and a broken environment has to be a red run rather than a file of
+skips that reports the same green as the legs that compared. `tomllib` is the one reader here that a
+supported interpreter may lack - it arrives with 3.11 - so only its comparisons are skipped, by
+`importorskip`, and the matrix reports that bound against the 3.8 floor.
 """
 
 from __future__ import annotations
@@ -35,16 +38,9 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+import tomlkit
 
 import pyrs_yaml
-
-try:
-    import tomlkit
-except ImportError:  # pragma: no cover - optional dev dep
-    tomlkit = None
-
-pytestmark = pytest.mark.skipif(tomlkit is None, reason="tomlkit not installed")
-
 
 TOML_PARITY_DOCS: list[tuple[str, dict]] = [
     # primitives, arrays, tables, datetimes, radix integers, escapes
