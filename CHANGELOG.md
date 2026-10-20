@@ -534,6 +534,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the document does not carry prints `null` and exits 0, as both real tools do, while
   native `pyq get` keeps reporting the miss and exiting 1.
 
+- **A CLI-only edit demanded an extension rebuild that could not change it** - the
+  freshness gate globbed every directory under `crates/` when deciding which files
+  are compiled into the loaded module, so the standalone `pyq` crate counted as
+  shipped and every edit confined to it cost a `maturin develop` and a red run. The
+  crate set is derived now, from the binding manifest's `path` dependencies taken
+  transitively with dev-dependencies excluded; both directions are controls, so a
+  shipped source still names itself and a CLI source no longer does.
+
 - **A merge cannot give a mapping a second null key** - `~`, `null`, the empty key and a bare
   `Null` node all resolve to null, and the reader folds two null keys into one entry on purpose
   (that is what lets `: a` + `: b` parse). The merge filter asked a different question: text for
