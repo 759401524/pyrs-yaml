@@ -7,11 +7,57 @@
 //! matches that proved nothing.
 //!
 //! What is refused is asserted too: the shell must not answer at all.
+//!
+//! A reference has to be the tool it claims to be, because a binary named `yq` is not
+//! evidence of mikefarah `yq` - the PyPI one is a jq wrapper with other semantics. So
+//! each candidate's version banner is checked first, and `PYQ_DIALECT_YQ` /
+//! `PYQ_DIALECT_JQ` bind a reference explicitly: a binding that is missing or answers
+//! to another tool fails the leg instead of skipping it. Nothing in CI binds one yet,
+//! which is registered as `dialect-tier:reference-unbound` in `.ci/quality-holes.json`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// The version banner a reference gives, or the empty string when it will not run.
+fn banner(program: &Path) -> String {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// Whether this binary is the tool the dialect claims to speak. Naming matters: the
+/// `yq` on PyPI is a jq wrapper with other semantics and other exit codes, so
+/// comparing against it would judge the wrong authority - and the first version of
+/// this probe matched our own `yq.exe` sitting on `PATH`.
+fn is_expected(tool: &str, text: &str) -> bool {
+    match tool {
+        "yq" => text.contains("mikefarah") && text.contains(" v4"),
+        _ => text.starts_with("jq-") || text.contains("jq version"),
+    }
+}
+
+/// An explicitly bound reference is a promise, so a broken promise is a failure
+/// rather than a skip: the leg that means to compare must compare.
+fn bound(tool: &str) -> Option<PathBuf> {
+    let var = format!("PYQ_DIALECT_{}", tool.to_uppercase());
+    let path = PathBuf::from(std::env::var_os(&var)?);
+    let text = banner(&path);
+    assert!(path.is_file(), "{var}={} is not a file", path.display());
+    assert!(
+        is_expected(tool, &text),
+        "{var}={} is not the reference this tier compares against: {text:?} \
+         (mikefarah yq v4 prints `... version v4.x`, jq prints `jq-1.x`)",
+        path.display()
+    );
+    Some(path)
+}
+
 fn reference(tool: &str) -> Option<PathBuf> {
+    if let Some(path) = bound(tool) {
+        return Some(path);
+    }
     let exe = if cfg!(windows) {
         format!("{tool}.exe")
     } else {
@@ -32,7 +78,15 @@ fn reference(tool: &str) -> Option<PathBuf> {
             {
                 continue;
             }
-            return Some(real);
+            if is_expected(tool, &banner(&real)) {
+                return Some(real);
+            }
+            eprintln!(
+                "SKIP: {} looks like a {tool} but is not one: {:?}",
+                real.display(),
+                banner(&real).trim()
+            );
+            return None;
         }
     }
     None

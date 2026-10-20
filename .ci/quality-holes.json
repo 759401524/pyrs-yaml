@@ -12,5 +12,12 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": []
+ "holes": [
+  {
+   "id": "dialect-tier:reference-unbound",
+   "opened": "2026-10-20",
+   "exit": "A CI leg sets PYQ_DIALECT_YQ and PYQ_DIALECT_JQ to installed reference binaries, so the merge verdict shows the differential comparison running rather than skipping.",
+   "why": "pyq's jq/yq shell is judged against the real binaries only on a host that carries them; where they are absent the tier passes while judging nothing, and cargo captures the skip message."
+  }
+ ]
 }
