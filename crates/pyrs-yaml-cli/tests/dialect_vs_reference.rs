@@ -137,6 +137,11 @@ const YQ_ACCEPTED: &[&[&str]] = &[
     &["-r", ".a.b", "doc.yaml"],
     &["-o", "json", ".a", "doc.yaml"],
     &["-p", "json", ".a.b", "doc.json"],
+    &[".list[0]", "doc.yaml"],
+    &[".list[].x", "doc.yaml"],
+    &[".a.n", "doc.yaml"],
+    &["-o", "yaml", ".a", "doc.yaml"],
+    &[".missing", "doc.yaml"],
 ];
 
 const JQ_ACCEPTED: &[&[&str]] = &[
@@ -144,6 +149,10 @@ const JQ_ACCEPTED: &[&[&str]] = &[
     &[".", "doc.json"],
     &["-r", ".a.b", "doc.json"],
     &[".list[0].x", "doc.json"],
+    &[".list[]", "doc.json"],
+    &["-r", ".list[].x", "doc.json"],
+    &[".a[\"b\"]", "doc.json"],
+    &[".missing", "doc.json"],
 ];
 
 /// The forms the shell claims, answered the way the reference answers them.
@@ -168,8 +177,8 @@ fn accepted_yq_invocations_match_mikefarah_yq() {
         compared += 1;
     }
     assert!(
-        compared >= 10,
-        "the table below ten forms proves nothing: {compared}"
+        compared >= 14,
+        "the table below fourteen forms proves nothing: {compared}"
     );
 }
 

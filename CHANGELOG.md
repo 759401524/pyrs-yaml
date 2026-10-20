@@ -16,7 +16,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` runs `jq-1.8.2` and `yq v4.54.1` when they
   are on `PATH`, refuses to accept any reference inside this workspace (the first version of the
   probe found our own copy of `yq.exe` on `PATH` and reported nine perfect matches that proved
-  nothing), and compares stdout byte for byte over 15 invocations including `.a.b`, `.list[] |
+  nothing), and compares stdout byte for byte over 24 invocations including `.a.b`, `.list[] |
   select(.x > 1)`, `del(.a.n)`, `.a.n = 9`, `-o json`, `-r`, `-N`. Anything the shell cannot answer
   with the same document is refused by name and exits 2 with empty stdout: pipes other than one
   trailing `select`, every jq function (`keys`, `length`, `map`, `to_entries`), jq edit
@@ -516,6 +516,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `reference.md` with no exception for this one.
 
 ### Fixed
+
+- **`pyq get --json` answered one match and many matches differently** — a single match
+  went through the indented writer while a multi-match stream wrote each value on one
+  line, so `.servers` and `.servers[*]` disagreed about what `--json` means. Every match
+  now gets the same rendering, which is also the shape `jq` writes per output value. The
+  compatibility shell gained the other half of that agreement: under `--as jq|yq` a path
+  the document does not carry prints `null` and exits 0, as both real tools do, while
+  native `pyq get` keeps reporting the miss and exiting 1.
 
 - **A CLI-only edit demanded an extension rebuild that could not change it** - the
   freshness gate globbed every directory under `crates/` when deciding which files
