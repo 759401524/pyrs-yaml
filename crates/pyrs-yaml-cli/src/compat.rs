@@ -57,19 +57,16 @@ pub enum Dialect {
     Yq,
 }
 
-/// Decide the dialect from the invoked name. A `.exe` suffix must not hide the jq
-/// reading on Windows.
+/// Decide the dialect from the invoked name. `file_stem` drops the extension on
+/// every platform, so `jq.exe` and `/usr/bin/jq` both read as jq; it splits only
+/// at the separators this platform understands, which is what argv[0] is written
+/// with.
 pub fn dialect_of(argv0: &OsStr) -> Option<Dialect> {
-    // The stem alone is not enough: only Windows treats `.exe` as a suffix to
-    // strip, so a `jq.exe` seen on a Unix host (a mounted volume, a fixture, a
-    // cross-compiled check) would answer `None` and be read as yq. Trimming the
-    // suffix here makes the reading the same on every platform.
     let stem = Path::new(argv0)
         .file_stem()
         .map(|s| s.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let stem = stem.strip_suffix(".exe").unwrap_or(&stem);
-    match stem {
+    match stem.as_str() {
         "jq" => Some(Dialect::Jq),
         "yq" => Some(Dialect::Yq),
         _ => None,
@@ -634,10 +631,21 @@ mod tests {
         assert_eq!(dialect_of(OsStr::new("/usr/bin/jq")), Some(Dialect::Jq));
         assert_eq!(dialect_of(OsStr::new("yq")), Some(Dialect::Yq));
         assert_eq!(dialect_of(OsStr::new("pyq")), None);
+        // argv[0] carries the executable suffix on Windows, and `file_stem` drops
+        // it whatever the case, so the suffix is not what splits the two readings.
+        assert_eq!(dialect_of(OsStr::new("jq.exe")), Some(Dialect::Jq));
+        assert_eq!(dialect_of(OsStr::new("yq.EXE")), Some(Dialect::Yq));
+        // A backslash is a separator only on Windows; there the same spelling is a
+        // single odd file name, and reading it as neither tool is correct. Asserted
+        // per platform because a test that runs one way on both is the bug this one
+        // replaced.
+        #[cfg(windows)]
         assert_eq!(
             dialect_of(OsStr::new("C:\\tools\\jq.exe")),
             Some(Dialect::Jq)
         );
+        #[cfg(unix)]
+        assert_eq!(dialect_of(OsStr::new("C:\\tools\\jq.exe")), None);
     }
 
     #[test]
