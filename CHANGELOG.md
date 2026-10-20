@@ -15,7 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   uploaded at +134 s (Windows), +135 s (macOS) and +151 s (ubuntu) in the first and at +172 s, +192
   s and +167 s on the same three in the second, while the release build behind it cost 45–346 s more
   per operating system, so `build` closed at +485 s and +477 s and every one of the 24 legs of
-  `test` and `wheel-smoke` began 355–471 s after the only artifact it reads already existed. The
+  `test` and `wheel-smoke` began 291–471 s after the only artifact it reads already existed. The
   release recipe is a job of its own now, `release-wheels`, and `tests/test_ci_artifact_wiring.py`
   pins the two producers apart by reading each job's own `upload-artifact` and `download-artifact`
   inputs: a job that uploads both families, or a leg that waits on a producer whose artifact it
