@@ -475,6 +475,15 @@ status: new
   `an_anchored_items_note_settles_above_its_header` と再実行したシード
   `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed` で固定。
 
+- **TOML が拒む YAML の浮動小数点表記は TOML の文法で書かれます** — Core YAML は `083e6` を浮動
+  小数として解決します。指数形式では整数部の先頭にゼロを許しますが、TOML の `float-int-part` は
+  `dec-int` であり、その表記を持ちません。書き手の通過判定は `e` の有無だけを見ていたため、
+  値が `083e6` の文書を書き出すと `lis6 = 083e6` を出力し、TOML の読み手が自分自身の書き手の
+  テキストを拒否しました（libFuzzer `edit_yaml` crash-71feb9d9）。判定は浮動小数点の文法全体を
+  検証してから通過させるようになり、TOML が読めない表記は値から描画されます。
+  `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar` と再実行したシード
+  `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed` で固定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
