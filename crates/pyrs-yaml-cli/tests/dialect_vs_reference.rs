@@ -93,8 +93,17 @@ fn reference(tool: &str) -> Option<PathBuf> {
     None
 }
 
+/// The fixtures of one comparison, in a directory no other comparison reads.
+///
+/// The harness runs these tests on threads inside one process, and `fs::write` truncates before it
+/// writes: naming the directory by process id alone meant a test could open a document another test
+/// was halfway through rewriting. The damage was a red that only appears on a busy runner, because
+/// the window is a few microseconds wide and the reference then answers a question about a file that
+/// is not the fixture.
 fn fixture_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("pyq-dialect-{}", std::process::id()));
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("pyq-dialect-{}-{serial}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("fixture dir");
     std::fs::write(
         dir.join("doc.yaml"),
@@ -107,6 +116,23 @@ fn fixture_dir() -> PathBuf {
     )
     .unwrap();
     dir
+}
+
+#[test]
+fn each_comparison_gets_a_fixture_directory_no_other_comparison_reads() {
+    // Two calls used to answer with the same path, which is the collision the tier is exposed to:
+    // the reader of one test can meet the writer of another in that one directory.
+    let first = fixture_dir();
+    let second = fixture_dir();
+    assert_ne!(first, second, "two comparisons shared a fixture directory");
+    for dir in [first, second] {
+        let text = std::fs::read_to_string(dir.join("doc.yaml")).expect("the fixture is readable");
+        assert!(
+            text.contains("a comment the round trip must keep"),
+            "{} held a partial fixture: {text:?}",
+            dir.display()
+        );
+    }
 }
 
 fn run(program: &Path, args: &[&str], cwd: &Path) -> (i32, String, String) {
