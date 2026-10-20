@@ -18,7 +18,7 @@ status: new
 YAML 문자열 또는 바이트를 파싱하여 `YamlDocument`로 변환합니다.
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **매개변수:**
@@ -28,6 +28,7 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
 - `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
 - `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **반환값:** 파싱된 YAML를 포함하는 `YamlDocument`
 
@@ -53,7 +54,7 @@ doc = pyrs_yaml.parse(
 YAML 파일을 파싱합니다.
 
 ```python
-parse_file(path: str) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **매개변수:**
@@ -78,8 +79,17 @@ doc = pyrs_yaml.parse_file("config.yaml")
 문자열에서 여러 YAML 문서를 파싱합니다.
 
 ```python
-parse_all_docs(yaml: str) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
 ```
+
+**매개변수:**
+
+- `yaml` — `str` 또는 `bytes` YAML 콘텐츠
+- `resolve_merges` — 파싱 후 병합 키 (`<<: *alias`)를 해석할지 여부 (기본값: `True`)
+- `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
+- `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **반환값:** `YamlDocument` 객체 목록
 
@@ -96,8 +106,16 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML를 파싱하여 네이티브 Python 타입을 반환합니다.
 
 ```python
-safe_load(yaml: str) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
 ```
+
+**매개변수:**
+
+- `yaml` — `str` 또는 `bytes` YAML 콘텐츠
+- `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
+- `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **다음과 동일:** PyYAML의 `yaml.safe_load()`
 
@@ -112,8 +130,16 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 여러 YAML 문서를 파싱합니다.
 
 ```python
-safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
 ```
+
+**매개변수:**
+
+- `yaml` — `str` 또는 `bytes` YAML 콘텐츠
+- `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
+- `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **다음과 동일:** PyYAML의 `yaml.safe_loads()`
 

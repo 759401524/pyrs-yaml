@@ -156,6 +156,14 @@ struct Serializer {
     /// is the only slot in that entry a reader reports a comment from, and only the
     /// block writer knows where it ended.
     block_header_break: Option<usize>,
+    /// Line start of the outermost `&a` / `!tag` header whose gap the value being written starts,
+    /// for the first line of that gap only. A headed container hands it to its first item, and a
+    /// nested first item extends the chain, so a container note that cannot be spelled above its
+    /// own header is written above the outermost one - where the reader's hoist of a first item's
+    /// leading note lands on the next emission (libFuzzer `edit_yaml` crash-2d978c7b). The gap
+    /// travels as an argument through the item writers and this slot is only the hand-off into
+    /// the recursion, so it is written on a headed chain and taken by the container it starts.
+    enclosing_header_start: Option<usize>,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -348,7 +356,7 @@ pub fn item_to_string(
     depth: usize,
 ) -> Result<String, SerializeError> {
     let mut s = Serializer::new(&SerializeOptions::default());
-    s.write_sequence_item(item, indent_width, depth)?;
+    s.write_sequence_item(item, indent_width, depth, None)?;
     Ok(s.output)
 }
 
@@ -366,6 +374,7 @@ impl Serializer {
             pending_tag_insert_at: None,
             pair_line_start: 0,
             block_header_break: None,
+            enclosing_header_start: None,
         }
     }
 
@@ -974,7 +983,7 @@ impl Serializer {
                 }
                 Ok(())
             },
-            |s| {
+            |s, _gap| {
                 let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
                 pairs_vec.sort_by(|a, b| {
                     let ka = match a.0 {
@@ -992,7 +1001,7 @@ impl Serializer {
                 }
                 Ok(())
             },
-            |s| {
+            |s, _gap| {
                 for (key, value) in pairs.iter() {
                     s.write_mapping_pair(key, value, indent_width, depth)?;
                 }
@@ -1044,15 +1053,23 @@ impl Serializer {
             },
             // Sequences never sort their items: the sorted branch is the
             // ordinary block pass (mirrors the pre-refactor behavior).
-            move |s: &mut Self| {
-                for item in items.iter() {
-                    s.write_sequence_item(item, indent_width, depth)?;
+            move |s: &mut Self, gap| {
+                let mut iter = items.iter();
+                if let Some(first) = iter.next() {
+                    s.write_sequence_item(first, indent_width, depth, gap)?;
+                }
+                for item in iter {
+                    s.write_sequence_item(item, indent_width, depth, None)?;
                 }
                 Ok(())
             },
-            |s| {
-                for item in items.iter() {
-                    s.write_sequence_item(item, indent_width, depth)?;
+            |s, gap| {
+                let mut iter = items.iter();
+                if let Some(first) = iter.next() {
+                    s.write_sequence_item(first, indent_width, depth, gap)?;
+                }
+                for item in iter {
+                    s.write_sequence_item(item, indent_width, depth, None)?;
                 }
                 Ok(())
             },
@@ -1067,8 +1084,8 @@ impl Serializer {
         &mut self,
         sk: &ContainerSkeleton<'_>,
         flow: impl FnOnce(&mut Self, usize) -> Result<(), SerializeError>,
-        block_sorted: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
-        block: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
+        block_sorted: impl FnOnce(&mut Self, Option<usize>) -> Result<(), SerializeError>,
+        block: impl FnOnce(&mut Self, Option<usize>) -> Result<(), SerializeError>,
     ) -> Result<(), SerializeError> {
         let ContainerSkeleton {
             empty,
@@ -1080,6 +1097,15 @@ impl Serializer {
             close,
             preamble_note,
         } = *sk;
+        // The outermost `&a` / `!tag` header whose body this node starts, handed down by the
+        // first item of a headed container. A note this container cannot spell above its own
+        // header would land between that header and its body, where the reader files it on the
+        // outer container and the next emission hoists it a line up (libFuzzer `edit_yaml`
+        // crash-2d978c7b). Above the outer header is where that hoist lands, so the first
+        // emission has to write it there. Taken in every context, including a mapping value
+        // that never starts the gap's first line: the target is consumed here and not passed
+        // into a body it cannot describe.
+        let inherited_header = self.enclosing_header_start.take();
         if flow_style {
             // An empty flow token written at a line start gets the same preface as
             // its block counterpart below; mid-line (`key: []`) there is no line to
@@ -1152,10 +1178,19 @@ impl Serializer {
                 wrote_header = true;
             }
 
-            if self.sort_keys {
-                block_sorted(self)?
+            // The first item inherits this container's own gap, so a headed chain extends to
+            // the outermost header instead of stopping at the nearest one: an outer target is
+            // already the gap's start, and this container's own header starts it otherwise. A
+            // value context is not the gap's first line, so it passes nothing to its body.
+            let gap = if in_value_context {
+                None
             } else {
-                block(self)?
+                inherited_header.or(wrote_header.then_some(body_start))
+            };
+            if self.sort_keys {
+                block_sorted(self, gap)?
+            } else {
+                block(self, gap)?
             }
 
             if let Some(c) = meta.comment()
@@ -1187,7 +1222,9 @@ impl Serializer {
                         // crash-08b30707 costs a second round. Above the block's first line is
                         // where the reader files a sequence's own note, which is what
                         // `lift_first_item_notes` already relies on.
-                        let at = self.output[..body_start].rfind('\n').map_or(0, |k| k + 1);
+                        let at = inherited_header.unwrap_or_else(|| {
+                            self.output[..body_start].rfind('\n').map_or(0, |k| k + 1)
+                        });
                         self.note_line_above(at, &c.text);
                     } else if wrote_header {
                         // A note between this mapping's own `&a` / `!tag` line and the body
@@ -1195,8 +1232,10 @@ impl Serializer {
                         // hoists above the header - so writing it above the last pair costs a
                         // round (libFuzzer `edit_yaml` crash-b22d0653: an anchored item whose
                         // `~` pair ended in a tagged empty scalar). Above the header is where
-                        // the reader files it; `body_start` is that header's line start.
-                        self.note_line_above(body_start, &c.text);
+                        // the reader files it; `body_start` is that header's line start. When
+                        // this mapping is the first item of a headed container, the same hoist
+                        // repeats one level up, so the note goes above the outer header.
+                        self.note_line_above(inherited_header.unwrap_or(body_start), &c.text);
                     } else {
                         self.note_line_above_last_pair(&c.text);
                     }
@@ -1219,8 +1258,12 @@ impl Serializer {
                     // case, where the line is the document's tail). Above the line this container's
                     // own block starts on is where the reader files a container's note, so that is
                     // where it goes - and it is the same placement `note_line_above_last_pair`
-                    // measures for a pending tag line.
-                    let at = self.output[..body_start].rfind('\n').map_or(0, |k| k + 1);
+                    // measures for a pending tag line. A headed parent makes that slot its first
+                    // item's leading note, so the note moves above the parent's header instead
+                    // (crash-2d978c7b).
+                    let at = inherited_header.unwrap_or_else(|| {
+                        self.output[..body_start].rfind('\n').map_or(0, |k| k + 1)
+                    });
                     self.note_line_above(at, &c.text);
                 } else {
                     self.write_note_line(indent_width, &c.text);
@@ -1566,6 +1609,7 @@ impl Serializer {
         item: &CustomNode,
         indent_width: usize,
         depth: usize,
+        enclosing_header: Option<usize>,
     ) -> Result<(), SerializeError> {
         // Three note slots that `write_mapping_pair` respects are unreachable from this
         // hand-rolled line, and all three have to be written here:
@@ -1580,6 +1624,9 @@ impl Serializer {
         // Measured once: `is_compact_item` walks every pair, and this is a hot path, so the
         // branch below reuses one answer rather than asking twice.
         let compact = is_compact_item(item);
+        // The first item of a headed container starts the gap's first line, so a note it cannot
+        // keep above its own dash targets the outermost header of the chain. A later item is not
+        // that line and is passed no target.
         self.pair_line_start = self.output.len();
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
@@ -1693,7 +1740,12 @@ impl Serializer {
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
                 } else {
-                    self.note_line_above(dash_line_start, &c.text);
+                    // Above the dash is between a header and the body when this item is the
+                    // first of an anchored sequence, and the reader files a note there as the
+                    // sequence's leading note - the second emission hoists it above the header
+                    // (libFuzzer `edit_yaml` crash-2fc59020). Above the header is that slot,
+                    // and the outermost header of a headed chain is where the hoist ends.
+                    self.note_line_above(enclosing_header.unwrap_or(dash_line_start), &c.text);
                 }
             }
         } else if !Self::is_empty_container(item)
@@ -1716,6 +1768,23 @@ impl Serializer {
             // once the note has come up to the dash line too.
             self.output.push('\n');
             let child_indent = indent_width + self.indent_sequence;
+            // The first item of a headed chain hands the gap on to the container it starts,
+            // whose own first item may extend the chain. Only a block container consumes it;
+            // a scalar with a leading note would leave it for a sibling that does not own it.
+            if let Some(start) = enclosing_header
+                && matches!(
+                    item,
+                    CustomNode::Mapping {
+                        flow_style: false,
+                        ..
+                    } | CustomNode::Sequence {
+                        flow_style: false,
+                        ..
+                    }
+                )
+            {
+                self.enclosing_header_start = Some(start);
+            }
             // As for the mapping value above: the indicator a block scalar on this
             // line carries is relative to the dash, not to the item's own column.
             self.serialize_node_internal(item, child_indent, indent_width, false, depth + 1)?;
@@ -4396,7 +4465,7 @@ mod tests {
             panic!()
         };
         for item in items.iter() {
-            s.write_sequence_item(item, 0, 0).unwrap();
+            s.write_sequence_item(item, 0, 0, None).unwrap();
         }
         assert_yaml_eq!(&full, &s.output);
     }
@@ -4409,7 +4478,7 @@ mod tests {
         let CustomNode::Sequence { items, .. } = &ast else {
             panic!()
         };
-        s.write_sequence_item(&items[0], 0, 0).unwrap();
+        s.write_sequence_item(&items[0], 0, 0, None).unwrap();
         assert_yaml_eq!(&s.output, "- host: a\n"); // P2: dash prefix must survive
     }
 

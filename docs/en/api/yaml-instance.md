@@ -40,6 +40,7 @@ __init__(
 | `schema` | `str \| dict` | `"core"` | YAML schema. One of `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"`, or an inline schema dict (see [YAML Schema Language](reference.md#yaml-schema-language)). |
 | `max_depth` | `int` | `1000` | Maximum nesting depth for parsing. |
 | `allow_duplicate_keys` | `bool` | `False` | Whether to allow duplicate mapping keys. |
+| `honor_version_directive` | `bool` | `False` | Version negotiation for an explicit `%YAML` directive. With `True`, a document declaring `%YAML 1.1` resolves under the 1.1 profile and re-emits the directive; an explicit `schema` still wins. |
 
 **Raises:** `YamlTypeError` if `typ` or `schema` is invalid.
 

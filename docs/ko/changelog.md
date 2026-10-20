@@ -453,7 +453,59 @@ status: new
   패키지의 실제 내용을 따릅니다: PyYAML 없음, ryaml과 yaml_edit 있음. ABI3 행은 실제 하한인
   py3.8+를 적습니다.
 
+- **`safe_dumps_async`를 `pyrs_yaml.__all__`에 공개** — 이 별명은
+  `python/pyrs_yaml/__init__.py`에서 `safe_dumps`와 함께 대입되고 3개 로케일 API 페이지도 이미
+  멤버로 적어 두었지만, 선언된 공개 면에는 async 형제 3개만 올라 있었다. 즉
+  `from pyrs_yaml import safe_dumps_async`는 동작하는데 공개 면은 그 이름이 없다고 말한 셈이다.
+  동작은 변하지 않는다(예전부터 import 가능). `tests/test_api_doc_signatures.py`는 이제 4개 로케일의
+  `reference.md`에서 같은 35개 이름을 이 건에 대한 예외 없이 비교한다.
+
 ### 수정
+
+- **병합은 같은 매핑에 두 번째 null 키를 주지 않는다** — `~`, `null`, 빈 키, 맨 `Null`
+  노드는 모두 null로 해석되고 읽기 쪽은 의도적으로 null 키를 하나의 항목으로 접는다 (그래서
+  `: a` + `: b`가 통과한다). 그런데 병합 쪽 판정은 다른 질문을 했다: 태그 없는 스칼라는 텍스트로,
+  나머지는 노드 전체로 비교했다. 그래서 `<<` 원본이 자기 null 키를 이미 하나 가진 매핑에 집어
+  넣었고, 두 병합 원본이 같은 키를 부를 수도 있었다 — 출력은 같은 층에 `~:`를 두 번 쓰고, 다시
+  읽으면 그 짝은 값과 실려 있던 앵커까지 잃는다. `same_emitted_key`는 읽기 쪽 자기 서술자를
+  묻도록 바뀌었고 병합 집합도 같은 동일성으로 접기 때문에, "먼저 그 키를 준 원본이 이긴다"가
+  null의 모든 표기에 성립하고, 원래부터 같았던 키에만 성립하던 이전과 차이가 난다. 20,000
+  예제 property tier가 찾아냈다 (CI 시드 `c9ef4fd3...`, 하나의 트리에서
+  `prop_mapping_order_preserved`와 `prop_tag_preserved`가 이 하나의 이유로 실패).
+  `a_merge_never_repeats_a_null_key_the_mapping_owns`와
+  `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`에서 재생하는 시드로 고정했다.
+
+- **API 페이지가 스텁이 선언한 매개변수 목록을 적습니다** — `docs/{zh,ja,ko}/api/reference.md`에서
+  `parse_file`, `parse_all_docs`, `safe_load`, `safe_loads`를 한두 개의 매개변수로 적어 두었지만
+  공개 스텁은 다섯·여섯 개를 선언합니다. `%YAML` 버전 협상 깃표 `honor_version_directive`는 사용자
+  문서에 전혀 나타나지 않았고, `reparse()`는 확장 기능이 쓰지 않는 `schema` 기본값을 적고
+  있었습니다. 이제 네 언어가 스텁과 일치하고, 각 매개변수는 담당 페이지에 보강했으며,
+  `tests/test_api_doc_signatures.py`가 양쪽을 `ast`로 비교하므로 짧아진 서명은 독자의 의외가 아니라
+  빨간 실행이 됩니다. 본문 페이지에서 단 한 번도 불리지 않은 유일한 공개 멤버
+  `YamlDocument.flush_source()`도 네 언어에 보강했고, 게이트는 스텁이 선언한 모든 공개 이름이 각
+  언어 페이지에 나타남도 확인합니다.
+
+- **중복 키 접기가 떼 내는 닻 정의는 버려지지 않고 펴 넣습니다** — `: abase: &x 1`에 `use: *x`를
+  잇고 빈 키를 한 줄 더 얹으면 첫 줄과 겹치므로, 접기는 `&x`를 *값 아래*에 둔 항목을 떨어 냅니다.
+  복원 단계는 떨어진 항목 자신의 닻만 받았기 때문에 이름이 정의를 잃고, 출력은 `use: *x` 였습니다 —
+  이 라이브러리 자기 읽기 단계가 거부하는(found unknown anchor) 텍스트이며, 엔진은 결코 만들지
+  않기로 약속했습니다. 이제 접기는 트리를 떠나는 정의를 모두 등록하니 남은 참조가 닻과 함께 펴
+  들어가고, 출력은 다시 읽혀 한 번에 고정점이 됩니다(libFuzzer `edit_yaml` crash-68617eaf).
+  `a_definition_folded_away_from_inside_the_dropped_value_is_still_emitted`, Python 쪽
+  `test_a_folded_away_anchor_definition_still_reaches_the_output`, 새로 만든 닻 그림 말뚝문 검증,
+  다시 실행하는 시드
+
+- **머리표를 가진 항목의 주석은 사슬 가장 바깥 머리표 위에 놓습니다** — 블록 컨테이너가 자신의
+  `&a` / `!tag` 줄 위에 쓸 수 없는 주석을 *가장 가까운* 머리표 위에 올려 왔습니다. 읽는 쪽이 첫
+  항목의 선행 주석을 출력마다 한 단계씩 위로 올리기 때문에 주석이 계속 올라갑니다:
+  `- &a3\n  - &a0 !fuzz2\n    - {"-(.0bb:": v6}  # fuzz 47` 에서 가장 안쪽 항목에 주석을 붙이면
+  첫 출력은 `&a0` 아래에, 두 번째 출력은 `&a3` 아래에 씁니다. 이제 쓰는 쪽이 값이 시작하는 틈의 가장
+  바깥 머리표를 추적해 그 머리표 위에 주석을 쓰므로 첫 출력이 고정점이 됩니다(libFuzzer `edit_yaml`
+  crash-2d978c7b). `a_headed_items_note_settles_above_the_outer_sequences_header`와 재실행한 시드
+  `fuzz/seeds/edit_yaml/former-crash-2d978c7b.seed`가 이를 고정합니다. 머리표 위치는 직렬화기
+  상태가 아니라 항목 작성자에게 넘기는 인자로 바꿨습니다. 상태 방식이 무료가 아니었기 때문입니다:
+  명령어 게이트의 Rust 하네스로 확정된 바닥선에 대해 실측한 결과, 상태 방식은 `serialize_small`에서
+  +0.92%, `serialize_block`에서 +0.75%를 쓰는 반면 인자 방식은 +0.0006%와 +0.19%입니다.
 
 - **앵커가 붙은 항목의 주석은 쪼갤 수 없는 헤더 위에서 안정됩니다** — 시퀀스 항목인 블록 매핑이
   태그만 있는 행(`- a: !o`)으로 블록을 끝낼 때, `set_comment_path`는 그 매핑 자신의 인라인 주석을
@@ -463,6 +515,24 @@ status: new
   헤더 행 위에 놓습니다. 읽기가 주석을 돌려주는 위치이며 첫 출력이 고정점이 됩니다(libFuzzer
   `edit_yaml` crash-b22d0653). `an_anchored_items_note_settles_above_its_header`와 재실행한 시드
   `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed`가 이를 고정합니다.
+
+- **TOML이 거부하는 YAML 부동소수점 표기는 TOML 문법으로 기록됩니다** — Core YAML은 `083e6`을
+  부동소수점으로 해석합니다. 지수 형식은 정수부의 선행 0을 허용하지만 TOML의 `float-int-part`는
+  `dec-int`여서 그런 표기가 없습니다. 쓰기의 통과 판정은 `e` 포함 여부만 보았기에 값이 `083e6`인
+  문서를 내보내면 `lis6 = 083e6`을 써서 TOML 읽기가 자기 쓰기의 텍스트를 거부했습니다(libFuzzer
+  `edit_yaml` crash-71feb9d9). 판정은 이제 부동소수점 문법 전체를 검증한 뒤 통과시키며, TOML이
+  읽을 수 없는 표기는 값에서 렌더링합니다.
+  `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar`와 재실행한 시드
+  `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed`가 이를 고정합니다.
+
+- **컴팩트 항목의 주석은 해당 시퀀스 헤더 위에 안정됩니다** — 줄 끝이 이미 자신의 주석으로 채워진
+  컴팩트 형식 `- key: value` 항목은 그 주석을 대시 위 줄에 씁니다. 시퀀스가 `&a` / `!tag` 헤더도
+  쓴다면 그 줄은 헤더와 본문 사이에 놓이고, 읽기는 그 자리의 주석을 시퀀스의 *선행* 주석으로
+  취급하므로 다음 출력에서 헤더 위로 올라갔습니다. 첫 출력은 `&a0` / `# note` / `- k: v  # note`,
+  두 번째는 `# note` / `&a0` / `- k: v  # note`였습니다. 첫 항목은 이제 헤더의 줄 시작을 기록하고
+  그 주석을 헤더 위에 씁니다. 읽기가 주석을 돌려주는 위치입니다(libFuzzer `edit_yaml`
+  crash-2fc59020). `a_compact_items_note_settles_above_the_sequences_header`와 재실행한 시드
+  `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed`가 이를 고정합니다.
 
 ### [v0.18.1] — 2026-10-17
 

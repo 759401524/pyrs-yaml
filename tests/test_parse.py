@@ -176,6 +176,30 @@ class TestYamlVersionNegotiation:
     def test_the_flag_off_keeps_core_resolution(self):
         assert pyrs_yaml.parse(self.DECLARED).get("flag") == "yes"
 
+    def test_an_explicit_false_is_not_merely_the_default(self):
+        # The stub documents `False` as "ignores a declared version", which is a claim about the
+        # off branch of the negotiation, not about the default. Measured 2026-10-20: the True
+        # branch carried 18 assertions in this file and the False branch carried none.
+        refused = pyrs_yaml.parse(self.DECLARED, honor_version_directive=False)
+        assert not refused.to_yaml().startswith("%YAML")
+        # The claim to pin is the equivalence, not a transcription of the resolved values.
+        assert pyrs_yaml.safe_load(self.DECLARED, honor_version_directive=False) == (pyrs_yaml.safe_load(self.DECLARED))
+
+    def test_reparse_negotiation_is_three_state(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        assert doc.get("flag") is True
+
+        doc.reparse()  # None: keep the document's current negotiation
+        assert doc.get("flag") is True
+
+        doc.reparse(honor_version_directive=False)
+        assert doc.get("flag") == "yes"
+        assert not doc.to_yaml().startswith("%YAML")
+
+        doc.reparse(honor_version_directive=True)
+        assert doc.get("flag") is True
+        assert doc.to_yaml().startswith("%YAML 1.1\n---\n")
+
     def test_the_flag_resolves_a_declared_11_document_as_11(self):
         doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
         assert doc.get("flag") is True

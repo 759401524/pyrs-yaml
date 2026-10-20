@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 736 Rust `#[test]`, 1,801 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 743 Rust `#[test]`, 1,811 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 164 seeds of which 80 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -46,11 +46,15 @@ JSONC, JSON5 and the three pretty variants - and requires that dialect's own rea
 second emission to be the same bytes; a dialect refusing the tree is a pass, because TOML has no
 top-level scalar and strict JSON refuses a non-finite float. The edit verbs stay YAML-only by design -
 `crates/pyrs-toml/src/lib.rs` states it - which is why this is one target asking seven exporters rather
-than seven edit targets. Four windows found four defects: a `set` that replaced a container dropped an
+than seven edit targets. Seven windows found seven defects: a `set` that replaced a container dropped an
 anchor defined *inside* that container (`former-crash-fbd364b3.seed`); a note written on a tag-only
 sequence item settled only on the second round (`former-crash-3dd60cad.seed`); a signed zero reached TOML
-as text the reader spells back differently (`former-crash-917e103b.seed`); and an emptied block sequence
-vetoed a compactness its own emission does not have (`former-crash-a58caa38.seed`). Each is fixed where
+as text the reader spells back differently (`former-crash-917e103b.seed`); an emptied block sequence
+vetoed a compactness its own emission does not have (`former-crash-a58caa38.seed`); a Core YAML float
+spelling with a leading-zero integer part (`083e6`) reached TOML as a literal its reader refuses
+(`former-crash-71feb9d9.seed`); a note on an anchored item whose block ended in a tag-only line settled
+only on the second round (`former-crash-b22d0653.seed`); and a compact sequence item's own note under an
+anchored sequence's header settled only on the second round (`former-crash-2fc59020.seed`). Each is fixed where
 it happens and pinned by a named Rust test. The same two questions went into `json_roundtrip` for its
 three pretty spellings, and that target's window found the family's fifth defect on the *compact* `json`
 claim - a string of 119 digits is a string to the resolver but a number to JSON's grammar, so it went
@@ -503,7 +507,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (80 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (84 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

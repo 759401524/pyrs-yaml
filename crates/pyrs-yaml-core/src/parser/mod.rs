@@ -31,7 +31,10 @@ use yaml::{
 ///
 /// The yaml-test-suite allows duplicate null keys (e.g. `: a\n: b`, see 2JQS),
 /// so duplicate-key detection must not reject them.
-fn is_null_key(key: &CustomNode) -> bool {
+///
+/// Merge expansion asks the same question (`yaml::merge::same_emitted_key`): a
+/// mapping holds one null key, so a merge must not contribute a second spelling of it.
+pub(crate) fn is_null_key(key: &CustomNode) -> bool {
     match key {
         CustomNode::Null { meta, .. } if meta.tag().is_none() => true,
         CustomNode::Scalar {
@@ -84,6 +87,33 @@ fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNo
     }
     if !replacements.is_empty() {
         inline_aliases(root, &replacements);
+    }
+}
+
+/// Every anchored node in `node`'s subtree with the name it defines, keys included.
+///
+/// The duplicate-key fold holds these rather than only the dropped entry's own anchor: a
+/// definition can sit *inside* the subtree that leaves the tree (`: abase: &x 1` beside
+/// `use: *x`), and YAML resolves an alias against any definition in the document. Registering
+/// only the outer node left such a name undefined while its uses survived, so the writer emitted
+/// text this library's own reader refused.
+fn collect_anchored_nodes(node: &CustomNode, out: &mut Vec<(String, CustomNode)>) {
+    if let Some(name) = node.anchor() {
+        out.push((name.to_string(), node.clone()));
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                collect_anchored_nodes(key, out);
+                collect_anchored_nodes(value, out);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                collect_anchored_nodes(item, out);
+            }
+        }
+        CustomNode::Scalar { .. } | CustomNode::Null { .. } | CustomNode::Alias { .. } => {}
     }
 }
 
@@ -1067,15 +1097,12 @@ impl<'a> AstReceiver<'a> {
                             {
                                 for carried in [dropped_key, dropped_value] {
                                     orphans.extend(carried.leading_comments().iter().cloned());
-                                    if let Some(name) = carried.anchor() {
-                                        // The anchor's definition leaves the tree with this
-                                        // entry, so hold the node: an alias that still names it
-                                        // gets inlined at `finish_document`. Notes alone were
-                                        // re-homed here; an anchor was silently dropped, and the
-                                        // loss only shows as unparseable output, not as drift.
-                                        self.orphaned_anchors
-                                            .push((name.to_string(), carried.clone()));
-                                    }
+                                    // Definitions leave the tree with this entry at any depth,
+                                    // so hold every one: an alias that still names them gets
+                                    // inlined at `finish_document`. Notes alone were re-homed
+                                    // here; an anchor was silently dropped, and the loss only
+                                    // shows as text our own reader refuses.
+                                    collect_anchored_nodes(&carried, &mut self.orphaned_anchors);
                                     if let Some(inline) =
                                         carried.comment().filter(|c| !c.standalone)
                                     {

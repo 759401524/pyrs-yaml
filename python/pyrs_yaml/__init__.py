@@ -489,6 +489,7 @@ __all__ = [
     "safe_dump",
     "safe_dump_async",
     "safe_dumps",
+    "safe_dumps_async",
     "safe_load",
     "safe_load_async",
     "safe_loads",

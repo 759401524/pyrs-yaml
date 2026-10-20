@@ -40,6 +40,7 @@ __init__(
 | `schema` | `str \| dict` | `"core"` | YAML 스키마입니다. `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"` 중 하나, 또는 인라인 스키마 dict입니다 ([YAML 스키마 언어](reference.md#yaml-schema-language) 참조). |
 | `max_depth` | `int` | `1000` | 파싱을 위한 최대 중첩 깊이입니다. |
 | `allow_duplicate_keys` | `bool` | `False` | 중복 매핑 키를 허용할지 여부입니다. |
+| `honor_version_directive` | `bool` | `False` | 명시된 `%YAML` 지시문의 버전 협상. `True`이면 `%YAML 1.1`을 선언한 문서를 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 우선합니다. |
 
 **발생:** `typ` 또는 `schema`가 유효하지 않으면 `YamlTypeError`가 발생합니다.
 
