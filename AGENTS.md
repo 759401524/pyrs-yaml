@@ -74,11 +74,14 @@
   test another branch's binary — which has now produced three misleading results in one session (a JSON5 test
   failing against a pre-#312 build, a schema test failing against a pre-#327 build, a passing run that had
   proved nothing). Rebuild after moving the working copy. That obligation is a gate now:
-  `tests/test_extension_freshness.py` compares the loaded extension against every file compiled into it (each
-  crate's `src` tree, the Cargo manifests) and fails by naming them, so a stale binary costs a red run rather
-  than a wrong conclusion. Modules a crate root declares under `#[cfg(test)]` are excluded — derived from those
-  declarations, never a hand-written list — because editing a Rust property test and re-running Python needs no
-  rebuild, and an extension installed outside the working copy is skipped rather than compared. When
+  `tests/test_extension_freshness.py` compares the loaded extension against every file compiled into it — the
+  crates the binding reaches transitively through its `path = "..."` dependencies, their `src` trees and
+  manifests — and fails by naming them, so a stale binary costs a red run rather than a wrong conclusion.
+  The crate set is derived, not listed: the standalone `pyq` crate is linked by nothing in the binding, so
+  counting it asked every CLI edit for a rebuild that cannot change the loaded module. Modules a crate root
+  declares under `#[cfg(test)]` are excluded — derived from those declarations, never a hand-written list —
+  because editing a Rust property test and re-running Python needs no rebuild, and an extension installed
+  outside the working copy is skipped rather than compared. When
   `maturin develop` cannot install its dependency
   groups (a PyPI outage), `cargo build --release -p pyrs-yaml` and copying `target/release/pyrs_yaml.dll` over
   the `.pyd` produces the same binary without touching the network; note it is a *build* substitute, not a
