@@ -12,8 +12,9 @@
 //! evidence of mikefarah `yq` - the PyPI one is a jq wrapper with other semantics. So
 //! each candidate's version banner is checked first, and `PYQ_DIALECT_YQ` /
 //! `PYQ_DIALECT_JQ` bind a reference explicitly: a binding that is missing or answers
-//! to another tool fails the leg instead of skipping it. Nothing in CI binds one yet,
-//! which is registered as `dialect-tier:reference-unbound` in `.ci/quality-holes.json`.
+//! to another tool fails the leg instead of skipping it. `ci.yml`'s `rust-lint` job
+//! installs both pinned release binaries and binds them, so the merge verdict is this
+//! comparison running, not this comparison skipping.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

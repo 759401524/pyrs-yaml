@@ -230,9 +230,30 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --all --all-targets -- -D warnings
 
+      # The dialect tier compares `pyq` against the real `jq` and mikefarah `yq` and
+      # skips when the host has neither, which made the whole claim host-dependent:
+      # a green run said nothing about whether the comparison ever ran. These are the
+      # pinned release binaries the tables were measured against on 2026-10-20
+      # (`v4.54.1` and `jq-1.8.2`, linux amd64); the checksums are what stop a silent
+      # asset swap from replacing the oracle with something else.
+      - name: Install the dialect references
+        run: |
+          install -d "$RUNNER_TEMP/refs"
+          curl -fsSLo "$RUNNER_TEMP/refs/yq" \
+            https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64
+          curl -fsSLo "$RUNNER_TEMP/refs/jq" \
+            https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+          echo "8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f  $RUNNER_TEMP/refs/yq" | sha256sum -c -
+          echo "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f  $RUNNER_TEMP/refs/jq" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/refs/yq" "$RUNNER_TEMP/refs/jq"
+          "$RUNNER_TEMP/refs/yq" --version
+          "$RUNNER_TEMP/refs/jq" --version
+
       - name: Run cargo tests
         env:
           PYO3_PYTHON: python
+          PYQ_DIALECT_YQ: ${{ runner.temp }}/refs/yq
+          PYQ_DIALECT_JQ: ${{ runner.temp }}/refs/jq
         run: cargo test --workspace --locked
 
   # The property tier above runs at proptest's default 256 cases, which is a sampling budget
