@@ -390,6 +390,11 @@ status: new
 
 ### 修复
 
+- **权威列为空只是散文，不是度量** - `QUALITY_MATRIX.md` 写着 schema 这层没有外来的读者问它的规则，
+  可 `scripts/quality_matrix.py` 对空权威列派生不出任何洞，于是 `.ci/quality-holes.json` 一直停在
+  `holes: []`，也就能被读成「没有短板」。探针现在会对它发出 `authority-tier:schema-validation`，
+  登记表连同能关掉它的语料一起写下来，对照测试用手工构造的行跑两个方向：为空就出标识，填上就不出。
+
 - **只改 CLI 也会要求一次改不动扩展的重建** - 新鲜度门禁在判断「哪些文件被编进了
   已加载模块」时枚举了 `crates/` 下的每个目录，于是独立的 `pyq` crate 被算成已发布
   的一部分，凡只改它的提交都要付一次 `maturin develop` 加一个红。crate 集合现在从

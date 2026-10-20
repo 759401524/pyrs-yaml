@@ -494,6 +494,20 @@ def test_declared_hole_kinds_are_kinds_the_probe_can_emit(measured, registry):
     )
 
 
+def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not(measured):
+    """Both directions, on rows the probe need not reach through the repository to be shown.
+
+    The column used to be prose: the table said `no` and the registry stayed empty, so `holes: []`
+    could be quoted as "no short board" while the file itself named one.
+    """
+    matrix = _load_module()
+    assert matrix.authority_gaps({"schema validation": {"authority": []}, "YAML": {"authority": ["x"]}}) == [
+        "schema-validation"
+    ]
+    assert matrix.authority_gaps({"schema validation": {"authority": ["test_schema_suite.py"]}}) == []
+    assert ["authority-tier", "schema-validation"] in [hole[:2] for hole in measured["holes"]], measured["holes"]
+
+
 DECLARED_HANDLER = """\
 [project]
 docs_dir = "docs/en"

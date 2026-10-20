@@ -12,5 +12,12 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": []
+ "holes": [
+  {
+   "id": "authority-tier:schema-validation",
+   "opened": "2026-10-20",
+   "exit": "a tests/test_*_suite.py or tests/test_*_spec_table.py asks this surface of something the repository does not own - in practice, the JSON Schema evaluation designed in PR #517 replayed against an official corpus whose source and version are recorded with the result",
+   "why": "the schema language validate() judges was invented here, so the unit, property and fuzz tiers all ask the engine what it believes, and parity has no second implementation to disagree with"
+  }
+ ]
 }

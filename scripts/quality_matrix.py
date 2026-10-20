@@ -297,6 +297,17 @@ def format_matrix() -> dict:
     return rows
 
 
+def authority_gaps(rows: dict) -> list[str]:
+    """The format labels whose external-authority column is empty, slugified for a hole id.
+
+    An empty column is a boundary the other tiers cannot cross by construction: unit and property
+    tiers ask this engine what it believes, and parity needs a second implementation to disagree
+    with. Reading it off `format_matrix()` keeps `holes: []` from being quoted as "no short board"
+    while a cell in the same file quietly reads `no`.
+    """
+    return sorted(label.lower().replace(" ", "-") for label, row in rows.items() if not row["authority"])
+
+
 def check_scripts() -> list[str]:
     return sorted(p.name for p in (REPO / "scripts").glob("check_*.py"))
 
@@ -713,6 +724,19 @@ def measure() -> dict:
                     "this engine has a writer, and a parse-only target cannot reach the round-trip invariant",
                 ]
             )
+
+    # The authority column is a boundary, not a score: parity answers "do we agree" and cannot find a
+    # rule that both sides never implemented. Emitting a hole for an empty column is what keeps the
+    # registry's meaning - `holes: []` says nothing is unmeasured, not that nothing is unjudged.
+    for label in authority_gaps(formats):
+        holes.append(
+            [
+                "authority-tier",
+                label,
+                "no test asks this surface's rules of something this repository does not own, so a grammar "
+                "invented here and implemented here has nobody left to contradict it",
+            ]
+        )
 
     if "prek run --all-files" not in all_commands:
         holes.append(["hook-tier-unwired", "prek", "no CI job runs the hook set over the tree"])
