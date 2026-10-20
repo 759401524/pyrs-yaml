@@ -9,6 +9,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The test matrix stopped waiting for a wheel it never installs** — `build` compiled two artifacts
+  in one job: the abi3 wheel the suite legs install, and the `--find-interpreter` release recipe the
+  compliance report reads. Measured on two pull-request runs of 44 jobs each: the abi3 wheel was
+  uploaded at +134 s (Windows), +135 s (macOS) and +151 s (ubuntu) in the first and at +172 s, +192
+  s and +167 s on the same three in the second, while the release build behind it cost 45–346 s more
+  per operating system, so `build` closed at +485 s and +477 s and every one of the 24 legs of
+  `test` and `wheel-smoke` began 355–471 s after the only artifact it reads already existed. The
+  release recipe is a job of its own now, `release-wheels`, and `tests/test_ci_artifact_wiring.py`
+  pins the two producers apart by reading each job's own `upload-artifact` and `download-artifact`
+  inputs: a job that uploads both families, or a leg that waits on a producer whose artifact it
+  never installs, is named by the run. Against the previous `ci.yml` that check reports the merged
+  job, so the shape it refuses is the one that shipped. Makespan is projected from 856 s and 846 s
+  to roughly 500 s — the fan-in still waits on the slowest release build — and this pull request's
+  own run is the measurement. Runner minutes are unchanged, 100.2 and 93.1: no work was removed,
+  only the queue in front of it.
+
 - **Every performance number on the site now comes from one committed measurement** — the
   wall-clock tables on the four locales' performance and feature pages were transcribed by hand;
   the 2026-08-17 figures had no script or record behind them, and the same calls now measure
