@@ -171,6 +171,28 @@ def test_run_commands_captures_folded_and_inline_steps(matrix):
     assert "ir_gate.py" in joined
 
 
+def test_dialect_binding_probe_reads_a_step_not_a_sentence(matrix, tmp_path):
+    """A workflow that only mentions the binding has not bound anything.
+
+    The pyq dialect tier skips when the host carries neither jq nor mikefarah yq, and the
+    skip is captured by cargo, so the CI premise has to be read off the tree: a leg that
+    sets `PYQ_DIALECT_YQ` compares, one that does not says nothing. Matching the whole
+    file would have called a comment a gate - the same trap `run_commands` was rewritten
+    for.
+    """
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    leg = workflows / "ci.yml"
+    leg.write_text("# someday we will set PYQ_DIALECT_YQ here\njobs: {}\n", encoding="utf-8")
+    assert not matrix.dialect_reference_bound(tmp_path), "a comment is not a binding"
+    leg.write_text(
+        "jobs:\n  a:\n    steps:\n      - env:\n          PYQ_DIALECT_YQ: /usr/local/bin/yq\n",
+        encoding="utf-8",
+    )
+    assert matrix.dialect_reference_bound(tmp_path), "an env step does bind one"
+    assert not matrix.dialect_reference_bound(tmp_path / "nowhere"), "a missing tree reads unbound"
+
+
 def test_engine_detection_catches_the_prefixed_writer_names(matrix):
     """`to_json_text` is a writer; matching `to_json\\b` missed it."""
     for name in ("to_json_text", "to_json5_text_pretty", "to_toml", "dump", "serialize"):

@@ -686,6 +686,31 @@ def format_verdict_lines(rows: dict) -> list:
     return lines
 
 
+def _reference_binding_lines(text: str) -> list[str]:
+    """Lines that bind a reference, comment lines excluded.
+
+    Reachability has to mean "a step sets it": the first draft of this probe matched the
+    whole file, so a workflow that only *talks about* binding a reference read as bound.
+    """
+    return [
+        line.strip() for line in text.splitlines() if "PYQ_DIALECT_YQ" in line and not line.lstrip().startswith("#")
+    ]
+
+
+def dialect_reference_bound(root: Path | None = None) -> bool:
+    """Whether a CI leg binds the reference binaries the pyq dialect tier compares against.
+
+    That tier skips when the host has neither `jq` nor mikefarah `yq`, and a skip is
+    invisible inside captured `cargo test` output, so what CI judges depends on the runner
+    image. The test reads an explicit binding, which makes the premise measurable from the
+    tree: a leg that sets it is a leg that compares.
+    """
+    workflows = (root or REPO) / ".github" / "workflows"
+    if not workflows.is_dir():
+        return False
+    return any(_reference_binding_lines(read(path)) for path in sorted(workflows.glob("*.yml")))
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -769,6 +794,17 @@ def measure() -> dict:
                 "conditional-assert",
                 "a property that asserts only inside `if let Some(_) = try_*(..)` states nothing about "
                 "the samples its helper filtered away, so the tier's coverage is what survives the filter",
+            ]
+        )
+
+    if not dialect_reference_bound():
+        holes.append(
+            [
+                "dialect-tier",
+                "reference-unbound",
+                "the pyq dialect tier compares against jq and mikefarah yq only on a host that "
+                "carries them, and no CI leg binds a reference, so where the tools are missing "
+                "the tier passes while judging nothing",
             ]
         )
 
