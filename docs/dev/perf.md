@@ -169,11 +169,16 @@ licenses one hypothesis - a cheaper node-key hash removes work from every reader
 arbiter stays `scripts/ir_gate.py` on the enforcing image, with the invariant tests that already pin
 key equality and hash/`Eq` consistency carrying the correctness half.
 
-Reproducing it where the gate itself cannot run: `scripts/ir_gate.py` also builds the binding
-harness, and this box's WSL has no `libpython3.12` to link it, so measure the engine harness alone -
-`CARGO_PROFILE_RELEASE_STRIP=false cargo bench -p pyrs-yaml-core --bench ir_gate --features ir-gate
---no-run` (the profile's `strip = true` is what leaves `callgrind_annotate` reporting `???:0x…`),
-then `valgrind --tool=callgrind <that binary> from_json_medium`.
+Reproducing it one harness at a time: `scripts/ir_gate.py` also builds the binding harness, and
+that binary links CPython. On this box's WSL the shared object exists but sits off the linker's
+default path, so `LIBRARY_PATH=/usr/lib/python3.12/config-3.12-x86_64-linux-gnu` is what lets the
+full gate run there — with `RUSTUP_TOOLCHAIN=1.97.1`, or the reading describes a different build.
+The channels stay separate whatever a host can link: a `serialize_*` or `parse_*` number is the
+engine harness's question, and it is answered with no interpreter in the process by
+`CARGO_PROFILE_RELEASE_STRIP=false cargo bench -p pyrs-yaml-core
+--bench ir_gate --features ir-gate --no-run` (the profile's `strip = true` is what leaves
+`callgrind_annotate` reporting `???:0x…`), then
+`valgrind --tool=callgrind <that binary> from_json_medium`.
 
 ## The string path was not allocating twice (2026-10-13)
 

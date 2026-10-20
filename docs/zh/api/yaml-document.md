@@ -133,18 +133,29 @@ validate(schema: str | dict[str, Any]) -> None
 
 **引发:** `YamlValidateError` — 文档不符合 schema
 
+### `flush_source()`
+
+```python
+flush_source() -> None
+```
+
+在发生过编辑之后，把 AST 惰性重新序列化进 `source`，使 `source` 反映当前语法树，而不必每次改动都强制全量导出。
+
 ### `reparse()`
 
 就地重新解析存储的源文本，允许更改模式或合并行为。
 
 ```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
+reparse(resolve_merges: bool = True, schema: str | None = None, honor_version_directive: bool | None = None) -> None
 ```
 
 **参数:**
 
 - `resolve_merges` — 是否解析 `<<: *alias` 合并键（默认：`True`）
-- `schema` — 类型解析模式：`"core"`、`"json"`、`"failsafe"` 或 `"yaml1.1"`（默认：`"core"`）
+- `schema` — 类型解析模式：`"core"`、`"json"`、`"failsafe"` 或 `"yaml1.1"`。传 `None` 则沿用文档读入时
+  所用的模式。
+- `honor_version_directive` — 对声明的 `%YAML` 做版本协商。取 `True` 时，声明 `%YAML 1.1` 的文档按 1.1
+  档位解析，并重新发射该指令；取 `False` 时忽略声明，保持所选模式。取 `None` 时沿用文档当前设置。
 
 **引发:**
 

@@ -18,7 +18,7 @@ status: new
 将 YAML 字符串或字节解析为 `YamlDocument`。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **参数:**
@@ -28,6 +28,7 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
 - `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** 包含解析后 YAML 的 `YamlDocument`
 
@@ -53,7 +54,7 @@ doc = pyrs_yaml.parse(
 解析 YAML 文件。
 
 ```python
-parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
 ```
 
 **参数:**
@@ -62,6 +63,7 @@ parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 - `schema` — Schema 名称或内联 dict（默认：`"core"`）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
 - `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** `YamlDocument`
 
@@ -81,8 +83,17 @@ doc = pyrs_yaml.parse_file("config.yaml")
 从字符串解析多个 YAML 文档。
 
 ```python
-parse_all_docs(yaml: str) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
 ```
+
+**参数:**
+
+- `yaml` — `str` 或 `bytes` 的 YAML 内容
+- `resolve_merges` — 解析后是否解析合并键 (`<<: *alias`)（默认：`True`）
+- `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
+- `max_depth` — 最大嵌套深度（默认：`1000`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** `YamlDocument` 对象列表
 
@@ -99,8 +110,16 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 解析 YAML 并返回原生 Python 类型。
 
 ```python
-safe_load(yaml: str) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
 ```
+
+**参数:**
+
+- `yaml` — `str` 或 `bytes` 的 YAML 内容
+- `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
+- `max_depth` — 最大嵌套深度（默认：`1000`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **等价于:** PyYAML 的 `yaml.safe_load()`
 
@@ -115,8 +134,16 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 解析多个 YAML 文档。
 
 ```python
-safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
 ```
+
+**参数:**
+
+- `yaml` — `str` 或 `bytes` 的 YAML 内容
+- `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
+- `max_depth` — 最大嵌套深度（默认：`1000`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **等价于:** PyYAML 的 `yaml.safe_loads()`
 

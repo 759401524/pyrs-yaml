@@ -196,18 +196,30 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.source())  # "key: value"
 ```
 
+#### `flush_source()`
+
+```python
+flush_source() -> None
+```
+
+Lazily re-serializes the AST into `source` when edits have occurred, so `source` reflects the current tree without a full dump after every mutation.
+
 #### `reparse()`
 
 Re-parse the stored source text in place, allowing schema or merge behavior changes.
 
 ```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
+reparse(resolve_merges: bool = True, schema: str | None = None, honor_version_directive: bool | None = None) -> None
 ```
 
 **Parameters:**
 
 - `resolve_merges` — Whether to resolve `<<: *alias` merge keys (default: `True`)
-- `schema` — Type resolution schema: `"core"`, `"json"`, `"failsafe"`, or `"yaml1.1"` (default: `"core"`)
+- `schema` — Type resolution schema: `"core"`, `"json"`, `"failsafe"`, or `"yaml1.1"`. `None`
+  keeps the schema the document was read with.
+- `honor_version_directive` — Version negotiation for a declared `%YAML`. `True` resolves a
+  document declaring `%YAML 1.1` under the 1.1 profile and re-emits the directive; `False` ignores
+  the declaration and keeps the selected schema. `None` keeps the document's current setting.
 
 **Raises:**
 

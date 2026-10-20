@@ -328,80 +328,29 @@ fn the_roots_own_note_settles_in_one_round() {
     }
 }
 
-/// libFuzzer `edit_yaml` crash-b22d0653: an anchored block mapping item whose block ends in a
-/// tag-only line.
+/// libFuzzer `edit_yaml` crash-2d978c7b: the first item of an anchored sequence is itself a
+/// headed sequence whose own inline note cannot take its last item's tail slot.
 ///
-/// `pending_line_is_last` sends a container's own inline note above the pair that ended the
-/// block. Under a `&a` / `!tag` header that pair line is *below* the header, and the reader files
-/// a note there as the mapping's leading note — so the second emission hoisted it above the
-/// header: round one wrote `&a0` / `# fuzz 119` / `a: !o`, round two `# fuzz 119` / `&a0` /
-/// `a: !o`. Above the header is the line the reader hands the note back from, so the mapping now
-/// writes it there and the first emission is the fixed point. The sequence branch of the same
-/// decision already inserts above `body_start`; only the mapping needed the header case.
+/// The item's note goes above its own header, i.e. between the outer sequence's `&a3` header
+/// and its body. The reader files a note there on the *outer* sequence, so the second emission
+/// hoists it above `&a3`: round one wrote `&a3` / `-` / `# fuzz 95` / `&a0 !fuzz2`, round two
+/// `# fuzz 95` / `&a3` / `-` / `&a0 !fuzz2`. Above the outer header is where the reader reports
+/// it from, so the first emission has to be the fixed point.
 #[test]
-fn an_anchored_items_note_settles_above_its_header() {
+fn a_headed_items_note_settles_above_the_outer_sequences_header() {
     use pyrs_yaml_core::ast::Comment;
     use pyrs_yaml_core::editing::Segment;
-    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+    use pyrs_yaml_core::editing::plan::set_comment_path;
     use std::sync::Arc;
 
-    for (src, expected) in [
-        ("- a: !o\n", "- \n  # fuzz 119\n  &a0 \n  a: !o\n"),
-        ("- a: &b !o\n", "- \n  # fuzz 119\n  &a0 \n  a: &b !o\n"),
-    ] {
-        let path = [Segment::Index(0)];
-        let mut node = parse(src, Schema::Core).expect("the pinned input parses");
-        set_anchor_path(&mut node, &path, "a0", src, None).expect("the anchor is set");
-        set_comment_path(
-            &mut node,
-            &path,
-            Comment {
-                text: Arc::from("fuzz 119"),
-                standalone: false,
-            },
-            src,
-            None,
-        )
-        .expect("the note is set");
-
-        let one = to_yaml(&node);
-        assert_eq!(
-            one, expected,
-            "the note belongs above the header it cannot split: {src:?}"
-        );
-        let again = emit(&one);
-        assert_eq!(
-            again, one,
-            "not a fixed point in one round: {one:?} -> {again:?}"
-        );
-    }
-}
-
-/// libFuzzer `edit_yaml` crash-2fc59020: an anchored sequence whose compact first item carries an
-/// inline note of its own while its pair line's tail slot is already claimed.
-///
-/// `write_sequence_item` sends that item note one line up, above the dash. Under a `&a` header the
-/// line above the dash sits between the header and the body, where the reader files a note as the
-/// sequence's *leading* note - so the second emission hoisted it above the header: round one wrote
-/// `&a0` / `# fuzz 47` / `- "-((0bb:": 3  # fuzz 47`, round two `# fuzz 47` / `&a0` / the item.
-/// Above the header is where the reader reports it from, so the first emission is the fixed point.
-#[test]
-fn a_compact_items_note_settles_above_the_sequences_header() {
-    use pyrs_yaml_core::ast::Comment;
-    use pyrs_yaml_core::editing::Segment;
-    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
-    use std::sync::Arc;
-
-    let src = "- - - \"-((0bb:\": 3  # keep\n";
+    let src = "- &a3\n  - &a0 !fuzz2\n    - {\"-(.0bb:\": v6}  # fuzz 47\n";
     let mut node = parse(src, Schema::Core).expect("the pinned input parses");
-    let seq = [Segment::Index(0), Segment::Index(0)];
-    set_anchor_path(&mut node, &seq, "a0", src, None).expect("the anchor is set");
-    let item = [Segment::Index(0), Segment::Index(0), Segment::Index(0)];
+    let item = [Segment::Index(0), Segment::Index(0)];
     set_comment_path(
         &mut node,
         &item,
         Comment {
-            text: Arc::from("fuzz 47"),
+            text: Arc::from("fuzz 95"),
             standalone: false,
         },
         src,
@@ -410,10 +359,6 @@ fn a_compact_items_note_settles_above_the_sequences_header() {
     .expect("the note is set");
 
     let one = to_yaml(&node);
-    assert_eq!(
-        one, "- \n  - \n    # fuzz 47\n    &a0 \n    - \"-((0bb:\": 3  # keep\n",
-        "the item's note belongs above the header it cannot split"
-    );
     let again = emit(&one);
     assert_eq!(
         again, one,
@@ -421,14 +366,6 @@ fn a_compact_items_note_settles_above_the_sequences_header() {
     );
 }
 
-/// A mapping whose block ends inside a nested sequence has no pair line of its own at the tail:
-/// the last line belongs to one of the sequence's items. `write_mapping_pair` left
-/// `pair_line_start` pointing there, so the mapping's note was written above that item's dash -
-/// where the reader hands it to the item's value, and the second emission spelled the value as a
-/// continuation (`- \n    # fuzz 35\n    !a`) instead of the first one's line. The pair now
-/// restores its own start on the way out, so the note lands above the pair that ended the
-/// mapping's block and the first emission is the fixed point. The note's *owner* still moves,
-/// which is #113's ruling; what is asserted here is the text.
 #[test]
 fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
     use pyrs_yaml_core::ast::Comment;

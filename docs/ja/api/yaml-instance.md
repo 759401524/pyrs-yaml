@@ -40,6 +40,7 @@ __init__(
 | `schema` | `str \| dict` | `"core"` | YAML スキーマ。`"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`、またはインラインスキーマ dict（[YAML スキーマ言語](reference.md#yaml-schema-language) 参照）。 |
 | `max_depth` | `int` | `1000` | パース時の最大ネスト深さ。 |
 | `allow_duplicate_keys` | `bool` | `False` | 重複するマッピングキーを許可するかどうか。 |
+| `honor_version_directive` | `bool` | `False` | 明示された `%YAML` ディレクティブのバージョン交渉。`True` なら `%YAML 1.1` 宣言文書は 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が優先します。 |
 
 **Raises:** `YamlTypeError` — `typ` または `schema` が無効な場合。
 
