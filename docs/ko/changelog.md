@@ -464,6 +464,15 @@ status: new
   `edit_yaml` crash-b22d0653). `an_anchored_items_note_settles_above_its_header`와 재실행한 시드
   `fuzz/seeds/edit_yaml/former-crash-b22d0653.seed`가 이를 고정합니다.
 
+- **TOML이 거부하는 YAML 부동소수점 표기는 TOML 문법으로 기록됩니다** — Core YAML은 `083e6`을
+  부동소수점으로 해석합니다. 지수 형식은 정수부의 선행 0을 허용하지만 TOML의 `float-int-part`는
+  `dec-int`여서 그런 표기가 없습니다. 쓰기의 통과 판정은 `e` 포함 여부만 보았기에 값이 `083e6`인
+  문서를 내보내면 `lis6 = 083e6`을 써서 TOML 읽기가 자기 쓰기의 텍스트를 거부했습니다(libFuzzer
+  `edit_yaml` crash-71feb9d9). 판정은 이제 부동소수점 문법 전체를 검증한 뒤 통과시키며, TOML이
+  읽을 수 없는 표기는 값에서 렌더링합니다.
+  `a_yaml_float_spelling_toml_refuses_is_written_in_toml_grammar`와 재실행한 시드
+  `fuzz/seeds/edit_yaml/former-crash-71feb9d9.seed`가 이를 고정합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

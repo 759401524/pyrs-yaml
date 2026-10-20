@@ -670,19 +670,58 @@ fn digits_with_underscores(bytes: &[u8], is_digit: fn(u8) -> bool) -> bool {
 }
 
 /// Whether the plain scalar text is a legal TOML float spelling that we
-/// want to preserve verbatim (exponent form or explicit fraction whose
-/// canonical `f64` rendering drifts from source). `.inf`/`nan` keyword
-/// forms are intentionally excluded because the writer canonicalises
-/// them to TOML's `inf`/`nan` through `fmt_toml_float`.
+/// want to preserve verbatim: an exponent form, whose canonical `f64`
+/// rendering can drift from source. The whole grammar is checked rather than
+/// just the presence of an exponent: the hub can hand this writer a spelling
+/// YAML accepts and TOML does not. Core YAML floats allow leading zeros in
+/// the integer part (`083e6`), while TOML's `float-int-part` is a `dec-int`;
+/// passing it through wrote text the TOML reader rejects (libFuzzer
+/// `edit_yaml` crash-71feb9d9). Underscore forms, `.inf`/`nan` keywords and
+/// fraction-only spellings fall through to `fmt_toml_float`.
 fn is_toml_float_literal(text: &str) -> bool {
-    // Any `e`/`E` exponent form is worth preserving.
-    if text.contains('e') || text.contains('E') {
-        // Reject underscore-separated forms and non-numeric shapes;
-        // those came from elsewhere (YAML loader, hand-built) and must
-        // fall through to canonical rendering.
-        return !text.contains('_');
+    if text.contains('_') {
+        return false;
     }
-    false
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    if matches!(bytes.first(), Some(b'+' | b'-')) {
+        i += 1;
+    }
+    let int_start = i;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    let int = &bytes[int_start..i];
+    // TOML has no leading zeros in `float-int-part` unless it is exactly `0`.
+    if int.is_empty() || (int.len() > 1 && int[0] == b'0') {
+        return false;
+    }
+    if bytes.get(i) == Some(&b'.') {
+        i += 1;
+        let frac_start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == frac_start {
+            return false;
+        }
+    }
+    if !matches!(bytes.get(i), Some(b'e' | b'E')) {
+        // A fraction-only spelling would return from the hub as the
+        // canonical rendering (the TOML reader keeps a float's source text
+        // only for exponent forms), so the first emission is not the fixed
+        // point and the export does not settle.
+        return false;
+    }
+    i += 1;
+    if matches!(bytes.get(i), Some(b'+' | b'-')) {
+        i += 1;
+    }
+    let exp_start = i;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    i > exp_start && i == bytes.len()
 }
 
 // Silence "unused import" for ParseError under non-test builds.
