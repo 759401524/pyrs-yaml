@@ -153,11 +153,13 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | `yq -i/--inplace` | ファイルをその場で更新 |
 | `yq -N/--no-doc` | ストリームを `---` 区切りなしで出力（yq では既定で有効） |
 | `-o json\|yaml`、`-p json\|yaml\|toml\|ini` | 出力・入力形式 |
+| `-f PROG`、`--from-file F` | ファイルから式を読み、通常の式と同じく判別 |
 
 実物と同じ文書を返せないものは、すべて**名前を挙げて拒否**し、終了コード 2 で stdout は空です。
-黙って無視することはありません。該当するのは jq の `--arg`/`--argjson`、`-s`、`-c`、`-S`、
+黙って無視することはありません。拒否は少なくとも jq の `--arg`/`--argjson`、`-s`、`-c`、`-S`、
 `--stream` と jq モードでのすべての編集式（pyq は YAML を書き jq は JSON を書く）、yq の `-n`、
-`-e`、`-P`、`--split-exp`、`--front-matter`、`--xml-*`/`--lua-*`/`--csv-*` の各群と文字列補間、
+`-e`、`-P`、`--expression`、`--split-exp`、`--front-matter`、`--xml-*`/`--lua-*`/`--csv-*`
+の各群と文字列補間、
 末尾の `select` 1 本以外のパイプ、そしてすべての関数（`keys`、`length`、`map`、`to_entries`、
 `env` など）です。
 

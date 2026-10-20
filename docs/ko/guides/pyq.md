@@ -153,11 +153,13 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | `yq -i/--inplace` | 파일을 그 자리에서 갱신 |
 | `yq -N/--no-doc` | 스트림을 `---` 구분자 없이 출력 (yq에서는 기본 켜짐) |
 | `-o json\|yaml`, `-p json\|yaml\|toml\|ini` | 출력·입력 형식 |
+| `-f PROG`, `--from-file F` | 파일에서식을 읽어 다른 식과 똑같이 판정 |
 
 실제 도구와 같은 문서를 돌려줄 수 없는 것은 모두 **이름을 짚어 거부**하고 종료 코드 2에 stdout은 비워
-둡니다. 묵묵히 무시하는 일은 없습니다. 대상은 jq의 `--arg`/`--argjson`, `-s`, `-c`, `-S`,
+둡니다. 묵묵히 무시하는 일은 없습니다. 거부는 적어도 jq의 `--arg`/`--argjson`, `-s`, `-c`, `-S`,
 `--stream`과 jq 모드의 모든 편집 식 (pyq는 YAML을 쓰고 jq는 JSON을 씀), yq의 `-n`, `-e`, `-P`,
-`--split-exp`, `--front-matter`, `--xml-*`/`--lua-*`/`--csv-*` 각 계열과 문자열 보간, 끝에 붙은
+`--expression`, `--split-exp`, `--front-matter`, `--xml-*`/`--lua-*`/`--csv-*` 각 계열과
+문자열 보간, 끝에 붙은
 `select` 하나를 뺀 모든 파이프, 그리고 모든 함수 (`keys`, `length`, `map`, `to_entries`, `env` 등)
 입니다.
 
