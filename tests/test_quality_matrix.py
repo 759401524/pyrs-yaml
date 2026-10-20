@@ -582,15 +582,119 @@ def test_a_partial_parity_column_is_a_hole_and_a_full_one_is_not(measured):
     """
     matrix = _load_module()
     rows = {
-        "JSON / JSONC / JSON5": {"cross_library": {"verdict": "partial", "restricted": ["orjson", "pyjson5"]}},
+        "JSON / JSONC / JSON5": {"cross_library": {"verdict": "partial", "restricted": ["json5", "jsonc"]}},
         "YAML": {"cross_library": {"verdict": "yes", "restricted": []}},
         "schema validation": {"cross_library": {"verdict": "n/a", "restricted": []}},
     }
-    assert matrix.parity_gaps(rows) == [("json-jsonc-json5", ["orjson", "pyjson5"])]
+    assert matrix.parity_gaps(rows) == [("json-jsonc-json5", ["json5", "jsonc"])]
     assert matrix.parity_gaps({"TOML": {"cross_library": {"verdict": "yes", "restricted": []}}}) == []
     holes = [hole[:2] for hole in measured["holes"]]
     assert ["parity-tier", "json-jsonc-json5"] in holes, measured["holes"]
     assert ["parity-tier", "yaml"] not in holes, holes
+
+
+CROSSLIB_HEADER = """\
+import json
+
+import pytest
+
+import pyrs_yaml
+
+try:
+    import pyjson5
+except ImportError:  # pragma: no cover - the floor interpreter has no wheel
+    pyjson5 = None
+"""
+
+CROSSLIB_CASES = [
+    (
+        "the test asks only the reader pyproject bounds, and names the free one in prose",
+        "def test_load_json_matches_the_reference(doc):\n"
+        '    """pyrs and stdlib json.loads agree on this corpus."""\n'
+        "    assert pyrs_yaml.load_json(doc) == pyjson5.loads(doc)\n",
+    ),
+    (
+        "the free reader is reached through a helper defined after the test",
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == _read(doc)\n"
+        "\n"
+        "\n"
+        "def _read(doc):\n"
+        "    return json.loads(doc)\n",
+    ),
+    (
+        "the guard is a skip marker reached through a name",
+        'needs_pyjson5 = pytest.mark.skipif(pyjson5 is None, reason="no wheel here")\n'
+        "\n"
+        "\n"
+        "@needs_pyjson5\n"
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+    ),
+    (
+        "the whole module is gated, which is how the strict dialect lost the floor leg",
+        'pytestmark = pytest.mark.skipif(pyjson5 is None, reason="no wheel here")\n'
+        "\n"
+        "\n"
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("why", "body"),
+    CROSSLIB_CASES,
+    ids=[case[0] for case in CROSSLIB_CASES],
+)
+def test_a_dialect_is_credited_only_by_a_comparison_that_cannot_be_skipped(matrix, tmp_path, why, body):
+    """Four ways a `json` comparison can fail to exist on a leg, and none of them earns a `yes`.
+
+    Written because the first cut of the per-dialect cell did exactly that. It matched the reader's
+    name anywhere in a test's text, so a docstring that mentions `json.loads` credited the dialect, a
+    helper defined after the last test was read as part of it, and `@needs_pyjson5` - a skipif wearing
+    another name - looked like no guard at all. Each of those reads a leg that compares nothing as a leg
+    that compares something, which is the one error this column must not make.
+    """
+    module = tmp_path / "test_json_crosslib.py"
+    module.write_text(CROSSLIB_HEADER + body, encoding="utf-8")
+    row = matrix.crosslib_parity("JSON / JSONC / JSON5", module)
+    assert row["covered"] == [], (why, row)
+    assert row["restricted"] == ["json", "json5", "jsonc"], (why, row)
+
+
+def test_a_comparison_a_leg_cannot_skip_does_credit_its_dialect(matrix, tmp_path):
+    """The other direction: the rule must not be so blunt that the real tier reads as absent.
+
+    `tests/test_json_crosslib.py` calls stdlib `json` in a test that carries nothing but
+    `parametrize`, and that is what takes RFC 8259 out of the restricted list while JSONC and JSON5
+    stay in it.
+    """
+    module = tmp_path / "test_json_crosslib.py"
+    module.write_text(
+        CROSSLIB_HEADER + '@pytest.mark.parametrize("doc", ["{}"])\n'
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+        encoding="utf-8",
+    )
+    row = matrix.crosslib_parity("JSON / JSONC / JSON5", module)
+    assert row["covered"] == ["json"], row
+    assert row["restricted"] == ["json5", "jsonc"], row
+    assert row["marker"]["json"] is None, row
+
+
+def test_the_strict_dialect_is_credited_and_the_other_two_are_not(measured):
+    """The tree, not a fixture: one reader every leg has, two dialects that still have none.
+
+    The cell used to be a property of the family, so it could not say what happened when stdlib `json`
+    arrived: RFC 8259 is compared on the floor interpreter and on 3.14+, and JSONC and JSON5 are still
+    asked of `pyjson5`, whose wheel is not. A row that read `yes` would have closed the hole for the
+    two dialects that gained nothing.
+    """
+    row = measured["format_matrix"]["JSON / JSONC / JSON5"]["cross_library"]
+    assert row["covered"] == ["json"], row
+    assert row["restricted"] == ["json5", "jsonc"], row
+    assert row["verdict"] == "partial", row
 
 
 DECLARED_HANDLER = """\
