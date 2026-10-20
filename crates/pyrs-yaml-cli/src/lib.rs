@@ -8,6 +8,7 @@
 //! process.
 
 pub mod compare;
+pub mod compat;
 pub mod json;
 pub mod multidoc;
 pub mod paths;
@@ -24,11 +25,37 @@ use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+/// The dialect contract, declared where a drop-in user will read it: `pyq --help`.
+/// The compatibility shell states what it honours and what it refuses, because an
+/// ignored flag would print a document the tool being replaced would not.
+const DIALECT_HELP: &str = concat!(
+    "pyq is a jq/yq-style processor over the pyrs-yaml core engine.\n",
+    "\n",
+    "Native grammar: `pyq <command> [args]` - fmt, get, set, delete, rename, move, append,\n",
+    "insert, validate, frontmatter, sort-keys, diff, merge, to-json, to-toml, from-json,\n",
+    "from-toml, from-ini, completion.\n",
+    "\n",
+    "Compatibility shell: an argv that does not start with a subcommand is read as `jq` 1.8\n",
+    "or mikefarah `yq` v4, chosen by the name this binary was invoked as (`jq`, `yq`) or\n",
+    "forced with `--as jq|yq`. It honours exactly what this build can answer with the same\n",
+    "document the real tool prints:\n",
+    "  expressions   a path (`.a.b`, `.list[]`, `$`), `.a.b = <literal>`, `del(<path>)`,\n",
+    "                `select(<relpath OP literal>)`, one trailing `| select(...)` pipe\n",
+    "  jq flags      -r/--raw-output (output is JSON otherwise)\n",
+    "  yq flags      -r/--unwrapScalar (on by default), -i/--inplace, -N/--no-doc (on by\n",
+    "                default), -o json|yaml, -p json|yaml|toml|ini\n",
+    "Everything else is refused with the flag or construct named, never ignored: jq's\n",
+    "--arg/--argjson/-s/-c/-S/--stream and any edit expression (pyq writes YAML, jq writes\n",
+    "JSON), yq's -n/-e/-P/--split-exp/--front-matter/--xml-*/--lua-*; pipes other than one\n",
+    "trailing select; and every function (keys, length, map, to_entries, env, ...).\n",
+);
+
 #[derive(Parser)]
 #[command(
     name = "pyq",
     version,
-    about = "jq/yq-style processor for YAML, JSON, TOML and INI (pyrs-yaml core)"
+    about = "jq/yq-style processor for YAML, JSON, TOML and INI (pyrs-yaml core)",
+    long_about = DIALECT_HELP
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -80,6 +107,10 @@ pub enum Command {
         #[arg(long)]
         /// Print bare scalars without document markers.
         raw: bool,
+        /// Print a multi-match stream without the `---` separators between
+        /// items (what yq v4 prints by default for `.a[]`).
+        #[arg(long)]
+        no_doc: bool,
     },
     /// Assign a value at a path (creates missing mappings with
     /// `--create-missing`; `$` replaces the whole document). Input is
@@ -335,6 +366,21 @@ impl From<SchemaKind> for Schema {
     }
 }
 
+/// Process entry that honours the jq / yq calling surface: a native argv goes to
+/// clap untouched, a shell-shaped one is translated first, and a refusal is the
+/// whole output - nothing runs.
+pub fn main_from_env() -> ! {
+    let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let planned = match compat::plan(&argv) {
+        Ok(planned) => planned,
+        Err(why) => {
+            let _ = writeln!(std::io::stderr(), "pyq: {why}");
+            std::process::exit(2);
+        }
+    };
+    run(Cli::parse_from(planned))
+}
+
 /// Process entry: parse argv, dispatch, map errors to `pyq: <msg>` + exit 1.
 pub fn run(cli: Cli) -> ! {
     match run_command(cli.command) {
@@ -390,12 +436,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             verbs,
             json,
             raw,
+            no_doc,
         } => {
             let src = read_input(&file)?;
             let docs = load_docs(&src, file.as_deref(), &input, all_docs)?;
             let sel = paths::parse_path(&path)?;
             let stream: Vec<&CustomNode> = docs.iter().flat_map(|d| sel.select_all(d)).collect();
-            emit_with_verbs(stream, &verbs, json, raw, &path)?;
+            emit_with_verbs(stream, &verbs, json, raw, no_doc, &path)?;
         }
         Command::Set {
             path,
@@ -699,7 +746,7 @@ fn emit_selected(
     raw: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sel = paths::parse_path(path)?;
-    emit_with_verbs(sel.select_all(node), verbs, json, raw, path)
+    emit_with_verbs(sel.select_all(node), verbs, json, raw, false, path)
 }
 
 /// Verb pipeline over a match stream, then output; `--join` collapses the
@@ -709,13 +756,14 @@ fn emit_with_verbs(
     verbs: &verbs::Verbs,
     json: bool,
     raw: bool,
+    no_doc: bool,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let stream = verbs.apply(stream, path)?;
     if let Some(text) = verbs.render_join(&stream)? {
         return emit_value(&CustomNode::plain_scalar(text), json, raw);
     }
-    emit_matched(&stream, json, raw, path)
+    emit_matched(&stream, json, raw, no_doc, path)
 }
 
 /// jq-stream output: zero matches is an error, one match prints plainly,
@@ -725,6 +773,7 @@ fn emit_matched(
     found: &[&CustomNode],
     json: bool,
     raw: bool,
+    no_doc: bool,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match found.len() {
@@ -742,7 +791,9 @@ fn emit_matched(
                 }
             } else {
                 for node in found {
-                    out.push_str("---\n");
+                    if !no_doc {
+                        out.push_str("---\n");
+                    }
                     out.push_str(&serializer::to_yaml(node));
                 }
             }

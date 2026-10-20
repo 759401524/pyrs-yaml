@@ -9,6 +9,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`pyq` answers the `jq` and `yq` command line** - an argv that is not one of pyq's own
+  subcommands is now read as `jq` 1.8 or mikefarah `yq` v4 (chosen by the name the binary was
+  invoked as, or forced with `--as jq|yq`) and translated into the equivalent subcommand. Accepted
+  forms are judged against the real tools rather than a hand-written expectation:
+  `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` runs `jq-1.8.2` and `yq v4.54.1` when they
+  are on `PATH`, refuses to accept any reference inside this workspace (the first version of the
+  probe found our own copy of `yq.exe` on `PATH` and reported nine perfect matches that proved
+  nothing), and compares stdout byte for byte over 15 invocations including `.a.b`, `.list[] |
+  select(.x > 1)`, `del(.a.n)`, `.a.n = 9`, `-o json`, `-r`, `-N`. Anything the shell cannot answer
+  with the same document is refused by name and exits 2 with empty stdout: pipes other than one
+  trailing `select`, every jq function (`keys`, `length`, `map`, `to_entries`), jq edit
+  expressions (pyq writes YAML where jq writes JSON), jq's `--arg`/`-s`/`-c`/`-S`/`--stream`, and
+  yq's `-n`/`-e`/`-P`/`--split-exp`/`--front-matter`/`--xml-*`/`--lua-*`. `pyq get` gained
+  `--no-doc`, which is the one behaviour difference the probe found: yq v4 prints a multi-item
+  stream without `---` separators, so that is now the dialect default. The whole contract is
+  stated in `pyq --help`.
+
 - **Every performance number on the site now comes from one committed measurement** — the
   wall-clock tables on the four locales' performance and feature pages were transcribed by hand;
   the 2026-08-17 figures had no script or record behind them, and the same calls now measure
