@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The performance pages quote a committed measurement, and a gate keeps them there** — the
+  wall-clock tables on the four locales' performance and feature pages were transcribed by hand; the
+  2026-08-17 figures had no script or record behind them, and the same calls now measure 22–108×
+  faster than those readings. `scripts/bench_snapshot.py` times batches of calls (nine batches of at
+  least 0.1 s, fastest reported) and commits the reading with its interpreter, library versions and
+  fixture sizes to `.ci/perf-snapshot.json`; `--docs` rewrites all twelve tables from it.
+  `tests/test_perf_docs.py` compares every cell back to the snapshot, so a table cannot drift, and
+  refuses the withdrawn date and speedup ranges by name. The yaml-rs trade-off paragraphs now say
+  2–4× faster serialization and about 2.5× slower `YamlDocument` parsing, measured with the same
+  timer.
+
 - **The Rust benchmark set now measures TOML, JSON and the 1.1 resolver** — the CodSpeed Rust leg
   ran one file in which every case was YAML text in, YAML or Python out, so the two engines this
   tree has grown most since and the profile that decides what a plain scalar means had no
