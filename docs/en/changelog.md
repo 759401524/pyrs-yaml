@@ -512,6 +512,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A merge cannot give a mapping a second null key** - `~`, `null`, the empty key and a bare
+  `Null` node all resolve to null, and the reader folds two null keys into one entry on purpose
+  (that is what lets `: a` + `: b` parse). The merge filter asked a different question: text for
+  untagged scalars, whole-node equality for everything else. So a `<<` source contributed its null
+  key beside the one the mapping already owned, and two merge sources could both name it - the
+  emission wrote `~:` twice at one level, and the re-read dropped the pair with its value and the
+  anchor it carried. `same_emitted_key` now asks the reader's own predicate, and the merged set is
+  folded by that same identity, so "the first source to supply a key wins" holds for every spelling
+  of null rather than only for keys that already compared equal. Found by the property tier at
+  20,000 cases (CI seed `c9ef4fd3...`, where `prop_mapping_order_preserved` and
+  `prop_tag_preserved` failed on one tree for this one reason), pinned by
+  `a_merge_never_repeats_a_null_key_the_mapping_owns` and the seed replayed from
+  `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`.
+
 - **The API pages state the parameter list the stub declares** — `docs/{zh,ja,ko}/api/reference.md`
   documented `parse_file`, `parse_all_docs`, `safe_load` and `safe_loads` with one or two parameters
   while the shipped stub declares five and six, and the `%YAML` version-negotiation gate

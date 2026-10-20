@@ -462,6 +462,19 @@ status: new
 
 ### 수정
 
+- **병합은 같은 매핑에 두 번째 null 키를 주지 않는다** — `~`, `null`, 빈 키, 맨 `Null`
+  노드는 모두 null로 해석되고 읽기 쪽은 의도적으로 null 키를 하나의 항목으로 접는다 (그래서
+  `: a` + `: b`가 통과한다). 그런데 병합 쪽 판정은 다른 질문을 했다: 태그 없는 스칼라는 텍스트로,
+  나머지는 노드 전체로 비교했다. 그래서 `<<` 원본이 자기 null 키를 이미 하나 가진 매핑에 집어
+  넣었고, 두 병합 원본이 같은 키를 부를 수도 있었다 — 출력은 같은 층에 `~:`를 두 번 쓰고, 다시
+  읽으면 그 짝은 값과 실려 있던 앵커까지 잃는다. `same_emitted_key`는 읽기 쪽 자기 서술자를
+  묻도록 바뀌었고 병합 집합도 같은 동일성으로 접기 때문에, "먼저 그 키를 준 원본이 이긴다"가
+  null의 모든 표기에 성립하고, 원래부터 같았던 키에만 성립하던 이전과 차이가 난다. 20,000
+  예제 property tier가 찾아냈다 (CI 시드 `c9ef4fd3...`, 하나의 트리에서
+  `prop_mapping_order_preserved`와 `prop_tag_preserved`가 이 하나의 이유로 실패).
+  `a_merge_never_repeats_a_null_key_the_mapping_owns`와
+  `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`에서 재생하는 시드로 고정했다.
+
 - **API 페이지가 스텁이 선언한 매개변수 목록을 적습니다** — `docs/{zh,ja,ko}/api/reference.md`에서
   `parse_file`, `parse_all_docs`, `safe_load`, `safe_loads`를 한두 개의 매개변수로 적어 두었지만
   공개 스텁은 다섯·여섯 개를 선언합니다. `%YAML` 버전 협상 깃표 `honor_version_directive`는 사용자
