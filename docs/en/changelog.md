@@ -512,6 +512,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An empty authority column was prose, not a measurement** - `QUALITY_MATRIX.md` said the schema
+  surface has no outside reader to ask its rules, while `scripts/quality_matrix.py` could emit no
+  hole for an empty authority column: `.ci/quality-holes.json` stayed at `holes: []`, which read as
+  no short board. The probe emits `authority-tier:schema-validation` now, the registry carries it
+  with the corpus that closes it, and the control runs the rule on rows built by hand in both
+  directions - empty emits the slug, filled emits nothing.
+
 - **A CLI-only edit demanded an extension rebuild that could not change it** - the
   freshness gate globbed every directory under `crates/` when deciding which files
   are compiled into the loaded module, so the standalone `pyq` crate counted as
