@@ -132,7 +132,8 @@ def test_the_foundation_is_read_from_the_attribute(tmp_path: Path) -> None:
     for name, body in bodies.items():
         root = crates / name / "src"
         root.mkdir(parents=True)
-        (root / "lib.rs").write_text(body, encoding="utf-8", newline="\n")
+        with (root / "lib.rs").open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
     assert _no_std_foundation(crates) == {"declares"}, "a comment is not a declaration"
 
 
