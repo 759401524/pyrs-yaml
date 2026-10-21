@@ -54,6 +54,7 @@ missing check.
 
 import json
 import math
+import re
 from datetime import date, datetime, time
 from pathlib import Path
 
@@ -257,6 +258,21 @@ def test_toml_test_invalid_rejected():
     )
 
 
+_FRACTIONAL_SECONDS = re.compile(r"\.(\d+)")
+
+
+def _host_isoformat(value: str, factory):
+    """CPython < 3.11 accepts exactly 3 or 6 fractional digits; TOML admits any count.
+
+    The corpus spells milliseconds with one digit (`00:32:00.5`) and the floor interpreters refuse
+    that spelling inside `fromisoformat`, which is why the encoder half used to skip there. Pad to
+    six and truncate beyond it - TOML requires truncation, not rounding - so the host stops deciding
+    which corpus rows the writer is judged on.
+    """
+    padded = _FRACTIONAL_SECONDS.sub(lambda m: "." + m.group(1).ljust(6, "0")[:6], value, count=1)
+    return factory(padded)
+
+
 def _tagged_to_python(node):
     """toml-test expected JSON -> native Python, for driving the *writer* instead of the reader.
 
@@ -276,13 +292,13 @@ def _tagged_to_python(node):
             if kind == "string":
                 return value
             if kind == "datetime":
-                return datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+                return _host_isoformat(value.replace("Z", "+00:00").replace("z", "+00:00"), datetime.fromisoformat)
             if kind == "datetime-local":
-                return datetime.fromisoformat(value)
+                return _host_isoformat(value, datetime.fromisoformat)
             if kind == "date-local":
                 return date.fromisoformat(value)
             if kind == "time-local":
-                return time.fromisoformat(value)
+                return _host_isoformat(value, time.fromisoformat)
             raise AssertionError(f"unknown toml-test type {kind!r}")
         return {key: _tagged_to_python(value) for key, value in node.items()}
     if isinstance(node, list):

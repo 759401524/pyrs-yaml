@@ -25,7 +25,10 @@ status: new
   `tomlkit`은 어느 레그에서나 방언을 판정하므로 판정은 `yes`로 유지됩니다. 리더 탐색도 배포판 이름의
   끝에서 멈춥니다. `_dependency_marker("tomli")`는 이전에 docs 그룹의 `tomli-w` 요구 사항에 답해,
   어떤 테스트도 import하지 않는 패키지의 marker를 보고했습니다. 새 통제 테스트는 `tomli`를 자신의
-  marker에, `tomli-w`를 marker 없음에 고정합니다.
+  marker에, `tomli-w`를 marker 없음에 고정합니다. 공식 코퍼스의 인코더 절반도 같은 `tomllib` 판정
+  으로 같은 레그에서 통째로 건너뛰어졌지만, 이제 해당 레그에서도 실행됩니다. 소수점 이하 초를 한 자리
+  로 쓰는 `spec-1.1.0` 세 건은 테스트 자체 변환기에서 소수를 여섯 자리로 맞춥니다. CPython < 3.11의
+  `fromisoformat`은 세 자리 또는 여섯 자리만 받기 때문입니다.
 
 - **`partial` 대조 칸은 각주가 아니라 등록된 결함입니다** — 대조 열은 이미 각 `test_*_crosslib.py`의
   oracle import와 `pyproject.toml`의 marker에서 판정을 도출합니다. `orjson`과 `pyjson5`가 모두
