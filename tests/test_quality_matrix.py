@@ -656,6 +656,18 @@ AUTHORITY_USES = [
         "    assert load_test_cases(SUITE_DIR)\n",
         "yes",
     ),
+    (
+        "a suite with the suffix and no corpus to replay",
+        'import pyrs_yaml\n\n\ndef test_placeholder():\n    assert pyrs_yaml.parse("a: 1") is not None\n',
+        "no",
+    ),
+    (
+        "a corpus named only in a comment",
+        "# runs the Reference/ corpus\nimport pyrs_yaml\n\n\n"
+        "def test_placeholder():\n"
+        '    assert pyrs_yaml.parse("a: 1") is not None\n',
+        "no",
+    ),
 ]
 
 
@@ -672,7 +684,8 @@ def test_a_free_reader_is_credited_by_a_use_not_by_its_import(matrix, tmp_path, 
     loads the corpus; here the same file reads `no` until the reader's API is reached. `json is None`
     is a probe, not a comparison, and neither is a stale import. Reaching into the reader through a
     module-level table counts - the writer suites call their outside readers that way - and a corpus
-    with no reader to be absent is credited by its file list, as it always was.
+    with no reader to be absent is credited by the corpus it names, which is the `Reference/` path the
+    loader receives; the suffix alone credits nothing.
     """
     module = tmp_path / "test_json_spec_table.py"
     module.write_text(source, encoding="utf-8")
