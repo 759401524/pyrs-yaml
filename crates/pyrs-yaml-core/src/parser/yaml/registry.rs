@@ -10,6 +10,8 @@ use crate::parser::yaml::schema::{
     resolve_core_type, resolve_failsafe, resolve_json_type, resolve_yaml11_type,
 };
 use crate::parser::yaml::types::{Schema, SchemaResolver, YamlType};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, RwLock};
 

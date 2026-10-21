@@ -7024,6 +7024,83 @@ WSL) printed `OK: every scenario within tolerance of the committed baseline`.
 Counts: 748 Rust tests, 1,824 Python test functions, 9 fuzz targets over 168 seeds, 77 Unreleased
 entries per mirror.
 
+### (ew) The YAML engine was the last crate that could not be built without an OS (2026-10-21)
+
+`pyrs-ast`, `pyrs-event`, `pyrs-json`, `pyrs-schema` and `pyrs-toml` are `#![no_std]`; the YAML
+engine was not, even though its parser dependency `granit-parser 2.0` already builds without std.
+The claim was therefore false, and the `no_std` gate could not see it: `tests/test_no_std_gate.py`
+derives the foundation from the crate roots that declare the attribute, and `pyrs-yaml-core` did
+not declare it. A crate that never joins the group is a crate the gate never asked about.
+
+**What `std` was actually used for.** Three surfaces, each for a reason that is not the engine's:
+`i18n` (rust-i18n reads locale files through std and owns a process-global locale),
+`parser::yaml::registry` (`LazyLock<RwLock<SchemaRegistry>>` — a global mutable registry) and
+`parser::yaml::schema_language` (regex). The parser, the serializer, the edit layer, the splices
+and the tag handling were already std-free in substance, so the change is a feature split rather
+than a rewrite. The `std` feature stays on by default, which is what keeps the binding, the CLI
+and the benches on the API they had.
+
+**The hasher was the first real cost.** `alloc` carries no hasher, and the parser's duplicate-key
+detection keeps the scalar keys it has already seen in a `HashSet<Arc<str>>`. The crate's own
+`NodeMap` — `IndexMap` over the fixed-seed `FxHasher` the AST already uses — needs no entropy, but
+it costs one allocation per mapping where a `HashSet` costs one table per mapping: `IndexMap`
+allocates an entries vector *and* an index table. The first `no_std` run of the allocation gate
+said so plainly: `parse_medium made 74 allocations, 7 past the committed ceiling of 67`. The fix
+is a cfg-split rather than a blanket swap, because the shipped artifact is the std build: it keeps
+its `HashSet` and its committed line (67 allocations / 24 512 bytes, unchanged), and the `no_std`
+build carries its own measured ceiling (74 / 24 952) with the reason written next to it.
+
+**The public API had to change with it.** `event_to_stream_event` and `resolve_anchor_name` took
+`&mut std::collections::HashMap<usize, String>`, and the merge resolver's anchor table was a
+`HashMap<String, _>`. A `#![no_std]` crate cannot name a `std` type, so both became `NodeMap` —
+the same `IndexMap` over `FxHasher` the AST uses, which also makes an anchor's order its insertion
+order. The Python binding's own anchor map was changed to match; it is the only caller outside the
+crate, and the workspace suite caught the mismatch as a compile error rather than a silent shape
+change.
+
+**Measured effect, which was not the point but is the record.** The Ir gate on WSL with the
+baseline's pinned `rustc 1.97.1` moved `parse_anchors` -2.36% and `parse_inline_merge` -2.32% —
+the two scenarios whose anchor tables changed — with `parse_medium` -0.15%, `parse_small` -0.21%,
+`parse_block` -0.16% and `stream_medium` -0.12%; the gate printed `OK: every scenario within
+tolerance of the committed baseline`. The two scenarios more than 2% below their floor printed
+`FLOOR_STALE`: the floor is stale in the *fast* direction, and the remedy is the dispatch job that
+re-measures on the enforcing image, not a local `--update`, which would move the floor onto this
+host. The local reading is on WSL rather than the enforcing image, so it is a direction, not the
+verdict — the same boundary this ledger has drawn for every other Ir reading.
+
+**The gate now covers it.** `ci.yml`'s three `no-std-check` steps — the bare-metal build for
+`thumbv7em-none-eabi`, the host unit tests, and the std re-check — all name `pyrs-yaml-core`, and
+the negative control in `tests/test_no_std_gate.py` grew with it: the set the guard reports as
+"compiles without std but is not re-checked with it" now has four members.
+
+**A stale number corrected while the file was open.** The 2026-10-16 review note in `ROADMAP.md`
+priced the message catalog's replacement surface as "421 `t!(..)` call sites and four
+locale-parity gates". Measured on this tree: one `t!` call site
+(`crates/pyrs-yaml-core/src/i18n.rs:106`, the `rust_i18n::t!(key)` inside `format_message`), one
+external caller of `format_message` (`crates/pyrs-yaml/src/py/convert.rs:16`), four catalogs of 32
+keys each, and one locale-parity gate (`scripts/check_i18n.py`) — the only script in the tree that
+reads `i18n/locales`. The decision (defer, price on record) is unchanged and so is its trigger; the
+surface it named was not the real one, and a review note that names a surface three orders of
+magnitude too large is worse than no note. The `no_std` work gives that row a second reason to be
+revisited that the 2026-10-16 note could not have had: `rust-i18n` is now the one dependency that
+keeps the message catalog out of a `no_std` build, and the catalog is the only thing the `no_std`
+build of this crate loses that the std build has.
+
+**What a `no_std` caller gets, and what it does not.** The engine's parser, serializer, edit and
+splice layers work on a bare-metal target. The three std-only surfaces are absent there: there is
+no translated catalog (the localized messages were never in the core's parse path — they are
+produced at the Python binding boundary), no global schema registry (a caller selects a schema by
+constructing the `pyrs_schema::types::Schema` variant), and no regex-backed user-schema language.
+
+Verified: the bare-metal build for `thumbv7em-none-eabi`, `cargo nextest run -p pyrs-yaml-core
+--no-default-features` 378 tests, `cargo nextest run --all` 748 tests, `cargo clippy --all
+--all-targets -- -D warnings`, `cargo clippy -p pyrs-yaml-core --all-targets
+--no-default-features -- -D warnings`, `uv run pytest tests/test_no_std_gate.py` 6 tests, and the
+Ir gate's six YAML scenarios.
+
+Counts: 748 Rust tests, 1,817 Python test functions, 9 fuzz targets over 168 seeds, 79 Unreleased
+entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

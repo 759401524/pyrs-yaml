@@ -1,5 +1,7 @@
 /// Granit-parser against YAML test suite integration test
+use alloc::vec::Vec;
 use granit_parser::Parser;
+use std::eprintln;
 use std::path::Path;
 
 struct EventSink {

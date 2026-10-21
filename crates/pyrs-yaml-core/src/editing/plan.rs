@@ -14,8 +14,10 @@ pub use crate::editing::{
 
 use crate::ast::{CustomNode, NodeMap};
 use crate::parser::yaml::compute_line_offsets;
-use std::borrow::Cow;
-use std::ops::Range;
+use alloc::borrow::Cow;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::ops::Range;
 
 /// Use the caller's precomputed line-offset table, or compute one from
 /// `source` when not supplied. Borrowing avoids re-scanning the source on

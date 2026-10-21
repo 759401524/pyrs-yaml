@@ -138,6 +138,7 @@ fn needs_quoting(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::ast::Chomping;
+    use alloc::string::ToString;
 
     #[test]
     fn test_with_metadata_from_copies_anchor() {

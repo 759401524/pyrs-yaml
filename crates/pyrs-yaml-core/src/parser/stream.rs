@@ -1,10 +1,11 @@
-use crate::ast::{Comment, ScalarStyle, Tag};
+use crate::ast::{Comment, NodeMap, ScalarStyle, Tag};
 use crate::parser::yaml::anchor_name_within;
+use alloc::string::String;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
 
 pub use pyrs_event::{StreamEvent, StreamEventType};
 
@@ -24,7 +25,7 @@ pub struct StreamReceiver<'a> {
     char_offsets: Option<Vec<usize>>,
     events: Vec<StreamEvent<'a>>,
     pending_standalone_comment: Option<Comment>,
-    anchors: HashMap<usize, String>,
+    anchors: NodeMap<usize, String>,
     /// The byte this reader has seen text end at, which is the floor the anchor-name recovery may not
     /// read below.
     ///
@@ -55,7 +56,7 @@ impl<'a> StreamReceiver<'a> {
             char_offsets: (!is_ascii).then(|| super::char_to_byte_offsets(yaml_text)),
             events: Vec::new(),
             pending_standalone_comment: None,
-            anchors: HashMap::new(),
+            anchors: NodeMap::default(),
             window_floor: 0,
             max_depth,
             depth: 0,
@@ -192,7 +193,7 @@ fn convert_tag(tag: Option<&granit_parser::Tag>) -> Option<Tag> {
 pub fn event_to_stream_event<'a, F>(
     event: Event<'a>,
     span: Span,
-    anchor_map: &mut HashMap<usize, String>,
+    anchor_map: &mut NodeMap<usize, String>,
     resolve_anchor: &mut F,
 ) -> Option<StreamEvent<'a>>
 where
@@ -272,7 +273,7 @@ where
 /// nothing is registered — the same reading the string path gives for `next_anchor_name()`.
 fn resolve_anchor_name<F>(
     anchor_id: usize,
-    anchor_map: &mut HashMap<usize, String>,
+    anchor_map: &mut NodeMap<usize, String>,
     resolve_anchor: &mut F,
 ) -> Option<String>
 where
@@ -352,6 +353,7 @@ pub fn parse_stream_with_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_stream_start_and_end() {
@@ -755,7 +757,7 @@ mod tests {
         // must NOT unescape a second time (that decode turned raw-pair text
         // like `\n` into LF — the libFuzzer `yaml_roundtrip` double-decode
         // bug). Both shapes therefore flow through byte-identical.
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         let decoded = Event::Scalar("a\n\t".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
         let ev =
             super::event_to_stream_event(decoded, mk_span(1, 0), &mut anchor_map, &mut |_| None)
@@ -774,7 +776,7 @@ mod tests {
             }
             other => panic!("wrong variant: {:?}", other),
         }
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         let raw_pair = Event::Scalar("a\\n".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
         let ev =
             super::event_to_stream_event(raw_pair, mk_span(1, 0), &mut anchor_map, &mut |_| None)
@@ -789,7 +791,7 @@ mod tests {
 
     #[test]
     fn event_to_stream_event_plain_scalar_passthrough() {
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         let event = Event::Scalar("hello".into(), SaphyrScalarStyle::Plain, 0, None);
         let ev = super::event_to_stream_event(event, mk_span(2, 4), &mut anchor_map, &mut |_| None)
             .unwrap();
@@ -805,7 +807,7 @@ mod tests {
 
     #[test]
     fn event_to_stream_event_anchor_resolves_and_registers() {
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         let event = Event::Scalar("v".into(), SaphyrScalarStyle::Plain, 7, None);
         let ev = super::event_to_stream_event(event, mk_span(1, 0), &mut anchor_map, &mut |id| {
             Some(format!("anchor_{}", id))
@@ -824,7 +826,7 @@ mod tests {
 
     #[test]
     fn event_to_stream_event_alias_lookup_and_fallback() {
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         let ev = super::event_to_stream_event(
             Event::Alias(3),
             mk_span(1, 0),
@@ -836,7 +838,7 @@ mod tests {
             matches!(ev.event_type, super::StreamEventType::Alias { name } if name == "alias_3")
         );
 
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         anchor_map.insert(3, "real".to_string());
         let ev = super::event_to_stream_event(
             Event::Alias(3),
@@ -850,7 +852,7 @@ mod tests {
 
     #[test]
     fn event_to_stream_event_comment_is_none() {
-        let mut anchor_map = HashMap::new();
+        let mut anchor_map = NodeMap::default();
         // granit-parser emits Comment events; event_to_stream_event returns None for them
         assert!(
             super::event_to_stream_event(

@@ -15,7 +15,33 @@ status: new
 
 ### [Unreleased]
 
+### 추가
+
+- **YAML 엔진이 표준 라이브러리가 없는 타깃에서도 빌드됩니다** — `pyrs-yaml-core`이 이제
+  `#![no_std]`입니다. 파서, 왕복 직렬화기, 주석을 보존하는 편집 계층, 스플라이스가 `core` + `alloc`
+  만으로 동작하며, 그 아래의 `granit-parser`는 원래 std 없이 빌드된 crate입니다. `std` 기능은
+  기본으로 켜져 있으므로 Python 바인딩, CLI, 각 벤치마크는 기존의 API를 그대로 유지합니다. `std`가
+  더하는 것은 엔진 자체가 아니라 운영체제를 요구하는 세 가지 표면뿐입니다. 번역된 오류 메시지
+  카탈로그 (rust-i18n은 프로세스 전역 locale을 소유합니다), 런타임 스키마 레지스트리(전역 `RwLock`),
+  그리고 regex 기반 사용자 스키마 언어입니다. `no_std` 호출자는 `pyrs_schema::types::Schema`의 변형
+  값을 직접 만들어 스키마를 고릅니다. `ci.yml`의 `no-std-check` 세 단계는 이제 이 crate를
+  `thumbv7em-none-eabi`용으로 빌드하고 그 단위 테스트를 호스트에서 실행하며,
+  `tests/test_no_std_gate.py`는 `#![no_std]`를 선언한 crate 루트에서 foundation 목록을 읽습니다.
+  no_std에 들어왔는데 게이트에는 들어오지 않은 crate는 조용한 빈틈이 아니라 빨간 판정이 됩니다.
+  `no_std` 빌드는 이미 본 스칼라 키를 `HashSet`이 아니라 crate의 순서 있는 노드 맵에 기록합니다.
+  `alloc`에는 해시 함수가 없기 때문입니다. `parse_medium`의 할당 상한은 74회로, std 빌드의 67회보다
+  매핑마다 한 번씩 많고, `tests/alloc_gate.rs`는 기능별로 상한을 기록합니다.
+
 ### 변경
+
+- **이벤트 스트림과 merge 해결기는 앵커를 crate의 노드 맵에 둡니다** — `#![no_std]` crate는
+  `std::collections::HashMap`을 이름으로 쓸 수 없기 때문에 `event_to_stream_event`와
+  `resolve_anchor_name`은 이제 `&mut NodeMap<usize, String>`을 받고, merge 해결기의 앵커 테이블도
+  `NodeMap<String, _>`입니다. AST가 이미 쓰던 `FxHasher` 위의 `IndexMap` 그대로이므로 앵커 순서는
+  삽입 순서가 되고 키 조회도 실측으로 더 싸집니다. 명령 수 게이트의 YAML 시나리오에서 이 트리는
+  `parse_anchors` -2.36%, `parse_inline_merge` -2.32%, `parse_medium` -0.15%, `parse_small` -0.21%
+  만큼 움직였습니다. 확정된 하한은 건드리지 않았으므로 게이트가 이 두 시나리오에서 받아들이는
+  여유는 빠른 방향으로 낡았고, 집행 이미지에서의 갱신을 기다립니다.
 
 - **Ir 게이트가 cargo의 요약 대신 컴파일러 자체의 진단을 출력합니다** — harness 빌드가 실패하면
   이전에는 `error: could not compile pyrs-yaml (lib) due to 1 previous error`만 표시되고 그

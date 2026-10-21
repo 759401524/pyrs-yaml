@@ -7,7 +7,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The YAML engine builds for a target that has no standard library** — `pyrs-yaml-core` is now
+  `#![no_std]`: the parser, the round-trip serializer, the comment-preserving edit layer and the
+  splices run on `core` + `alloc` alone, on top of a `granit-parser` that was already built without
+  std. The `std` feature stays on by default, so the Python binding, the CLI and the benches keep
+  the API they had; it is what adds the three surfaces that need an OS rather than the engine — the
+  translated error-message catalog (rust-i18n owns a process-global locale), the runtime schema
+  registry (a global `RwLock`) and the regex-backed user-schema language. A `no_std` caller selects
+  a schema by constructing the `pyrs_schema::types::Schema` variant directly. The three
+  `no-std-check` steps in `ci.yml` now build the crate for `thumbv7em-none-eabi` and run its unit
+  tests on the host, and `tests/test_no_std_gate.py` reads the foundation set out of the crate roots
+  that declare `#![no_std]`, so a crate that joins the group without joining the gate is a red run
+  rather than a silent gap. The `no_std` build tracks the scalar keys it has already seen in the
+  crate's ordered node map rather than in a `HashSet`, because `alloc` carries no hasher: the
+  `parse_medium` allocation ceiling is 74 allocations against the std build's 67 — one more per
+  mapping — and `tests/alloc_gate.rs` records a ceiling per feature set.
+
 ### Changed
+
+- **The event stream and the merge resolver keep their anchors in the crate's node map** — a
+  `#![no_std]` crate cannot name `std::collections::HashMap`, so `event_to_stream_event` and
+  `resolve_anchor_name` now take `&mut NodeMap<usize, String>` and the merge resolver's anchor
+  table is a `NodeMap<String, _>`: the same `IndexMap` over `FxHasher` the AST already uses, so an
+  anchor's order is its insertion order and the keyed lookups are measurably cheaper. Over the
+  instruction-count gate's YAML scenarios the tree moved `parse_anchors` -2.36% and
+  `parse_inline_merge` -2.32%, with `parse_medium` -0.15% and `parse_small` -0.21%. The committed
+  floor was not touched, so the slack the gate now accepts on those two scenarios is stale in the
+  fast direction and waits for a refresh on the enforcing image.
 
 - **The Ir gate prints the compiler's diagnostic instead of cargo's summary** — a failing harness
   build reported only `error: could not compile pyrs-yaml (lib) due to 1 previous error` and

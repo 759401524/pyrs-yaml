@@ -14,6 +14,8 @@
 #![cfg(test)]
 
 use crate::ast::proptest_strategies::*;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use proptest::prelude::*;
 use pyrs_json as json;
 use pyrs_toml as toml;

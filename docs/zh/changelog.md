@@ -17,7 +17,30 @@ status: new
 
 ### [Unreleased]
 
+### 新增
+
+- **YAML 引擎现在可以面向没有标准库的目标构建** — `pyrs-yaml-core` 现在是 `#![no_std]`：
+  解析器、往返序列化器、保留注释的编辑层和 splice 只依赖 `core` + `alloc`，其下的
+  `granit-parser` 本来就是不带 std 构建的。`std` feature 默认仍然开启，因此 Python 绑定、CLI 和
+  各基准测试保持原有 API；它负责加上三面需要操作系统而非引擎本身的表面：翻译过的错误消息目录
+  （rust-i18n 持有一个进程级全局 locale）、运行时 schema 注册表（一个全局 `RwLock`）和基于
+  regex 的用户 schema 语言。`no_std` 调用方改为直接构造 `pyrs_schema::types::Schema` 变体来选择
+  schema。`ci.yml` 的三个 `no-std-check` 步骤现在为 `thumbv7em-none-eabi` 构建该 crate 并在宿主
+  上运行其单元测试；`tests/test_no_std_gate.py` 从声明 `#![no_std]` 的 crate 根读出基础集合，
+  于是「加入了 no_std 却没加入门禁」的 crate 会得到一次红灯，而不是一个无声的缺口。`no_std`
+  构建把「已经见过的标量键」记在 crate 的有序节点映射里而不是 `HashSet` 里，因为 `alloc` 不带
+  哈希器：`parse_medium` 的分配上限是 74 次分配，而 std 构建是 67 次——每个映射多一次——
+  `tests/alloc_gate.rs` 按 feature 集分别记录这两个上限。
+
 ### 变更
+
+- **事件流和 merge 解析器把锚点留在 crate 的节点映射里** — `#![no_std]` 的 crate 无法书写
+  `std::collections::HashMap`，于是 `event_to_stream_event` 和 `resolve_anchor_name` 现在接收
+  `&mut NodeMap<usize, String>`，merge 解析器的锚点表也是 `NodeMap<String, _>`：就是 AST 早已
+  使用的那个 `FxHasher` 之上的 `IndexMap`，因此锚点的顺序是插入顺序，按键查找也实测更便宜。在
+  指令计数门禁的 YAML 场景上，本树移动了 `parse_anchors` -2.36%、`parse_inline_merge` -2.32%，
+  `parse_medium` -0.15%、`parse_small` -0.21%。已提交的下限没有改动，因此门禁在这两个场景上
+  现在容忍的余量在「更快」的方向上已经过期，等在执行镜像上做一次刷新。
 
 - **Ir 门禁打印编译器自己的诊断，而不是 cargo 的摘要** — harness 构建失败时，此前只报出
   `error: could not compile pyrs-yaml (lib) due to 1 previous error`，再无下文。门禁以
