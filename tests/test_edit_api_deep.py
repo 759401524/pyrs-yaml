@@ -74,14 +74,13 @@ class TestDocSortKeys:
         doc.sort_keys()
         assert doc.to_yaml() == "a: 2\nz: 1  # z-note\n"
 
-    @pytest.mark.known_residual("api:sort-keys-scalar-path-noop")
-    def test_sort_keys_on_a_scalar_path_is_a_silent_noop(self):
-        """A scalar path answers None while a missing path refuses; pinned until ruled on.
+    def test_sort_keys_on_a_scalar_path_is_a_documented_noop(self):
+        """A scalar path answers None while a missing path refuses, and the stub says so.
 
-        The edit fuzz tier narrowed its ordering claim to paths with work to do because
-        of this shape. A fix either refuses a scalar path like a missing one or states
-        the no-op in the shipped stub; either reddens this pin and forces the registry
-        entry in .ci/known-residuals.json out.
+        The shipped stub states the no-op, which is the exit .ci/known-residuals.json
+        recorded for this shape: a scalar has no keys to sort, so the success is no
+        longer silent. The edit fuzz tier narrowed its ordering claim to paths with
+        work to do for the same reason.
         """
         doc = pyrs_yaml.parse("a: 1\nb: 2\n")
         assert doc.sort_keys("$.a") is None

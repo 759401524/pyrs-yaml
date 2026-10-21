@@ -79,11 +79,11 @@ body `''`, the same decision that writes `~` for an empty value before a note, t
 back in the target, and the input that proved the drift is replayed as a former crash
 (`former-crash-b23eed05.seed`) rather than carried as an open one.
 
-The two boundaries that remain from that narrowing are not silent either:
-`api:sort-keys-scalar-path-noop` and `api:set-comment-container-owner` are registered in
-`.ci/known-residuals.json` with the tests that pin today's behaviour, because
-`quality_matrix.py` can only derive a hole a probe can see and these are decisions rather
-than derivable holes.
+The one boundary that remains from that narrowing is not silent either:
+`api:set-comment-container-owner` is registered in `.ci/known-residuals.json`
+with the test that pins today's behaviour, because `quality_matrix.py` can only
+derive a hole a probe can see and this is a decision rather than a derivable
+hole.
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
 fuzz tier found (comment attribution, empty-container spelling, nested merge application)
@@ -693,7 +693,6 @@ matrix is blind to.
 | --- | --- | --- | --- |
 | `engine:container-inline-note-position` | hub / Rust core | a TOML `[sec] # note` keeps its text and its table but not its line: the hub has no container inline-note position, and adding one means changing the locked granit capture model ([boundaries](docs/dev/boundaries.md)) | `to_toml(from_toml("[sec] # note\nx = 1\n"))` writes the note on the header line |
 | `api:set-comment-container-owner` | binding writer | `set_comment(..., standalone=False)` on a container lands on the last child's line, and the re-read gives the note that child; the edit fuzz tier therefore withholds the ownership claim (ledger (ei), #113) | the container keeps the note at a position the reader reports back, or the call refuses |
-| `api:sort-keys-scalar-path-noop` | Python API | `sort_keys("$.a")` returns `None` for a scalar path while a missing path raises `YamlEditError`; the matrix narrowed its ordering claim to paths with work to do | the two path shapes answer alike, or the no-op is stated in the shipped stub |
 
 ### Improvement plan
 

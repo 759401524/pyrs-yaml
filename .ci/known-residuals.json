@@ -30,14 +30,6 @@
       "opened": "2026-10-19",
       "exit": "set_comment(..., standalone=False) on a mapping or block sequence keeps the note on the container, at a position the reader reports back from, or refuses the call; the silent handoff to the last child ends",
       "why": "the writer parks a container's inline note on the last child's line, so the re-read gives the note a different owner; the edit fuzz tier withholds the ownership claim (ledger (ei), #113)"
-    },
-    {
-      "id": "api:sort-keys-scalar-path-noop",
-      "repro": "tests/test_edit_api_deep.py::TestDocSortKeys::test_sort_keys_on_a_scalar_path_is_a_silent_noop",
-      "tier": "python-api",
-      "opened": "2026-10-19",
-      "exit": "sort_keys(path) whose path resolves to a scalar answers the way a missing path does (a typed refusal), or the no-op is stated in the shipped stub; the silent success with no effect ends",
-      "why": "a missing path raises YamlEditError missing-path, so a scalar path returning None is an inconsistency in the public error surface (QUALITY_MATRIX section 1)"
     }
   ]
 }
