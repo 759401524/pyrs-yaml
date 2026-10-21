@@ -74,6 +74,23 @@ status: new
   `authority-tier:schema-validation`，不借用该语料的信用；其出口现在写明：以
   `Document.validate()` 取代它即关闭该洞。
 
+- **`rules:` 规则语言重新拥有自己的一行，它的盲区也重新有了名字** — 矩阵的 schema 段落在
+  2026-10-21 退役校验器之后仍写着规则语言的「Rust 入口点已被删除」，但*语言*本身还在：
+  `parse_schema_yaml()`、`RuleResolver` 与 `YamlTypeKind` 仍由 `pyrs-yaml-core` 导出，
+  `register_schema()`、`load_schema()`、`list_schemas()` 和 `YAML(schema=...)` 仍经它读取
+  `rules:` 块。它在表里根本没有一行，于是页面声称四个表面行而实际交付五个，注册表写着
+  `holes: []`，同时一门任何外部读取器都无法反驳的语法只被它自己作者的测试度量。这一行现在
+  是推导出来的而不是手写的：`scripts/quality_matrix.py` 把某一行的单元层与属性层限定到声明该
+  表面的那个文件，于是这门语言记的是
+  `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs` 里的十一个 `#[test]`，以及唯一
+  点名它的属性 `prop_schema_parse_no_panic`，而不是 YAML 引擎整个 crate 的计数。它的往返与
+  parity 两格读作 `n/a`：它只解析标量类型、不拥有序列化器，而这门语法也没有第二个实现可作
+  比较。authority 格读作 `no`，这是诚实的答案：语法是本仓库自创的，于是单元、属性与 fuzz
+  三层都只在问引擎自己相信什么。度量推导出洞 `authority-tier:schema-rule-language`，注册表
+  连同可检查的出口一并收下，`QUALITY_MATRIX.md` 在盲区表里点名它——于是注册表重新有了一条
+  记录，并且新增的第二条证伪控制断言被退役的校验器符号确实不在、而幸存的语言确实还在，
+  页面无法再向「已删除」的方向漂移。
+
 - **标量路径上的 `sort_keys` 是有文档说明的空操作，而不是静默成功** — `sort_keys("$.a")` 返回 `None`
   且不改动任何内容，而 `sort_keys("$.missing")` 抛出 `YamlEditError`，包所交付的文档对此只字未提；登
   记条目记录了这一不一致，出口是「与缺失路径同样回答，或在随包发布的桩中说明这是空操作」。现在桩里写

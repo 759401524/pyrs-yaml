@@ -75,6 +75,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   borrowing this corpus's credit; its exit now says that retiring it in favour of
   `Document.validate()` closes it.
 
+- **The `rules:` schema language keeps a row of its own, and its blind spot keeps a name** — the
+  matrix's schema paragraph said the rule language's "Rust entry points are deleted" after the
+  validator was retired on 2026-10-21, but the *language* is still here: `parse_schema_yaml()`,
+  `RuleResolver` and `YamlTypeKind` are exported by `pyrs-yaml-core`, and `register_schema()`,
+  `load_schema()`, `list_schemas()` and `YAML(schema=...)` still read a `rules:` block through it.
+  It had no row in the table at all, so the page claimed four surface rows where five shipped, and
+  the registry read `holes: []` while a grammar no outside reader can contradict was measured only
+  by its own author's tests. The row is derived now rather than written: `scripts/quality_matrix.py`
+  scopes a row's unit and property tiers to the file that declares the surface, so the language is
+  credited with the eleven `#[test]`s of
+  `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs` and the one property that names it,
+  `prop_schema_parse_no_panic`, instead of the YAML engine's crate-wide counts. Its round-trip and
+  parity cells read `n/a` — it resolves scalar types and owns no serializer, and no second
+  implementation of the grammar exists to compare against. The authority cell reads `no`, which is
+  the honest answer: the grammar was invented here, so the unit, property and fuzz tiers all ask the
+  engine what it believes. The measurement derives the hole `authority-tier:schema-rule-language`,
+  the registry carries it with a checkable exit, and `QUALITY_MATRIX.md` names it in the blind-spot
+  table — so the registry holds an entry again, and a second falsification control asserts that the
+  retired validator's symbols are gone *and* that the surviving language is present, which keeps the
+  page from drifting back to "deleted" in either direction.
+
 - **`sort_keys` on a scalar path is a documented no-op, not a silent one** — `sort_keys("$.a")`
   returned `None` and changed nothing while `sort_keys("$.missing")` raised `YamlEditError`, and
   nothing the package shipped said so; the registry entry recorded the mismatch with the exit

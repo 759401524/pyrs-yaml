@@ -1107,7 +1107,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
     """
     text = DOC_PATH.read_text(encoding="utf-8")
     cells = re.findall(
-        r"^\| (YAML|JSON / JSONC / JSON5|TOML|JSON Schema validation)"
+        r"^\| (YAML|JSON / JSONC / JSON5|TOML|JSON Schema validation|Schema rule language)"
         r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a)"
         r" \| (yes|no) \|$",
         text,
@@ -1117,7 +1117,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
         label: (unit, prop, parse, trip, parity, authority)
         for label, unit, prop, parse, trip, parity, authority in cells
     }
-    assert len(claimed) == 4, f"the page no longer states all four surface rows: {claimed}"
+    assert len(claimed) == 5, f"the page no longer states all five surface rows: {claimed}"
 
     derived = {}
     for line in measured["format_verdicts"]:
@@ -1158,6 +1158,20 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert authority["JSON Schema validation"]["verdict"] == "yes", authority
     assert not rows["JSON Schema validation"]["fuzz_parse"], "no Rust fuzz target names the delegated surface"
 
+    # The rule language is a row of its own, and the cells are counted in the file that declares
+    # it: it shares `pyrs-yaml-core` with the YAML engine, so a crate-wide count would read as
+    # defended by hundreds of tests that never mention it.
+    rule = rows["Schema rule language"]
+    assert rule["unit"] == 11, rule
+    assert rule["property_rust"] == 1, rule
+    assert rule["fuzz_parse"] == ["parse_schema"], rule
+    assert not rule["fuzz_round_trip"], rule
+    assert rule["cross_library"]["verdict"] == "n/a", rule
+    # Its authority cell is the honest `no` that registers the hole: no test asks this grammar of
+    # something this repository does not own.
+    assert rule["authority"]["files"] == [], rule
+    assert rule["authority"]["verdict"] == "no", rule
+
     # The parity column claims to read how `pyproject.toml` bounds each oracle, so every oracle a
     # cross-library test imports has to be found there at all. `ruamel.yaml` is imported under that
     # name and declared as `ruamel-yaml`; the miss used to answer `undeclared`, which reads as
@@ -1168,3 +1182,36 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert markers, "the parity column measured nothing"
     assert "undeclared" not in markers.values(), sorted(markers)
     assert markers["ruamel.yaml"] is None, markers
+
+
+def test_the_retired_validator_is_gone_and_the_rule_language_is_not():
+    """The document separates two surfaces; the tree has to agree with both halves.
+
+    The page once closed the rule language's hole by saying the surface was retired and that
+    "its Rust entry points are deleted", while `parse_schema_yaml`, `RuleResolver` and
+    `YamlTypeKind` were still exported by `pyrs-yaml-core`, called by the binding, property-tested
+    and fuzzed. The validator beside the language really is gone, so the two halves are checked
+    apart: the retired symbols must not come back, and the surviving language must stay, because
+    the matrix row would otherwise measure a surface nobody ships.
+    """
+    sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace") for path in sorted((REPO_ROOT / "crates").rglob("*.rs"))
+    )
+    sources += "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in sorted((REPO_ROOT / "python" / "pyrs_yaml").glob("*.py"))
+    )
+    sources += (REPO_ROOT / "python" / "pyrs_yaml" / "pyrs_yaml.pyi").read_text(encoding="utf-8")
+    for retired in (
+        "TypeSpec",
+        "ValidateKind",
+        "ValidateRule",
+        "SchemaValidationError",
+        "validate_against_schema",
+        "validate_against_registered_schema",
+    ):
+        assert retired not in sources, f"{retired} was retired with the rule validator"
+    for alive in ("parse_schema_yaml", "RuleResolver", "YamlTypeKind"):
+        assert alive in sources, f"{alive} is the surviving rule language"
+    binding = (REPO_ROOT / "crates" / "pyrs-yaml" / "src" / "py" / "functions.rs").read_text(encoding="utf-8")
+    assert "parse_schema_yaml" in binding, "the binding still reads a `rules:` block"

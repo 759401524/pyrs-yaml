@@ -7161,6 +7161,79 @@ cargo test --locked --no-default-features \
 Counts: 748 Rust tests, 1,830 Python test functions, 9 fuzz targets over 168 seeds, 80 Unreleased
 entries per mirror.
 
+### (ey) The rule language was retired on paper while it kept shipping (2026-10-21)
+
+Two surfaces wore the name "schema". The *validator* this repository invented - `TypeSpec`,
+`ValidateKind`, `ValidateRule`, `SchemaValidationError`, `validate_against_schema()`,
+`validate_against_registered_schema()` - and the *language* it read: `parse_schema_yaml()`,
+`RuleResolver`, `YamlTypeKind`, the `rules:` grammar that maps scalar patterns to YAML types.
+PR #517 retired the first on 2026-10-21, and `QUALITY_MATRIX.md` recorded that retirement as
+"its Rust entry points are deleted". Measured on the tree the same day, the second half is alive
+and shipped: `pyrs-yaml-core` still exports `parse_schema_yaml`, `RuleResolver` and
+`YamlTypeKind` (`crates/pyrs-yaml-core/src/parser/yaml/mod.rs:26`), the binding still calls the
+parser (`crates/pyrs-yaml/src/py/functions.rs:741`), the Python surface still ships
+`register_schema()`, `load_schema()`, `list_schemas()` and `YAML(schema=...)`, and four Python
+suites, one property test and a fuzz target still exercise the grammar.
+
+The consequence was a measurement that could not be true in both directions. The matrix's
+per-format table derived exactly four surface rows while five shipped, and its schema paragraph
+described the language's entry points as deleted. The blind-spot table's schema row closed its
+hole with that claim, and the registry read `holes: []`. But nothing measured the language at
+all, so its authority cell was never asked the question that matters: the `rules:` grammar was
+invented here, so no specification defines it and no second implementation exists to disagree
+with it. The unit, property and fuzz tiers all ask the engine what it believes, and the matrix
+had no way to say so.
+
+**The fix: the row is derived, not written.** `scripts/quality_matrix.py` gained per-row scoping
+
+- `unit_scope`, `prop_scope` and a `writer` flag - because a surface that shares a crate with a
+format must not be credited with that crate's tests. Measured on the tree: the language's unit
+cell is the eleven `#[test]`s of `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs`, not
+the 407 the crate holds; its property cell is the one function that names it,
+`prop_schema_parse_no_panic`; its fuzz cell is `parse_schema`; its round-trip and parity cells
+read `n/a` - it resolves scalars and owns no serializer, and no second implementation of the
+grammar exists to compare against. Its authority cell reads `no`, which is the honest answer, and
+the measurement derives the hole `authority-tier:schema-rule-language` from that `no` rather than
+from prose.
+
+**The registry.** `.ci/quality-holes.json` carries the hole with an exit criterion: either a
+`tests/test_*_suite.py` or `tests/test_*_spec_table.py` whose name carries the surface's fragment
+asks the `rules:` grammar of something this repository does not own, so the authority cell reads
+`yes`, or the surface leaves the tree and the row leaves with it.
+`tests/test_quality_matrix.py` fails when the measured set and the declared set differ in either
+direction, so a new blind spot cannot land silently and a closed one cannot stay in the registry
+as decoration.
+
+**The document.** `QUALITY_MATRIX.md` now says there are two schema surfaces and that only one of
+them is judged from outside; the blind-spot table's false clause is corrected, and the row names
+the hole. The retired half keeps its own statement, because that half is true: the validator's
+symbols are gone.
+
+**The gate.** A new falsification control,
+`test_the_retired_validator_is_gone_and_the_rule_language_is_not`, scans the Rust sources, the
+Python package and the shipped stub and asserts both directions: `TypeSpec`, `ValidateKind`,
+`ValidateRule`, `SchemaValidationError`, `validate_against_schema` and
+`validate_against_registered_schema` appear nowhere, while `parse_schema_yaml`, `RuleResolver`
+and `YamlTypeKind` do, and the binding still reaches the parser. The page can no longer drift
+back to "deleted", and it cannot drift forward into claiming the validator is still there.
+
+Verified: 748 nextest (`cargo nextest run --all`, none failed) and 4044 Python tests pass with 11
+skipped; `tests/test_quality_matrix.py` alone is 59. `prek run --all-files` passes every hook, and
+the doc gates answer for the prose: `check_changelog_mirrors.py` reports all five mirrors
+structurally in sync, `check_cjk_localisation.py` 123 pages in their own script,
+`check_doc_wrapping.py` clean on the six governed files, `check_hole_claims.py` names only holes the
+matrix measures, and `quality_matrix.py --check-rows` finds every count in the tier table to be what
+the probe measures. The `str | None` annotations that ruff's UP045 rule forced into `FormatRow`
+were checked against the floor rather than assumed: under Python 3.8.20 the module imports and the
+five rows are built, the annotations staying unevaluated `ForwardRef`s.
+
+The gate was seen to bite in both directions before this entry was written, because a gate that has
+never been seen to bite is a comment. A probe file carrying `pub struct TypeSpec;` made the test
+fail with "'TypeSpec' is contained here"; a second probe that renamed `parse_schema_yaml` to
+`retired_probe_name` in the binding made it fail with "the binding still reads a `rules:` block".
+Both probes were removed afterwards and the binding was restored byte-identically - `sha256sum -c`
+reports `crates/pyrs-yaml/src/py/functions.rs: OK`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

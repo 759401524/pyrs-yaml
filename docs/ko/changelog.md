@@ -80,6 +80,26 @@ status: new
   `authority-tier:schema-validation`을 유지하며, 그 종료 조건은 이제 `Document.validate()`로
   대체하면 구멍이 닫힌다고 명시합니다.
 
+- **`rules:` 규칙 언어는 다시 제 행을 갖고, 사각지대도 다시 이름을 갖게 됩니다** — 매트릭스의
+  schema 문단은 2026-10-21에 검증기를 은퇴시킨 뒤에도 규칙 언어의 "Rust 진입점은 삭제되었다"고
+  적고 있었습니다. 그러나 *언어* 자체는 남아 있습니다. `parse_schema_yaml()`, `RuleResolver`와
+  `YamlTypeKind`는 지금도 `pyrs-yaml-core`가 공개하고, `register_schema()`, `load_schema()`,
+  `list_schemas()`, `YAML(schema=...)`는 지금도 `rules:` 블록을 그 경유로 읽습니다. 표에는 그
+  행이 아예 없었고, 페이지는 표면이 네 줄이라고 주장하면서 실제로는 다섯 개를 인도했으며, 등록부는
+  `holes: []`로 적혀 있었습니다. 바깥의 독자가 반박할 수 없는 문법을 오직 저자의 테스트만
+  재고 있었습니다. 이번 행은 손으로 쓴 것이 아니라 파생된 것입니다. `scripts/quality_matrix.py`는
+  각 행의 단위 계층과 속성 계층을 그 표면을 선언한 파일로 한정합니다. 그래서 이 언어는
+  `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs`의 열한 개 `#[test]`와 이 언어를
+  지목하는 유일한 속성 `prop_schema_parse_no_panic`만을 기록하고, YAML 엔진 크레이트 전체의
+  개수는 아닙니다. 왕복 열과 parity 열은 `n/a`입니다. 이 언어는 스칼라 타입 해석만 하며
+  직렬화기를 갖고 있지 않고, 이 문법에 비교할 두 번째 구현도 존재하지 않기 때문입니다. authority
+  열은 `no`이며, 그것이 정직한 답입니다. 이 문법은 이 저장소가 만들어 낸 것이므로 단위·속성·fuzz
+  세 계층은 모두 엔진이 스스로 믿는 바를 물을 뿐입니다. 측정값은 사각지대
+  `authority-tier:schema-rule-language`를 파생하고, 등록부는 검사 가능한 종료 조건과 함께 그것을
+  받으며, `QUALITY_MATRIX.md`는 사각지대 표에서 그것을 이름 붙입니다. 그래서 등록부는 다시
+  내용을 갖게 되고, 새로 추가된 두 번째 반증 제어는 은퇴한 검증기의 기호가 정말 없고 살아남은
+  언어가 정말 존재하는 양쪽을 모두 주장합니다. 페이지가 "삭제됨"으로 흘러가는 일은 이제 없습니다.
+
 - **스칼라 경로에 대한 `sort_keys`는 조용한 성공이 아니라 문서화된 no-op이 되었습니다** —
   `sort_keys("$.a")`는 `None`을 반환하고 아무것도 바꾸지 않았지만 `sort_keys("$.missing")`은
   `YamlEditError`를 발생시켰고, 패키지가 제공하는 문서는 이 사실을 언급하지 않았습니다. 레지스트리
