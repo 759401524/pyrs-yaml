@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 764 Rust `#[test]`, 1,841 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 764 Rust `#[test]`, 1,842 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -121,10 +121,14 @@ format's own grammar, or an official suite's cases, against something this repos
 `test_json5_spec_table.py` for the JSON5 productions inside the JSON row, and
 `test_json_writer_suite.py`, `test_yaml_writer_suite.py` and `test_toml_writer_suite.py` for what
 the writers emit rather than what the readers accept.
-Each file's cell is a verdict, not its name: a file counts only when the reader it asks is one no
-marker bounds, or when a call site nothing can skip still asks it. `test_json5_spec_table.py` was the
-shape this denies - it imported `pyjson5` alone and gated the whole module on that import, so the
-column read a file name while the 3.8 floor and 3.14+ judged the JSON5 grammar with nothing. The file
+Each file's cell is a verdict, not its name: a file counts when it reaches into a reader no marker
+bounds - a call in a test, or a callable wired into a module-level table before any test runs - or, when
+every reader it names is bounded, when a call site nothing can skip still asks one. A corpus suite,
+which has no reader to be absent, is credited by its file list. An import is not a use: a stale
+`import json` beside comparisons that all ask a bounded reader used to keep the cell at `yes`.
+`test_json5_spec_table.py` was the shape this denies - it imported `pyjson5` alone and gated the whole
+module on that import, so the column read a file name while the 3.8 floor and 3.14+ judged the JSON5
+grammar with nothing. The file
 asks the pure-Python `json5` reference now, and a file that regresses to a bounded reader alone is
 emitted as a hole of the `authority-tier` kind, named for the file, rather than sitting in prose.
 It is deliberately not the

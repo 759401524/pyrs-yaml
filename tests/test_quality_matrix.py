@@ -623,6 +623,62 @@ def test_an_authority_file_gated_on_its_reader_does_not_count(matrix, tmp_path):
     assert matrix.authority_cell(free)["verdict"] == "yes"
 
 
+AUTHORITY_USES = [
+    (
+        "the reader is imported and never reached",
+        "import json\n\nimport pyrs_yaml\n\n\n"
+        "def test_the_reference_accepts(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) is not None\n",
+        "no",
+    ),
+    (
+        "the only reference is a capability probe",
+        "import json\n\nimport pyrs_yaml\n\nHAS_JSON = json is not None\n\n\n"
+        "def test_the_reference_accepts(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) is not None\n",
+        "no",
+    ),
+    (
+        "the reader is wired into a module-level table",
+        "import json\n\nimport pyrs_yaml\n\n"
+        'ROUTES = {"to_json": (lambda doc: doc.to_json(), json.loads)}\n\n\n'
+        "def test_a_stranger_reads_what_the_writer_emitted():\n"
+        "    for emit, read in ROUTES.values():\n"
+        '        assert read(emit(pyrs_yaml.parse("a: 1"))) is not None\n',
+        "yes",
+    ),
+    (
+        "a corpus with no reader to be absent",
+        "import pytest\n\nimport pyrs_yaml\nfrom pyrs_yaml.compliance import load_test_cases\n\n"
+        'SUITE_DIR = "Reference/yaml-test-suite"\n\n\n'
+        '@pytest.mark.skipif(not __import__("pathlib").Path(SUITE_DIR).exists(), reason="corpus not found")\n'
+        "def test_every_case_parses():\n"
+        "    assert load_test_cases(SUITE_DIR)\n",
+        "yes",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("why", "source", "verdict"),
+    AUTHORITY_USES,
+    ids=[case[0] for case in AUTHORITY_USES],
+)
+def test_a_free_reader_is_credited_by_a_use_not_by_its_import(matrix, tmp_path, why, source, verdict):
+    """An import that outlives its comparisons must not credit the file.
+
+    `test_yaml_suite.py` carried exactly this shape: `import yaml` sat beside a capability flag while
+    the comparison ran through the corpus. The fix there was to take the flag from the module that
+    loads the corpus; here the same file reads `no` until the reader's API is reached. `json is None`
+    is a probe, not a comparison, and neither is a stale import. Reaching into the reader through a
+    module-level table counts - the writer suites call their outside readers that way - and a corpus
+    with no reader to be absent is credited by its file list, as it always was.
+    """
+    module = tmp_path / "test_json_spec_table.py"
+    module.write_text(source, encoding="utf-8")
+    assert matrix.authority_cell(module)["verdict"] == verdict, why
+
+
 def test_a_partial_parity_column_is_a_hole_and_a_full_one_is_not(measured):
     """`partial` means the tier is absent on the legs its oracles exclude, and those legs are green.
 

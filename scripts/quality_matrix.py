@@ -467,28 +467,63 @@ def _blanket_gate(text: str) -> str:
     return "\n".join(parts)
 
 
+def _uses_reader(text: str, local: str) -> bool:
+    """Does this module reach into the reader, rather than only importing it?
+
+    The pattern this denies: a stale `import json` left beside comparisons that all ask a bounded
+    reader, which credited the file for an authority its tests never touch. Reaching into the
+    reader's API is the use - `json.loads` in a test body, or the same attribute wired into a
+    module-level table (`ROUTES = {..., "to_json": json.loads}`) that a parametrized test calls
+    through. A bare name is not: `json is None` is a capability probe, and `@skipif(reader is None)`
+    or its marker definition reaches for the reader exactly when the test will not run.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    root = local.split(".")[0]
+    decorators = {
+        id(node)
+        for parent in ast.walk(tree)
+        for decorator in getattr(parent, "decorator_list", ())
+        for node in ast.walk(decorator)
+    }
+    for node in ast.walk(tree):
+        if id(node) in decorators:
+            continue
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == root:
+            return True
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == local:
+            return True
+    return False
+
+
 def authority_cell(path) -> dict:
     """Whether this file asks the format's rules of an authority that runs on every tested leg.
 
     Two kinds of authority exist in this tree: a reader the tests call - `json`, PyYAML, `json5` - and
     a corpus committed under `Reference/`. A corpus file has no reader to be absent, so its file list
-    is the credit; a reader file is credited when at least one reader nothing bounds is imported at
-    module level, or, if every reader is bounded, when a call site no skip guards still asks one. The
-    shape this measurement exists for is the one it denies: `test_json5_spec_table.py` imported only
-    `pyjson5`, whose markers keep it off the 3.8 floor and off 3.14+, and then gated the entire module
-    on that import - so on those legs the JSON5 grammar was judged by nothing while the column still
-    read a file name.
+    is the credit; a reader file is credited only when the module evaluates a reader nothing bounds,
+    or, if every reader is bounded, when a call site no skip guards still asks one. Importing alone
+    is not credit: a free reader's import can outlive the comparisons that used it, and the file then
+    reads as coverage while its tests ask only a reader some leg lacks. The shape this measurement
+    exists for is the one it denies: `test_json5_spec_table.py` imported only `pyjson5`, whose
+    markers keep it off the 3.8 floor and off 3.14+, and then gated the entire module on that import -
+    so on those legs the JSON5 grammar was judged by nothing while the column still read a file name.
     """
     text = read(path)
     readers = _oracle_locals(text)
     bounded = sorted(name for name in readers if _reader_bounded(name))
-    free = sorted(name for name in readers if name not in bounded)
+    every_leg = [local for name, aliases in readers.items() if name not in bounded for local in aliases]
     locals_of = [local for aliases in readers.values() for local in aliases]
     gate = _blanket_gate(text)
     if gate and any(local in gate for local in locals_of):
         return {"verdict": "no", "readers": sorted(readers), "bounded": bounded}
-    if free or not readers:
-        return {"verdict": "yes", "readers": sorted(readers), "bounded": bounded}
+    if not readers:
+        return {"verdict": "yes", "readers": [], "bounded": []}
+    if every_leg:
+        used = any(_uses_reader(text, local) for local in every_leg)
+        return {"verdict": "yes" if used else "no", "readers": sorted(readers), "bounded": bounded}
     units, _ = _test_units(text)
     live = any(_credited(decorators, body, locals_of) for decorators, body in units)
     return {"verdict": "yes" if live else "no", "readers": sorted(readers), "bounded": bounded}
@@ -584,9 +619,10 @@ def authority_file_gaps(rows: dict) -> list[tuple]:
 
     The column used to be a list, so `test_json5_spec_table.py` was credited by its name while the
     whole module sat behind `pytestmark = skipif(pyjson5 is None)` and `pyjson5`'s markers keep it off
-    the 3.8 floor and off 3.14+. A file is denied here when every reader it asks is bounded and its
-    call sites are gated; the name in the hole is the file, because that is the unit that has to gain
-    an unbounded authority.
+    the 3.8 floor and off 3.14+. A file is denied here when it reaches no reader every leg installs:
+    every reader it asks is bounded and its call sites are gated, or the only unbounded reader is
+    imported and never used. The name in the hole is the file, because that is the unit that has to
+    gain an unbounded authority.
     """
 
     def slug(name: str) -> str:
