@@ -819,6 +819,121 @@ def test_every_dialect_is_credited_by_a_reader_every_leg_installs(measured):
     assert row["verdict"] == "yes", row
 
 
+#: A crosslib module whose readers are all installed on every leg. The bounded-reader set is empty,
+#: which is the shape the cell used to answer before reading a single test.
+CROSSLIB_INSTALLED_HEADER = "import pytest\n\nimport pyrs_yaml\n\nimport json\nimport sys\n\n\n"
+
+CROSSLIB_NO_LIVE_COMPARISON = [
+    (
+        "every test is marked skip",
+        '@pytest.mark.skip(reason="not today")\n'
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+    ),
+    ("the file has no test at all", ""),
+    (
+        "the module is gated",
+        'pytestmark = pytest.mark.skip(reason="not today")\n'
+        "\n\n"
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+    ),
+    (
+        "the guard fires on a leg the matrix tests",
+        '@pytest.mark.skipif(sys.version_info < (3, 9), reason="needs 3.9")\n'
+        '@pytest.mark.parametrize("doc", ["{}"])\n'
+        "def test_load_json_matches_the_reference(doc):\n"
+        "    assert pyrs_yaml.load_json(doc) == json.loads(doc)\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("why", "body"),
+    CROSSLIB_NO_LIVE_COMPARISON,
+    ids=[case[0] for case in CROSSLIB_NO_LIVE_COMPARISON],
+)
+def test_a_family_with_no_bounded_reader_still_needs_a_live_comparison(matrix, tmp_path, why, body):
+    """The cell returned `yes` before it read a unit whenever nothing bounded the readers.
+
+    `tests/test_yaml_crosslib.py` imports two readers that no marker bounds, so the early return was
+    the branch that credited it - and a module whose every comparison carried `@pytest.mark.skip` took
+    the same branch. A reader every leg installs removes one way to lose a comparison, not the
+    requirement that a comparison exist. The last case is the control for the relaxation below: a
+    `skipif` on an interpreter version is still a guard a leg can lose.
+    """
+    module = tmp_path / "test_json_crosslib.py"
+    module.write_text(CROSSLIB_INSTALLED_HEADER + body, encoding="utf-8")
+    row = matrix.crosslib_parity("JSON / JSONC / JSON5", module)
+    assert row["covered"] == [], (why, row)
+    assert row["restricted"] == ["json", "json5", "jsonc"], (why, row)
+    assert row["verdict"] == "partial", (why, row)
+
+
+def test_a_guard_on_the_availability_of_an_installed_reader_is_dead(matrix, tmp_path):
+    """The positive control: the guard `test_yaml_crosslib.py` writes cannot fire on a matrix leg.
+
+    `pyproject.toml` declares PyYAML with no marker, so every tested interpreter installs it; a
+    `skipif(pyyaml is None)` and a helper whose whole body is `return pyyaml is not None` describe a
+    dependency that is never absent. Reading either as a gate would turn the one family whose readers
+    all reach every leg into a hole the measurement invented.
+    """
+    module = tmp_path / "test_yaml_crosslib.py"
+    module.write_text(
+        "import pytest\n\nimport pyrs_yaml\n\n"
+        "try:\n    import yaml as pyyaml\nexcept ImportError:\n    pyyaml = None\n\n\n"
+        "def _pyyaml_available():\n"
+        "    return pyyaml is not None\n\n\n"
+        '@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")\n'
+        '@pytest.mark.parametrize("doc", ["a: 1"])\n'
+        "def test_direct(doc):\n"
+        "    assert pyrs_yaml.safe_load(doc) == pyyaml.safe_load(doc)\n\n\n"
+        '@pytest.mark.skipif(not _pyyaml_available(), reason="PyYAML not installed")\n'
+        '@pytest.mark.parametrize("doc", ["a: 1"])\n'
+        "def test_through_helper(doc):\n"
+        "    assert pyrs_yaml.safe_load(doc) == pyyaml.safe_load(doc)\n",
+        encoding="utf-8",
+    )
+    row = matrix.crosslib_parity("YAML", module)
+    assert row["covered"] == ["yaml"], row
+    assert row["restricted"] == [], row
+    assert row["verdict"] == "yes", row
+
+
+def test_a_helper_that_asks_the_interpreter_is_still_a_gate(matrix, tmp_path):
+    """The helper form is resolved by its body, not by its name: only a reader probe is dead."""
+    module = tmp_path / "test_yaml_crosslib.py"
+    module.write_text(
+        "import pytest\n\nimport pyrs_yaml\n\nimport sys\n\n"
+        "try:\n    import yaml as pyyaml\nexcept ImportError:\n    pyyaml = None\n\n\n"
+        "def _modern():\n"
+        "    return sys.version_info >= (3, 9)\n\n\n"
+        '@pytest.mark.skipif(not _modern(), reason="needs 3.9")\n'
+        '@pytest.mark.parametrize("doc", ["a: 1"])\n'
+        "def test_x(doc):\n"
+        "    assert pyrs_yaml.safe_load(doc) == pyyaml.safe_load(doc)\n",
+        encoding="utf-8",
+    )
+    row = matrix.crosslib_parity("YAML", module)
+    assert row["covered"] == [], row
+    assert row["verdict"] == "partial", row
+
+
+def test_the_yaml_row_is_credited_by_a_comparison_it_really_runs(measured):
+    """The tree: every PyYAML/ruamel comparison carries a skipif, and none of them can skip.
+
+    The row is the reason the availability guards are resolved rather than denied: both readers are
+    declared without a marker, `tests/test_yaml_crosslib.py` compares `safe_load`/`safe_dump`/`parse`
+    in tests that carry nothing else, and the cell still reads `yes` after the unit rule replaced the
+    early return.
+    """
+    row = measured["format_matrix"]["YAML"]["cross_library"]
+    assert row["covered"] == ["yaml"], row
+    assert row["restricted"] == [], row
+    assert row["marker"] == {"PyYAML": None, "ruamel.yaml": None}, row
+    assert row["verdict"] == "yes", row
+
+
 def test_a_reader_the_interpreter_bounds_is_found_and_bounded(matrix, tmp_path):
     """An oracle can be kept off a leg by the interpreter, not only by a dependency marker.
 

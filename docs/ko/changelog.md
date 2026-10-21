@@ -17,6 +17,20 @@ status: new
 
 ### 변경
 
+- **리더가 제한되지 않아도 패리티 열은 테스트 단위를 읽습니다** — 기존 `crosslib_parity`는 제한된
+  리더가 없다고 판단한 지점에서 테스트를 하나도 읽지 않고 `yes`를 반환했습니다. 그래서 모든 테스트
+  레그에 설치되는 리더만 가진 패밀리는 import 목록만으로 점수를 받았고, 모든 비교에
+  `@pytest.mark.skip`을 단 `test_*_crosslib.py`와 테스트가 하나도 없는 파일도 `yes`로
+  표시되었습니다. 이제 단위 규칙은 모든 모듈에 적용됩니다. YAML이 `yes`를 유지하는 이유는 가드가
+  발동할 수 없기 때문입니다. 모든 비교에 `skipif(pyyaml is None)` 또는
+  `skipif(not _ruamel_available())`가 붙고, 두 리더 모두 마커 없이 선언되며, 헬퍼는 그
+  본문(`return _ruamel is not None`)으로 해석됩니다. 반면 `skipif(sys.version_info < ...)`는 여전히
+  점수를 거부합니다. YAML의 비교를 `safe_load`, `safe_dump`, `parse`에서 읽으려면 방언 정규식이
+  접미사 없는 기본 동사를 알아야 했습니다. 제어는 "살아 있는 비교 없음"의 네 가지
+  형태(`@pytest.mark.skip`, 테스트 없음, 모듈 수준 `pytestmark`, 인터프리터 게이트)를 `partial`로,
+  죽은 가용성 가드를 `yes`로 고정합니다. 측정된 트리는 그대로이며 YAML, JSON, TOML 패리티는 여전히
+  `yes`이고, 파생된 구멍 목록도 유일한 `authority-tier:schema-validation` 그대로입니다.
+
 - **코퍼스 스위트는 그것이 지목한 코퍼스로 점수를 받습니다** — 외부 권위 열의 리더 없음
   분기는 리더를 import하지 않는 `tests/test_*_suite.py` 또는 `*_spec_table.py`에 모두 `yes`를
   주었습니다. 그래서 올바른 접미사와 자리표시자 테스트만 있는 파일도 `yes`로 표시되었고, 문서의

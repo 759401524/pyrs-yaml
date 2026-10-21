@@ -347,12 +347,19 @@ def _reader_bound(name: str):
 SKIP_SHAPES = ("skipif", "xfail", "importorskip", "pytest.skip(")
 
 #: The dialect a pyrs call asks for, read off the loader's own name. The alternation is ordered so
-#: `load_json5` cannot be credited to the narrower `json`.
-DIALECT_CALL = re.compile(r"pyrs_yaml\.[a-z0-9_]*_(json5|jsonc|json|toml|yaml)\b")
+#: `load_json5` cannot be credited to the narrower `json`. The unsuffixed verbs are YAML's own:
+#: `test_yaml_crosslib.py` compares through `safe_load`, `safe_dump` and `parse`, which carry no
+#: dialect suffix because YAML is the default format.
+DIALECT_CALL = re.compile(r"pyrs_yaml\.(?:[a-z0-9_]*_(json5|jsonc|json|toml|yaml)|safe_load|safe_dump|parse)\b")
+
+
+def _dialect(match) -> str:
+    """The dialect a `DIALECT_CALL` match asks for: the suffix, or `yaml` for the default verbs."""
+    return match.group(1) or "yaml"
 
 
 def _test_units(text: str) -> tuple:
-    """Each `def test_*` as `(decorators, body)`, and whether the whole module is gated.
+    """Each `def test_*` as `([decorator sources], body)`, and whether the whole module is gated.
 
     Parsed rather than sliced by line: a unit ends at its own last statement, so a constant or a
     helper defined after the test is not read as part of it - measured on the JSON module, where the
@@ -369,7 +376,7 @@ def _test_units(text: str) -> tuple:
     for node in tree.body:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test"):
             continue
-        decorators = "\n".join(ast.get_source_segment(text, item) or "" for item in node.decorator_list)
+        decorators = [ast.get_source_segment(text, item) or "" for item in node.decorator_list]
         start = node.body[0].lineno - 1
         first = node.body[0]
         if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
@@ -382,18 +389,89 @@ def _test_units(text: str) -> tuple:
     return units, blanket
 
 
-def _credited(decorators: str, body: str, free: list) -> bool:
+def _probe_helpers(text: str, free: list) -> set:
+    """Module-level functions whose whole answer is whether a free reader is installed.
+
+    `tests/test_yaml_crosslib.py` guards its ruamel comparisons with
+    `skipif(not _ruamel_available())`, and the helper's body is `return _ruamel is not None`. Resolving
+    that name is what separates a guard that cannot fire on a matrix leg from one that can.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    names = set()
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.args.args or node.args.kwonlyargs:
+            continue
+        if node.args.vararg or node.args.kwarg:
+            continue
+        body = node.body
+        first = body[0] if body else None
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            body = body[1:]
+        if len(body) != 1 or not isinstance(body[0], ast.Return) or body[0].value is None:
+            continue
+        compare = body[0].value
+        if not isinstance(compare, ast.Compare) or len(compare.ops) != 1:
+            continue
+        if not isinstance(compare.ops[0], (ast.Is, ast.IsNot)):
+            continue
+        sides = [compare.left, *compare.comparators]
+        if not any(isinstance(side, ast.Constant) and side.value is None for side in sides):
+            continue
+        if any(isinstance(side, ast.Name) and side.id in free for side in sides):
+            names.add(node.name)
+    return names
+
+
+def _decoration_gates(decorator: str, free: list, probes: set) -> bool:
+    """Can this decorator drop its unit on a leg where every free reader is installed?
+
+    A `skipif` on the availability of a reader nothing bounds cannot: `pyproject.toml` installs that
+    reader on every leg, so the comparison runs everywhere and the guard is dead while the cell is
+    green. Anything else can gate - an interpreter version, a bounded reader, a module-level flag - and
+    a decorator that is not `parametrize` is a skip marker wearing a name.
+    """
+    if "parametrize" in decorator:
+        return False
+    try:
+        expr = ast.parse(decorator.strip(), mode="eval").body
+    except SyntaxError:
+        return True
+    if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "skipif"):
+        return True
+    if not expr.args:
+        return True
+    allowed = set(free) | probes
+    for node in ast.walk(expr.args[0]):
+        if isinstance(node, ast.Name) and node.id not in allowed:
+            return True
+        if isinstance(node, ast.Attribute):
+            return True
+        if isinstance(node, ast.Call) and not (isinstance(node.func, ast.Name) and node.func.id in probes):
+            return True
+    return False
+
+
+def _credited(decorators: list, body: str, free: list, probes: set | None = None) -> bool:
     """Does this unit compare its dialect against a reader that no leg is missing?
 
-    Credit needs a call to a reader no marker bounds, in a test whose only decorators are ones that
-    cannot gate it. Nothing about a guard is resolved by name here, deliberately: a denied credit leaves
-    a hole registered, which is the safe error, while an undetected one closes a hole that is open.
+    Credit needs a call to a reader no marker bounds, in a test whose decorators cannot gate it.
+    `probes` is the parity cell's reading and there is no default: a set resolves the availability
+    guards of free readers, which are dead, while `None` is the authority column's stricter reading,
+    where any decorator but `parametrize` denies because a skip there can be the one that removes a
+    reader from a leg. A denied credit leaves a hole registered, which is the safe error, while an
+    undetected one closes a hole that is open.
     """
     if any(shape in body for shape in SKIP_SHAPES):
         return False
-    for line in decorators.splitlines():
-        if line.strip() and "parametrize" not in line:
-            return False
+    if probes is None:
+        gated = any("parametrize" not in item for item in decorators)
+    else:
+        gated = any(_decoration_gates(item, free, probes) for item in decorators)
+    if gated:
+        return False
     return any(re.search(rf"\b{re.escape(local)}\.\w+\(", body) for local in free)
 
 
@@ -406,22 +484,28 @@ def crosslib_parity(label: str, module) -> dict:
     `pyjson5`, which `pyproject.toml` keeps off the floor interpreter. So the cell is per dialect, and
     a dialect counts as covered everywhere when some test asks it of an unbounded reader in a unit
     nothing can skip.
+
+    The unit rule is asked of every module, not only the ones with a bounded reader. The cell used to
+    return on the bounded-reader check before reading a single unit, so a `test_*_crosslib.py` whose
+    every test carried `@pytest.mark.skip` read `yes` when all of its readers were installed
+    everywhere. A `skipif` naming the availability of a reader nothing bounds is not a gate - that
+    reader is installed on every leg - which is why `test_yaml_crosslib.py` keeps its `yes`;
+    `skipif(sys.version_info < ...)` still denies.
     """
     text = read(module)
     readers = _oracle_locals(text)
     oracles = sorted(readers)
     bounded = {name for name in oracles if _reader_bounded(name)}
     markers = {name: _reader_bound(name) for name in oracles}
-    if not bounded:
-        return {"verdict": "yes", "oracles": oracles, "restricted": [], "marker": markers}
 
     units, blanket = _test_units(text)
     free = [local for name, aliases in readers.items() if name not in bounded for local in aliases]
+    probes = _probe_helpers(text, free)
     covered: set = set()
     if not blanket:
         for decorators, body in units:
-            if _credited(decorators, body, free):
-                covered.update(match.group(1) for match in DIALECT_CALL.finditer(body))
+            if _credited(decorators, body, free, probes):
+                covered.update(_dialect(match) for match in DIALECT_CALL.finditer(body))
     dialects = [_slug(part) for part in label.split("/") if _slug(part)]
     restricted = sorted(name for name in dialects if name not in covered)
     return {
