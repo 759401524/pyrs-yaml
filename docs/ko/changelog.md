@@ -57,6 +57,15 @@ status: new
 
 ### 변경
 
+- **분리 게이트가 bench 레그를 지킴** — `scripts/check_rust_python_decoupling.py`에 규칙 R5를
+  추가했습니다. 확장 crate는 `required-features` 없는 `[[bench]]` 대상을 둘 수 없습니다. 그런
+  대상은 모든 workspace-급 bench 명령에 선택되어, CI bench 레그가 막 제거한 `pyo3-build-config`
+  인터프리터 탐색을 다시 빌드하기 때문입니다. 게이트에 네 규칙이 있었으나, 이 다섯째 규칙이 bench
+  레그 범위 지정으로 얻은 것을 고정해, `crates/pyrs-yaml`에 무조건 bench가 앞으로 생기면 결합의
+  조용한 재출현이 아니라 실패 실행이 됩니다. `tests/test_rust_python_decoupling_gate.py`가 합성
+  트리에서 R5를 깨고 판정 반전을 요구합니다(반증 제어 이제 13개). 그리고 깨끗한 워크스페이스는 계속
+  통과합니다.
+
 - **CI 의 Rust 벤치마크 레그도 인터프리터를 요구하지 않음** — CodSpeed 의 `Rust benchmarks` 는
   Python 런타임을 빌드에 끌어들였던 마지막 레그였고, 원인은 테스트 레그와 동일하게 의존 간선이
   아니라 workspace 의 *멤버십* 이었습니다. `cargo codspeed build` 는 모든 멤버를 선택하므로

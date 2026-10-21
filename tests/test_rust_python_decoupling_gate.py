@@ -276,6 +276,22 @@ def test_a_feature_gate_on_an_undeclared_feature_is_a_finding(gate, capsys, tmp_
     assert "[R4] binding" in output, output
 
 
+def test_an_unconditional_bench_in_the_extension_is_a_finding(gate, capsys, tmp_path):
+    """R5: a `[[bench]]` with no required-features is built by every workspace bench command."""
+    manifest = BINDING_MANIFEST.replace('\nrequired-features = ["ir-gate"]\n', "\n")
+    assert manifest != BINDING_MANIFEST, "the control did not strip the bench feature gate"
+    code, output = _run(gate, capsys, _workspace(tmp_path, **{"crates/binding/Cargo.toml": manifest}))
+    assert code == 1, output
+    assert "[R5] binding" in output, output
+
+
+def test_the_positive_workspace_still_passes_r5(gate, capsys, tmp_path):
+    """R5 must not bite the gated `ir_gate`, so the clean workspace stays clean."""
+    code, output = _run(gate, capsys, _workspace(tmp_path))
+    assert code == 0, output
+    assert "[R5]" not in output, output
+
+
 def test_a_second_cdylib_crate_is_a_finding(gate, capsys, tmp_path):
     """R1: the extension is one crate, and a second cdylib makes the rule ambiguous."""
     root = _workspace(

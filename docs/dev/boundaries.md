@@ -295,7 +295,7 @@ grow a `pyo3` edge, the extension could take a Rust test block back, and the sym
 later as a Rust leg that cannot start without an interpreter.
 `scripts/check_rust_python_decoupling.py` derives the matrix from the manifests themselves - the
 members come from the root manifest, the Python-runtime set from the `pyo3` prefix and the `numpy`
-name, the test tier from the sources - and enforces four rules.
+name, the test tier from the sources - and enforces five rules.
 
 | rule | what it holds |
 |:--|:--|
@@ -303,6 +303,7 @@ name, the test tier from the sources - and enforces four rules.
 | R2 | the extension holds no `#[cfg(test)]` block, no `tests/` directory and no `[[test]]` target, and declares `[lib] test = false` |
 | R3 | no other crate disables its test tier and no other crate holds an empty one |
 | R4 | every `required-features` entry names a declared feature that default does not enable |
+| R5 | the extension crate holds no `[[bench]]` target without `required-features`, so a workspace bench command cannot build the interpreter probe through it |
 
 R3 is what makes this a decoupling gate rather than a test-suppression gate: the target is the
 absence of the coupling, not the absence of the tests, so a crate whose tests were deleted to make
@@ -314,8 +315,8 @@ because the check has to run where cargo does not: the Python test legs install 
 build one, so a `cargo metadata` gate would have no CI-runnable falsification control. A manifest
 the reader cannot parse is exit 2 - a refusal, never a pass. And the control itself,
 `tests/test_rust_python_decoupling_gate.py`, breaks each rule on a synthetic tree and requires the
-verdict to flip. Measured against the file as it ships: all 12 negative controls bite, and removing
-any one of the 7 rule bodies blinds exactly the controls that body stands behind, no more and no
+verdict to flip. Measured against the file as it ships: all 13 negative controls bite, and removing
+any one of the 8 rule bodies blinds exactly the controls that body stands behind, no more and no
 fewer - which is the only evidence that a passing control means anything.
 
 **Where the coupling is actually felt, and what CI does about it.** The graph, not the binaries:
