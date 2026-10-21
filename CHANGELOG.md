@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`sort_keys` on a scalar path is a documented no-op, not a silent one** — `sort_keys("$.a")`
+  returned `None` and changed nothing while `sort_keys("$.missing")` raised `YamlEditError`, and
+  nothing the package shipped said so; the registry entry recorded the mismatch with the exit
+  "answer the way a missing path does, or state the no-op in the shipped stub". The stub now states
+  it: a path that resolves to a scalar has no keys to sort, so the call answers `None`, while a
+  path that does not resolve still refuses. The test that pinned the shape is named for the
+  contract and asserts both sides, `api:sort-keys-scalar-path-noop` leaves
+  `.ci/known-residuals.json`, and the matrix's Known residuals table now names only
+  `api:set-comment-container-owner`.
+
 - **The parity column reads a unit even when no reader is bounded** — `crosslib_parity` returned
   `yes` on the bounded-reader check before reading a single test, so a family whose readers all
   reach every leg was credited by its import list alone: a `test_*_crosslib.py` whose every

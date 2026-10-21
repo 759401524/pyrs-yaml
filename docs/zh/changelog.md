@@ -19,6 +19,13 @@ status: new
 
 ### 变更
 
+- **标量路径上的 `sort_keys` 是有文档说明的空操作，而不是静默成功** — `sort_keys("$.a")` 返回 `None`
+  且不改动任何内容，而 `sort_keys("$.missing")` 抛出 `YamlEditError`，包所交付的文档对此只字未提；登
+  记条目记录了这一不一致，出口是「与缺失路径同样回答，或在随包发布的桩中说明这是空操作」。现在桩里写
+  明了：解析到标量的路径没有键可排序，调用返回 `None`；解析不到的路径仍然拒绝。钉住该形状的测试已按
+  契约命名并断言两侧，`api:sort-keys-scalar-path-noop` 从 `.ci/known-residuals.json` 移除，矩阵的
+  Known residuals 表如今只列出 `api:set-comment-container-owner`。
+
 - **无界读取器不再让 parity 列跳过测试单元** — 此前 `crosslib_parity` 在读取任何测试之前，只要
   判断出没有读取器被 marker 限界就直接返回 `yes`，于是每个测试平台都能装上的读取器家族仅凭
   import 列表就被记账：所有比较都带 `@pytest.mark.skip` 的 `test_*_crosslib.py`，以及一个测试

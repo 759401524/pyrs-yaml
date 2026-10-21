@@ -360,6 +360,9 @@ class YamlDocument:
     def sort_keys(self, path: "str" = "$") -> "None":
         """
         Sort the mapping keys at ``path`` (default root) in place.
+
+            A path that resolves to a scalar is a no-op, not an error: a scalar has no
+            keys to sort. A path that does not resolve raises ``YamlEditError``.
         """
 
     def walk(self) -> "Iterator[Node]": ...

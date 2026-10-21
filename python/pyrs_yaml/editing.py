@@ -46,7 +46,11 @@ def _yaml_document_rename(self, path: str, new_key: str) -> None:
 
 
 def _yaml_document_sort_keys(self, path: str = "$") -> None:
-    """Sort the mapping keys at ``path`` (default root) in place."""
+    """Sort the mapping keys at ``path`` (default root) in place.
+
+    A path that resolves to a scalar is a no-op, not an error: a scalar has no
+    keys to sort. A path that does not resolve raises ``YamlEditError``.
+    """
     return _path_node(self, path).sort_keys()
 
 
