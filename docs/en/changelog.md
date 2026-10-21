@@ -60,6 +60,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Rust benchmarks live in the crate that measures them** — the divan benchmark set moved from
+  `crates/pyrs-yaml/benches/yaml_bench.rs` to `crates/pyrs-yaml-core/benches/yaml_bench.rs`. The
+  forty-seven benchmarks measure the same code as before: the binding crate only re-exported the
+  engine's API, so every import changed name and nothing else did. The bench's package closure
+  drops the six Python-runtime crates it inherited from the binding crate (`pyo3`, `pyo3-ffi`,
+  `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and `numpy`) and carries none. The bench
+  binary was already free of a Python runtime — Linux `DT_NEEDED` lists no `libpython`, and
+  Windows' import table has no `python3.dll` — but only because the linker pruned a dependency that
+  no symbol referenced; the dependency is gone now, so the independence is structural and a gate can
+  assert it. The extension module keeps its own link to `libpython3.12.so.1.0`, which is where a
+  Python extension belongs. The measured code is unchanged, so the only visible difference is the
+  package segment of the CodSpeed identity: the benchmark entries are re-baselined under
+  `pyrs-yaml-core`.
+
 - **The event stream and the merge resolver keep their anchors in the crate's node map** — a
   `#![no_std]` crate cannot name `std::collections::HashMap`, so `event_to_stream_event` and
   `resolve_anchor_name` now take `&mut NodeMap<usize, String>` and the merge resolver's anchor

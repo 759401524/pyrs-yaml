@@ -45,13 +45,6 @@ numpy = ["dep:numpy"]
 # not enabled". Keeping it behind this feature is what stops that change from reaching the wheel.
 ir-gate = ["pyo3/auto-initialize"]
 
-[dev-dependencies]
-divan = { package = "codspeed-divan-compat", version = "5.0" }
-
-[[bench]]
-name = "yaml_bench"
-harness = false
-
 # The binding-side half of the instruction-count gate. `pyrs-yaml-core`'s harness cannot reach the
 # AST-to-Python conversion (it never links this crate), which is the registered hole
 # `perf-coverage:binding-layer`; these scenarios close it.

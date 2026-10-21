@@ -57,6 +57,20 @@ status: new
 
 ### 변경
 
+- **Rust 벤치마크는 측정 대상 crate 안에 있습니다** — divan 벤치마크 세트가
+  `crates/pyrs-yaml/benches/yaml_bench.rs`에서 `crates/pyrs-yaml-core/benches/yaml_bench.rs`로
+  옮겨졌습니다. 마흔일곱 개의 벤치마크가 측정하는 코드는 이전과 똑같습니다. 바인딩 crate는
+  엔진의 API를 그대로 다시 내보냈을 뿐이므로 모든 import가 이름만 바뀌었고 그 밖에 달라진 것은
+  없습니다. 벤치의 package closure는 바인딩 crate에서 물려받은 여섯 개의 Python 런타임
+  crate(`pyo3`, `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config`, `numpy`)를
+  잃고 하나도 갖지 않습니다. 벤치 바이너리는 이미 Python 런타임이 없었습니다. Linux의
+  `DT_NEEDED` 목록에 `libpython`이 없고 Windows의 import 테이블에 `python3.dll`이 없습니다.
+  다만 어떤 심볼도 참조하지 않던 의존성을 링커가 잘라냈기 때문이었습니다. 이제는 의존성 자체가
+  없어졌으므로 이 독립성은 구조적인 것이며 게이트가 단언할 수 있습니다. 확장 모듈은
+  `libpython3.12.so.1.0`에 대한 자체 링크를 그대로 유지합니다. Python 확장이 있을 자리가
+  그곳입니다. 측정 대상 코드는 바뀌지 않았으므로 눈에 보이는 차이는 CodSpeed ID의 package
+  세그먼트뿐이며 벤치마크 항목은 `pyrs-yaml-core` 아래에서 다시 기준선이 잡힙니다.
+
 - **이벤트 스트림과 merge 해결기는 앵커를 crate의 노드 맵에 둡니다** — `#![no_std]` crate는
   `std::collections::HashMap`을 이름으로 쓸 수 없기 때문에 `event_to_stream_event`와
   `resolve_anchor_name`은 이제 `&mut NodeMap<usize, String>`을 받고, merge 해결기의 앵커 테이블도

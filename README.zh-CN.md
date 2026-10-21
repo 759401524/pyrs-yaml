@@ -398,7 +398,7 @@ frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text, max_depth=200)
 
 ## 性能
 
-divan 基准测试在 `crates/pyrs-yaml/benches/yaml_bench.rs`（Rust）+ `pytest-codspeed` 在 `tests/test_benchmark_crosslib.py`（Python）。完整跨库对比（与 PyYAML 和 ruamel.yaml）见[基准测试文档](docs/en/performance/benchmarks.md)。
+divan 基准测试在 `crates/pyrs-yaml-core/benches/yaml_bench.rs`（Rust）+ `pytest-codspeed` 在 `tests/test_benchmark_crosslib.py`（Python）。完整跨库对比（与 PyYAML 和 ruamel.yaml）见[基准测试文档](docs/en/performance/benchmarks.md)。
 
 **v0.18 亮点：**
 

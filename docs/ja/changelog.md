@@ -58,6 +58,21 @@ status: new
 
 ### 変更
 
+- **Rust のベンチマークは測っている crate に置かれます** — divan のベンチマークセットは
+  `crates/pyrs-yaml/benches/yaml_bench.rs` から `crates/pyrs-yaml-core/benches/yaml_bench.rs`
+  へ移りました。47 個のベンチマークが測るコードは以前とまったく同じです。バインディング crate は
+  エンジンの API を再公開していただけなので、どの import も名前が変わっただけで、それ以外は
+  変わりません。ベンチの package closure はバインディング crate から受け継いだ 6 つの Python
+  ランタイム crate（`pyo3`、`pyo3-ffi`、`pyo3-macros`、`pyo3-macros-backend`、
+  `pyo3-build-config`、`numpy`）を落とし、1 つも持ちません。ベンチのバイナリはもともと Python
+  ランタイムに依存していなかったのです。Linux の `DT_NEEDED` に `libpython` はなく、Windows の
+  import テーブルに `python3.dll` はありません。ただしそれはいかなるシンボルも参照しない依存を
+  リンカが剪断したからにすぎません。今は依存そのものが無いので、独立性は構造的なものであり、
+  ゲートが assert できます。拡張モジュールは `libpython3.12.so.1.0` への独自のリンクを保ちます。
+  Python 拡張はそうあるべきものです。測られるコードは変わっていないので、見える違いは CodSpeed
+  ID の package セグメントだけで、ベンチマークの項目は `pyrs-yaml-core` の下で再ベースラインされ
+  ます。
+
 - **イベントストリームと merge 解決器はアンカーを crate のノードマップに保持します** —
   `#![no_std]` の crate は `std::collections::HashMap` を名前で持てないため、
   `event_to_stream_event` と `resolve_anchor_name` は `&mut NodeMap<usize, String>` を受け取り、

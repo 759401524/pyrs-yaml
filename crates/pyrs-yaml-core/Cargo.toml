@@ -57,6 +57,8 @@ pyrs-toml = { path = "../pyrs-toml", version = "0.18.1" }
 proptest = "1.5"
 similar = "3"
 pyrs-ast = { path = "../pyrs-ast", version = "0.18.1", features = ["test-strategy"] }
+# The CodSpeed-compatible divan harness for the bench set below.
+divan = { package = "codspeed-divan-compat", version = "5.0" }
 
 # Instruction-count gate. `harness = false` because the measurement is a fixed
 # iteration loop with a companion setup-only pass: libtest's own timing harness
@@ -74,3 +76,22 @@ pyrs-ast = { path = "../pyrs-ast", version = "0.18.1", features = ["test-strateg
 name = "ir_gate"
 harness = false
 required-features = ["ir-gate"]
+
+# The CodSpeed bench set. It lives here, not in the binding crate: every
+# benchmark it measures is pure Rust - YAML/TOML/JSON text in, AST or text out -
+# so its build graph should be pure Rust too. Measured on the tree before this
+# move, the bench's package closure carried six Python-runtime crates (`pyo3`,
+# `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and
+# `numpy`), and the closure of this crate carries none of them.
+#
+# The bench binary itself was already free of a Python runtime - on Linux its
+# `DT_NEEDED` list has no `libpython`, and on Windows its import table has no
+# `python3.dll` - but only because the linker pruned a dependency no symbol
+# referenced. The move removes the dependency rather than the reference, so the
+# independence is structural and can be asserted by a gate.
+#
+# The measured code is unchanged by the move; only the package segment of the
+# CodSpeed identity changes.
+[[bench]]
+name = "yaml_bench"
+harness = false

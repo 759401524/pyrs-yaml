@@ -1179,10 +1179,11 @@ artifact byte for byte.
 
 ## The Rust bench set reached the ranking channel's blind spots (2026-10-19)
 
-`codspeed.yml` runs two legs, and the Rust one has been green the whole time: `cargo codspeed
-build && cargo codspeed run` over `crates/pyrs-yaml/benches/yaml_bench.rs`, simulation mode, the
-report posted as `CodSpeed Performance Analysis`. Green is not the same as covering. Everything the
-file measured was YAML text in, YAML or Python out; the two spokes this engine has grown most since
+`codspeed.yml` runs two legs, and the Rust one has been green the whole time:
+`cargo codspeed build && cargo codspeed run` over `crates/pyrs-yaml-core/benches/yaml_bench.rs`,
+simulation mode, the report posted as `CodSpeed Performance Analysis`. Green is not the same as
+covering. Everything the file measured was YAML text in, YAML or Python out; the two spokes this
+engine has grown most since
 
 - TOML and JSON - and the resolver that decides what a plain scalar *means*, were invisible to it,
 so the channel that answers "is this slower than last week" had never seen them move.

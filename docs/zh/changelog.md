@@ -54,6 +54,18 @@ status: new
 
 ### 变更
 
+- **Rust 基准测试住在它所测量的 crate 里** — divan 基准测试集从
+  `crates/pyrs-yaml/benches/yaml_bench.rs` 移到了 `crates/pyrs-yaml-core/benches/yaml_bench.rs`。
+  这四十七个基准测试测量的代码与此前完全相同：绑定 crate 只是重新导出了引擎的 API，因此每一处
+  import 只是换了名字，别的一概没动。基准的 package 闭包丢掉了它从绑定 crate 继承来的六个
+  Python 运行时 crate（`pyo3`、`pyo3-ffi`、`pyo3-macros`、`pyo3-macros-backend`、
+  `pyo3-build-config` 和 `numpy`），一个也不带。基准二进制本来就与 Python 运行时无关——Linux 的
+  `DT_NEEDED` 里没有 `libpython`，Windows 的导入表里没有 `python3.dll`——但那只是因为链接器剪掉了
+  一个没有任何符号引用的依赖；现在依赖本身没有了，于是这份独立性是结构性的，门禁可以断言它。
+  扩展模块保留着它自己对 `libpython3.12.so.1.0` 的链接，那正是一个 Python 扩展该待的地方。
+  被测量的代码没有变，所以看得见的差别只有 CodSpeed 身份里的 package 段：基准条目在
+  `pyrs-yaml-core` 之下重新建立基线。
+
 - **事件流和 merge 解析器把锚点留在 crate 的节点映射里** — `#![no_std]` 的 crate 无法书写
   `std::collections::HashMap`，于是 `event_to_stream_event` 和 `resolve_anchor_name` 现在接收
   `&mut NodeMap<usize, String>`，merge 解析器的锚点表也是 `NodeMap<String, _>`：就是 AST 早已
