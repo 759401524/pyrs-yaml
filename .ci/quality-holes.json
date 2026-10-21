@@ -18,12 +18,6 @@
    "opened": "2026-10-20",
    "exit": "a tests/test_*_suite.py or tests/test_*_spec_table.py asks this surface of something the repository does not own - in practice, the JSON Schema evaluation designed in PR #517 replayed against an official corpus whose source and version are recorded with the result",
    "why": "the schema language validate() judges was invented here, so the unit, property and fuzz tiers all ask the engine what it believes, and parity has no second implementation to disagree with"
-  },
-  {
-   "id": "parity-tier:json-jsonc-json5",
-   "opened": "2026-10-20",
-   "exit": "the row's `restricted` list is empty as `format_matrix()` derives it: each of jsonc and json5 is asked of a reader that every tested leg installs, in a test that carries no skip decorator. In practice the pure-Python `json5` package, which serves the floor interpreter, rather than `pyjson5`, whose wheel does not",
-   "why": "the strict dialect is compared everywhere now - stdlib `json` with `parse_constant` refusing the non-standard literals is a reader this repository does not own and no marker bounds - but JSONC and JSON5 still have only `pyjson5`, declared `python_version >= '3.9' and python_version < '3.14'` and excluding armv7l, s390x and ppc64le, so on the 3.8 floor this package promises, and on 3.14+, those two dialects are compared against nothing and the leg still reports green"
   }
  ]
 }

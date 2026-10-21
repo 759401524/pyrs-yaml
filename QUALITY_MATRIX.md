@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 764 Rust `#[test]`, 1,832 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 764 Rust `#[test]`, 1,840 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -99,7 +99,7 @@ Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell agains
 | format | unit | property | fuzz parse | fuzz round trip | cross-library parity | external authority |
 | --- | --- | --- | --- | --- | --- | --- |
 | YAML | yes | yes | yes | yes | yes | yes |
-| JSON / JSONC / JSON5 | yes | yes | yes | yes | partial | yes |
+| JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
 | schema validation | yes | yes | yes | n/a | n/a | no |
 
@@ -121,6 +121,12 @@ format's own grammar, or an official suite's cases, against something this repos
 `test_json5_spec_table.py` for the JSON5 productions inside the JSON row, and
 `test_json_writer_suite.py`, `test_yaml_writer_suite.py` and `test_toml_writer_suite.py` for what
 the writers emit rather than what the readers accept.
+Each file's cell is a verdict, not its name: a file counts only when the reader it asks is one no
+marker bounds, or when a call site nothing can skip still asks it. `test_json5_spec_table.py` was the
+shape this denies - it imported `pyjson5` alone and gated the whole module on that import, so the
+column read a file name while the 3.8 floor and 3.14+ judged the JSON5 grammar with nothing. The file
+asks the pure-Python `json5` reference now, and a file that regresses to a bounded reader alone is
+emitted as a hole of the `authority-tier` kind, named for the file, rather than sitting in prose.
 It is deliberately not the
 parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
 neither side ever accepted - a path that does not exist has nothing to disagree with.
@@ -149,16 +155,19 @@ moment it is not. The version a stdlib reader arrives in is compared against the
 states in `requires-python`, so moving the floor moves the answer rather than leaving a remembered one.
 
 The JSON family is why the question had to be per dialect. `pyjson5` and `orjson` both carry
-`python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le. Strict
-JSON now reads as covered everywhere:
+`python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, so
+neither can be the only reference for a leg this package promises. Strict JSON reads as covered
+everywhere:
 stdlib `json` is an RFC 8259 reader this repository does not own and no dependency declaration bounds,
 and `tests/test_json_crosslib.py` asks it the grammar with `parse_constant` refusing the three
-literals the stdlib accepts by default. JSONC and JSON5 have no such reader - `pyjson5` is the only
-reference for them - so those two dialects are what `partial` still names, and the cell is emitted as
-`parity-tier:json-jsonc-json5`. Measured on the module: 73 comparisons where both readers install, 29
-of them still running where neither does. Before the file-level guard was split, that same leg ran 0 of
-43 - the blanket `pytestmark` skipped the whole module, the comparisons that needed no third-party
-reader along with the ones that did.
+literals the stdlib accepts by default. JSONC and JSON5 now have a reference of the same kind: the
+pure-Python `json5` package declares no marker (`requires-python >= 3.8`, a `py3-none-any` wheel), so
+every tested leg installs it, and the module calls it from tests nothing can skip. `pyjson5` stays as
+a second opinion where its wheel exists, and the two references are not interchangeable - the pure
+reader keeps a surrogate pair as two UTF-16 code units and accepts a lone surrogate, where this
+engine combines the pair (RFC 8259) and refuses the lone one - so each divergence is asserted rather
+than smoothed over. That empty `restricted` list is the exit the registry named, and
+`parity-tier:json-jsonc-json5` was deleted with the same measurement that produced it.
 
 **What this row first said was wrong, and the correction is the interesting part.** It
 claimed a parse-only target cannot see a writer. Measured: `parse_json` calls
@@ -560,7 +569,6 @@ measurement no longer reproduces fails CI.
 | hole | why it matters | exit |
 | --- | --- | --- |
 | `authority-tier:schema-validation` | the language `validate()` judges was invented in this repository, so the unit, property and fuzz tiers all ask the engine what it believes and the parity column has no second implementation to disagree with; the table said `no` while the registry stayed empty, which let `holes: []` be read as "no short board" | a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` that asks this surface of something the repository does not own - in practice the JSON Schema evaluation designed in PR #517, replayed against an official corpus whose source and version are recorded with the result |
-| `parity-tier:json-jsonc-json5` | the strict dialect is compared everywhere now - stdlib `json`, with `parse_constant` refusing the three literals the stdlib accepts by default, is a reader no dependency declaration bounds and `tests/test_json_crosslib.py` calls it from a test that carries nothing but `parametrize` - but JSONC and JSON5 still have one outside reader between them, `pyjson5`, declared `python_version >= '3.9' and python_version < '3.14'` and excluding armv7l, s390x and ppc64le, so on the 3.8 floor this package promises and on 3.14+ those two dialects are compared against nothing and the leg still reports green | the row's `restricted` list is empty as `format_matrix()` derives it: each of jsonc and json5 is called by an unskippable test against a reader every tested leg installs - in practice the pure-Python `json5` package, which serves the floor interpreter, rather than `pyjson5`, whose wheel does not |
 | *none measured* | the site configuration declared the Python docstring handler, its load paths and fourteen render options while not one page under any locale contained a `:::` directive — `mkdocstrings_directives()` found zero, so `docs/<locale>/api/*.md` were hand-typed signatures, nothing compared them with the generated `python/pyrs_yaml/pyrs_yaml.pyi`, and a bump of the docs toolchain could not be checked against output it never produced | satisfied: five API pages per locale now carry directives and the four-locale `--strict` build renders them (`yaml-document` 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48), while the page that names no directive stays at zero — measured by `mkdocstrings_directives()` against `mkdocstrings_declared()` |
 | *none measured* | the site was rendered only by a workflow that triggers on push to `main`, so a page that fails when *rendered* was found by whoever opened it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | satisfied by `ci.yml`'s `docs-gates` job, which runs the page-metadata, heading, mirror, purity and i18n gates and then `scripts/build-docs.py` for all four locales under `--strict` on every pull request; `renders_the_site()` measures it off the declaring files rather than off a list kept beside them |
 | *none measured* | a required check that never reports is not a green light but a deadlock: branch protection names `Test matrix (all legs)`, `ci.yml` excluded `*.md` and `docs/**` from its triggers, and PR #319 arrived with every check it produced passing and the merge refused with `Required status check "Test matrix (all legs)" is expected` — a documentation change could not merge by any route an ordinary contributor has | satisfied by the same change: `ci.yml` triggers on every pull request, a `changes` job classifies the changeset, and the verdict tolerates a skipped heavy leg only while the classifier reports `code=false` — tested in both directions in `tests/test_matrix_verdict_gate.py` |

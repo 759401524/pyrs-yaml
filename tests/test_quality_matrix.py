@@ -562,14 +562,65 @@ def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not(measured):
     """Both directions, on rows the probe need not reach through the repository to be shown.
 
     The column used to be prose: the table said `no` and the registry stayed empty, so `holes: []`
-    could be quoted as "no short board" while the file itself named one.
+    could be quoted as "no short board" while the file itself named one. A row is only filled when
+    every file it lists answers `yes`; a file gated on a reader is a hole of its own, named by path.
     """
     matrix = _load_module()
-    assert matrix.authority_gaps({"schema validation": {"authority": []}, "YAML": {"authority": ["x"]}}) == [
+    empty = {"verdict": "no", "files": [], "bounded": []}
+    filled = {"verdict": "yes", "files": ["test_schema_suite.py"], "bounded": []}
+    assert matrix.authority_gaps({"schema validation": {"authority": empty}, "YAML": {"authority": filled}}) == [
         "schema-validation"
     ]
-    assert matrix.authority_gaps({"schema validation": {"authority": ["test_schema_suite.py"]}}) == []
+    assert matrix.authority_gaps({"schema validation": {"authority": filled}}) == []
+    bounded = {"verdict": "no", "files": ["test_json5_spec_table.py"], "bounded": ["test_json5_spec_table.py"]}
+    assert matrix.authority_file_gaps({"JSON / JSONC / JSON5": {"authority": bounded}}) == [
+        ("json5-spec-table", "test_json5_spec_table.py")
+    ]
     assert ["authority-tier", "schema-validation"] in [hole[:2] for hole in measured["holes"]], measured["holes"]
+
+
+AUTHORITY_GATED = """\
+import pytest
+
+import pyrs_yaml
+
+try:
+    import pyjson5
+except ImportError:  # pragma: no cover - the floor interpreter has no wheel
+    pyjson5 = None
+
+pytestmark = pytest.mark.skipif(pyjson5 is None, reason="pyjson5 not installed")
+
+
+def test_the_reference_accepts(doc):
+    assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc)
+"""
+
+AUTHORITY_FREE = """\
+import json5
+import pytest
+
+import pyrs_yaml
+
+
+def test_the_reference_accepts(doc):
+    assert pyrs_yaml.load_json5(doc) == json5.loads(doc)
+"""
+
+
+def test_an_authority_file_gated_on_its_reader_does_not_count(matrix, tmp_path):
+    """Both directions on the shape that produced the hole: the same table, gated and ungated.
+
+    `test_json5_spec_table.py` imported only `pyjson5`, whose markers exclude the 3.8 floor and
+    3.14+, and then skipped the whole module on that import, so every case was absent exactly where
+    nothing else judged JSON5. The unbounded `json5` reader is what turns the same file into credit.
+    """
+    gated = tmp_path / "test_json5_spec_table.py"
+    gated.write_text(AUTHORITY_GATED, encoding="utf-8")
+    assert matrix.authority_cell(gated)["verdict"] == "no"
+    free = tmp_path / "test_json5_table_free.py"
+    free.write_text(AUTHORITY_FREE, encoding="utf-8")
+    assert matrix.authority_cell(free)["verdict"] == "yes"
 
 
 def test_a_partial_parity_column_is_a_hole_and_a_full_one_is_not(measured):
@@ -589,8 +640,10 @@ def test_a_partial_parity_column_is_a_hole_and_a_full_one_is_not(measured):
     assert matrix.parity_gaps(rows) == [("json-jsonc-json5", ["json5", "jsonc"])]
     assert matrix.parity_gaps({"TOML": {"cross_library": {"verdict": "yes", "restricted": []}}}) == []
     holes = [hole[:2] for hole in measured["holes"]]
-    assert ["parity-tier", "json-jsonc-json5"] in holes, measured["holes"]
+    assert ["parity-tier", "json-jsonc-json5"] not in holes, holes
     assert ["parity-tier", "yaml"] not in holes, holes
+    measured_json = measured["format_matrix"]["JSON / JSONC / JSON5"]["cross_library"]
+    assert measured_json["verdict"] == "yes" and not measured_json["restricted"], measured_json
 
 
 CROSSLIB_HEADER = """\
@@ -683,18 +736,18 @@ def test_a_comparison_a_leg_cannot_skip_does_credit_its_dialect(matrix, tmp_path
     assert row["marker"]["json"] is None, row
 
 
-def test_the_strict_dialect_is_credited_and_the_other_two_are_not(measured):
-    """The tree, not a fixture: one reader every leg has, two dialects that still have none.
+def test_every_dialect_is_credited_by_a_reader_every_leg_installs(measured):
+    """The tree, not a fixture: `json5` is the reference both non-strict dialects now share.
 
-    The cell used to be a property of the family, so it could not say what happened when stdlib `json`
-    arrived: RFC 8259 is compared on the floor interpreter and on 3.14+, and JSONC and JSON5 are still
-    asked of `pyjson5`, whose wheel is not. A row that read `yes` would have closed the hole for the
-    two dialects that gained nothing.
+    The cell used to be a property of the family, so it could only read `partial` while JSONC and
+    JSON5 were asked of `pyjson5`, whose wheel is missing on the floor. `tests/test_json_crosslib.py`
+    imports the pure-Python `json5` package unconditionally now, and every leg installs it, so the
+    row has a reference for each of its dialects and nothing left in `restricted`.
     """
     row = measured["format_matrix"]["JSON / JSONC / JSON5"]["cross_library"]
-    assert row["covered"] == ["json"], row
-    assert row["restricted"] == ["json5", "jsonc"], row
-    assert row["verdict"] == "partial", row
+    assert row["covered"] == ["json", "json5", "jsonc"], row
+    assert row["restricted"] == [], row
+    assert row["verdict"] == "yes", row
 
 
 def test_a_reader_the_interpreter_bounds_is_found_and_bounded(matrix, tmp_path):
@@ -874,16 +927,20 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert rows["YAML"]["unit"] > 0, rows["YAML"]
     assert rows["schema validation"]["fuzz_parse"], "validate_schema.rs must count as fuzz coverage"
     assert measured["property_function_count"] >= 27, "the two pyrs-event properties must be counted"
-    restricted = rows["JSON / JSONC / JSON5"]["cross_library"]["restricted"]
-    assert restricted, "the JSON family's `partial` has to be attributable to a declared marker"
+    json_parity = rows["JSON / JSONC / JSON5"]["cross_library"]
+    assert json_parity["verdict"] == "yes" and not json_parity["restricted"], (
+        "the pure-Python json5 reader is undeclared by markers, so every leg has a reference"
+    )
     assert not rows["TOML"]["cross_library"]["restricted"], "tomlkit is unbounded, so TOML reads `yes`"
     authority = {label: row["authority"] for label, row in rows.items()}
-    assert authority["YAML"] == ["test_yaml_suite.py", "test_yaml_writer_suite.py"], authority
-    assert authority["TOML"] == ["test_toml_test_suite.py", "test_toml_writer_suite.py"], authority
+    assert authority["YAML"]["files"] == ["test_yaml_suite.py", "test_yaml_writer_suite.py"], authority
+    assert authority["TOML"]["files"] == ["test_toml_test_suite.py", "test_toml_writer_suite.py"], authority
     # Both suffixes have to be live: the official-suite one for three rows, the production-table one
     # for the JSON5 half of the JSON family.
-    assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"], authority
-    assert not authority["schema validation"], "a row with no outside authority has to say so"
+    assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"]["files"], authority
+    assert authority["JSON / JSONC / JSON5"]["verdict"] == "yes", authority
+    assert authority["schema validation"]["verdict"] == "no", "a row with no outside authority has to say so"
+    assert not authority["schema validation"]["files"], authority
 
     # The parity column claims to read how `pyproject.toml` bounds each oracle, so every oracle a
     # cross-library test imports has to be found there at all. `ruamel.yaml` is imported under that

@@ -19,6 +19,19 @@ status: new
 
 ### 变更
 
+- **最后一个对拍洞闭合：JSON5 与 JSONC 在每条腿上都有参照实现** — 被登记的条目点名了两个方言：
+  它们唯一的外部读取器是 `pyjson5`（声明为 `python_version >= '3.9' and python_version < '3.14'`，
+  并排除 armv7l/s390x/ppc64le），因此在本包承诺的 3.8 地板以及 3.14+ 上，两者都被拿去和「空」比较，
+  而腿仍然报绿。纯 Python 的 `json5` 包（`>= 0.17.3`，`requires-python >= 3.8`，`py3-none-any`
+  wheel）现已加入 test 依赖组，并被打分该方言的两个文件无条件导入；判定该方言的比较不携带任何跳过
+  标记，`pyjson5` 则在其 wheel 可安装的腿上保留为第二意见。两个参照实现有两处分歧，测试明确钉
+  住本引擎的读法，而不是掩盖差异：代理对在这里合并为一个字符，纯 Python 参照保留两个 UTF-16 码元；
+  孤立代理在这里被拒绝，而该参照接受它。`tests/test_json5_spec_table.py` 不再用 `pyjson5` 把整个
+  模块门控住，因此规范表的行在地板上不再跳过。实测：`cross_library.restricted` 为空，JSON 行的
+  parity 单元读作 `yes`，`.ci/quality-holes.json` 只剩 schema 一行；external-authority 列现在按
+  文件给出判定，而不是按文件名记账——退回为只依赖受界读取器的规范表会被发射为 `authority-tier`
+  类别、以文件命名的洞。
+
 - **`partial` 的对拍格是已登记的洞，不再只是脚注** — 对拍列本就从每个 `test_*_crosslib.py` 的 oracle
   导入以及 `pyproject.toml` 给它们的 marker 推出结论，而 JSON 家族读作 `partial`，因为 `orjson` 与
   `pyjson5` 都声明为 `python_version >= '3.9' and python_version < '3.14'` 并排除 armv7l/s390x/

@@ -2,25 +2,32 @@
 
 The JSONC/JSON5 engines previously had no *external* comparison (the leaderboard
 gates cover stdlib `json`; `orjson`/`ujson`/`rapidjson` do not parse JSONC/JSON5).
-`pyjson5` is a C-accelerated JSON5 reference (a superset of JSONC), so it fills
-the "跨库对比验证" gap for the two dialects that had none: pyrs and pyjson5 must
-agree on the *value* produced for every construct the dialects allow.
+The pure-Python `json5` package is the primary reference here: it is declared
+without a marker, so every tested leg - including the 3.8 floor - installs it and
+compares the same documents. `pyjson5` is a C-accelerated second opinion where
+its wheel exists (it does not on 3.8, 3.14+, armv7l, s390x or ppc64le), and its
+guarded comparisons stay as additional evidence rather than as the only one:
+pyrs and `json5` must agree on the *value* produced for every construct the
+dialects allow.
 
 Known, intentional pyrs divergences from a reference parser are asserted
-explicitly (not hidden): out-of-i64 integers are preserved as their source text.
+explicitly (not hidden): out-of-i64 integers are preserved as their source text,
+a surrogate pair is combined into one character (RFC 8259) where the pure-Python
+reference keeps the two UTF-16 code units, and a lone surrogate is refused where
+that reference accepts it.
 
 The guards are per comparison, not per file, because the file-level one was a blind spot: `orjson` and
 `pyjson5` are both declared `python_version >= '3.9' and python_version < '3.14'`, so a blanket
 `pytestmark` skipped the strict-JSON comparisons on the 3.8 floor this package promises and on 3.14+,
-where nothing about them needs either reader. Where `pyjson5` has no wheel the JSON5 and JSONC
-comparisons still skip cleanly, each carrying its own `needs_pyjson5`; `json` from the standard library
-- an RFC 8259 reader this repository does not own and every leg has - keeps the strict dialect compared
-everywhere. The two guarded dialects are what `scripts/quality_matrix.py` still reports as restricted.
+where nothing about them needs either reader. `json5` and the standard library's `json` carry the
+comparisons on every leg; where `pyjson5` has no wheel its own comparisons still skip cleanly, each
+carrying its own `needs_pyjson5`.
 """
 
 import json
 import math
 
+import json5
 import pytest
 
 import pyrs_yaml
@@ -42,7 +49,7 @@ JSON5_DOCS = [
     "{h: 0x1F, e: 1e3, f: .5, g: 5., p: +7}",  # hex / exponent / leading+trailing dot / plus
     "{nested: {list: [1, 'two', 3.5, true, null]}}",
     "[1, 2, 3,]",  # top-level array with trailing comma
-    r"{u: 'caf\u00e9 \ud83d\ude00'}",  # \uXXXX + surrogate pair in a string
+    r"{u: 'caf\u00e9'}",  # \uXXXX escape in a single-quoted string
     r"{multi: 'a\nb\tc'}",  # escape sequences inside single quotes (escaped, not raw)
 ]
 
@@ -54,15 +61,30 @@ JSONC_DOCS = [
 
 
 @pytest.mark.parametrize("doc", JSON5_DOCS)
-@needs_pyjson5
-def test_load_json5_matches_pyjson5(doc):
-    assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc)
+def test_load_json5_matches_json5(doc):
+    assert pyrs_yaml.load_json5(doc) == json5.loads(doc)
 
 
 @pytest.mark.parametrize("doc", JSONC_DOCS)
+def test_load_jsonc_matches_json5(doc):
+    assert pyrs_yaml.load_jsonc(doc) == json5.loads(doc)
+
+
+def test_a_surrogate_pair_is_combined_here_and_kept_as_utf16_units_by_json5():
+    # The one measured value divergence on this corpus: ES5 strings are UTF-16 and the pure-Python
+    # package leaves `\uD83D\uDE00` as the two code units the source spells, while pyrs follows
+    # RFC 8259 and combines them. `pyjson5` agrees with pyrs where its wheel exists.
+    doc = r"{u: 'caf\u00e9 \ud83d\ude00'}"
+    assert pyrs_yaml.load_json5(doc) == {"u": "caf\u00e9 \U0001f600"}
+    assert json5.loads(doc) == {"u": "caf\u00e9 \ud83d\ude00"}
+    if pyjson5 is not None:
+        assert pyjson5.loads(doc) == {"u": "caf\u00e9 \U0001f600"}
+
+
+@pytest.mark.parametrize("doc", JSON5_DOCS)
 @needs_pyjson5
-def test_load_jsonc_matches_pyjson5(doc):
-    assert pyrs_yaml.load_jsonc(doc) == pyjson5.loads(doc)
+def test_load_json5_matches_pyjson5(doc):
+    assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc)
 
 
 @needs_pyjson5

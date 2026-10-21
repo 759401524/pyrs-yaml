@@ -17,6 +17,22 @@ status: new
 
 ### 변경
 
+- **마지막 대조 구멍이 닫힙니다: JSON5와 JSONC는 모든 레그에서 참조 구현을 가집니다** — 등록된
+  항목이 지목한 두 방언의 유일한 외부 리더는
+  `pyjson5`였고(`python_version >= '3.9' and python_version < '3.14'`, armv7l/s390x/ppc64le 제외),
+  이 패키지가 약속하는 3.8 하한과 3.14+에서는 두 방언 모두 "아무것도 없는" 대상과 비교되면서 레그는
+  초록으로 남았습니다. 순수 Python `json5` 패키지(`>= 0.17.3`, `requires-python >= 3.8`,
+  `py3-none-any` wheel)를 test 의존성 그룹에 추가하고, 이 방언을 판정하는 두 파일이 무조건
+  임포트합니다. 이 방언을 판정하는 비교에는 건너뛰기 marker가 없으며, `pyjson5`는 wheel이 설치되는
+  레그에서 두 번째 의견으로 남습니다. 두 참조 구현은 두 가지 구문에서 의견이 갈리므로, 테스트는
+  차이를 숨기지 않고 이 엔진의 해석을 고정합니다. 서로게이트 페어는 여기서 한 문자로 결합되지만 순수
+  Python 참조는 두 UTF-16 코드 단위를 유지하며, 고립된 서로게이트는 여기서 거부되지만 그 참조는
+  받아들입니다. `tests/test_json5_spec_table.py`는 더 이상 모듈 전체를 `pyjson5`로 게이트하지
+  않으므로 명세 표의 행은 하한 레그에서도 건너뛰지 않습니다. 측정 결과: `cross_library.restricted`는
+  비어 있고, JSON 행의 parity 셀은 `yes`이며, `.ci/quality-holes.json`에는 schema 행만 남았고,
+  external-authority 열은 이제 파일 이름이 아니라 파일별 판정을 냅니다. 유계 리더 하나에만
+  의존하도록 퇴행한 명세 표는 파일 이름을 가진 `authority-tier` 종류의 구멍으로 나타납니다.
+
 - **`partial` 대조 칸은 각주가 아니라 등록된 결함입니다** — 대조 열은 이미 각 `test_*_crosslib.py`의
   oracle import와 `pyproject.toml`의 marker에서 판정을 도출합니다. `orjson`과 `pyjson5`가 모두
   `python_version >= '3.9' and python_version < '3.14'`이고 armv7l/s390x/ppc64le를 제외하므로 JSON

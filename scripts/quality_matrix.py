@@ -190,6 +190,7 @@ ORACLE_IMPORTS = {
     "ruamel.yaml": "ruamel.yaml",
     "orjson": "orjson",
     "pyjson5": "pyjson5",
+    "json5": "json5",
     "tomlkit": "tomlkit",
     "json": "json",
     "tomllib": "tomllib",
@@ -434,6 +435,59 @@ def crosslib_parity(label: str, module) -> dict:
 AUTHORITY_SUFFIXES = ("_suite.py", "_spec_table.py")
 
 
+def _blanket_gate(text: str) -> str:
+    """The source of a module-level gate: `pytestmark = ...` or `x = pytest.importorskip(...)`.
+
+    `_test_units` reduces this to a boolean. The authority cell needs the condition as text, because
+    two kinds of module gate mean opposite things: `skipif(not SUITE_DIR.is_dir())` skips on a corpus
+    checkout the CI performs, while `skipif(pyjson5 is None)` skips wherever a reader is missing - and
+    that second shape is what let the JSON5 spec table read as coverage on the 3.8 floor.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return text
+    parts = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(target, "id", "") == "pytestmark" for target in node.targets):
+            parts.append(ast.get_source_segment(text, node) or "")
+        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+        if not isinstance(value, ast.Call):
+            continue
+        func = value.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name == "importorskip":
+            parts.append(ast.get_source_segment(text, node) or "")
+    return "\n".join(parts)
+
+
+def authority_cell(path) -> dict:
+    """Whether this file asks the format's rules of an authority that runs on every tested leg.
+
+    Two kinds of authority exist in this tree: a reader the tests call - `json`, PyYAML, `json5` - and
+    a corpus committed under `Reference/`. A corpus file has no reader to be absent, so its file list
+    is the credit; a reader file is credited when at least one reader nothing bounds is imported at
+    module level, or, if every reader is bounded, when a call site no skip guards still asks one. The
+    shape this measurement exists for is the one it denies: `test_json5_spec_table.py` imported only
+    `pyjson5`, whose markers keep it off the 3.8 floor and off 3.14+, and then gated the entire module
+    on that import - so on those legs the JSON5 grammar was judged by nothing while the column still
+    read a file name.
+    """
+    text = read(path)
+    readers = _oracle_locals(text)
+    bounded = sorted(name for name in readers if _reader_bounded(name))
+    free = sorted(name for name in readers if name not in bounded)
+    locals_of = [local for aliases in readers.values() for local in aliases]
+    gate = _blanket_gate(text)
+    if gate and any(local in gate for local in locals_of):
+        return {"verdict": "no", "readers": sorted(readers), "bounded": bounded}
+    if free or not readers:
+        return {"verdict": "yes", "readers": sorted(readers), "bounded": bounded}
+    units, _ = _test_units(text)
+    live = any(_credited(decorators, body, locals_of) for decorators, body in units)
+    return {"verdict": "yes" if live else "no", "readers": sorted(readers), "bounded": bounded}
+
+
 def format_matrix() -> dict:
     """The per-format tier table, derived from the files that declare the defence.
 
@@ -476,12 +530,20 @@ def format_matrix() -> dict:
 
         # Which dialects have their grammar asked of an outside authority, derived from the file names
         # so that adding one is measured rather than remembered. The JSON row counts
-        # `test_json5_spec_table.py` because that row covers the whole JSON family.
-        authority = sorted(
-            path.name
+        # `test_json5_spec_table.py` because that row covers the whole JSON family. The cell carries a
+        # verdict now: a file name alone is what let the spec table read as coverage while its whole
+        # module skipped behind `pyjson5` on the floor.
+        files = sorted(
+            path
             for path in (REPO / "tests").glob("test_*.py")
             if fragment in path.name and path.name.endswith(AUTHORITY_SUFFIXES)
         )
+        cells = {path.name: authority_cell(path) for path in files}
+        authority = {
+            "verdict": "yes" if cells and all(cell["verdict"] == "yes" for cell in cells.values()) else "no",
+            "files": sorted(cells),
+            "bounded": sorted(name for name, cell in cells.items() if cell["verdict"] == "no"),
+        }
 
         rows[label] = {
             "unit": unit,
@@ -501,14 +563,31 @@ def _slug(label: str) -> str:
 
 
 def authority_gaps(rows: dict) -> list[str]:
-    """The format labels whose external-authority column is empty, slugified for a hole id.
+    """The format labels with no authority file at all, slugified for a hole id.
 
     An empty column is a boundary the other tiers cannot cross by construction: unit and property
     tiers ask this engine what it believes, and parity needs a second implementation to disagree
     with. Reading it off `format_matrix()` keeps `holes: []` from being quoted as "no short board"
     while a cell in the same file quietly reads `no`.
     """
-    return sorted(_slug(label) for label, row in rows.items() if not row["authority"])
+    return sorted(_slug(label) for label, row in rows.items() if not row["authority"]["files"])
+
+
+def authority_file_gaps(rows: dict) -> list[tuple]:
+    """`(hole name, file)` for an authority that runs only where its reader installs.
+
+    The column used to be a list, so `test_json5_spec_table.py` was credited by its name while the
+    whole module sat behind `pytestmark = skipif(pyjson5 is None)` and `pyjson5`'s markers keep it off
+    the 3.8 floor and off 3.14+. A file is denied here when every reader it asks is bounded and its
+    call sites are gated; the name in the hole is the file, because that is the unit that has to gain
+    an unbounded authority.
+    """
+
+    def slug(name: str) -> str:
+        stem = Path(name).stem
+        return _slug(stem[len("test_") :] if stem.startswith("test_") else stem)
+
+    return sorted((slug(name), name) for row in rows.values() for name in row["authority"].get("bounded", []))
 
 
 def parity_gaps(rows: dict) -> list:
@@ -899,7 +978,7 @@ def format_verdict_lines(rows: dict) -> list:
         lines.append(
             f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "
             f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} "
-            f"parity={parity} authority={'yes' if row['authority'] else 'no'}"
+            f"parity={parity} authority={row['authority']['verdict']}"
         )
     return lines
 
@@ -978,6 +1057,16 @@ def measure() -> dict:
                 label,
                 "no test asks this surface's rules of something this repository does not own, so a grammar "
                 "invented here and implemented here has nobody left to contradict it",
+            ]
+        )
+    for name, file in authority_file_gaps(formats):
+        holes.append(
+            [
+                "authority-tier",
+                name,
+                f"{file} asks the format's rules only of readers some tested leg does not install, and the "
+                "tests that ask them can skip, so those legs judge the grammar with nothing while the "
+                "column still reads a file name",
             ]
         )
 

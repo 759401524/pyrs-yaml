@@ -8,11 +8,19 @@ and nothing goes red. The gaps this table was written to keep finding are exactl
 backslash before CRLF inside a single-quoted string, while the shipped stub said it "Accepts the full
 JSON5 grammar".
 
-So each row is one production, and the authority is not this repository: it is `pyjson5`, the JSON5
-reference. `ACCEPTS` rows assert that pyrs and the reference take the document and decode it to the
-same value; `REJECTS` rows assert that both refuse it - pyrs with its own typed error, so a refusal
-cannot quietly become a panic. The `BS`/`chr` spelling is deliberate: the sequences under test must
+So each row is one production, and the authority is not this repository: it is the pure-Python
+`json5` package, which every tested leg installs. `pyjson5` is a second opinion where its wheel
+exists - it is a C implementation and used to be the only reference here, but its markers keep it
+off the 3.8 floor and off 3.14+, so a file that asked it alone judged those legs by nothing.
+`ACCEPTS` rows assert that pyrs and `json5` take the document and decode it to the same value;
+`REJECTS` rows assert that both refuse it - pyrs with its own typed error, so a refusal cannot
+quietly become a panic. The `BS`/`chr` spelling is deliberate: the sequences under test must
 reach the reader as source text rather than being decoded by this file first.
+
+Two behaviours are measured divergences, not shared rows: `json5` keeps a `\ud83d\ude00` pair as
+two UTF-16 code units where pyrs and `pyjson5` combine it into one character, and `json5` accepts a
+lone surrogate as an identifier escape where pyrs and `pyjson5` refuse it. Both are pinned by their
+own tests below, so the shared tables stay exact and the difference cannot be mistaken for a skip.
 
 Where the hub deliberately represents a value differently from the reference - the non-finite words -
 that is pinned by its own test below instead of being hidden in a skip.
@@ -20,6 +28,7 @@ that is pinned by its own test below instead of being hidden in a skip.
 
 import math
 
+import json5
 import pytest
 
 import pyrs_yaml
@@ -29,7 +38,7 @@ try:
 except ImportError:  # pragma: no cover - platform without a wheel
     pyjson5 = None
 
-pytestmark = pytest.mark.skipif(pyjson5 is None, reason="pyjson5 (JSON5 reference) not installed")
+needs_pyjson5 = pytest.mark.skipif(pyjson5 is None, reason="pyjson5 (second opinion) not installed")
 
 BS = chr(92)  # a backslash
 DQ = chr(34)  # a double quote, so a row can spell its own delimiters without nesting escapes
@@ -68,7 +77,6 @@ ACCEPTS = [
     ("hex escape in a double-quoted string", '{a: "' + BS + 'x7e"}'),
     ("hex escape at the top of the range", "{a: '" + BS + "xFF'}"),
     ("four-digit unicode escape", '{a: "' + UESC + '00e9"}'),
-    ("surrogate pair", '{a: "' + UESC + "D83D" + UESC + 'DE00"}'),
     ("line separator as raw string content", "{a: 'x" + LS + "y'}"),
     # --- the continuation family: one production, five terminators, both quote styles ---
     ("continuation before LF", "{a: '" + BS + "\ny'}"),
@@ -116,7 +124,6 @@ REJECTS = [
     ("curly unicode escape is ES6, not JSON5", "{a: '" + UESC + "{41}'}"),
     ("x escape is not an identifier escape", "{" + BS + "x41: 1}"),
     ("truncated identifier escape", "{" + UESC + "00: 1}"),
-    ("surrogate half as an identifier escape", "{" + UESC + "D800: 1}"),
     ("bare lowercase nan", "{a: nan}"),
     ("unquoted key starting with a digit", "{1a: 2}"),
     # The two line terminators a JSON5 string cannot hold: JSON5's own rule, and the reason the
@@ -128,15 +135,45 @@ REJECTS = [
 
 @pytest.mark.parametrize("label, doc", ACCEPTS)
 def test_the_reference_accepts_and_pyrs_agrees(label, doc):
+    assert pyrs_yaml.load_json5(doc) == json5.loads(doc), label
+
+
+@needs_pyjson5
+@pytest.mark.parametrize("label, doc", ACCEPTS)
+def test_the_second_opinion_agrees_on_the_same_rows(label, doc):
     assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc), label
 
 
 @pytest.mark.parametrize("label, doc", REJECTS)
 def test_the_reference_rejects_and_pyrs_refuses_too(label, doc):
-    with pytest.raises(pyjson5.Json5Exception):
-        pyjson5.loads(doc)
+    with pytest.raises(ValueError):
+        json5.loads(doc)
     with pytest.raises(pyrs_yaml.YamlParseError):
         pyrs_yaml.load_json5(doc)
+
+
+def test_a_surrogate_pair_is_one_character_here_and_two_utf16_units_in_the_pure_python_reference():
+    # ES5 strings are UTF-16, and the pure-Python `json5` package leaves `\uD83D\uDE00` as the two
+    # code units the source spells; pyrs (like `pyjson5`) follows RFC 8259 and combines them. Measured
+    # from the shared table: this is the only one of its 101 accept rows where the two disagree.
+    doc = '{a: "' + UESC + "D83D" + UESC + 'DE00"}'
+    assert pyrs_yaml.load_json5(doc) == {"a": "\U0001f600"}
+    assert json5.loads(doc) == {"a": "\ud83d\ude00"}
+    if pyjson5 is not None:
+        assert pyjson5.loads(doc) == {"a": "\U0001f600"}
+
+
+def test_a_lone_surrogate_is_not_an_identifier_start_and_only_the_pure_python_reference_accepts_it():
+    # The one reject row the two references disagree on: a `\uD800` escape decodes to a surrogate,
+    # which is not a valid IdentifierStart, so pyrs and `pyjson5` refuse the key while pure `json5`
+    # carries the lone code unit into the mapping.
+    doc = "{" + UESC + "D800: 1}"
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.load_json5(doc)
+    assert json5.loads(doc) == {"\ud800": 1}
+    if pyjson5 is not None:
+        with pytest.raises(pyjson5.Json5Exception):
+            pyjson5.loads(doc)
 
 
 @pytest.mark.parametrize("loader", [pyrs_yaml.load_json, pyrs_yaml.load_jsonc])
@@ -173,8 +210,8 @@ def test_non_finite_words_agree_on_value_and_the_tree_route_spells_them_the_hubs
     # matches it exactly. The tree route projects the same value into YAML, where the hub spells a
     # non-finite float `.inf` / `.nan` - a representation choice, not a different number. Measured,
     # not inferred: `NaN` never equals itself, so it is compared by predicate on both sides.
-    assert pyrs_yaml.load_json5("{a: Infinity}") == pyjson5.loads("{a: Infinity}")
+    assert pyrs_yaml.load_json5("{a: Infinity}") == json5.loads("{a: Infinity}")
     assert pyrs_yaml.from_json5("{a: Infinity}") == "a: .inf\n"
     assert pyrs_yaml.from_json5("{a: NaN}") == "a: .nan\n"
     assert math.isnan(pyrs_yaml.load_json5("{a: NaN}")["a"])
-    assert math.isnan(pyjson5.loads("{a: NaN}")["a"])
+    assert math.isnan(json5.loads("{a: NaN}")["a"])
