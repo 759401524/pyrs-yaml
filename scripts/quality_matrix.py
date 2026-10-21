@@ -191,6 +191,7 @@ ORACLE_IMPORTS = {
     "orjson": "orjson",
     "pyjson5": "pyjson5",
     "json5": "json5",
+    "tomli": "tomli",
     "tomlkit": "tomlkit",
     "json": "json",
     "tomllib": "tomllib",
@@ -291,9 +292,14 @@ def _dependency_marker(package: str) -> str | None:
     the test group spells the requirement `ruamel-yaml`, and the miss was reported as `undeclared` -
     the column that claims to read how a dependency is bounded instead reported an oracle that is
     declared unconditionally as one that is not declared at all.
+
+    A name that merely starts with this one is a different distribution: `tomli-w` is not `tomli`, so
+    the character after the normalized name may not be a separator. Without that boundary the search
+    for `tomli` answers the docs group's `tomli-w` requirement, and the marker it reports belongs to
+    a package no test imports.
     """
     parts = [re.escape(part) for part in re.split(r"[-_.]+", package)]
-    pattern = '"(' + r"[-_.]+".join(parts) + r'[^;"]*)(;([^"]*))?"'
+    pattern = '"(' + r"[-_.]+".join(parts) + r')(?![-_.])[^;"]*(;([^"]*))?"'
     for match in re.finditer(pattern, read(REPO / "pyproject.toml"), re.IGNORECASE):
         return match.group(3).strip() if match.group(3) else None
     return "undeclared"

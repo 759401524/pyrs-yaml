@@ -33,6 +33,19 @@ status: new
   external-authority 열은 이제 파일 이름이 아니라 파일별 판정을 냅니다. 유계 리더 하나에만
   의존하도록 퇴행한 명세 표는 파일 이름을 가진 `authority-tier` 종류의 구멍으로 나타납니다.
 
+- **TOML 삼자 일치는 3.11 이상에서만이 아니라 모든 레그에서 실행됩니다** — 크로스 라이브러리 모듈은
+  3.8부터 3.10까지 pyrs/tomlkit/tomllib의 11개 대조를 건너뛰었습니다. `tomllib`은 3.11에서 들어오고
+  그 아래 레그에는 참조 리더가 설치되어 있지 않았기 때문입니다. 백포트 `tomli>=2.0`을
+  `python_version < '3.11'`로 test 그룹에 선언하고 `tomllib` 이름으로 import하도록 했으므로 모든
+  레그가 24개 대조를 전부 실행합니다. 행은 `tomli`와 `tomllib`를 각자의 경계와 함께 따로 보여 주며,
+  `tomlkit`은 어느 레그에서나 방언을 판정하므로 판정은 `yes`로 유지됩니다. 리더 탐색도 배포판 이름의
+  끝에서 멈춥니다. `_dependency_marker("tomli")`는 이전에 docs 그룹의 `tomli-w` 요구 사항에 답해,
+  어떤 테스트도 import하지 않는 패키지의 marker를 보고했습니다. 새 통제 테스트는 `tomli`를 자신의
+  marker에, `tomli-w`를 marker 없음에 고정합니다. 공식 코퍼스의 인코더 절반도 같은 `tomllib` 판정
+  으로 같은 레그에서 통째로 건너뛰어졌지만, 이제 해당 레그에서도 실행됩니다. 소수점 이하 초를 한
+  자리 로 쓰는 `spec-1.1.0` 세 건은 테스트 자체 변환기에서 소수를 여섯 자리로 맞춥니다. CPython <
+  3.11의 `fromisoformat`은 세 자리 또는 여섯 자리만 받기 때문입니다.
+
 - **`partial` 대조 칸은 각주가 아니라 등록된 결함입니다** — 대조 열은 이미 각 `test_*_crosslib.py`의
   oracle import와 `pyproject.toml`의 marker에서 판정을 도출합니다. `orjson`과 `pyjson5`가 모두
   `python_version >= '3.9' and python_version < '3.14'`이고 armv7l/s390x/ppc64le를 제외하므로 JSON
