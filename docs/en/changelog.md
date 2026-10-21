@@ -28,7 +28,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `yes`. The reader search also stops at the end of a distribution name:
   `_dependency_marker("tomli")` used to answer the docs group's `tomli-w` requirement and report a
   marker that belongs to a package no test imports. A control now pins `tomli` to its own marker and
-  `tomli-w` to none.
+  `tomli-w` to none. The official-corpus encoder half, skipped on the same legs by the same `tomllib`
+  probe, also runs there now; its three `spec-1.1.0` rows spell a fractional second with one digit,
+  which CPython < 3.11's `fromisoformat` refuses, so the test's own converter pads the fraction to six
+  digits.
 
 - **A `partial` parity cell is a registered hole, not a footnote** — the parity column already
   derived its verdict from the oracle imports in each `test_*_crosslib.py` and the marker
