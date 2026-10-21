@@ -759,6 +759,20 @@ status: new
   ベンチハーネス（命令数を数えるために CPython を起動する）である。挙動は変わらない。`safe_load`
   とその姉妹関数は、以前と同じ文書に同じ答えを返す。
 
+- **エンジンの CI 脚が Python ランタイムを組み立てなくなりました** — `cargo test --workspace` と
+  20 000 件へ引き上げた property 階層は `--exclude pyrs-yaml` を渡すようになり、`PYO3_PYTHON` も
+  それに伴って消えました。このツリーで測ると、前者は 153 パッケージ・250 個のビルド単位に展開
+  され、その集合は `pyo3`、`pyo3-ffi`、`pyo3-macros`、`pyo3-macros-backend`、
+  `pyo3-build-config`、`numpy` を名指しします。同じコマンドに除外を付けると 139 パッケージ・220
+  個になり、そのどれ一つとして入りません。失うものはゼロで、それが除外を許している根拠です。
+  `cargo nextest run --all` も除外付きの同じ実行も 748 件のテストを走らせ、拡張 crate には失う
+  doctest が無い（`cargo test -p pyrs-yaml --doc` は 0 件）ことを確認しました。この二つの主張を
+  一緒に保つ規則が `tests/test_ci_rust_leg_exclusion.py` です。ワークスペース全体のテスト脚が
+  decoupling ゲートの名指す拡張 crate の除外をやめたり、除外したのに `PYO3_PYTHON` を残したり、別の
+  メンバーを除外したり、MSRV 脚が除外を始めたりすれば赤くなります。MSRV 脚は出荷する crate を
+  含めてすべての crate に対して宣言済みの下限を保証する場所だからです。公開された挙動は変わらず、
+  同じ 748 件の Rust テストと同じ Python スイートが走ります。
+
 ### 削除
 
 - **独自開発のルールバリデータを退役し、`Document.validate()` を唯一のスキーマ面にする** ——

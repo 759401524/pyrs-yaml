@@ -740,6 +740,20 @@ status: new
   안에 아직 있으며, 바인딩 crate의 `ir_gate` 벤치 하네스는 명령어 수를 세기 위해 CPython을 띄운다.
   동작은 달라지지 않았다. `safe_load`과 그 형제함수는 예전과 똑같은 문서들에 똑같은 답을 준다.
 
+- **엔진 CI 레그가 Python 런타임 더 이상 빌드하지 않습니다** — `cargo test --workspace`와 20 000
+  케이스로 올린 property 계층은 이제 `--exclude pyrs-yaml`을 넘기고, `PYO3_PYTHON`도 함께
+  사라졌습니다. 이 트리에서 측정하면 앞의 명령은 153개 패키지에 걸친 250개 빌드 단위로 전개되고,
+  그 집합은 `pyo3`, `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config`,
+  `numpy`를 이름으로 듣습니다. 같은 명령에 제외를 붙이면 139개 패키지의 220개가 되고 위 항목은
+  하나도 남지 않습니다. 잃는 것은 없고, 그것이 바로 제외를 허가하는 근거입니다. `cargo nextest
+  run --all`도 제외를 붙인 같은 실행도 748개 테스트를 돌리고, 확장 crate에는 잃을 doctest가
+  없습니다(`cargo test -p pyrs-yaml --doc`은 0개). 두 주장을 함께 묶는 규칙이
+  `tests/test_ci_rust_leg_exclusion.py`입니다. 워크스페이스 전체를 테스트하는 레그가 decoupling
+  게이트가 지칭하는 확장 crate의 제외를 멈추거나, 제외하면서 `PYO3_PYTHON`을 남기거나, 다른
+  멤버를 제외하거나, MSRV 레그가 제외를 시작하면 빨갛게 실패합니다. MSRV 레그는 출하하는 crate를
+  포함해 모든 crate에 대해 선언된 하한을 증명하는 자리이기 때문입니다. 공개된 동작은 변하지
+  않습니다. 같은 748개 Rust 테스트와 같은 Python 스위트가 그대로 실행됩니다.
+
 ### 제거
 
 - **자체 제작 규칙 검증기를 은퇴시키고 `Document.validate()`를 유일한 스키마 표면으로 삼습니다** ——
