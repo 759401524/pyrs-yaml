@@ -19,6 +19,16 @@ status: new
 
 ### 变更
 
+- **TOML 三方一致如今在每个腿上运行，而不只在 3.11 以上** — 跨库模块曾在 3.8 到 3.10 上跳过它那十一
+  条 pyrs/tomlkit/tomllib 对拍，因为 `tomllib` 随 3.11 才到，而 3.11 以下没有安装任何参考读取器。回
+  移包 `tomli>=2.0` 现在以 `python_version < '3.11'` 声明在 test 组，并以 `tomllib` 这个名字导入，于
+  是每个腿都跑满 24 条对拍；行里分别列出 `tomli` 与 `tomllib` 及各自的边界，`tomlkit` 仍在每个腿上判
+  定该方言，结论保持 `yes`。读取器搜索也止于发行版名的末尾：`_dependency_marker("tomli")` 曾答出
+  docs 组的 `tomli-w` 需求，报告的 marker 属于没有任何测试导入的包。新增控制用例把 `tomli` 钉在它自
+  己的 marker 上，把 `tomli-w` 钉在无 marker 上。官方语料的编码半边在同一批腿上被同一个 `tomllib` 探
+  测整块跳过，如今也在这些腿上运行；其中三条 `spec-1.1.0` 用例以一位小数秒书写，CPython < 3.11 的
+  `fromisoformat` 拒绝该拼写，因此测试自己的转换器把小数补齐到六位。
+
 - **`partial` 的对拍格是已登记的洞，不再只是脚注** — 对拍列本就从每个 `test_*_crosslib.py` 的 oracle
   导入以及 `pyproject.toml` 给它们的 marker 推出结论，而 JSON 家族读作 `partial`，因为 `orjson` 与
   `pyjson5` 都声明为 `python_version >= '3.9' and python_version < '3.14'` 并排除 armv7l/s390x/
