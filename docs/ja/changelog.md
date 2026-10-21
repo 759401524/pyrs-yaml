@@ -42,6 +42,20 @@ status: new
   四つのミラー、そして `docs/dev/quality-ledger.md` は歴史であり、歴史は五つの crate からなる
   foundation を名指ししてかまいません。書かれた時点での事実だからです。
 
+- **crate マトリクスは記述ではなく測定で保たれるようになりました** —
+  `scripts/check_rust_python_decoupling.py` が manifest 自体からマトリクスを導出し、四つの規則を
+  強制します。cdylib の crate はちょうど一つ（拡張本体）、他のどの crate の依存の閉包にも Python
+  ランタイムの crate は入らない、拡張 crate は Rust のテスト階層を持たず `[lib] test = false` を
+  宣言する、そして `required-features` の各項目は宣言済みで既定ではない feature を名指しする、で
+  す。このゲートは厳格な TOML リーダーを自前で持つので `cargo` も `tomllib` も要らず、本
+  パッケージと同じ Python 3.8 の下限で動きます。cargo が無い Python のテスト腿でも動くのはその
+  ためです。`tests/test_rust_python_decoupling_gate.py` が反証の制御です。どの規則についても合成
+  ツリー上で破り、判定が反転することを要求し、リーダーはこのリポジトリのすべての manifest を
+  `tomllib` と突き合わせ、リーダーが読み取れない manifest は通過ではなく終了コード 2 を返しま
+  す。`crates/pyrs-yaml/Cargo.toml` は `test = false` を宣言するようになり、cargo は拡張のテ
+  ストターゲットを組み立てません。`prek.toml` のフックは manifest か crate に触れた変更ごとに
+  このゲートを走らせます。
+
 ### 変更
 
 - **イベントストリームと merge 解決器はアンカーを crate のノードマップに保持します** —

@@ -285,3 +285,39 @@ Python extension. The binding crate's package closure still carries the six Pyth
 And the binding crate's `ir_gate` bench harness uses `pyo3/auto-initialize`, so it starts CPython to
 measure instruction counts - the one Rust target in this repository that genuinely needs an
 interpreter, and the subject of the last step of this sequence.
+
+## The matrix above is gated, not described (2026-10-21)
+
+The section above records what the crate matrix is; nothing read it back. `pyrs-yaml-core` could
+grow a `pyo3` edge, the extension could take a Rust test block back, and the symptom would arrive
+later as a Rust leg that cannot start without an interpreter.
+`scripts/check_rust_python_decoupling.py` derives the matrix from the manifests themselves - the
+members come from the root manifest, the Python-runtime set from the `pyo3` prefix and the `numpy`
+name, the test tier from the sources - and enforces four rules.
+
+| rule | what it holds |
+|:--|:--|
+| R1 | exactly one crate produces a cdylib, no other crate's dependency closure carries a Python-runtime crate, and the extension's closure does |
+| R2 | the extension holds no `#[cfg(test)]` block, no `tests/` directory and no `[[test]]` target, and declares `[lib] test = false` |
+| R3 | no other crate disables its test tier and no other crate holds an empty one |
+| R4 | every `required-features` entry names a declared feature that default does not enable |
+
+R3 is what makes this a decoupling gate rather than a test-suppression gate: the target is the
+absence of the coupling, not the absence of the tests, so a crate whose tests were deleted to make
+it "clean" is a finding.
+
+Two shape decisions carry the weight. The gate reads the manifests with a reader written for the
+constructs Cargo actually uses, because `tomllib` is 3.11+ while this package supports 3.8, and
+because the check has to run where cargo does not: the Python test legs install a wheel and never
+build one, so a `cargo metadata` gate would have no CI-runnable falsification control. A manifest
+the reader cannot parse is exit 2 - a refusal, never a pass. And the control itself,
+`tests/test_rust_python_decoupling_gate.py`, breaks each rule on a synthetic tree and requires the
+verdict to flip. Measured against the file as it ships: all 12 negative controls bite, and removing
+any one of the 7 rule bodies blinds exactly the controls that body stands behind, no more and no
+fewer - which is the only evidence that a passing control means anything.
+
+**What this gate does not see.** The closure follows the workspace's `path` edges, so a
+Python-runtime crate reached only through a registry dependency's own dependency tree is outside its
+view; the direct `pyo3`/`numpy` edges it does see are the ones this repository controls. And R2
+covers the Rust test tier alone: the extension's `ir_gate` harness is still Python-dependent, which
+is R4's subject and the last step of this sequence.
