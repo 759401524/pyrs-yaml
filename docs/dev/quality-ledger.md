@@ -7234,6 +7234,103 @@ fail with "'TypeSpec' is contained here"; a second probe that renamed `parse_sch
 Both probes were removed afterwards and the binding was restored byte-identically - `sha256sum -c`
 reports `crates/pyrs-yaml/src/py/functions.rs: OK`.
 
+### (ez) The note flag answered two questions, so the tree and the stream could not both be right (2026-10-21)
+
+`pyrs-event`'s `StreamEventType::Comment` carried `text` and one boolean, `standalone`. That boolean
+answered two different questions at once: does the note own a line of its own in the source - a fact
+about the bytes - and which slot of which node does the note live in - a fact about the tree. One
+boolean cannot answer both, and the shape made the two walkers disagree about the same note.
+
+The case that proved it is a document whose trailing note has a line of its own. The tree files it
+in the root's inline slot: the writer cannot hang an inline note on a block container's last line,
+so it spills the note onto its own trailing line, and the reader reports it back from there. The
+stream reported "owns a line", because that was the source fact. The tree said "leading list", the
+stream said "own line", and for that one note neither walker was wrong about its own question - so
+no comparison could decide whether they agreed.
+
+**The fix: the source fact and the tree's placement become two fields.** The comment now carries
+`text`, `owns_line` and `owner`, and `owner` is a `NoteOwner` over the two axes the design named:
+the direction in the consumer's build order (`following` is the node the consumer builds next,
+`preceding` the one it built last) and the tree's two slots (`leading` is the node's leading list,
+`inline` the one inline slot). `pyrs_ast::ast::Comment` did not move - the tree *is* the placement,
+so the AST keeps its own `standalone` and the vocabulary gained a field rather than the tree losing
+one.
+
+All three producers report it. The YAML placement machine
+(`crates/pyrs-yaml-core/src/parser/stream.rs`) names the slot it filed the note in. The JSON
+producer (`crates/pyrs-json/src/parser.rs`) carries the note's offset with the record, so the source
+is not re-scanned to answer "does it own a line". The TOML producer
+(`crates/pyrs-toml/src/events.rs`) reads the same fact back off the bytes it already holds -
+whitespace up to a line break means the note had the line to itself - which is why a note the tree
+files *above* a key can still fail that test: a `# ...` written after a comma shares the line with
+the value before it, and TOML files it above the *next* element.
+
+**The one shipped value that moved.** The design said no shipped Python behaviour moves, and that
+holds for YAML and for JSON - their old flag was already the source fact, so `style` reads what it
+read. It does not hold for TOML, whose old flag answered the slot question. A TOML note that shares
+its line with the text before it but still leads the next element used to read
+`style: "standalone"`; it now reads `style: "inline"`, the source's own answer, and the placement
+the old value carried is the new `owner: "following_leading"`. The Python dict keeps `style` and
+gains one key, so nothing else moved, and the value that moved is pinned in
+`tests/test_streaming.py` rather than described in a changelog.
+
+**The gate.** The exclusion is gone: the two replay tiers -
+`crates/pyrs-json/tests/events_replay.rs` and `fuzz/fuzz_targets/json_events_replay.rs` - compare
+the note's text, its source fact and its owner instead of its text alone, and the fuzz tier adds the
+coherence the JSON producer's own rule implies: a note that had a line of its own leads, and a note
+that rides the inline slot shared its line with the text before it. A new tier file,
+`crates/pyrs-yaml-core/tests/event_notes.rs`, walks the tree and the stream over the same documents
+and asks both about both facts. `the_two_walks_answer_the_same_two_questions` is the case that split
+the flag apart; `every_note_the_tree_files_is_reported_with_the_same_owner` is the table of fourteen
+documents where the two walks must agree on the slot and on the direction; and
+`the_notes_the_tree_drops_are_the_documented_ones` names the notes the tree itself drops - a second
+trailing note, and the note an alias cannot hold - so the difference between the two walks is a
+recorded policy rather than a disagreement. The JSON and TOML tiers carry the same two invariants in
+their own files, and `a_jsonc_document_rebuilds_itself_from_its_own_events` folds a JSONC document's
+own events back into a tree and asks whether the strict writer prints the same text the parser read
+and whether the folded tree equals the parsed one, decorations included. The fold is what the split
+was for: it has to know which slot each note belongs in, and `owner` is the only thing that tells
+it.
+
+**The cost, read from the gate.** The three scenarios that carry notes were measured on the
+enforcing image — the pull request's own `ir` job on `ubuntu-24.04`, with the baseline's pinned
+compiler (`rustc 1.97.1`, the toolchain `.ci/ir-baseline.json` records) — each the largest of three
+callgrind runs:
+
+| scenario | this tree | committed floor | move |
+| --- | --- | --- | --- |
+| `stream_medium` | 252,210,269 | 251,312,293 | +0.36% |
+| `from_jsonc_medium` | 94,578,429 | 94,502,402 | +0.08% |
+| `to_toml_medium` | 26,827,006 | 26,827,070 | -0.00% |
+
+The job printed "OK: every scenario within tolerance of the committed baseline" and concluded
+`success`. All three are inside the baseline's 0.5% tolerance, and `to_toml_medium` - the scenario
+that carries the TOML producer's new work - does not move at all. A reading taken earlier on a WSL
+host, against the same pinned compiler, agreed with this one to eight instructions on
+`stream_medium` (252,210,277 against 252,210,269) and to 0.006% on `from_jsonc_medium` (94,572,424
+against 94,578,429): the host moved the number by less than the movement the split is judged for,
+which is the cross-host agreement `docs/dev/perf.md` measures. The cost of the split is not free but
+it is bounded: the placement machine is still skipped on a document with no note, and that gate was
+measured at 483 instructions per parse against the 1,624 the machine would cost, so the split paid
+for the scan it skips.
+
+Verified: 756 nextest (`cargo nextest run --all`, none failed, none skipped) and 4052 Python tests
+pass with 11 skipped and 117 deselected; `cargo clippy --all --all-targets -- -D warnings` exits 0
+and `prek run --all-files` passes every hook. The doc gates answer for the prose:
+`check_changelog_mirrors.py` reports all five mirrors structurally in sync, `check_doc_wrapping.py`
+is clean on the ten governed files, `check_hole_claims.py` names only holes the matrix measures,
+`quality_matrix.py --check-rows` finds every count in the tier table to be what the probe measures
+(the row moved from 748/1,831 to 756/1,834, written by the sanctioned `--write-rows`), and
+`check_stub_drift.py` reports that `python/pyrs_yaml/pyrs_yaml.pyi` matches the regeneration route.
+
+The gate was seen to bite before this entry was written, because a gate that has never been seen to
+bite is a comment. Flipping one `NoteOwner::FollowingLeading` to `FollowingInline` in the YAML
+producer made two of the three new `event_notes` tests fail with "is filed in one slot and reported
+in another". The producer was restored byte-identically (`sha256sum -c` reports
+`crates/pyrs-yaml-core/src/parser/stream.rs: OK`) and the three tests passed again - after the
+restoration was followed by a rebuild, because restoring a file's bytes does not make cargo rebuild
+it, and a green run against the mutated binary would have been a false green.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

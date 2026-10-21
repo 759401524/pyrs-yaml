@@ -504,6 +504,10 @@ Python behaviour moves. `AGENTS.md` lists an AST-structure change as Ask First a
 but the vocabulary is the crate the objective names as a core abstraction, so the shape goes up here
 first.
 
+*Corrected at the landing (2026-10-21): "no shipped Python behaviour moves" holds for YAML and for
+JSON, whose old flag was already the source fact, and it does not hold for TOML, whose old flag
+answered the slot question. One TOML value moves. The landing record below measures it.*
+
 **Acceptance criteria — the change is not done until all four hold.**
 
 1. The exclusion disappears: `events_replay.rs` and `json_events_replay.rs` compare the full
@@ -523,6 +527,81 @@ first.
 **Not measured here.** This section is a design and changes no code, so there is nothing for the
 instruction-count leg to judge; the numbers above come from reading the shipped boundary with
 `parse_stream`, recorded in the ledger entry that carries this decision.
+
+## What the note flag split answered (2026-10-21, decision 6 landed)
+
+The section above is the proposal; this is what the tree does. The shape shipped as designed:
+`pyrs-event`'s `Comment` carries `text`, `owns_line` and `owner`, and `NoteOwner` is the four-case
+enum over the two axes the design named — the direction in the consumer's build order (`following`
+is the node the consumer builds next, `preceding` the one it built last) and the tree's two slots
+(`leading` is the node's leading list, `inline` the one inline slot). All three producers report it.
+`pyrs_ast::ast::Comment` did not move: the tree *is* the placement, so the AST keeps its own
+`standalone` and the vocabulary gained a field rather than the tree losing one.
+
+**Criterion one — the exclusion is gone.** The two replay tiers no longer compare a note's text and
+call it a match. `crates/pyrs-json/tests/events_replay.rs` and
+`fuzz/fuzz_targets/json_events_replay.rs` compare the tree's note (text and slot) with the stream's
+note (text, `owns_line` and `owner`), and the fuzz tier adds the coherence the JSON producer's own
+rule implies: a note that had a line of its own leads, and a note that rides the inline slot shared
+its line with the text before it.
+
+**Criterion two — the two walks answer the same two questions.** The YAML tier's new file
+`crates/pyrs-yaml-core/tests/event_notes.rs` walks the tree and the stream over the same documents
+and asks both about both facts. `the_two_walks_answer_the_same_two_questions` is the case that
+split the flag apart: the document's trailing note had a line of its own, yet the tree files it in
+the root's inline slot, so the old boolean answered "own line" for the stream and "leading list"
+for the tree, and the two walks could not both be right about it.
+`every_note_the_tree_files_is_reported_with_the_same_owner` is the table of fourteen documents where
+the two walks must agree on the slot and on the direction, and
+`the_notes_the_tree_drops_are_the_documented_ones` names the notes the tree itself drops — a second
+trailing note, and the note an alias cannot hold — so the difference between the two walks is a
+recorded policy rather than a disagreement. The JSON and TOML producers carry the same two
+invariants in their own tiers.
+
+**Criterion three — rebuildability is demonstrated.**
+`a_jsonc_document_rebuilds_itself_from_its_own_events` folds a JSONC document's own events back into
+a tree and asks two questions of the result: does the strict writer print the same text the parser
+read, and does the folded tree equal the parsed one, decorations included. The second question is
+the one the split was for — the fold has to know which slot each note belongs in, and `owner` is the
+only thing that tells it.
+
+**Criterion four — the cost is read from the gate.** The three scenarios that carry notes were
+measured on the enforcing image — the pull request's own `ir` job on `ubuntu-24.04`, with the
+baseline's pinned `rustc 1.97.1` — each the largest of three callgrind runs:
+
+| scenario | this tree | committed floor | move |
+| --- | --- | --- | --- |
+| `stream_medium` | 252,210,269 | 251,312,293 | +0.36% |
+| `from_jsonc_medium` | 94,578,429 | 94,502,402 | +0.08% |
+| `to_toml_medium` | 26,827,006 | 26,827,070 | -0.00% |
+
+The job printed "OK: every scenario within tolerance of the committed baseline" and concluded
+`success`. The two scenarios that carry the YAML and JSON producers' work move 0.36% and 0.08%
+against a 0.5% line, and `to_toml_medium` — the one that carries the TOML producer's new work — does
+not move at all.
+
+**The one shipped value that moved.** The design said "no shipped Python behaviour moves", and the
+landing measurement says that is true for YAML and for JSON — their old flag was already the source
+fact, so `style` reads exactly what it read — and it is not true for TOML, whose old flag answered
+the slot question. A TOML note that shares its line with the text before it but still leads the next
+element used to read `style: "standalone"`, because the old flag was the tree's answer; it now
+reads `style: "inline"`, the source's own answer, and the placement the old value carried is the new
+`owner: "following_leading"`. The one shape is
+
+```toml
+a = { x = 1, # shared
+  y = 2 }
+```
+
+and the Python tier pins it in `tests/test_streaming.py`, so the value that moved is the one value
+under test rather than a sentence in a changelog.
+
+**What the split does not settle.** Decision 7's two facts stay unanswered — a YAML replay still
+cannot rebuild `chomping` or the block indentation indicator, because granit's `Event::Scalar` does
+not carry them — and the YAML tree still drops the notes it has no slot for. What the split buys is
+that the stream now says which notes those are: the stream reports every note the source has, and
+`owner` names the node each one rides, so a consumer that wants the tree's policy can see it rather
+than re-derive it.
 
 ## What a YAML replay asks the vocabulary for (2026-10-16, decision 7 on the table)
 
