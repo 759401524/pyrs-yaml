@@ -103,13 +103,17 @@ def test_the_canonical_rendering_keeps_mapping_order():
 def reaches_fast_path(src: str) -> bool:
     """Whether `safe_load` can answer this document through direct load at all.
 
-    Mirrors `would_bail` in `crates/pyrs-yaml/src/py/direct_load.rs`, which is the decision itself
-    and is now pinned there by two Rust tests (13 shapes). The mirror is line-for-line on purpose:
-    the byte scan for `&`, then a separator *line* after the first - `---`, `...`, or either with a
-    trailing space and text - then the event layer's bails on any tag sigil and on a `<<` key. The
-    tag and merge checks are deliberately stricter than the event layer here (a `!` inside a quoted
-    scalar is not a tag), so an input this calls eligible is one direct load will not bail on for
-    those reasons.
+    Mirrors `replicable_events` in `crates/pyrs-yaml-core/src/parser/yaml/direct.rs`, which is the
+    decision itself and is now pinned there by two Rust tests (13 shapes). The mirror is line-for-line
+    on purpose: the byte scan for `&`, then a separator *line* after the first - `---`, `...`, or
+    either with a trailing space and text - then the event layer's bails on any tag sigil and on a
+    `<<` key. The tag and merge checks are deliberately stricter than the event layer here (a `!`
+    inside a quoted scalar is not a tag), so an input this calls eligible is one direct load will not
+    bail on for those reasons.
+
+    The decision moved into the engine crate because it is a property of the document and the
+    grammar, not of the Python object the value becomes - which is also why its own test tier needs
+    no Python runtime.
 
     Eligible is not the same as *selected* — only instrumentation at the call site could prove that
     — but a corpus with no eligible document would make the comparison above structurally unable to

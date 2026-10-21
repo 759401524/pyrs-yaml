@@ -596,6 +596,15 @@ status: new
   行为没有变化，这个名字本来就可导入；`tests/test_api_doc_signatures.py` 现在对四种语言的
   `reference.md` 比较同一组 35 个名字，不再为此留例外。
 
+- **直接加载的资格判定移入引擎 crate** — 一个文档是否落在纯值快路径之内，取决于文档本身和语法，
+  而不是它最终物化成的 Python 对象，因此该判定以及钉住它的两个测试现在位于 `pyrs-yaml-core`
+  （`crates/pyrs-yaml-core/src/parser/yaml/direct.rs`）。绑定 crate 保留物化这一步——它是唯一需要
+  Python 对象存在的部分——它的 Rust 测试层现在是空的。这一步的出发点「Rust 测试层需要 Python
+  运行时」在二进制层面并不成立：`cargo test --workspace --no-run` 构建出的 848 个产物中，只有一个
+  写入了 `python*.dll`，而且它就是扩展模块本身。仍然耦合的是构建图——`pyo3`、`numpy` 及其构建期
+  crate 仍在绑定 crate 的闭包里——以及绑定 crate 的 `ir_gate` 基准宿主，它启动 CPython 来统计指令
+  数。行为没有变化：`safe_load` 及其同类函数回答的文档与此前完全一致。
+
 ### 移除
 
 - **自研规则校验退役；`Document.validate()` 成为唯一的 Schema 校验面** ——

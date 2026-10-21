@@ -8,6 +8,12 @@
 //! `AstReceiver` consumes; events borrow from the source text and carry no
 //! AST allocation), then build Python objects by recursive descent.
 //!
+//! The collection, and the decision that a document is eligible at all, live
+//! in the engine (`pyrs_yaml_core::parser::yaml::direct`): eligibility is a
+//! property of the document and the grammar, not of the Python object the
+//! value becomes. What stays here is the materialization, the only part that
+//! needs a Python object to exist.
+//!
 //! Semantics mirror the AST path exactly:
 //! - plain scalars resolve through the active schema; quoted scalars are
 //!   always strings (YAML 1.2 rule, see `convert::scalar_to_pyobject`);
@@ -25,89 +31,18 @@
 //! under the GIL throughout: Python-object construction is the dominant
 //! cost, so no `py.detach` here (AGENTS.md).
 
-use granit_parser::{Event, Parser as SaphyrParser, Span, SpannedEventReceiver};
+use granit_parser::Event;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};
-use pyrs_yaml_core::parser::yaml::{Schema, YamlType};
+use pyrs_yaml_core::parser::yaml::{DirectEvent, Schema, YamlType, replicable_events};
 use pyrs_yaml_core::parser::{DepthError, ParseError};
-
-/// Collected event with the span position granit reports at.
-struct Ev<'a> {
-    event: Event<'a>,
-    #[allow(dead_code)]
-    span: Span,
-}
-
-/// Phase 1: drain the parser into a Vec, bailing on anything the direct
-/// surface cannot reproduce. Parse errors also bail: the AST path reruns
-/// and produces the authoritative, byte-identical diagnostic.
-struct Collector<'a> {
-    events: Vec<Ev<'a>>,
-    bail: bool,
-    docs: usize,
-}
-
-impl<'a> Collector<'a> {
-    fn push(&mut self, event: Event<'a>, span: Span) {
-        self.events.push(Ev { event, span });
-    }
-}
-
-impl<'a> SpannedEventReceiver<'a> for Collector<'a> {
-    fn on_event(&mut self, event: Event<'a>, span: Span) {
-        if self.bail {
-            return;
-        }
-        match &event {
-            Event::StreamStart | Event::StreamEnd | Event::Comment(..) => {}
-            Event::DocumentStart(..) => {
-                self.docs += 1;
-                if self.docs > 1 {
-                    self.bail = true;
-                }
-            }
-            Event::DocumentEnd => {}
-            // Anchors and aliases stay on the AST surface: measured
-            // event-span replay never beat parse+to_dict (anchored docs
-            // regressed ~+48% paying collection overhead *plus* the AST
-            // fallback), and a byte-level pre-veto is impossible since
-            // aliases reference anchors by id. Revisit with parser-level
-            // integration, not stream-level.
-            Event::Alias(_) => self.bail = true,
-            Event::Scalar(value, _, anchor_id, tag) => {
-                if tag.is_some() || *anchor_id != 0 {
-                    self.bail = true;
-                    return;
-                }
-                // Merge keys veto the fast path (the AST layer owns `<<`
-                // semantics). Rejected regardless of position: a literal
-                // "<<" scalar is vanishingly rare outside merge keys, and
-                // losing the fast path there is harmless.
-                if value == "<<" {
-                    self.bail = true;
-                    return;
-                }
-                self.push(event, span);
-            }
-            Event::MappingStart(_, anchor_id, tag) | Event::SequenceStart(_, anchor_id, tag) => {
-                if tag.is_some() || anchor_id != &0 {
-                    self.bail = true;
-                    return;
-                }
-                self.push(event, span);
-            }
-            Event::MappingEnd | Event::SequenceEnd => self.push(event, span),
-            _ => self.bail = true, // granit Event is #[non_exhaustive]
-        }
-    }
-}
 
 /// Phase 2: recursive descent over the collected events.
 struct Builder<'py, 'a> {
     py: Python<'py>,
     schema: &'py Schema,
     pos: usize,
-    events: &'a [Ev<'a>],
+    events: &'a [DirectEvent<'a>],
     duplicate_key: Option<String>,
     error: Option<PyErr>,
     max_depth_hit: bool,
@@ -119,7 +54,7 @@ impl<'py, 'a> Builder<'py, 'a> {
     fn new(
         py: Python<'py>,
         schema: &'py Schema,
-        events: &'a [Ev<'a>],
+        events: &'a [DirectEvent<'a>],
         max_depth: usize,
         allow_duplicate_keys: bool,
     ) -> Self {
@@ -269,40 +204,6 @@ impl<'py, 'a> Builder<'py, 'a> {
     }
 }
 
-/// True when a document separator line (`---` / `...`) appears anywhere
-/// after the first line: such streams may hold multiple documents and the
-/// collector's late bail is too expensive to gamble on. False positives
-/// (separator-looking lines inside block scalars) only lose the fast path.
-fn has_later_document_separator(src: &str) -> bool {
-    let mut lines = src.lines();
-    lines.next();
-    lines.any(|l| l == "---" || l == "..." || l.starts_with("--- ") || l.starts_with("... "))
-}
-
-/// The veto exactly as [`try_direct_load`] reaches it: the two cheap byte/line pre-vetoes, then the
-/// collector's own answer.
-///
-/// Pinned here rather than only in `tests/test_reader_parity.py`, which mirrors these rules to floor
-/// its corpus: a mirror is only trustworthy next to the decision it mirrors, and until now this
-/// crate had no Rust test tier at all, so nothing asserted about the surface that decides whether
-/// the fast path answers an input.
-#[cfg(test)]
-fn would_bail(src: &str) -> bool {
-    if src.as_bytes().contains(&b'&') || has_later_document_separator(src) {
-        return true;
-    }
-    let mut collector = Collector {
-        events: Vec::new(),
-        bail: false,
-        docs: 0,
-    };
-    let mut parser = SaphyrParser::new_from_str(src);
-    match parser.load(&mut collector, true) {
-        Ok(()) => collector.bail,
-        // A parse error bails here and the AST path reruns for the authoritative diagnostic.
-        Err(_) => true,
-    }
-}
 /// Outcome of a direct load attempt.
 pub(crate) enum DirectOutcome {
     /// Fully materialized Python value.
@@ -320,43 +221,14 @@ pub(crate) fn try_direct_load(
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> DirectOutcome {
-    // Anchored documents stay on the AST path; a single `&` byte scan
-    // rejects them here so bail costs nanoseconds, not a partial granit
-    // pass + full AST rerun (measured +59% on small anchored documents
-    // without this gate). Aliases cannot exist without an anchor
-    // definition, so scanning for the anchor marker covers both; the
-    // known false positive (`&` inside quoted values, e.g. URLs) only
-    // costs that document the fast path. Tags and merge keys are vetoed
-    // precisely at the event layer.
-    if yaml_src.as_bytes().contains(&b'&') {
+    // The engine decides eligibility - the two cheap byte/line pre-vetoes and the event
+    // layer's own answer - and hands back the collected events when the document is
+    // inside the surface. Its reason for refusing is not ours to report: the AST path
+    // owns the authoritative diagnostic.
+    let Some(events) = replicable_events(yaml_src) else {
         return DirectOutcome::Bail;
-    }
-    // Cheap structural veto for multi-document streams: bailing only when
-    // the collector reaches the second DocumentStart wastes a full
-    // collection pass (and the follow-up AST parse re-reads everything),
-    // which measured +58% on multi-document loads. A line-start scan for
-    // separators costs microseconds; a leading `---` (explicit single-doc
-    // start) stays on the fast path.
-    if has_later_document_separator(yaml_src) {
-        return DirectOutcome::Bail;
-    }
-    let mut collector = Collector {
-        events: Vec::new(),
-        bail: false,
-        docs: 0,
     };
-    let mut parser = SaphyrParser::new_from_str(yaml_src);
-    match parser.load(&mut collector, true) {
-        Ok(()) if !collector.bail => {}
-        _ => return DirectOutcome::Bail,
-    }
-    let mut builder = Builder::new(
-        py,
-        schema,
-        &collector.events,
-        max_depth,
-        allow_duplicate_keys,
-    );
+    let mut builder = Builder::new(py, schema, &events, max_depth, allow_duplicate_keys);
     // Root: skip stream/document wrappers, build exactly one content node,
     // then require the rest to be document-end/stream-end.
     builder.skip_doc_wrappers();
@@ -392,39 +264,4 @@ pub(crate) fn try_direct_load(
         return DirectOutcome::Fail(ParseError::DuplicateKey(key));
     }
     DirectOutcome::Done(root)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn value_only_documents_stay_on_the_direct_surface() {
-        for src in [
-            "a: 1\n",
-            "a:\n  b: [1, 2]\n  c: {d: e}\n",
-            "list:\n  - one\n  - two\n",
-            "block: |\n  line\n  more\n",
-            "quoted: \"an exclamation mark!\"\n",
-        ] {
-            assert!(!would_bail(src), "{src:?} is replicable and must not bail");
-        }
-    }
-
-    #[test]
-    fn everything_outside_the_replicable_surface_bails() {
-        for (src, reason) in [
-            ("a: &x 1\n", "anchor definition"),
-            ("a: &x 1\nb: *x\n", "alias"),
-            ("a: !!str 1\n", "tag on a scalar"),
-            ("a: !!seq [1]\n", "tag on a collection"),
-            ("a: 1\n<<: {b: 2}\n", "merge key"),
-            ("a: 1\n---\nb: 2\n", "second document"),
-            ("a: [1\n", "parse error"),
-            // The byte scan's accepted false positive: a quoted `&` costs this document the fast path.
-            ("a: \"x & y\"\n", "ampersand inside a quoted scalar"),
-        ] {
-            assert!(would_bail(src), "{src:?} ({reason}) must bail");
-        }
-    }
 }

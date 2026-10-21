@@ -1,4 +1,5 @@
 pub mod comment;
+pub mod direct;
 pub mod merge;
 // Runtime schema registration is a std concern: the global registry is an
 // `RwLock`, and the user-schema language needs `regex`. A `no_std` caller
@@ -17,6 +18,7 @@ pub use pyrs_schema::{schema, types};
 pub use comment::{
     YamlScan, anchor_name_before, anchor_name_within, compute_line_offsets, scan_yaml,
 };
+pub use direct::{DirectEvent, replicable_events};
 pub use merge::resolve_merge_keys;
 #[cfg(feature = "std")]
 pub use registry::SchemaRegistry;
