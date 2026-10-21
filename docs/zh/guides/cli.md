@@ -117,26 +117,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # 移动子树
 
 ### 校验（`validate`） { #cmd-validate }
 
-`validate` 按 Schema 定义文件或已注册的 Schema 名称检查文档——两个选项互斥：
+`validate` 按 JSON Schema 文件检查文档。`--schema` 是 `--schema-file` 的别名；两者都不给时，命令只检查语法：
 
 ```bash
-pyrs-yaml validate app.yaml --schema-file schema.yaml
-pyrs-yaml validate app.yaml --schema my_schema        # 经 register_schema() 注册
+pyrs-yaml validate app.yaml --schema-file schema.json
+pyrs-yaml validate app.yaml --schema schema.json        # 同一个参数
 ```
 
-成功时静默退出 `0`；失败时所有违规项打印到 stderr 且退出码为 `1`——非常适合 CI：
+求值委托给 Python 的 `jsonschema`，因此该文件是标准 JSON Schema 文档：
 
-```yaml
-# schema.yaml
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
+```json
+{
+  "type": "object",
+  "properties": {"port": {"type": "integer"}},
+  "required": ["port"]
+}
 ```
 
-完整的 Schema 语言参见[自定义 Schema](custom-schema.md)。
+成功时静默退出 `0`；失败时参考引擎的消息打印到 stderr 且退出码为 `1`——非常适合 CI。
+
+标量解析用的 Schema 与 `Document.validate()` API 参见[自定义 Schema](custom-schema.md)。
 
 ### 转换（`to-json`、`from-json`） { #cmd-convert }
 

@@ -6933,6 +6933,61 @@ and the three tests run green.
 
 Counts: 735 Rust tests, 1,794 Python test functions, 43 Unreleased entries per mirror.
 
+### (eu) Two validators, one question: the schema row moved to the standard surface (2026-10-21)
+
+`authority-tier:schema-validation` was registered because the matrix's `schema validation` row
+measured a rule language this repository invented: its unit, property and fuzz tiers asked the
+engine what it believes, and parity had no second implementation to disagree with. The row beside
+it, `JSON Schema validation`, measured `Document.validate()`, which hands the instance and the
+schema to Python's `jsonschema` and keeps only the AST-to-instance conversion, the schema
+acceptance and the `YamlValidateError` contract here.
+
+The outside authority was measured before it was credited. `tests/test_document_validate_suite.py`
+replays the official JSON-Schema-Test-Suite at commit `0b4a7fa` (46 files, 1302 cases in
+`tests/draft2020-12`): on `jsonschema` 4.26.0, 1261 cases reach the corpus's verdict. The 41
+exclusions are named, not hidden behind a ratio: 31 in `refRemote.json` are a contract boundary
+(`Document.validate` exposes no resolver, and the 15 cases that expect an invalid instance are not
+credited because a missing resolver raising is a vacuous "invalid"), and ten are engine boundaries
+(`dynamicRef.json` 5, `vocabulary.json` 1, `pattern.json` and `patternProperties.json` 2+2 for
+`\p{…}` Unicode property escapes Python's `re` does not implement). The same corpus replayed through
+`jsonschema.validate()` directly reaches the identical verdict on all 1302 cases, so no exclusion is
+attributable to the conversion. The exclusion set is keyed on the installed version - the Python 3.8
+leg resolves 4.23.0 and needs one more named `unevaluatedProperties` case, fixed by 4.25.1 - and
+both directions redden: a named case that starts agreeing, and an unnamed one that stops.
+
+That measurement made the choice answerable. Keeping two validators meant two error contracts and
+two answers to "is this document valid", and only one of them could be judged from outside, so the
+invented one was retired rather than deprecated. `validate_against_schema()` and
+`validate_against_registered_schema()` are gone, a `validate:` section is no longer read, and the
+Rust types that existed only for it (`TypeSpec`, `ValidateKind`, `ValidateRule`,
+`SchemaValidationError`) are deleted; `register_schema()`, `load_schema()`, `list_schemas()`,
+`YAML(schema=...)` and `rules:` scalar resolution are untouched. The CLI's `validate` binds
+`--schema` and `--schema-file` to one parameter and checks syntax only when neither is given. The
+matrix row leaves with the surface it measured: `scripts/quality_matrix.py` derives four rows and
+prints `HOLES []` (measured), `.ci/quality-holes.json` is an empty registry with both directions
+still asserted, and `tests/test_quality_matrix.py` names the four rows, so a fifth cannot appear
+without a measurement behind it.
+
+The fuzz target `validate_schema` became `parse_schema` because what it fuzzes is the surviving
+`rules:` grammar, not JSON Schema evaluation; `fuzz/Cargo.toml` and `fuzz.yml` moved together,
+which the matrix derives from both. The shipped stub holds the removal: regenerating it and running
+`scripts/check_stub_drift.py` reports no drift, and `grep -c validate_against
+python/pyrs_yaml/pyrs_yaml.pyi` is 0. The documentation mirrors were checked structurally rather
+than by eye - `check_changelog_mirrors.py` reports the same 61 Changed / 1 Removed / 14 Fixed
+sections on all five changelog pages, and no locale guide, quick start, tutorial or API page names a
+removed function.
+
+Replacing the retired name in the signature gate's falsification control exposed a hole in that
+gate. The old control was `validate_against_schema(data)`, a wrong parameter list the checker
+caught; the replacement `load_toml()` drops a required parameter instead, and `typed_blocks` skipped
+it because an empty argument list was classified as "not a declaration" - the page passed with
+`0 typed signature block(s)`. `split_parameters` now reports `[]` for `f()`, so the control exits 1
+against the live `load_toml(toml_str)`, while the four locales' pages still pass: every
+zero-parameter declaration they carry names a callable that really takes none.
+
+Counts: 748 Rust tests, 1,821 Python test functions, 9 fuzz targets over 168 seeds, 76 Unreleased
+entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -1,10 +1,10 @@
 """The inline dict schema route must carry the whole definition, not the parts the emitter knew about.
 
 `safe_load(schema={...})`, `YAML(schema={...})` and friends serialize the dict to YAML and register it, which is
-how a schema written as Python data reaches the engine. Two failures came from the hand-rolled serializer that did
-that, both measured here before being fixed: a `validate` section was dropped without a word (so the registered
-schema validated nothing, and the caller had no way to notice), and a pattern containing both quote characters was
-emitted as a double-quoted scalar with an unescaped `"` inside it, which the parser then refused.
+how a schema written as Python data reaches the engine's `rules:` resolver. That route used to be a hand-rolled
+line emitter, and one failure it produced is still measurable: a pattern containing both quote characters was
+emitted as a double-quoted scalar with an unescaped `"` inside it, which the parser then refused. The inventory
+assertion stays as well - a key the dict carries is a key the registered schema text carries.
 """
 
 import pytest
@@ -15,28 +15,6 @@ HEX_RULE = {"pattern": r"^0x[0-9a-fA-F]+$", "type": "int"}
 
 
 class TestWholeDefinitionSurvives:
-    def test_an_inline_dict_keeps_its_validate_section(self):
-        """The rules a dict carries are the rules the registered name enforces.
-
-        This is the assertion that catches the silent loss: a dropped `validate` section makes both raising calls
-        return cleanly, because a schema with no rules accepts every document.
-        """
-        schema = {
-            "extends": "core",
-            "rules": [HEX_RULE],
-            "validate": [{"path": "$.port", "type": "int", "required": True}],
-        }
-        text = pyrs_yaml._schema_to_yaml(schema)
-        pyrs_yaml.register_schema("inline_validate_probe", text)
-
-        pyrs_yaml.validate_against_schema("port: 80\n", "inline_validate_probe")
-        with pytest.raises(pyrs_yaml.YamlValidateError) as wrong_type:
-            pyrs_yaml.validate_against_schema("port: eighty\n", "inline_validate_probe")
-        assert "$.port: expected int" in str(wrong_type.value)
-        with pytest.raises(pyrs_yaml.YamlValidateError) as missing:
-            pyrs_yaml.validate_against_schema("other: 1\n", "inline_validate_probe")
-        assert "required path is missing" in str(missing.value)
-
     def test_every_key_of_the_definition_is_written(self):
         text = pyrs_yaml._schema_to_yaml(
             {
@@ -44,10 +22,9 @@ class TestWholeDefinitionSurvives:
                 "version": 1,
                 "extends": "failsafe",
                 "rules": [HEX_RULE],
-                "validate": [{"path": "$.port", "type": "int"}],
             }
         )
-        for key in ("name:", "version:", "extends:", "rules:", "validate:"):
+        for key in ("name:", "version:", "extends:", "rules:"):
             assert key in text, key
         assert "extends: failsafe" in text, text
 

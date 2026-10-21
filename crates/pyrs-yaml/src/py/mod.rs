@@ -232,9 +232,5 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::to_toml;
     #[pymodule_export]
-    pub(crate) use super::functions::validate_against_registered_schema;
-    #[pymodule_export]
-    pub(crate) use super::functions::validate_against_schema;
-    #[pymodule_export]
     pub(crate) use super::functions::validate_custom_types;
 }

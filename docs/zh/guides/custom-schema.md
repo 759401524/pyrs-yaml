@@ -97,58 +97,24 @@ print(pyrs_yaml.list_schemas())
 
 #### 结构化校验
 
-在 schema 定义中添加 `validate` 段，可在标量类型解析之上进行结构检查。使用 `validate_against_schema()` 在文档使用前校验：
+结构化校验不属于标量解析。`Document.validate()` 是本包唯一的校验入口：它接受
+[JSON Schema](https://json-schema.org/)，并把求值委托给 Python 的 `jsonschema`。
+schema 定义中的 `validate:` 段不会被读取。
 
-```yaml title="带校验的 schema"
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-  - path: $.tags[*]
-    type: str
-  - path: $.numbers
-    sequence_of: int
-  - path: $.config
-    mapping_of: str
-  - path: $.extra
-    type: map
-```
-
-```python
+```python title="用 JSON Schema 校验"
 import pyrs_yaml
 
-schema = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-"""
-
-pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
-# 列出所有失败项并抛 YamlValidateError：
-pyrs_yaml.validate_against_schema("port: abc\n", schema)
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+doc.validate(schema)  # 返回 None；文档不合格时抛出 YamlValidateError
 ```
 
-- `path` — JSONPath 风格位置（`$.key`、`$.a.b`、`$.tags[*]`）；省略时应用于所有标量。
-  单个 `[*]` 只指代一个元素，所以 `$.rows[*]` 不会触及 `$.rows[0].a`
-- `type` — 标量必须解析为该 YAML 类型（`null`/`bool`/`int`/`float`/`str`），或者节点必须具有
-  该容器形状（`map`/`seq`，也接受 `mapping`/`object`、`sequence`/`array`/`list`）。容器形状
-  必须给出 `path`
-- `sequence_of` / `mapping_of` — 节点必须是该容器，且每个元素 / 值都为指定类型，该类型本身
-  也可以是 `map` 或 `seq`
-- `required` — 路径必须存在且非 null（可与 `type` 组合）
-
-作用范围决定一条规则断言多少内容。给出了 `path` 的规则针对该节点，所以形状不符就会失败：
-`$.port` 处是映射则违反 `type: int`，`$.config` 处是标量则违反 `mapping_of: str`。省略 `path`
-的规则无法指名节点，于是它按形状筛选自己能够描述的节点：不带路径的 `type: str` 意为「所有标量
-都是字符串」，不管文档其余部分是什么；不带路径的 `type: map` 什么也选不出来，因而在书写处就被
-拒绝。成员在两种情形下都会被校验：`sequence_of: int` 已经说明元素是什么，嵌套序列不是 int。
-一条规则只能承载一项检查（`required` 与检查组合，而非与之竞争）。关于别名节点（`b: *x`）的规则
-不作判定，因为别名保存的是名字而不是形状。
+错误信息直接来自参考引擎（`'port' is a required property`）；同一份 schema 与实例交给
+`jsonschema.validate()` 会得到相同结论。校验文件请参阅 [CLI 指南](cli.md)。
 
 ### 内联 Dict Schema
 

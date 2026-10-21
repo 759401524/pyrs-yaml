@@ -117,26 +117,26 @@ Notes:
 
 ### Validation (`validate`) { #cmd-validate }
 
-`validate` checks a document against a schema definition file or a registered schema name — the two options are mutually exclusive:
+`validate` checks a document against a JSON Schema file. `--schema` is an alias of `--schema-file`; with neither flag the command checks syntax only:
 
 ```bash
-pyrs-yaml validate app.yaml --schema-file schema.yaml
-pyrs-yaml validate app.yaml --schema my_schema        # registered via register_schema()
+pyrs-yaml validate app.yaml --schema-file schema.json
+pyrs-yaml validate app.yaml --schema schema.json        # the same parameter
 ```
 
-The command is silent on success and exits `0`; on failure every violation is printed to stderr and the exit code is `1` — handy in CI:
+Evaluation is delegated to Python's `jsonschema`, so the file is a standard JSON Schema document:
 
-```yaml
-# schema.yaml
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
+```json
+{
+  "type": "object",
+  "properties": {"port": {"type": "integer"}},
+  "required": ["port"]
+}
 ```
 
-See [Custom Schemas](custom-schema.md) for the full schema language.
+The command is silent on success and exits `0`; on failure the reference engine's message is printed to stderr and the exit code is `1` — handy in CI.
+
+See [Custom Schemas](custom-schema.md) for scalar-resolution schemas and the `Document.validate()` API.
 
 ### Conversion (`to-json`, `from-json`) { #cmd-convert }
 

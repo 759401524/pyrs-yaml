@@ -174,24 +174,24 @@ doc.sort_keys("$.environments")  # sort the environments
 
 ## 9. Validate Against a Schema
 
-Define a schema with structural rules and validate the configuration:
+`Document.validate()` accepts a JSON Schema and delegates evaluation to `jsonschema`:
 
-```python title="Validate against a schema"
-schema = """\
-name: app-config
-extends: core
-validate:
-  - path: $.app.name
-    type: str
-    required: true
-  - path: $.environments.*.debug
-    type: bool
-  - path: $.threshold
-    type: int
-"""
+```python title="Validate against a JSON Schema"
+schema = {
+    "type": "object",
+    "properties": {
+        "app": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        "threshold": {"type": "integer"},
+    },
+    "required": ["app"],
+}
 
 # Validate — raises YamlValidateError on failure
-pyrs_yaml.validate_against_schema(doc.to_yaml(), schema)
+doc.validate(schema)
 print("Configuration is valid!")
 ```
 

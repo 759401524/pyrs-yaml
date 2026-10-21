@@ -12,12 +12,5 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": [
-  {
-   "id": "authority-tier:schema-validation",
-   "opened": "2026-10-20",
-   "exit": "either the rule language is retired in favour of Document.validate() (whose outside authority is now measured by tests/test_document_validate_suite.py against the official draft2020-12 corpus), or the rule language gains a published specification and a corpus under Reference/ that a tests/test_*_suite.py replays",
-   "why": "the rule language validate_against_schema() judges was invented here, so the unit, property and fuzz tiers all ask the engine what it believes, and parity has no second implementation to disagree with; the standard Document.validate() surface beside it is judged from outside, and this row is the one still without an authority"
-  }
- ]
+ "holes": []
 }

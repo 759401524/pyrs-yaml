@@ -386,5 +386,4 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **Metadata editing** | **:material-check: `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
 | **Style/format control** | **:material-check: `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
 | **Deep editing** | **:material-check: `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **:material-check: `validate_against_schema()`** |
 | **Schema file IO** | **:material-check: `load_schema()` / `list_schemas()`** |

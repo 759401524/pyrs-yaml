@@ -22,8 +22,8 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 764 Rust `#[test]`, 1,848 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| unit / integration | 748 Rust `#[test]`, 1,821 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 28 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
@@ -94,29 +94,29 @@ PyYAML and ruamel. Three tiers over one engine are not three defences: coverage 
 orthogonal only where a second implementation exists to disagree with.
 
 Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell against this table by
-`tests/test_quality_matrix.py` - which is how the two wrong cells below were found:
+`tests/test_quality_matrix.py` - which is how the wrong cells below were found:
 
 | format | unit | property | fuzz parse | fuzz round trip | cross-library parity | external authority |
 | --- | --- | --- | --- | --- | --- | --- |
 | YAML | yes | yes | yes | yes | yes | yes |
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
-| schema validation | yes | yes | yes | n/a | n/a | no |
 | JSON Schema validation | no | no | no | n/a | n/a | yes |
 
-**The schema row's `fuzz parse` cell said `no` while the tree said `yes`.**
-`fuzz/fuzz_targets/validate_schema.rs` parses with `parse(document, Schema::Core)` and then walks the
-result through `validate_node`, so the schema path is fuzzed on both halves; it has no writer to
-round-trip, which is why the next column stays `n/a`. The cell understated the defence, and understating
-it is the dangerous direction - a reader could conclude the schema language is un-fuzzed.
+**There is one schema surface, and it is judged from outside.** `Document.validate()` accepts JSON
+Schema and delegates evaluation to Python's `jsonschema`, keeping the AST-to-instance conversion, schema
+acceptance and the `YamlValidateError` contract on this side. The second row - `schema validation`, the
+rule language this repository invented - is gone: it was retired on 2026-10-21 in favour of this
+standard surface, because nothing outside ever asked its rules, and reusing a standard engine removed
+the question instead of answering it. Its entry points - `validate_against_schema()`,
+`validate_against_registered_schema()`, `TypeSpec`, `ValidateRule` and `SchemaValidationError` - are
+deleted, not deprecated.
 
-**There are two schema surfaces, and only one of them was judged from outside.** `schema validation`
-is the rule language this repository invented and `validate_against_schema()` evaluates
-(`crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs`). `JSON Schema validation` is the standard
-surface: `Document.validate()` accepts JSON Schema and delegates evaluation to Python's `jsonschema`,
-keeping the AST-to-instance conversion, schema acceptance and the `YamlValidateError` contract on this
-side. The rows are separate because one corpus cannot vouch for both: the first is still `no`, and the
-second is `yes` through `tests/test_document_validate_suite.py`.
+The surviving row's other cells are structural rather than a claim that nothing anywhere exercises the
+surface: the row owns no Rust crate, because the evaluation is Python. The Rust fuzz target that exists
+(`fuzz/fuzz_targets/parse_schema.rs`) fuzzes the `rules:` grammar - the scalar-type resolution path -
+not JSON Schema evaluation, so the `fuzz parse` cell reads `no` truthfully. The `n/a` pair stays
+because the surface judges a document and owns no writer.
 
 The measured agreement, 2026-10-21 against the official JSON-Schema-Test-Suite at commit
 `0b4a7fa5e79c5e1ed60d5c034b951003bbba7fd4` (46 files, 1302 cases in `tests/draft2020-12`): 1261 cases
@@ -161,10 +161,9 @@ emitted as a hole of the `authority-tier` kind, named for the file, rather than 
 It is deliberately not the
 parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
 neither side ever accepted - a path that does not exist has nothing to disagree with.
-`schema validation` - the invented rule language - reads `no`, because nothing outside asks its rules;
-the standard surface beside it reads `yes` through `tests/test_document_validate_suite.py`. The empty
-cell is emitted as `authority-tier:schema-validation` and registered with the state that removes it,
-so `holes: []` means nothing is unmeasured rather than nothing is unjudged.
+The schema row reads `yes` through `tests/test_document_validate_suite.py`, and it is the only schema
+row now: the invented rule language was retired instead of given a corpus, so no `authority-tier` hole
+is emitted and `holes: []` means nothing is unmeasured rather than nothing is unjudged.
 
 `partial` in the parity column is measured per dialect, not per family. The column reads the readers
 each `test_*_crosslib.py` imports - at module level, or through a `pytest.importorskip` inside the test
@@ -613,7 +612,7 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| `authority-tier:schema-validation` | the rule language `validate_against_schema()` judges was invented in this repository, so the unit, property and fuzz tiers all ask the engine what it believes and parity has no second implementation to disagree with; the standard `Document.validate()` surface beside it is now replayed against the official draft2020-12 corpus, which is why the table has two schema rows and this is the one still reading `no` | either the rule language is retired in favour of `Document.validate()` (whose outside authority is now measured), or it gains a published specification and a corpus under `Reference/` that a `tests/test_*_suite.py` replays |
+| *none measured* | the rule language `validate_against_schema()` judges was invented in this repository, so the unit, property and fuzz tiers all asked the engine what it believes and parity had no second implementation to disagree with; the standard `Document.validate()` surface beside it was replayed against the official draft2020-12 corpus while the invented one had no outside authority at all | closed on 2026-10-21 by retiring the rule language in favour of `Document.validate()`: its Rust entry points are deleted, `tests/test_document_validate_suite.py` is the only schema authority, and `format_matrix()` derives exactly four surface rows |
 | *none measured* | the site configuration declared the Python docstring handler, its load paths and fourteen render options while not one page under any locale contained a `:::` directive — `mkdocstrings_directives()` found zero, so `docs/<locale>/api/*.md` were hand-typed signatures, nothing compared them with the generated `python/pyrs_yaml/pyrs_yaml.pyi`, and a bump of the docs toolchain could not be checked against output it never produced | satisfied: five API pages per locale now carry directives and the four-locale `--strict` build renders them (`yaml-document` 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48), while the page that names no directive stays at zero — measured by `mkdocstrings_directives()` against `mkdocstrings_declared()` |
 | *none measured* | the site was rendered only by a workflow that triggers on push to `main`, so a page that fails when *rendered* was found by whoever opened it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | satisfied by `ci.yml`'s `docs-gates` job, which runs the page-metadata, heading, mirror, purity and i18n gates and then `scripts/build-docs.py` for all four locales under `--strict` on every pull request; `renders_the_site()` measures it off the declaring files rather than off a list kept beside them |
 | *none measured* | a required check that never reports is not a green light but a deadlock: branch protection names `Test matrix (all legs)`, `ci.yml` excluded `*.md` and `docs/**` from its triggers, and PR #319 arrived with every check it produced passing and the merge refused with `Required status check "Test matrix (all legs)" is expected` — a documentation change could not merge by any route an ordinary contributor has | satisfied by the same change: `ci.yml` triggers on every pull request, a `changes` job classifies the changeset, and the verdict tolerates a skipped heavy leg only while the classifier reports `code=false` — tested in both directions in `tests/test_matrix_verdict_gate.py` |
@@ -634,7 +633,7 @@ The question that filled it again on 2026-10-14 was about the tier itself: `prop
 counts properties, and a count is satisfied by a property that never asserts.
 `conditional_property_assertions()` therefore reads each property body for a guard of the shape
 `if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
-round-trip classifier has since replaced that guard, and the probe now reports 0 of the 29 properties.
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 28 properties.
 Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
 to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it

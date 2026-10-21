@@ -249,32 +249,25 @@ print(doc.to_yaml())  # text: |-\n  hello\n  world
 
 ### 12. Validate with a Schema
 
-??? note "Optional: YAML Schema Language"
+`Document.validate()` accepts a JSON Schema and delegates evaluation to
+[`jsonschema`](https://python-jsonschema.readthedocs.io/):
 
-    Define a YAML Schema Language document with structural rules and validate
-    data against it:
+```python title="Validate with JSON Schema"
+import pyrs_yaml
 
-    ```python
-    import pyrs_yaml
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
 
-    schema = """\
-    name: app
-    extends: core
-    validate:
-      - path: $.port
-        type: int
-        required: true
-      - path: $.tags[*]
-        type: str
-    """
+doc.validate(schema)  # passes
 
-    # Valid document passes
-    pyrs_yaml.validate_against_schema("port: 8080\ntags: [web, api]\n", schema)
-
-    # Invalid document raises YamlValidateError with every failure
-    pyrs_yaml.validate_against_schema("port: abc\n", schema)
-    # YamlValidateError: $.port: expected int but got Str("abc")
-    ```
+bad = pyrs_yaml.parse("tags: [web]\n")
+bad.validate(schema)
+# YamlValidateError: 'port' is a required property
+```
 
 ### 13. Deep Editing (batch, sort, move, copy)
 

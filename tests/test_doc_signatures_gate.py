@@ -73,7 +73,7 @@ def test_the_checker_knows_the_names_the_publication_uses(gate):
         ("register_schema(name, schema)", "register_schema"),
         ("register_type(tag, type_handler, priority)", "register_type"),
         # a required parameter dropped is not an abbreviation, it is a different function
-        ("validate_against_schema(data)", "validate_against_schema"),
+        ("load_toml()", "load_toml"),
     ],
 )
 def test_a_signature_the_library_does_not_offer_is_a_finding(tmp_path, block, needle):

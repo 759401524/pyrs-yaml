@@ -117,26 +117,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # サブツリー�
 
 ### バリデーション（`validate`） { #cmd-validate }
 
-`validate` はスキーマ定義ファイルまたは登録済みスキーマ名に基づいてドキュメントを検証します——2 つのオプションは相互排他です:
+`validate` は JSON Schema ファイルに基づいてドキュメントを検証します。`--schema` は `--schema-file` のエイリアスで、どちらも指定しない場合は構文チェックのみを行います:
 
 ```bash
-pyrs-yaml validate app.yaml --schema-file schema.yaml
-pyrs-yaml validate app.yaml --schema my_schema        # register_schema() で登録したもの
+pyrs-yaml validate app.yaml --schema-file schema.json
+pyrs-yaml validate app.yaml --schema schema.json        # 同じパラメーター
 ```
 
-成功時は無音で終了コード `0`。失敗時はすべての違反内容を stderr に出力し終了コード `1` で終わるため、CI での利用に最適です:
+評価は Python の `jsonschema` に委譲されるため、ファイルは標準の JSON Schema ドキュメントです:
 
-```yaml
-# schema.yaml
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
+```json
+{
+  "type": "object",
+  "properties": {"port": {"type": "integer"}},
+  "required": ["port"]
+}
 ```
 
-スキーマ言語の詳細は[カスタムスキーマ](custom-schema.md)を参照してください。
+成功時は無音で終了コード `0`、失敗時はリファレンスエンジンのメッセージを stderr に出力して終了コード `1` で終わります——CI での利用に最適です。
+
+スカラー解決用スキーマと `Document.validate()` API は[カスタムスキーマ](custom-schema.md)を参照してください。
 
 ### 変換（`to-json`、`from-json`） { #cmd-convert }
 

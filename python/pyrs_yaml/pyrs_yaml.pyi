@@ -635,30 +635,6 @@ def to_toml(yaml: "str", schema: "str" = "core") -> "str":
     `toml-serialize-error` messages.
     """
 
-def validate_against_registered_schema(data: "str", name: "str") -> "None":
-    """
-    Validate a YAML document against a **registered** schema by name.
-
-    `data` is a YAML string; `name` is the name of a previously registered
-    schema (via `register_schema` / `load_schema`). Raises `YamlValidateError`
-    when the document does not conform to the schema's structural `validate`
-    section.
-    """
-
-def validate_against_schema(data: "str", schema: "str") -> "None":
-    """
-    Validate a YAML document against a schema definition's `validate` rules.
-
-    `data` is a YAML string; `schema` is a schema definition (the same
-    format passed to `register_schema`). Raises `YamlValidateError` listing
-    each structural validation failure (path + reason) when the document does
-    not conform to the schema's `validate` section.
-
-    The parameter is named `schema`, not `schema_yaml`, because that is the keyword the
-    public wrapper has always forwarded: a stub naming a different one tells an editor to
-    write a call the runtime rejects.
-    """
-
 def validate_custom_types(obj: "Any") -> None:
     """
     Validate a Python object against all registered CustomType validators.

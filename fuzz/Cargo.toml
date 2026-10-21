@@ -68,13 +68,12 @@ test = false
 doc = false
 bench = false
 
-# The schema language, which is a second grammar with its own path navigator: every other target
-# feeds the engine a document, and the crash this one covers (a non-ASCII rule path aborting the
-# process, ledger (bj)) was reachable only by feeding it a schema. One input carries both, split on
-# its first NUL.
+# The schema language is a second grammar with its own parser: every other target feeds the engine a
+# document, and a schema definition is the input only this one reaches. It has no writer to round-trip,
+# so parsing is the whole contract.
 [[bin]]
-name = "validate_schema"
-path = "fuzz_targets/validate_schema.rs"
+name = "parse_schema"
+path = "fuzz_targets/parse_schema.rs"
 test = false
 doc = false
 bench = false

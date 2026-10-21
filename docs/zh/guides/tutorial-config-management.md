@@ -165,24 +165,24 @@ doc.sort_keys("$.environments")  # sort the environments
 
 ## 9. 根据 Schema 校验
 
-定义带结构规则的 schema 并校验配置：
+`Document.validate()` 接受 JSON Schema，并把求值委托给 `jsonschema`：
 
-```python title="根据 schema 校验"
-schema = """\
-name: app-config
-extends: core
-validate:
-  - path: $.app.name
-    type: str
-    required: true
-  - path: $.environments.*.debug
-    type: bool
-  - path: $.threshold
-    type: int
-"""
+```python title="根据 JSON Schema 校验"
+schema = {
+    "type": "object",
+    "properties": {
+        "app": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        "threshold": {"type": "integer"},
+    },
+    "required": ["app"],
+}
 
 # Validate — raises YamlValidateError on failure
-pyrs_yaml.validate_against_schema(doc.to_yaml(), schema)
+doc.validate(schema)
 print("Configuration is valid!")
 ```
 

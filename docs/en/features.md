@@ -139,7 +139,7 @@ d = pyrs_yaml.safe_load(
 
 - **`extends`** — optional base schema (`core`, `json`, `failsafe`, `yaml1.1`)
 - **`rules`** — ordered list of `{pattern, type}`; first match wins
-- **`validate`** — optional structural validation rules: path-qualified types (`$.port: int`), container checks (`sequence_of`, `mapping_of`), and `required` presence; use `validate_against_schema(data, schema_yaml)` to check documents
+- **Structural validation** — separate from resolution: `Document.validate()` accepts a JSON Schema and delegates to `jsonschema`; a `validate:` section in a schema definition is not read
 - **Supported types**: `null`, `bool`, `int`, `float`, `str`
 - Built-in Core schema still uses zero-cost `match` dispatch (unaffected)
 - **File I/O** — `load_schema(name, path)` loads a schema from a YAML file; `list_schemas()` returns all registered schemas
@@ -452,6 +452,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **Metadata editing** | **:material-check: `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
 | **Style/format control** | **:material-check: `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
 | **Deep editing** | **:material-check: `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **:material-check: `validate_against_schema()`** |
 | **Schema file IO** | **:material-check: `load_schema()` / `list_schemas()`** |
 | **JSON export** | **:material-check: `doc.to_json()`** |

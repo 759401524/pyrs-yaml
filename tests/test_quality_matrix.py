@@ -558,7 +558,7 @@ def test_declared_hole_kinds_are_kinds_the_probe_can_emit(measured, registry):
     )
 
 
-def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not(measured):
+def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not():
     """Both directions, on rows the probe need not reach through the repository to be shown.
 
     The column used to be prose: the table said `no` and the registry stayed empty, so `holes: []`
@@ -576,7 +576,6 @@ def test_an_empty_authority_column_is_a_hole_and_a_filled_one_is_not(measured):
     assert matrix.authority_file_gaps({"JSON / JSONC / JSON5": {"authority": bounded}}) == [
         ("json5-spec-table", "test_json5_spec_table.py")
     ]
-    assert ["authority-tier", "schema-validation"] in [hole[:2] for hole in measured["holes"]], measured["holes"]
 
 
 AUTHORITY_GATED = """\
@@ -1102,16 +1101,13 @@ def test_site_rendering_reachability_is_read_off_the_workflows(matrix, tmp_path,
 def test_the_per_format_table_is_the_derived_one(measured):
     """Every cell of the per-format table is now computed, so the page and the computation must agree.
 
-    Deriving the rows is what found the two cells the prose had wrong, both in the direction that
-    understates the defence: `schema validation` read `fuzz parse: no` while
-    `fuzz/fuzz_targets/validate_schema.rs` parses with `parse(document, Schema::Core)` before it walks
-    the tree through `validate_node`, and the property tier counted `fn prop_*` names only, missing the
-    two `proptest!` properties `crates/pyrs-event/src/lib.rs` declares with a `#[test]` attribute and a
-    prose name.
+    Deriving the rows is what found a cell the prose had wrong in the direction that understates the
+    defence: the property tier counted `fn prop_*` names only, missing the two `proptest!` properties
+    `crates/pyrs-event/src/lib.rs` declares with a `#[test]` attribute and a prose name.
     """
     text = DOC_PATH.read_text(encoding="utf-8")
     cells = re.findall(
-        r"^\| (YAML|JSON / JSONC / JSON5|TOML|schema validation|JSON Schema validation)"
+        r"^\| (YAML|JSON / JSONC / JSON5|TOML|JSON Schema validation)"
         r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a)"
         r" \| (yes|no) \|$",
         text,
@@ -1121,7 +1117,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
         label: (unit, prop, parse, trip, parity, authority)
         for label, unit, prop, parse, trip, parity, authority in cells
     }
-    assert len(claimed) == 5, f"the page no longer states all five surface rows: {claimed}"
+    assert len(claimed) == 4, f"the page no longer states all four surface rows: {claimed}"
 
     derived = {}
     for line in measured["format_verdicts"]:
@@ -1142,7 +1138,7 @@ def test_the_derived_table_is_not_vacuous(measured):
     """A row whose fragments matched nothing would still print `no`s, so the inputs are pinned too."""
     rows = measured["format_matrix"]
     assert rows["YAML"]["unit"] > 0, rows["YAML"]
-    assert rows["schema validation"]["fuzz_parse"], "validate_schema.rs must count as fuzz coverage"
+    assert rows["YAML"]["fuzz_parse"], "parse_yaml.rs must count as fuzz coverage"
     assert measured["property_function_count"] >= 27, "the two pyrs-event properties must be counted"
     json_parity = rows["JSON / JSONC / JSON5"]["cross_library"]
     assert json_parity["verdict"] == "yes" and not json_parity["restricted"], (
@@ -1156,10 +1152,8 @@ def test_the_derived_table_is_not_vacuous(measured):
     # for the JSON5 half of the JSON family.
     assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"]["files"], authority
     assert authority["JSON / JSONC / JSON5"]["verdict"] == "yes", authority
-    assert authority["schema validation"]["verdict"] == "no", "a row with no outside authority has to say so"
-    assert not authority["schema validation"]["files"], authority
-    # The standard surface is a row of its own: its authority is the official draft2020-12 corpus,
-    # and that corpus must not be credited to the homegrown YAML rule language beside it.
+    # The schema surface is one row: its authority is the official draft2020-12 corpus replayed
+    # against `Document.validate()`, the only validator this package still ships.
     assert authority["JSON Schema validation"]["files"] == ["test_document_validate_suite.py"], authority
     assert authority["JSON Schema validation"]["verdict"] == "yes", authority
     assert not rows["JSON Schema validation"]["fuzz_parse"], "no Rust fuzz target names the delegated surface"

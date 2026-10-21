@@ -14,7 +14,7 @@ This module turns the two surfaces into an executable contract:
   so the strict-vs-loose loader matrix is complete.
 - Editing verbs (`fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `move`,
   `frontmatter`) route through the `Node` / `YamlDocument` API.
-- `validate` and `compliance` verbs map to `validate_against_schema` and
+- `validate` and `compliance` verbs map to `YamlDocument.validate` and
   `compliance_report`.
 
 Failures here mean the parity claim in `CHANGELOG.md` would be false, so the
@@ -152,7 +152,7 @@ def test_load_family_symmetry():
         ("sort-keys", "Node"),
         ("move", "Node"),
         ("frontmatter", "read_markdown"),
-        ("validate", "validate_against_schema"),
+        ("validate", "YamlDocument"),
         ("compliance", "compliance_report"),
     ],
 )
