@@ -19,6 +19,18 @@ status: new
 
 ### 变更
 
+- **无界读取器不再让 parity 列跳过测试单元** — 此前 `crosslib_parity` 在读取任何测试之前，只要
+  判断出没有读取器被 marker 限界就直接返回 `yes`，于是每个测试平台都能装上的读取器家族仅凭
+  import 列表就被记账：所有比较都带 `@pytest.mark.skip` 的 `test_*_crosslib.py`，以及一个测试
+  都没有的文件，都读成 `yes`。现在每个模块都要过单元规则。YAML 仍读 `yes`，因为它的守卫不会
+  触发——每个比较都带 `skipif(pyyaml is None)` 或 `skipif(not _ruamel_available())`，两个读取器
+  都无 marker 声明，辅助函数按函数体（`return _ruamel is not None`）解析——而
+  `skipif(sys.version_info < ...)` 仍然拒绝记账。要从 `safe_load`、`safe_dump` 和 `parse` 读出
+  YAML 的比较，方言正则需要认识这些无后缀的默认动词。控制项把四种“没有活比较”的形态
+  （`@pytest.mark.skip`、无测试、模块级 `pytestmark`、解释器门）钉为 `partial`，把死掉的可用性
+  守卫钉为 `yes`；实测树不变——YAML、JSON、TOML 的 parity 仍为 `yes`，派生洞列表仍是唯一的
+  `authority-tier:schema-validation`。
+
 - **语料套件由它命名的语料记账** — 外部权威列的无读取器分支此前会给任何没有导入读取器的
   `tests/test_*_suite.py` 或 `*_spec_table.py` 记 `yes`，于是一个只有正确后缀和占位测试的文件也
   显示为 `yes`，而文档写的是语料文件按它重放的套件计数。现在该分支要求模块以字符串常量命名

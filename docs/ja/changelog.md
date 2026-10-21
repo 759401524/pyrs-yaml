@@ -17,6 +17,21 @@ status: new
 
 ### 変更
 
+- **リーダーが限定されていなくても、パリティ列はテストユニットを読みます** — 従来の
+  `crosslib_parity` は、限定されたリーダーがないと判断した時点でどのテストも読まずに `yes` を返して
+  いました。そのため、すべてのテストレッグにインストールされるリーダーだけを持つファミリーは import
+  一覧だけで加点され、すべての比較に `@pytest.mark.skip` を付けた `test_*_crosslib.py` も、テストが
+  一つもないファイルも `yes` と表示されました。ユニット規則はすべてのモジュールに適用されます。YAML
+  が `yes` のままなのは、ガードが発火しないからです。すべての比較に `skipif(pyyaml is None)` または
+  `skipif(not _ruamel_available())` が付き、どちらのリーダーもマーカーなしで宣言され、ヘルパーはその
+  本体（`return _ruamel is not None`）で解決されます。一方、`skipif(sys.version_info < ...)` は依然
+  として加点を拒否します。YAML の比較を `safe_load`、`safe_dump`、`parse` から読み取るには、方言の正
+  規表現が接尾辞のない既定の動詞を知る必要がありました。制御は「生きた比較がない」四つの形
+  （`@pytest.mark.skip`、テストなし、モジュールレベルの `pytestmark`、インタープリターのゲート）を
+  `partial` に、死んだ可用性ガードを `yes` に固定します。計測されたツリーは変わらず、YAML、JSON、
+  TOML のパリティは `yes` のまま、導出されるホール一覧も唯一の `authority-tier:schema-validation` の
+  ままです。
+
 - **コーパススイートは、それが名指すコーパスによって加点されます** — 外部権威列のリーダーなし
   分支は、リーダーを import しない `tests/test_*_suite.py` や `*_spec_table.py` をすべて `yes`
   としていました。そのため、正しい接尾辞とプレースホルダーテストだけを持つファイルも `yes` と

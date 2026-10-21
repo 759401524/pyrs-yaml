@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 764 Rust `#[test]`, 1,842 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 764 Rust `#[test]`, 1,846 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -144,9 +144,21 @@ unjudged.
 each `test_*_crosslib.py` imports - at module level, or through a `pytest.importorskip` inside the test
 that needs one - resolves how each of them is bounded, and then asks a narrower question of every
 dialect in the row's own label: does some test call a reader that nothing bounds, in a unit nothing can
-skip? A `skipif` in the body, a decorator that is not `parametrize` (a skip marker wearing a name -
-`@needs_pyjson5`), or a module-level `pytestmark` all deny the credit, because each of those is a
-comparison a leg can lose while still reporting green.
+skip? A `skipif` in the body, a module-level `pytestmark`, or a decorator that is not `parametrize` (a
+skip marker wearing a name - `@needs_pyjson5`) denies the credit, because each of those is a comparison
+a leg can lose while still reporting green. The one decorator that does not deny it is a `skipif`
+naming the availability of a reader nothing bounds: `pyproject.toml` installs that reader on every leg,
+so the guard cannot fire while the cell is green and the comparison runs everywhere. That shape is
+`tests/test_yaml_crosslib.py` end to end - every comparison carries `skipif(pyyaml is None)` or
+`skipif(not _ruamel_available())`, and both readers are declared without a marker - so the guard is
+resolved, not trusted: a helper whose whole body is `return _ruamel is not None` is a capability probe,
+while `skipif(sys.version_info < ...)` still denies.
+
+The unit rule is asked of every module, not only the ones with a bounded reader. The cell used to
+return on the bounded-reader check before reading a single test, so a family whose readers all reach
+every leg read `yes` no matter what its file ran: a `test_*_crosslib.py` whose every comparison carried
+`@pytest.mark.skip` took the same branch, and so did a file with no test at all. A reader every leg
+installs removes one way to lose a comparison, not the requirement that a comparison exist.
 
 Two things bound a reader and only one of them is a dependency declaration. `pyproject.toml` keeps
 `pyjson5` and `orjson` off the floor and off 3.14+; the interpreter keeps `tomllib` off every leg below

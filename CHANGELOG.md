@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The parity column reads a unit even when no reader is bounded** — `crosslib_parity` returned
+  `yes` on the bounded-reader check before reading a single test, so a family whose readers all
+  reach every leg was credited by its import list alone: a `test_*_crosslib.py` whose every
+  comparison carried `@pytest.mark.skip`, and a file with no test at all, measured `yes`. The unit
+  rule now runs for every module. YAML keeps `yes` because its guards cannot fire - every comparison
+  carries `skipif(pyyaml is None)` or `skipif(not _ruamel_available())`, both readers are declared
+  without a marker, and the helper is resolved by its body (`return _ruamel is not None`) - while
+  `skipif(sys.version_info < ...)` still denies. Reading YAML's comparisons off `safe_load`,
+  `safe_dump` and `parse` needed the dialect regex to know the unsuffixed default verbs. Controls
+  pin all four no-live-comparison shapes (`@pytest.mark.skip`, no test, a module-level `pytestmark`,
+  an interpreter gate) to `partial`, and the dead availability guard to `yes`; the measured tree is
+  unchanged - YAML, JSON and TOML parity still read `yes`, and the derived hole list is still the
+  single `authority-tier:schema-validation`.
+
 - **A corpus suite is credited by the corpus it names** — the external-authority column's no-reader
   branch credited every `tests/test_*_suite.py` or `*_spec_table.py` that imported no reader, so a
   file with the right suffix and a placeholder test measured `yes` while the prose said a corpus
