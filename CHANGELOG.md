@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A corpus suite is credited by the corpus it names** — the external-authority column's no-reader
+  branch credited every `tests/test_*_suite.py` or `*_spec_table.py` that imported no reader, so a
+  file with the right suffix and a placeholder test measured `yes` while the prose said a corpus
+  file counts by the suite it replays. The branch now requires the module to name its corpus in a
+  string constant - the `Reference/` root all three suites hand to their loader - and a mention in a
+  comment is not a load. Controls pin both sides: a suffix-only file and one naming the corpus only
+  in a comment read `no`, the real corpus suite still reads `yes`, and the measured tree is
+  unchanged - `test_yaml_suite.py` is the only file that reaches the branch, all seven authority
+  files read `yes`, the four format rows keep `authority=yes`, and the derived hole list is still
+  the single `authority-tier:schema-validation`.
+
 - **The external-authority column stops crediting an import** — a `tests/test_*_suite.py` or
   `*_spec_table.py` file read `yes` when it imported a reader no marker bounds, whether or not
   anything in the file still reached it. The cell asked about dependencies rather than about tests,

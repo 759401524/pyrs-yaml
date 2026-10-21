@@ -440,6 +440,26 @@ def crosslib_parity(label: str, module) -> dict:
 #: disagree with, and no property or fuzz oracle to fail.
 AUTHORITY_SUFFIXES = ("_suite.py", "_spec_table.py")
 
+#: Where the official corpora live. A no-reader authority file is credited by the corpus it replays,
+#: and every corpus suite names this root in a string it hands to its loader.
+CORPUS_ROOT = "Reference/"
+
+
+def _names_corpus(text: str) -> bool:
+    """Does this module name the corpus it replays, rather than only carrying a suite's name?
+
+    A string constant is what the loader receives; a comment that mentions the corpus is not a load.
+    The suffix alone used to be the credit, so an empty `*_suite.py` measured `yes`.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Constant) and isinstance(node.value, str) and CORPUS_ROOT in node.value
+        for node in ast.walk(tree)
+    )
+
 
 def _blanket_gate(text: str) -> str:
     """The source of a module-level gate: `pytestmark = ...` or `x = pytest.importorskip(...)`.
@@ -502,11 +522,12 @@ def authority_cell(path) -> dict:
     """Whether this file asks the format's rules of an authority that runs on every tested leg.
 
     Two kinds of authority exist in this tree: a reader the tests call - `json`, PyYAML, `json5` - and
-    a corpus committed under `Reference/`. A corpus file has no reader to be absent, so its file list
-    is the credit; a reader file is credited only when the module evaluates a reader nothing bounds,
-    or, if every reader is bounded, when a call site no skip guards still asks one. Importing alone
-    is not credit: a free reader's import can outlive the comparisons that used it, and the file then
-    reads as coverage while its tests ask only a reader some leg lacks. The shape this measurement
+    a corpus committed under `Reference/`. A corpus file has no reader to be absent, so the corpus it
+    names is the credit; the suffix alone let an empty suite read `yes`. A reader file is credited
+    only when the module evaluates a reader nothing bounds, or, if every reader is bounded, when a
+    call site no skip guards still asks one. Importing alone is not credit: a free reader's import
+    can outlive the comparisons that used it, and the file then reads as coverage while its tests ask
+    only a reader some leg lacks. The shape this measurement
     exists for is the one it denies: `test_json5_spec_table.py` imported only `pyjson5`, whose
     markers keep it off the 3.8 floor and off 3.14+, and then gated the entire module on that import -
     so on those legs the JSON5 grammar was judged by nothing while the column still read a file name.
@@ -520,7 +541,7 @@ def authority_cell(path) -> dict:
     if gate and any(local in gate for local in locals_of):
         return {"verdict": "no", "readers": sorted(readers), "bounded": bounded}
     if not readers:
-        return {"verdict": "yes", "readers": [], "bounded": []}
+        return {"verdict": "yes" if _names_corpus(text) else "no", "readers": [], "bounded": []}
     if every_leg:
         used = any(_uses_reader(text, local) for local in every_leg)
         return {"verdict": "yes" if used else "no", "readers": sorted(readers), "bounded": bounded}

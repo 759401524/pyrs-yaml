@@ -124,7 +124,8 @@ the writers emit rather than what the readers accept.
 Each file's cell is a verdict, not its name: a file counts when it reaches into a reader no marker
 bounds - a call in a test, or a callable wired into a module-level table before any test runs - or, when
 every reader it names is bounded, when a call site nothing can skip still asks one. A corpus suite,
-which has no reader to be absent, is credited by its file list. An import is not a use: a stale
+which has no reader to be absent, is credited by the corpus it names - a `Reference/` path in a
+string its loader receives, not the suffix on its file name. An import is not a use: a stale
 `import json` beside comparisons that all ask a bounded reader used to keep the cell at `yes`.
 `test_json5_spec_table.py` was the shape this denies - it imported `pyjson5` alone and gated the whole
 module on that import, so the column read a file name while the 3.8 floor and 3.14+ judged the JSON5
