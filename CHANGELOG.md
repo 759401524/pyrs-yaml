@@ -50,6 +50,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The CI Rust benchmark leg builds without an interpreter too** - CodSpeed's `Rust benchmarks` was
+  the last leg to pull the Python runtime, for the same reason the test legs did: workspace
+  *membership*, not a dependency edge. `cargo codspeed build` selects every member, so it compiled
+  the `pyrs-yaml` cdylib and the `pyo3-build-config` build script that probes for an interpreter,
+  even though neither `yaml_bench` (in `pyrs-yaml-core`) nor `cli_bench` (in `pyrs-yaml-cli`)
+  depends on the binding - `cargo tree -i pyrs-yaml` names no workspace member. The leg now runs
+  `cargo codspeed build --workspace --exclude pyrs-yaml`, the exclusion the test legs already used,
+  and drops its `setup-python` step because nothing in the job probes for an interpreter. Measured
+  on this tree: the scoped build selects `yaml_bench` and `cli_bench` and compiles zero
+  `pyo3`/`numpy`. The `ir_gate` target is untouched - it is gated on `ir-gate`, was never a CodSpeed
+  benchmark, and `scripts/ir_gate.py` builds it deliberately when it means to start CPython.
+
 - **The Rust benchmarks live in the crate that measures them** — the divan benchmark set moved from
   `crates/pyrs-yaml/benches/yaml_bench.rs` to `crates/pyrs-yaml-core/benches/yaml_bench.rs`. The
   forty-seven benchmarks measure the same code as before: the binding crate only re-exported the

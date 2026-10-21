@@ -54,6 +54,16 @@ status: new
 
 ### 变更
 
+- **CI 的 Rust 基准腿也不再需要解释器** — CodSpeed 的 `Rust benchmarks` 是最后一条把 Python 运行时拖
+  入构建的腿，成因与测试腿相同：靠的是 workspace 的*成员身份*，而非依赖边。`cargo codspeed build` 会
+  选中每个成员，于是编译了 `pyrs-yaml` cdylib 与探测解释器的 `pyo3-build-config` 构建脚本，尽管
+  `yaml_bench`（在 `pyrs-yaml-core`）与 `cli_bench`（在 `pyrs-yaml-cli`）都不依赖绑定 crate ——
+  `cargo tree -i pyrs-yaml` 不点名任何 workspace 成员。该腿现改用
+  `cargo codspeed build --workspace --exclude pyrs-yaml`，即测试腿早已使用的排除，并删去其
+  `setup-python` 步骤，因为作业里再无探测解释器之物。在本树实测：作用域化后仍选中 `yaml_bench` 与
+  `cli_bench`，且 `pyo3`/`numpy` 编译数为零。`ir_gate` 目标不受影响 —— 它由 `ir-gate` 门控，从不是
+  CodSpeed 基准，只在 `scripts/ir_gate.py` 需要启动 CPython 时显式构建。
+
 - **Rust 基准测试住在它所测量的 crate 里** — divan 基准测试集从
   `crates/pyrs-yaml/benches/yaml_bench.rs` 移到了 `crates/pyrs-yaml-core/benches/yaml_bench.rs`。
   这四十七个基准测试测量的代码与此前完全相同：绑定 crate 只是重新导出了引擎的 API，因此每一处

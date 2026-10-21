@@ -282,9 +282,11 @@ the compile-time-only 1.3.0 described above.
 
 **What is not claimed.** The extension cdylib still links `python3.dll`, by definition: it is the
 Python extension. The binding crate's package closure still carries the six Python-runtime crates.
-And the binding crate's `ir_gate` bench harness uses `pyo3/auto-initialize`, so it starts CPython to
-measure instruction counts - the one Rust target in this repository that genuinely needs an
-interpreter, and the subject of the last step of this sequence.
+And the binding crate's `ir_gate` bench harness uses `pyo3/auto-initialize`, so a build that selects
+it starts CPython to measure instruction counts - the one Rust target in this repository that
+genuinely needs an interpreter. That is what it measures, not a coupling to remove, and it is
+independent of the CI legs: `scripts/ir_gate.py` turns the feature on deliberately, and nothing in
+CI's default build set does.
 
 ## The matrix above is gated, not described (2026-10-21)
 
@@ -329,5 +331,17 @@ purpose is the declared floor for every crate, the shipped one included.
 **What this gate does not see.** The closure follows the workspace's `path` edges, so a
 Python-runtime crate reached only through a registry dependency's own dependency tree is outside its
 view; the direct `pyo3`/`numpy` edges it does see are the ones this repository controls. And R2
-covers the Rust test tier alone: the extension's `ir_gate` harness is still Python-dependent, which
-is R4's subject and the last step of this sequence.
+covers the Rust test tier alone: the extension's `ir_gate` harness needs an interpreter when a build
+selects it, because measuring `to_python_*` instruction counts is the point of that target.
+
+**The CI Rust bench leg builds without an interpreter too (2026-10-21).** The last leg that still
+pulled the runtime was CodSpeed's `Rust benchmarks`, and the reason was the same as the test legs -
+workspace *membership*, not a dependency edge: `cargo codspeed build` selects every member, so it
+compiled the `pyrs-yaml` cdylib and its `pyo3-build-config` build script, which probes for an
+interpreter, even though neither `yaml_bench` (now in `pyrs-yaml-core`) nor `cli_bench` (in
+`pyrs-yaml-cli`) depends on the binding - `cargo tree -i pyrs-yaml` names no workspace member. The
+leg now runs `cargo codspeed build --workspace --exclude pyrs-yaml`, the same exclusion the CI test
+legs use. Measured on this tree: the scoped build selects `yaml_bench` and `cli_bench` and compiles
+zero `pyo3`/`numpy`, and the job drops its `setup-python` step because nothing in it probes for an
+interpreter anymore. The `ir_gate` target is unaffected - it is gated on `ir-gate`, was never a
+CodSpeed benchmark, and is built only by `scripts/ir_gate.py`.

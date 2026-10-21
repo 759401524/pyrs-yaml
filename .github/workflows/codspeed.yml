@@ -23,10 +23,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
@@ -35,8 +31,17 @@ jobs:
           bins: cargo-codspeed
       - name: Install cargo-codspeed (fallback if quickinstall fails)
         run: cargo codspeed --version 2>/dev/null || cargo install cargo-codspeed
+      # The Rust bench leg measures only pure-Rust benches (`yaml_bench` in
+      # pyrs-yaml-core, `cli_bench` in pyrs-yaml-cli); neither depends on the
+      # Python binding. `cargo codspeed build` defaults to the whole workspace,
+      # and workspace *membership* alone makes cargo compile the `pyrs-yaml`
+      # cdylib crate - whose `pyo3`/`pyo3-build-config` build script probes for
+      # an interpreter. Excluding the binding keeps the bench build graph
+      # interpreter-free, the same `--exclude pyrs-yaml` the CI test legs use,
+      # so this job needs no `setup-python`. Measured on this tree: the scoped
+      # build selects `yaml_bench` and `cli_bench` and compiles zero `pyo3`.
       - name: Build the benchmark target(s)
-        run: cargo codspeed build
+        run: cargo codspeed build --workspace --exclude pyrs-yaml
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v5
         with:
