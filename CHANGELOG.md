@@ -862,6 +862,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The CLI command-surface inventory gate now executes** - `tests/test_cli_binding_parity.py`
+  resolved the App by reading `getattr(pyrs_yaml.cli, "app")` first, and
+  `python/pyrs_yaml/cli/__init__.py` binds no such attribute: it defines only `main()`. Any earlier
+  test that runs `from pyrs_yaml.cli.app import app` - which `tests/test_cli.py` does at module
+  scope - binds that name to the SUBMODULE, so the fixture returned a module, `_commands` was
+  missing, and the guard skipped with a message blaming cyclopts' private layout. Measured:
+  `pytest tests/test_cli_binding_parity.py` passes 22, adding
+  `tests/test_cli.py::test_entry_point_without_cyclopts` before it makes the inventory assertion
+  SKIPPED, and the same skip is in the CI log of `test (ubuntu-latest, 3.10)` on this repository's
+  own runner - so the assertion that the registered command set equals the documented inventory had
+  not run in a full session anywhere. The fixture now accepts a package attribute only when it
+  carries the command table; a missing `_commands` is a failure naming the installed cyclopts
+  version rather than a skip that is indistinguishable from drift; and one control test asserts the
+  resolution never lands on the module, so the ordering regression reddens instead of going quiet.
+  The inventory itself was checked against the live App before the change: 18 documented names
+  against 18 registered, `missing=[] extra=[]`, so this makes the guard honest rather than
+  uncovering a surface drift.
+
 - **Every pyq fixture directory now carries a counter as well as the process id** - the dialect
   tier's comparison directories got that guard when a shared path reddened `rust-lint`, and the
   other writes in the same crate still named their directory after the process alone: six sites in

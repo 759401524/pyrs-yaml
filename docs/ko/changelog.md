@@ -812,6 +812,21 @@ status: new
 
 ### 수정
 
+- **CLI 명령 면 목록 게이트가 실제로 실행됩니다** - `tests/test_cli_binding_parity.py`는
+  `getattr(pyrs_yaml.cli, "app")`를 먼저 읽어 App을 해결했지만 `python/pyrs_yaml/cli/__init__.py`는
+  해당 속성을 바인딩하지 않습니다. `main()`만 정의합니다. 앞서 `from pyrs_yaml.cli.app import app`을
+  실행한 테스트(`tests/test_cli.py`는 모듈 스코프에서 그렇게 합니다)가 이 이름을 하위 모듈에
+  바인딩하므로 fixture는 모듈을 반환하고 `_commands`가 없어 가드는「cyclopts 내부 레이아웃 변경」을
+  이유로 건너뛰었습니다. 실측 결과 해당 파일 단독 실행은 22건 통과하고,
+  `tests/test_cli.py::test_entry_point_without_cyclopts`를 앞에 두면 목록 단언이 SKIPPED가 됩니다.
+  이 저장소 자체 runner의 `test (ubuntu-latest, 3.10)` 로그에서도 같은 한 줄이 건너뛰기입니다.
+  즉「등록된 명령 집합이 문서 목록과 같다」는 단언이 전체 세션에서 단 한 번도 실행되지 않았습니다.
+  이제 fixture는 명령 테이블을 지닌 package 속성만 받아들입니다. `_commands`가 없으면 드리프트와
+  구별 불가능한 건너뛰기가 아니라 설치된 cyclopts 버전을 지목하는 실패입니다. 순서 회귀가 조용해지지
+  않고 빨갛게 드러나도록, 해석 결과가 모듈에 닿지 않음을 검증하는 제어 테스트 하나를 추가했습니다.
+  변경 전 목록 자체도 대조했습니다: 문서 18개 이름 대 등록 18개, `missing=[] extra=[]`. 따라서
+  이번은 가드의 정직함을 되돌리는 변경이며, 면의 드리프트를 발견한 것이 아닙니다.
+
 - **pyq의 모든 fixture 디렉터리는 이제 프로세스 id와 함께 카운터를 가집니다** — 방언 대조의 비교
   디렉터리는 공유 경로가 `rust-lint`를 붉게 만들었을 때 이 보호를 얻었지만, 같은 crate의 나머지
   쓰기는 여전히 프로세스 id만으로 이름을 지었습니다. `crates/pyrs-yaml-cli/tests/cli.rs`의 여섯 곳,

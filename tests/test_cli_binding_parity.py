@@ -24,7 +24,9 @@ release process can no longer silently drift the two surfaces apart.
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import importlib.util
+import types
 
 import pytest
 
@@ -73,15 +75,16 @@ def cli_app():
         pytest.skip("CLI extra (cyclopts) not installed")
     try:
         mod = importlib.import_module("pyrs_yaml.cli")
-        app = getattr(mod, "app", None) or getattr(mod, "APP", None) or getattr(mod, "_app", None)
-        if app is None:
-            # Fall back to the submodule directly if the package does not re-export.
-            app_mod = importlib.import_module("pyrs_yaml.cli.app")
-            app = getattr(app_mod, "app", None)
+        # `app` is both a submodule name and, once anything has run
+        # `from pyrs_yaml.cli.app import app`, a package attribute holding that MODULE --
+        # so only an object carrying the command table is the cyclopts App.
+        app = getattr(mod, "app", None)
+        if not hasattr(app, "_commands"):
+            app = getattr(importlib.import_module("pyrs_yaml.cli.app"), "app", None)
     except ImportError as exc:  # pragma: no cover - depends on env
         pytest.skip(f"CLI extra unavailable: {exc}")
-    if app is None:  # pragma: no cover
-        pytest.skip("Could not locate the cyclopts App instance")
+    if app is None:
+        pytest.fail("pyrs_yaml.cli.app exposes no cyclopts App object")
     return app
 
 
@@ -89,14 +92,27 @@ def test_cli_command_surface_matches_inventory(cli_app):
     """The registered CLI command set is exactly the inventory above."""
     # cyclopts exposes registered commands via `App._commands` (name → Command).
     commands = getattr(cli_app, "_commands", None)
-    if commands is None:  # pragma: no cover - cyclopts private API drift
-        pytest.skip("cyclopts internal _commands layout changed; update test adapter")
+    if commands is None:
+        version = importlib.metadata.version("cyclopts")
+        pytest.fail(f"cyclopts {version} exposes no App._commands; update the test adapter")
     # cyclopts registers `--help` / `-h` / `--version` as pseudo-commands on the
     # root App; they are not part of the pyrs-yaml surface — filter them out.
     actual = {name for name in commands if not name.startswith("-")}
     assert actual == set(CLI_COMMANDS), (
         f"CLI surface drift: missing={CLI_COMMANDS - actual}, extra={actual - CLI_COMMANDS}"
     )
+
+
+def test_the_fixture_never_resolves_the_app_to_the_submodule(cli_app):
+    """The inventory assertion above must execute, not skip, in a full session.
+
+    Any earlier test that runs `from pyrs_yaml.cli.app import app` binds that attribute to
+    the MODULE, and treating the attribute as the App is what skipped the gate silently.
+    """
+    pkg_attr = getattr(importlib.import_module("pyrs_yaml.cli"), "app", None)
+    if isinstance(pkg_attr, types.ModuleType):
+        assert cli_app is not pkg_attr, "the package attribute is a module, not the App"
+    assert hasattr(cli_app, "_commands"), f"fixture resolved a {type(cli_app).__name__}"
 
 
 # ── Format conversion parity ────────────────────────────────────────────────
