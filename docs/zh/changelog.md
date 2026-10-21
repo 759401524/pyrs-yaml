@@ -19,6 +19,16 @@ status: new
 
 ### 变更
 
+- **Ir 门禁打印编译器自己的诊断，而不是 cargo 的摘要** — harness 构建失败时，此前只报出
+  `error: could not compile pyrs-yaml (lib) due to 1 previous error`，再无下文。门禁以
+  `--message-format=json` 构建，rustc 的诊断因此被移到 stdout 上、以 `compiler-message` 记录的形式
+  出现，而它只打印了 `res.stderr`；于是被藏起来的正是门禁最该解释的一类失败——
+  `rust-lld: unable to find library -lpython3.12`——只能靠手工重跑 cargo 才看见。
+  `build_diagnostics()` 现在汇总构建流中每一条 rendered 诊断，仅当 stdout 一条都没有时才回退到
+  stderr 末尾；后者是缺工具链、坏 manifest 的情形，而不是编译错误。
+  `tests/test_ir_gate_diagnostics.py` 钉住两条流与回退路径：把实现改回只读 stderr 的突变让三个
+  测试中的两个变红。
+
 - **标准 JSON Schema 面从此由官方语料裁定，并拥有独立的一行** — `Document.validate()` 把求值交给
   Python 的 `jsonschema`，本仓库只保留 AST 到实例的转换、schema 接受与 `YamlValidateError` 契约，
   因此矩阵原有的 `schema validation` 行测的是*另一个*面：`validate_against_schema()` 求值的、本仓库

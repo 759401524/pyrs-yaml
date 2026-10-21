@@ -164,6 +164,29 @@ def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=False, text=True, **kw)
 
 
+def build_diagnostics(stdout: str, stderr: str) -> str:
+    """What rustc said, from the stream that actually carries it.
+
+    `--message-format=json` moves diagnostics to stdout as `compiler-message` records, so printing
+    only stderr reduces a compile error to cargo's summary line - measured on this gate's binding
+    harness, whose missing `-lpython3.12` link surfaced as "could not compile ... due to 1 previous
+    error" with the cause nowhere in the output. The stderr tail stays as the fallback for a failure
+    that is not a rustc diagnostic (a missing toolchain, a bad manifest).
+    """
+    rendered = []
+    for line in stdout.splitlines():
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("reason") != "compiler-message":
+            continue
+        text = (msg.get("message") or {}).get("rendered")
+        if text:
+            rendered.append(text.rstrip())
+    return "\n".join(rendered) if rendered else stderr[-2000:]
+
+
 def build_exe(crate: str, bench: str) -> str:
     """Return the release benchmark binary, via cargo's JSON so no filename
     guessing (hash suffixes change with every build).
@@ -195,7 +218,7 @@ def build_exe(crate: str, bench: str) -> str:
         cwd=REPO,
     )
     if res.returncode != 0:
-        sys.exit(f"build failed:\n{res.stderr[-2000:]}")
+        sys.exit(f"build failed:\n{build_diagnostics(res.stdout, res.stderr)}")
     for line in res.stdout.splitlines():
         try:
             msg = json.loads(line)

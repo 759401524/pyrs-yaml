@@ -17,6 +17,19 @@ status: new
 
 ### 変更
 
+- **Ir ゲートは cargo の要約ではなくコンパイラ自身の診断を表示します** — harness のビルドが
+  失敗したとき、これまでは
+  `error: could not compile pyrs-yaml (lib) due to 1 previous error` だけが表示され、続きが
+  ありませんでした。ゲートは `--message-format=json` でビルドするため、rustc の診断は
+  `compiler-message` レコードとして stdout に移りますが、表示していたのは `res.stderr` だけ
+  でした。隠れていたのはゲートが最も説明すべき失敗——リンクエラー
+  `rust-lld: unable to find library -lpython3.12`——であり、手作業で cargo を再実行して初めて
+  見えました。`build_diagnostics()` はビルドストリームの rendered 診断をすべて連結し、stdout に
+  一件もない場合にだけ stderr の末尾へフォールバックします（ツールチェーン欠如や不正な
+  manifest であり、コンパイルエラーではありません）。
+  `tests/test_ir_gate_diagnostics.py` は両方のストリームとフォールバックを固定し、stderr だけを
+  返す実装へ戻す変異で 3 件中 2 件が失敗しました。
+
 - **標準の JSON Schema 面は公式コーパスによって判定され、独立した行を持ちます** —
   `Document.validate()` は評価を Python の `jsonschema` に委ね、AST からインスタンスへの変換、
   schema の受け付け、`YamlValidateError` 契約だけを本リポジトリに残します。そのため、マトリクスの

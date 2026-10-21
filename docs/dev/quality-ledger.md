@@ -6988,6 +6988,42 @@ zero-parameter declaration they carry names a callable that really takes none.
 Counts: 748 Rust tests, 1,821 Python test functions, 9 fuzz targets over 168 seeds, 76 Unreleased
 entries per mirror.
 
+### (ev) The Ir gate could say "build failed" but not why (2026-10-21)
+
+`scripts/ir_gate.py` builds both harnesses with `cargo bench --no-run --message-format=json`, and
+on failure printed `res.stderr[-2000:]`. Under that message format rustc's diagnostics arrive on
+stdout as `{"reason":"compiler-message","message":{"rendered":...}}` records and stderr carries
+cargo's summary, so the gate's whole account of a compile error was one line, measured on
+2026-10-21:
+
+```text
+build failed:
+error: could not compile `pyrs-yaml` (lib) due to 1 previous error
+```
+
+The cause - `rust-lld: unable to find library -lpython3.12`, the binding harness linking Python,
+which is exactly what a host without `libpython3.12-dev` produces - appeared only when the same
+command was rerun without `--message-format=json`. A gate whose failure message stops at "could
+not compile" hands every reader a reproduction to run, and that reproduction is the gate's own
+question.
+
+`build_diagnostics(stdout, stderr)` now parses the build stream, joins the `rendered` text of every
+`compiler-message` record, and falls back to `stderr[-2000:]` only when stdout carries none. The
+fallback is not decoration: the gate can also fail before rustc runs, and a mistyped `-p` measured
+`error: cannot specify features for packages outside of workspace` with no stdout diagnostic at
+all.
+
+Mutation evidence. Returning `stderr[-2000:]` unconditionally made the pytest run for
+`tests/test_ir_gate_diagnostics.py` report 2 failed / 1 passed: the two stdout tests failed and
+the fallback test passed, which is the correct result for a case built with no stdout diagnostics.
+Restored, the three pass. The end-to-end path was read rather than assumed: the deliberately
+broken build printed a `build failed:` header followed by `error: cannot specify features for
+packages outside of workspace`, and the full gate (22 scenarios, `RUSTUP_TOOLCHAIN=1.97.1` on
+WSL) printed `OK: every scenario within tolerance of the committed baseline`.
+
+Counts: 748 Rust tests, 1,824 Python test functions, 9 fuzz targets over 168 seeds, 77 Unreleased
+entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
