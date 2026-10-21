@@ -36,3 +36,17 @@ runs:
         if [ ! -d "Reference/JSONTestSuite" ]; then
           git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
         fi
+
+    # Pinned to the commit the count was recorded at, so a moving `main` cannot move the baseline:
+    # `tests/test_document_validate_suite.py` asserts this revision and the 46 files / 1302 cases it
+    # contains. A tarball would not do - the test reads `.git` to prove the snapshot is the recorded
+    # one rather than a checkout that happens to match today.
+    - name: Download JSON Schema Test Suite
+      shell: bash
+      run: |
+        if [ ! -d "Reference/JSON-Schema-Test-Suite" ]; then
+          git init -q Reference/JSON-Schema-Test-Suite
+          git -C Reference/JSON-Schema-Test-Suite remote add origin https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
+          git -C Reference/JSON-Schema-Test-Suite fetch -q --depth 1 origin 0b4a7fa5e79c5e1ed60d5c034b951003bbba7fd4
+          git -C Reference/JSON-Schema-Test-Suite checkout -q FETCH_HEAD
+        fi

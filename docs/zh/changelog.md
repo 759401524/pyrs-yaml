@@ -19,6 +19,20 @@ status: new
 
 ### 变更
 
+- **标准 JSON Schema 面从此由官方语料裁定，并拥有独立的一行** — `Document.validate()` 把求值交给
+  Python 的 `jsonschema`，本仓库只保留 AST 到实例的转换、schema 接受与 `YamlValidateError` 契约，
+  因此矩阵原有的 `schema validation` 行测的是*另一个*面：`validate_against_schema()` 求值的、本仓库
+  自创的规则语言。新增的 `JSON Schema validation` 行由 `tests/test_document_validate_suite.py`
+  回放官方 JSON-Schema-Test-Suite（提交 `0b4a7fa`，46 个文件、1302 个用例）记为 `yes`。在
+  `jsonschema` 4.26.0 上实测：1261 个用例到达语料预期的结论；`refRemote.json` 整文件按契约边界排除
+  （接口不暴露解析器，只探测一个代表用例以保持排除有效），另有十个 `dynamicRef`/`vocabulary`/
+  `\p{...}` 用例被记为被委托引擎的边界。同一语料直接经 `jsonschema.validate()` 回放，在全部 1302
+  个用例上结论一致，因此没有任何排除可归因于转换层。排除集按已安装版本键控——Python 3.8 腿解析到
+  4.23.0，需要多排除一个 `unevaluatedProperties` 用例，4.25.1 已修复——且双向断言：被命名的用例
+  开始通过会失败，未被命名却开始失败同样会失败。自创语言保留其登记洞
+  `authority-tier:schema-validation`，不借用该语料的信用；其出口现在写明：以
+  `Document.validate()` 取代它即关闭该洞。
+
 - **标量路径上的 `sort_keys` 是有文档说明的空操作，而不是静默成功** — `sort_keys("$.a")` 返回 `None`
   且不改动任何内容，而 `sort_keys("$.missing")` 抛出 `YamlEditError`，包所交付的文档对此只字未提；登
   记条目记录了这一不一致，出口是「与缺失路径同样回答，或在随包发布的桩中说明这是空操作」。现在桩里写

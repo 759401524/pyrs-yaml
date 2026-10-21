@@ -17,6 +17,23 @@ status: new
 
 ### 변경
 
+- **표준 JSON Schema 표면이 공식 코퍼스로 판정되며 독립된 행을 갖습니다** — `Document.validate()`는
+  평가를 Python의 `jsonschema`에 맡기고 AST→인스턴스 변환, schema 수용, `YamlValidateError` 계약만
+  이 저장소에 남깁니다. 그래서 매트릭스의 기존 `schema validation` 행은 *다른* 표면, 즉
+  `validate_against_schema()`가 평가하는 이 저장소가 만든 규칙 언어를 측정하고 있었습니다. 새
+  `JSON Schema validation` 행은 `tests/test_document_validate_suite.py`가 공식
+  JSON-Schema-Test-Suite(커밋 `0b4a7fa`, 46개 파일, 1302개 케이스)를 재생하여 `yes`로 기록됩니다.
+  `jsonschema` 4.26.0에서 측정: 1261개 케이스가 코퍼스의 결론에 도달하며, `refRemote.json`은 계약
+  경계로 파일 전체가 제외되고(리졸버를 노출하지 않으며, 제외를 살아 있게 유지하려고 대표 케이스
+  하나만 시도), 10개의 `dynamicRef`/`vocabulary`/`\p{...}` 케이스가 위임 엔진의 경계로 명명됩니다.
+  같은 코퍼스를 `jsonschema.validate()`로 직접 재생해도 1302개 케이스 전부 같은 결론이므로 변환에
+  귀속할 제외는 없습니다. 제외 집합은 설치된 버전에 따라 결정됩니다. Python 3.8 레그는 4.23.0을
+  해석하며 `unevaluatedProperties` 케이스 하나를 더 제외해야 하고(4.25.1에서 수정됨), 양방향으로
+  검증합니다. 명명된 케이스가 통과하기 시작해도, 명명되지 않은 케이스가 실패하기 시작해도
+  실패합니다. 발명된 언어는 이 코퍼스의 신용을 빌리지 않고 등록된 구멍
+  `authority-tier:schema-validation`을 유지하며, 그 종료 조건은 이제 `Document.validate()`로
+  대체하면 구멍이 닫힌다고 명시합니다.
+
 - **스칼라 경로에 대한 `sort_keys`는 조용한 성공이 아니라 문서화된 no-op이 되었습니다** —
   `sort_keys("$.a")`는 `None`을 반환하고 아무것도 바꾸지 않았지만 `sort_keys("$.missing")`은
   `YamlEditError`를 발생시켰고, 패키지가 제공하는 문서는 이 사실을 언급하지 않았습니다. 레지스트리
