@@ -57,6 +57,19 @@ status: new
 
 ### 변경
 
+- **CI 의 Rust 벤치마크 레그도 인터프리터를 요구하지 않음** — CodSpeed 의 `Rust benchmarks` 는
+  Python 런타임을 빌드에 끌어들였던 마지막 레그였고, 원인은 테스트 레그와 동일하게 의존 간선이
+  아니라 workspace 의 *멤버십* 이었습니다. `cargo codspeed build` 는 모든 멤버를 선택하므로
+  `pyrs-yaml` cdylib 와 인터프리터를 탐색하는 `pyo3-build-config` 빌드 스크립트를 컴파일했습니다.
+  `yaml_bench`(`pyrs-yaml-core` 안)와 `cli_bench`(`pyrs-yaml-cli` 안) 모두 바인딩 crate 에 의존하지
+  않습니다 — `cargo tree -i pyrs-yaml` 은 workspace 멤버를 하나도 지목하지 않습니다. 이 레그는 이제
+  테스트 레그가 이미 쓰던 제외를 따라 `cargo codspeed build --workspace --exclude pyrs-yaml` 을
+  실행하고, 레그 안에 인터프리터를 탐색할 것이 남아 있지 않으므로 `setup-python` 단계도 없앴습니다.
+  이 트리에서 실측: 범위 지정 후에도 `yaml_bench` 와 `cli_bench` 가 선택되고 `pyo3`/`numpy` 컴파일
+  수는 0 입니다. `ir_gate` 대상은 영향을 받지 않습니다 — `ir-gate` 로 게이트되고, CodSpeed
+  벤치마크가 아니며, `scripts/ir_gate.py` 가 CPython 을 시작하려고 명시적으로 빌드할 때만
+  구성됩니다.
+
 - **Rust 벤치마크는 측정 대상 crate 안에 있습니다** — divan 벤치마크 세트가
   `crates/pyrs-yaml/benches/yaml_bench.rs`에서 `crates/pyrs-yaml-core/benches/yaml_bench.rs`로
   옮겨졌습니다. 마흔일곱 개의 벤치마크가 측정하는 코드는 이전과 똑같습니다. 바인딩 crate는

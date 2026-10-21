@@ -58,6 +58,19 @@ status: new
 
 ### 変更
 
+- **CI の Rust ベンチマークレッグもインタプリタを不要に** — CodSpeed の `Rust benchmarks` は、Python
+  ランタイムをビルドに取り込んでいた最後のレッグで、原因はテストレッグと同じく依存エッジではなく
+  workspace の*メンバーシップ*でした。`cargo codspeed build` は全メンバーを選択するため、`pyrs-yaml`
+  の cdylib と、インタプリタを探す `pyo3-build-config` のビルドスクリプトをコンパイルしていました。
+  `yaml_bench`（`pyrs-yaml-core` 内）も `cli_bench`（`pyrs-yaml-cli` 内）もバインディング crate に依
+  存していません —— `cargo tree -i pyrs-yaml` は workspace のどのメンバーも挙げません。このレッグは
+  テストレッグが以前から使っていた除外に合わせ
+  `cargo codspeed build --workspace --exclude pyrs-yaml` を実行し、インタプリタを探すものが作業内に
+  なくなったため `setup-python` ステップも削除しました。本ツリーの実測：スコープ化後も `yaml_bench`
+  と `cli_bench` は選択され、`pyo3`/`numpy` のコンパイル数はゼロです。`ir_gate` ターゲットは影響を受
+  けません —— `ir-gate` でゲートされ、CodSpeed ベンチマークではなく、`scripts/ir_gate.py` が CPython
+  を起動すると明示的にビルドするときのみ構築されます。
+
 - **Rust のベンチマークは測っている crate に置かれます** — divan のベンチマークセットは
   `crates/pyrs-yaml/benches/yaml_bench.rs` から `crates/pyrs-yaml-core/benches/yaml_bench.rs`
   へ移りました。47 個のベンチマークが測るコードは以前とまったく同じです。バインディング crate は
