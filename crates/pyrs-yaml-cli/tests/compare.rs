@@ -16,9 +16,12 @@ fn run(args: &[&str]) -> (Option<i32>, String, String) {
     )
 }
 
-/// Scratch dir with `a.yaml`/`b.yaml` written; the caller removes it.
+/// Scratch dir with `a.yaml`/`b.yaml` written; the caller removes it. The serial keeps two tests
+/// that share a tag apart while `fs::write` truncates the file the other is about to read.
 fn pair(tag: &str, left: &str, right: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("pyq-{tag}-{}", std::process::id()));
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("pyq-{tag}-{}-{serial}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("a.yaml"), left).unwrap();
     std::fs::write(dir.join("b.yaml"), right).unwrap();
@@ -126,10 +129,7 @@ fn merge_replace_arrays_swaps_wholesale() {
 fn merge_overlays_scalar_conflict_right_wins() {
     // both files on the YAML path; right document wins the conflict and
     // brings a new key along.
-    let dir = std::env::temp_dir().join(format!("pyq-merge-x-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("a.yaml"), "port: 80\n").unwrap();
-    std::fs::write(dir.join("b.yaml"), "port: 443\ntls: on\n").unwrap();
+    let dir = pair("merge-x", "port: 80\n", "port: 443\ntls: on\n");
     let a = dir.join("a.yaml");
     let b = dir.join("b.yaml");
     let (code, out, err) = run(&["merge", a.to_str().unwrap(), b.to_str().unwrap()]);
