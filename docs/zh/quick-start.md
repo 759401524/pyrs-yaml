@@ -217,19 +217,25 @@ print(doc.to_yaml())  # key: 'value'
 
 ### 12. 使用 Schema 校验
 
-??? note "可选：YAML Schema Language"
+`Document.validate()` 接受 JSON Schema，并把求值委托给
+[`jsonschema`](https://python-jsonschema.readthedocs.io/)：
 
-    ```python
-    schema = """\
-    name: app
-    extends: core
-    validate:
-      - path: $.port
-        type: int
-        required: true
-    """
-    pyrs_yaml.validate_against_schema("port: 8080\n", schema)
-    ```
+```python title="用 JSON Schema 校验"
+import pyrs_yaml
+
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+
+doc.validate(schema)  # 通过
+
+bad = pyrs_yaml.parse("tags: [web]\n")
+bad.validate(schema)
+# YamlValidateError: 'port' is a required property
+```
 
 ### 13. 深度编辑（批量设置、排序、移动、复制）
 

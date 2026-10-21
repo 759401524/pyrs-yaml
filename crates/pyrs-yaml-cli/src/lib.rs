@@ -184,18 +184,13 @@ pub enum Command {
         #[arg(long, short = 'i')]
         inplace: bool,
     },
-    /// Check that a file parses; with `--schema`, validate every
-    /// document against schema-language rules. Prints one violation per
-    /// line, exit 1 on any.
+    /// Check that a file parses. Prints `ok`, exit 1 on any parse error.
     Validate {
         file: Option<PathBuf>,
         /// Input format; `auto` keys off the file extension. Without this
         /// a `pyproject.toml` would be fed to the YAML parser and rejected.
         #[arg(long, value_enum, default_value_t = Format::Auto)]
         input: Format,
-        /// Schema rules file (YAML, core schema language).
-        #[arg(long)]
-        schema: Option<PathBuf>,
     },
     /// Extract Markdown front matter as YAML (`--body-out` splits the body).
     Frontmatter {
@@ -552,21 +547,11 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             })?;
             write_text(&text, &file, inplace)?;
         }
-        Command::Validate {
-            file,
-            input,
-            schema,
-        } => {
+        Command::Validate { file, input } => {
             let src = read_input(&file)?;
             let input_opts = InputOpts {
                 input,
                 schema: SchemaKind::Core,
-            };
-            let resolver = match &schema {
-                Some(p) => Some(parser::yaml::parse_schema_yaml(&std::fs::read_to_string(
-                    p,
-                )?)?),
-                None => None,
             };
             // Route through the shared loader so a .toml/.json/.ini file is
             // checked with its own parser; `validate` used to hardcode YAML
@@ -575,25 +560,7 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             // `auto` must resolve the extension first, so it goes through
             // `load_source` instead of the stream splitter.
             let streamable = matches!(input, Format::Yaml | Format::Json);
-            let docs = load_docs(&src, file.as_deref(), &input_opts, streamable)?;
-            let mut failures = Vec::new();
-            if let Some(rules) = &resolver {
-                for doc in &docs {
-                    if let Err(errs) =
-                        parser::yaml::schema_language::validate_node(doc, rules, &src)
-                    {
-                        failures.extend(errs);
-                    }
-                }
-            }
-            if !failures.is_empty() {
-                let mut out = String::new();
-                for e in &failures {
-                    out.push_str(&format!("{}: {}\n", e.path, e.message));
-                }
-                emit_str(&out)?;
-                return Err("validation failed".into());
-            }
+            load_docs(&src, file.as_deref(), &input_opts, streamable)?;
             emit_str("ok\n")?;
         }
         Command::Frontmatter { file, body_out } => {

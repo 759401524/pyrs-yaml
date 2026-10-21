@@ -663,6 +663,25 @@ status: new
   言っていた。挙動は変わらない（もともと import 可能）。`tests/test_api_doc_signatures.py` は
   4 ヵ所の `reference.md` で同じ 35 の名前を、この件に関する例外なしに比較する。
 
+### 削除
+
+- **独自開発のルールバリデータを退役し、`Document.validate()` を唯一のスキーマ面にする** ——
+  `validate_against_schema()` と `validate_against_registered_schema()` を削除し、スキーマ定義の
+  `validate:` セクションは読まれなくなりました。この 2 つの名前は本リポジトリが発明したルール言語を
+  評価するもので、`Document.validate()` はすでに Python の `jsonschema` に委譲していました。バリデー
+  タが 2 つあることは、エラー契約が 2 つ、「このドキュメントは有効か」の答えが 2 つあることを意味し
+  ます。呼び出し側は `Document.validate(schema)`（`YamlValidateError` が参照エンジンのメッセージを運
+  ぶ）か、`jsonschema.validate()` を直接使います。CLI の `validate` は `--schema` と `--schema-file`
+  を 1 つのパラメーター（JSON Schema ファイル）に束ね、どちらも指定しない場合は構文チェックのみを行
+  います。スカラー型解決は影響を受けません: `register_schema()`、`load_schema()`、`list_schemas()`、
+  `YAML(schema=...)`、`rules:` リストは引き続き機能します。退役した言語のためだけに存在した Rust 型
+  （`TypeSpec`、`ValidateKind`、`ValidateRule`、`SchemaValidationError`）も削除され、マトリクスの
+  `schema validation` 行もそれに伴って消えます。表は 4 行を導出し、`.ci/quality-holes.json` は
+  `holes: []` と測定します。その行を担っていた fuzz ターゲットは `validate_schema` から
+  `parse_schema` に改名されました。曖昧化するのは JSON Schema の評価ではなく、生き残った `rules:` 文
+  法だからです。4 ロケールのガイド、クイックスタート、チュートリアル、機能表、API ページは
+  `Document.validate()` を記述するようになり、出荷されるスタブに削除された関数名は現れません。
+
 ### 修正
 
 - **pyq の fixture ディレクトリはプロセス id に加えてカウンターを持つようになりました** — 方言対照の

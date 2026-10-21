@@ -15,12 +15,11 @@ from pyrs_yaml.cli import main as cli_main
 from pyrs_yaml.cli.app import app
 
 VALIDATE_SCHEMA = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
+{
+  "type": "object",
+  "properties": {"port": {"type": "integer"}},
+  "required": ["port"]
+}
 """
 
 
@@ -207,7 +206,30 @@ def test_validate_failure_exits_1(tmp_path, capsys, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         run("validate", "--schema-file", str(schema))
     assert exc.value.code == 1
-    assert "expected int" in capsys.readouterr().err
+    assert "is not of type 'integer'" in capsys.readouterr().err
+
+
+def test_validate_required_property_is_enforced(tmp_path, capsys, monkeypatch):
+    schema = tmp_path / "schema.yaml"
+    schema.write_text(VALIDATE_SCHEMA, encoding="utf-8")
+    feed_stdin(monkeypatch, "other: 1\n")
+    with pytest.raises(SystemExit) as exc:
+        run("validate", "--schema-file", str(schema))
+    assert exc.value.code == 1
+    assert "'port' is a required property" in capsys.readouterr().err
+
+
+def test_validate_without_schema_checks_syntax_only(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "port: 8080\n")
+    run("validate")
+    assert capsys.readouterr().out == ""
+
+
+def test_validate_without_schema_still_rejects_a_parse_error(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "a: [1\n")
+    with pytest.raises(SystemExit) as exc:
+        run("validate")
+    assert exc.value.code == 1
 
 
 # ── conversions ──────────────────────────────────────────────────────────────
@@ -345,32 +367,15 @@ def test_entry_point_without_cyclopts(monkeypatch, capsys):
     assert "pip install pyrs-yaml[cli]" in err
 
 
-# ── validate: explicit --schema / --schema-file (#98) ───────────────────────
+# ── validate: --schema is an alias of --schema-file (#98) ───────────────────
 
 
-def test_validate_registered_schema_name(tmp_path, capsys, monkeypatch):
-    import pyrs_yaml
-
-    schema_file = tmp_path / "s.yaml"
-    schema_file.write_text(VALIDATE_SCHEMA, encoding="utf-8")
-    pyrs_yaml.register_schema("cli_test_schema", VALIDATE_SCHEMA)
+def test_validate_schema_alias_names_the_same_parameter(tmp_path, capsys, monkeypatch):
+    schema = tmp_path / "s.json"
+    schema.write_text(VALIDATE_SCHEMA, encoding="utf-8")
     feed_stdin(monkeypatch, "port: 8080\n")
-    run("validate", "--schema", "cli_test_schema")
+    run("validate", "--schema", str(schema))
     assert capsys.readouterr().out == ""
-
-
-def test_validate_both_flags_rejected(capsys):
-    with pytest.raises(SystemExit) as exc:
-        run("validate", "--schema", "x", "--schema-file", "y.yaml")
-    assert exc.value.code == 1
-    assert "mutually exclusive" in capsys.readouterr().err
-
-
-def test_validate_no_schema_flag_rejected(capsys):
-    with pytest.raises(SystemExit) as exc:
-        run("validate")
-    assert exc.value.code == 1
-    assert "--schema or --schema-file" in capsys.readouterr().err
 
 
 # ── multi-document streams: -A/--all-docs (#96) ─────────────────────────────
@@ -411,7 +416,7 @@ def test_validate_all_docs_reports_document_index(tmp_path, capsys, monkeypatch)
         run("validate", "-", "--schema-file", str(schema), "-A")
     assert exc.value.code == 1
     err = capsys.readouterr().err
-    assert "document 1" in err and "expected int" in err
+    assert "document 1" in err and "is not of type 'integer'" in err
 
 
 def test_set_all_docs_applies_to_every_document(capsys, monkeypatch):

@@ -76,7 +76,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [parse_yaml, yaml_roundtrip, parse_json, json_roundtrip, parse_toml, toml_roundtrip,
-                 validate_schema, json_events_replay, edit_yaml]
+                 parse_schema, json_events_replay, edit_yaml]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7

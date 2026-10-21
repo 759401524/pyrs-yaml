@@ -4,8 +4,7 @@ Measured on the way to this file: `pyrs_yaml.read_markdown(path=...)` raised `Ty
 `.pyi` declared the parameter `path`, because `python/pyrs_yaml/__init__.py` re-wraps the native function under a
 wrapper that renamed the parameter to `content`. The stub is generated from the **extension**, so every wrapper
 that shifts a name silently moves the typed contract away from the callable: mypy and pyright then approve a call
-the runtime refuses, and reject the one that works. `validate_against_schema` had the same drift in the other
-direction (`schema_yaml` in the stub, `schema` on the object).
+the runtime refuses, and reject the one that works.
 
 This is the systemic pin. The two names are read from the two artefacts and compared for every module-level
 function the stub declares; the count is asserted, so a future wrapper that renames something fails here rather
@@ -56,7 +55,7 @@ def stub_functions() -> dict[str, list[str]]:
 
 def test_the_stub_covers_every_module_function_the_package_exports(stub_functions):
     """An empty inventory would make the parity assertion below vacuous, so it is measured separately."""
-    assert len(stub_functions) >= 40, len(stub_functions)
+    assert len(stub_functions) >= 38, len(stub_functions)
 
 
 def test_stub_parameter_names_are_the_names_the_object_accepts(stub_functions):

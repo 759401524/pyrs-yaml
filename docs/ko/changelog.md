@@ -648,6 +648,26 @@ status: new
   동작은 변하지 않는다(예전부터 import 가능). `tests/test_api_doc_signatures.py`는 이제 4개 로케일의
   `reference.md`에서 같은 35개 이름을 이 건에 대한 예외 없이 비교한다.
 
+### 제거
+
+- **자체 제작 규칙 검증기를 은퇴시키고 `Document.validate()`를 유일한 스키마 표면으로 삼습니다** ——
+  `validate_against_schema()`와 `validate_against_registered_schema()`가 제거되었고, 스키마 정의의
+  `validate:` 섹션은 더 이상 읽히지 않습니다. 두 이름은 이 저장소가 만든 규칙 언어를 평가했지만,
+  `Document.validate()`는 이미 Python의 `jsonschema`에 위임하고 있었습니다. 검증기가 둘이라는 것은
+  오류 계약이 둘, "이 문서는 유효한가"에 대한 답이 둘이라는 뜻입니다. 호출자는
+  `Document.validate(schema)`(`YamlValidateError`가 참조 엔진의 메시지를 담습니다) 또는
+  `jsonschema.validate()`를 직접 사용합니다. CLI의 `validate`는 `--schema`와 `--schema-file`을
+  하나의 매개변수(JSON Schema 파일)로 묶고, 둘 다 주지 않으면 구문 검사만 수행합니다. 스칼라 타입
+  해석은 영향을 받지 않습니다: `register_schema()`, `load_schema()`, `list_schemas()`,
+  `YAML(schema=...)`, `rules:` 목록은 그대로 동작합니다. 은퇴한 언어만을 위해 존재하던 Rust 타입
+  (`TypeSpec`, `ValidateKind`, `ValidateRule`, `SchemaValidationError`)도 삭제되고, 매트릭스의
+  `schema validation` 행도 함께 사라집니다. 표는 이제 네 행을 도출하며
+  `.ci/quality-holes.json`은 `holes: []`로 측정됩니다. 그 행을 담당하던 fuzz 타깃은
+  `validate_schema`에서 `parse_schema`로 이름이 바뀌었습니다. 퍼징 대상이 JSON Schema 평가가 아니라
+  살아남은 `rules:` 문법이기 때문입니다. 네 로케일의 가이드, 빠른 시작, 튜토리얼, 기능 표, API
+  페이지는 `Document.validate()`를 문서화하며, 배포되는 스텁에는 삭제된 두 함수 이름이 나타나지
+  않습니다.
+
 ### 수정
 
 - **pyq의 모든 fixture 디렉터리는 이제 프로세스 id와 함께 카운터를 가집니다** — 방언 대조의 비교

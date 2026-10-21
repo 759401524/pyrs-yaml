@@ -398,7 +398,6 @@ d = pyrs_yaml.safe_load(
 
 - **`extends`** — 可选的基 Schema（`core`、`json`、`failsafe`、`yaml1.1`）
 - **`rules`** — 有序的 `{pattern, type}` 列表；首个匹配生效
-- **`validate`** — 可选的结构校验规则：路径限定类型（`$.port: int`）、容器检查（`sequence_of`、`mapping_of`）和 `required` 存在性检查；使用 `validate_against_schema(data, schema_yaml)` 校验文档
 - **支持的类型**：`null`、`bool`、`int`、`float`、`str`
 - 内置 Core Schema 仍使用零成本 `match` 分发（不受影响）
 - **文件 I/O** — `load_schema(name, path)` 从 YAML 文件加载 Schema；`list_schemas()` 返回所有已注册的 Schema
@@ -695,8 +694,6 @@ __version__ = "0.18.1"
         - list_schemas
         - load_schema
         - compliance_report
-        - validate_against_registered_schema
-        - validate_against_schema
         - validate_custom_types
         - CustomType
         - YamlStream

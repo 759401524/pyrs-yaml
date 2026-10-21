@@ -165,24 +165,24 @@ doc.sort_keys("$.environments")  # sort the environments
 
 ## 9. 스키마 검증
 
-구조 규칙이 있는 스키마를 정의하고 구성을 검증합니다:
+`Document.validate()`는 JSON Schema를 받아 평가를 `jsonschema`에 위임합니다:
 
-```python title="스키마 검증"
-schema = """\
-name: app-config
-extends: core
-validate:
-  - path: $.app.name
-    type: str
-    required: true
-  - path: $.environments.*.debug
-    type: bool
-  - path: $.threshold
-    type: int
-"""
+```python title="JSON Schema 검증"
+schema = {
+    "type": "object",
+    "properties": {
+        "app": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        "threshold": {"type": "integer"},
+    },
+    "required": ["app"],
+}
 
 # Validate — raises YamlValidateError on failure
-pyrs_yaml.validate_against_schema(doc.to_yaml(), schema)
+doc.validate(schema)
 print("Configuration is valid!")
 ```
 

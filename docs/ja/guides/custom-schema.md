@@ -97,59 +97,25 @@ print(pyrs_yaml.list_schemas())
 
 #### 構造検証
 
-スキーマ定義に `validate` セクションを追加すると、スカラー型解決に加えて構造チェックができます。`validate_against_schema()` で文書の使用前にチェックします：
+構造検証はスカラー解決の一部ではありません。`Document.validate()` がこのパッケージ唯一の
+検証面で、[JSON Schema](https://json-schema.org/) を受け取り、評価を Python の
+`jsonschema` に委譲します。スキーマ定義の `validate:` セクションは読みません。
 
-```yaml title="検証付きスキーマ"
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-  - path: $.tags[*]
-    type: str
-  - path: $.numbers
-    sequence_of: int
-  - path: $.config
-    mapping_of: str
-  - path: $.extra
-    type: map
-```
-
-```python
+```python title="JSON Schema で検証"
 import pyrs_yaml
 
-schema = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-"""
-
-pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
-# すべての失敗を列挙して YamlValidateError を送出:
-pyrs_yaml.validate_against_schema("port: abc\n", schema)
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+doc.validate(schema)  # None を返し、不合格なら YamlValidateError を送出
 ```
 
-- `path` — JSONPath 風の場所（`$.key`、`$.a.b`、`$.tags[*]`）。省略時はすべてのスカラーを指します。
-  `[*]` は一つの要素だけを指すため、`$.rows[*]` は `$.rows[0].a` に届きません
-- `type` — スカラーがこの YAML 型（`null`/`bool`/`int`/`float`/`str`）に解決されること。または
-  ノードがこの容器の形（`map`/`seq`。`mapping`/`object`、`sequence`/`array`/`list` も受け付けます）を
-  持つこと。容器の型には `path` が必要です
-- `sequence_of` / `mapping_of` — ノードがその容器であり、すべての要素 / 値が指定型であること。
-  指定型には `map` や `seq` も使えます
-- `required` — パスが存在し非 null であること（`type` と組み合わせ可能）
-
-規則が主張する量はスコープが決めます。`path` を書いた規則はそのノードに関するものなので、形が
-違えば失敗になります。`$.port` がマップなら `type: int` に反し、`$.config` がスカラーなら
-`mapping_of: str` に反します。`path` を省略した規則はノードを指定できないため、説明できるノードを
-形で選ぶ側に回ります。パスなしの `type: str` は「すべてのスカラーは文字列」という意味で、文書の
-残りは問いません。パスなしの `type: map` は何も選ばないので、書かれた時点で拒否されます。要素は
-どちらの場合も検査されます。`sequence_of: int` は要素が何かをすでに述べており、入れ子の配列は
-int ではないからです。一つの規則が持てる検査は一つだけで、`required` は検査と併用できます。別名の
-ノード（`b: *x`）についての規則は判定しません。別名は形ではなく名前を保持するからです。
+エラーメッセージは参照エンジンのものです（`'port' is a required property`）。同じスキーマと
+インスタンスを `jsonschema.validate()` に渡しても同じ判定になります。ファイルの検証は
+[CLI ガイド](cli.md)を参照してください。
 
 ### インラインディクスキーマ
 

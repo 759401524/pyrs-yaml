@@ -709,6 +709,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_api_doc_signatures.py` now compares the same 35 names across all four locales'
   `reference.md` with no exception for this one.
 
+### Removed
+
+- **The invented rule validator is retired; `Document.validate()` is the only schema surface** —
+  `validate_against_schema()` and `validate_against_registered_schema()` are removed, and a
+  `validate:` section in a schema definition is no longer read. Both names evaluated a rule language
+  this repository invented, while `Document.validate()` already delegated to Python's `jsonschema`;
+  two validators meant two error contracts and two answers to "is this document valid". Callers move
+  to `Document.validate(schema)`, whose `YamlValidateError` carries the reference engine's message,
+  or to `jsonschema.validate()` directly. The CLI's `validate` binds `--schema` and `--schema-file`
+  to one parameter (a JSON Schema file) and checks syntax only when neither is given. Scalar-type
+  resolution is untouched: `register_schema()`, `load_schema()`, `list_schemas()`,
+  `YAML(schema=...)` and the `rules:` list still apply. The Rust types that existed only for the
+  retired language (`TypeSpec`, `ValidateKind`, `ValidateRule`, `SchemaValidationError`) are
+  deleted, and the matrix's `schema validation` row leaves with them: the table derives four rows
+  now, and `.ci/quality-holes.json` measures `holes: []`. The fuzz target that exercised the row is
+  renamed `validate_schema` → `parse_schema`, because it fuzzes the surviving `rules:` grammar
+  rather than JSON Schema evaluation. The four locales' guides, quick start, tutorial, feature table
+  and API pages document `Document.validate()`, and the shipped stub names neither removed function.
+
 ### Fixed
 
 - **Every pyq fixture directory now carries a counter as well as the process id** - the dialect

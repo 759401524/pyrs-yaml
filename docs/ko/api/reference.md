@@ -396,7 +396,6 @@ d = pyrs_yaml.safe_load(
 
 - **`extends`** — 선택적 기본 스키마（`core`, `json`, `failsafe`, `yaml1.1`）
 - **`rules`** — 순서가 있는 `{pattern, type}` 목록; 첫 번째 일치 항목이 적용
-- **`validate`** — 선택적 구조 검증 규칙: 경로 한정 타입(`$.port: int`), 컨테이너 검사(`sequence_of`, `mapping_of`), `required` 존재 확인; `validate_against_schema(data, schema_yaml)`로 문서 검증
 - **지원 타입** : `null`, `bool`, `int`, `float`, `str`
 - 내장 Core 스키마는 계속 제로 비용 `match` 디스패치 사용（영향 없음）
 - **파일 I/O** — `load_schema(name, path)`로 YAML 파일에서 스키마 로드; `list_schemas()`로 등록된 모든 스키마 반환
@@ -693,8 +692,6 @@ __version__ = "0.18.1"
         - list_schemas
         - load_schema
         - compliance_report
-        - validate_against_registered_schema
-        - validate_against_schema
         - validate_custom_types
         - CustomType
         - YamlStream

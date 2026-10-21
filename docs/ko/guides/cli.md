@@ -117,26 +117,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # 서브트리 이
 
 ### 검증(`validate`) { #cmd-validate }
 
-`validate`는 스키마 정의 파일 또는 등록된 스키마 이름을 기준으로 문서를 검사합니다——두 옵션은 상호 배타적입니다:
+`validate`는 JSON Schema 파일을 기준으로 문서를 검사합니다. `--schema`는 `--schema-file`의 별칭이며, 둘 다 주지 않으면 구문 검사만 수행합니다:
 
 ```bash
-pyrs-yaml validate app.yaml --schema-file schema.yaml
-pyrs-yaml validate app.yaml --schema my_schema        # register_schema()로 등록된 것
+pyrs-yaml validate app.yaml --schema-file schema.json
+pyrs-yaml validate app.yaml --schema schema.json        # 동일한 매개변수
 ```
 
-성공 시 조용히 종료 코드 `0`으로 끝나고, 실패 시 모든 위반 항목을 stderr에 출력하고 종료 코드 `1`로 끝납니다——CI에서 활용하기 좋습니다:
+평가는 Python의 `jsonschema`에 위임되므로 파일은 표준 JSON Schema 문서입니다:
 
-```yaml
-# schema.yaml
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
+```json
+{
+  "type": "object",
+  "properties": {"port": {"type": "integer"}},
+  "required": ["port"]
+}
 ```
 
-스키마 언어 전체는 [사용자 정의 스키마](custom-schema.md)를 참고하세요.
+성공 시 조용히 종료 코드 `0`으로 끝나고, 실패 시 참조 엔진의 메시지를 stderr에 출력하고 종료 코드 `1`로 끝납니다——CI에서 활용하기 좋습니다.
+
+스칼라 해석용 스키마와 `Document.validate()` API는 [사용자 정의 스키마](custom-schema.md)를 참고하세요.
 
 ### 변환(`to-json`, `from-json`) { #cmd-convert }
 

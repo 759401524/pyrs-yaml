@@ -538,6 +538,22 @@ status: new
   行为没有变化，这个名字本来就可导入；`tests/test_api_doc_signatures.py` 现在对四种语言的
   `reference.md` 比较同一组 35 个名字，不再为此留例外。
 
+### 移除
+
+- **自研规则校验退役；`Document.validate()` 成为唯一的 Schema 校验面** ——
+  `validate_against_schema()` 与 `validate_against_registered_schema()` 已移除，Schema 定义中的
+  `validate:` 段不再被读取。这两个名字求值的是一套本仓库自研的规则语言，而 `Document.validate()`
+  早已委托给 Python 的 `jsonschema`；两个校验器意味着两套错误契约、两种“文档是否有效”的答案。
+  调用方改用 `Document.validate(schema)`（其 `YamlValidateError` 携带参考引擎的消息），或直接调用
+  `jsonschema.validate()`。CLI 的 `validate` 把 `--schema` 与 `--schema-file` 绑定为同一个参数
+  （JSON Schema 文件），两者都不给时只检查语法。标量类型解析不受影响：`register_schema()`、
+  `load_schema()`、`list_schemas()`、`YAML(schema=...)` 与 `rules:` 列表照旧生效。仅为退役语言存在的
+  Rust 类型（`TypeSpec`、`ValidateKind`、`ValidateRule`、`SchemaValidationError`）一并删除，矩阵的
+  `schema validation` 行随之离场：表格现派生四行，`.ci/quality-holes.json` 实测为 `holes: []`。
+  覆盖该行的 fuzz 目标由 `validate_schema` 更名为 `parse_schema`，因为它模糊的是幸存的 `rules:`
+  语法，而非 JSON Schema 求值。四种语言的指南、快速开始、教程、特性表与 API 页面均改为记录
+  `Document.validate()`，发布的桩文件中不再出现这两个被移除的函数。
+
 ### 修复
 
 - **pyq 的每个 fixture 目录现在都同时带进程 id 与计数器** - 方言档位的比较目录在共用路径让

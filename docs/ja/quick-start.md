@@ -214,19 +214,25 @@ doc.node().find("$.key").set_scalar_style("single_quoted")
 
 ### 12. スキーマで検証
 
-??? note "オプション: YAML Schema Language"
+`Document.validate()` は JSON Schema を受け取り、評価を
+[`jsonschema`](https://python-jsonschema.readthedocs.io/) に委譲します:
 
-    ```python
-    schema = """\
-    name: app
-    extends: core
-    validate:
-      - path: $.port
-        type: int
-        required: true
-    """
-    pyrs_yaml.validate_against_schema("port: 8080\n", schema)
-    ```
+```python title="JSON Schema で検証"
+import pyrs_yaml
+
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+
+doc.validate(schema)  # 合格
+
+bad = pyrs_yaml.parse("tags: [web]\n")
+bad.validate(schema)
+# YamlValidateError: 'port' is a required property
+```
 
 ### 13. 高度な編集
 

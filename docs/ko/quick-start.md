@@ -214,19 +214,25 @@ doc.node().find("$.key").set_scalar_style("single_quoted")
 
 ### 12. 스키마로 검증
 
-??? note "선택: YAML Schema Language"
+`Document.validate()`는 JSON Schema를 받아 평가를
+[`jsonschema`](https://python-jsonschema.readthedocs.io/)에 위임합니다:
 
-    ```python
-    schema = """\
-    name: app
-    extends: core
-    validate:
-      - path: $.port
-        type: int
-        required: true
-    """
-    pyrs_yaml.validate_against_schema("port: 8080\n", schema)
-    ```
+```python title="JSON Schema로 검증"
+import pyrs_yaml
+
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+
+doc.validate(schema)  # 통과
+
+bad = pyrs_yaml.parse("tags: [web]\n")
+bad.validate(schema)
+# YamlValidateError: 'port' is a required property
+```
 
 ### 13. 고급 편집
 

@@ -348,7 +348,7 @@ fn append_and_insert_sequences() {
 }
 
 #[test]
-fn validate_reports_parse_and_schema_failures() {
+fn validate_reports_parse_failures() {
     let (code, out, _) = run_with_stdin(&["validate", "-"], "a: 1\n");
     assert_eq!(code, Some(0));
     assert_eq!(out, "ok\n");
@@ -356,30 +356,9 @@ fn validate_reports_parse_and_schema_failures() {
     assert_eq!(code, Some(1));
     assert!(err.contains("unclosed bracket"), "{err}");
 
-    let dir = fixture_dir("pyq-val");
-    let rules = dir.join("rules.yaml");
-    std::fs::write(
-        &rules,
-        "validate:\n  - path: $.name\n    type: str\n    required: true\n",
-    )
-    .unwrap();
-    let (code, out, _) = run_with_stdin(
-        &["validate", "--schema", rules.to_str().unwrap(), "-"],
-        "name: hello\n",
-    );
-    assert_eq!(code, Some(0));
-    assert_eq!(out, "ok\n");
-    let (code, stdout, stderr) = run_with_stdin(
-        &["validate", "--schema", rules.to_str().unwrap(), "-"],
-        "other: 1\n",
-    );
-    assert_eq!(code, Some(1));
-    assert!(
-        stdout.contains("$.name: required path is missing"),
-        "{stdout}"
-    );
-    assert!(stderr.contains("validation failed"), "{stderr}");
-    std::fs::remove_dir_all(&dir).ok();
+    // The rule-language schema flag was retired with the validator; pyq only checks syntax.
+    let (code, _, _) = run_with_stdin(&["validate", "--schema", "rules.yaml", "-"], "a: 1\n");
+    assert_eq!(code, Some(2));
 }
 
 #[test]

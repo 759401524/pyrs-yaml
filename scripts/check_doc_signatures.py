@@ -147,7 +147,7 @@ def inventory() -> dict[str, list[tuple[list[str], set[str]]]]:
 
 
 def split_parameters(text: str) -> list[str] | None:
-    """The parameter names a document writes, or `None` when the block is not a declaration list.
+    """The parameter names a document writes (empty for `f()`), or `None` when the block is not a declaration.
 
     `register_tag("!custom", handler_fn, priority=1)` is a call with values, not a signature: it documents usage
     and is not the thing this checker can compare.
@@ -178,7 +178,7 @@ def split_parameters(text: str) -> list[str] | None:
         if not re.match(r"^(\*{0,2})[A-Za-z_][A-Za-z0-9_]*$", head):
             return None
         names.append(head)
-    return names or None
+    return names
 
 
 def typed_blocks(page: pathlib.Path) -> list[tuple[int, str, list[str]]]:
@@ -197,7 +197,9 @@ def typed_blocks(page: pathlib.Path) -> list[tuple[int, str, list[str]]]:
                 match = CALL_SHAPE.match(body[0])
                 if match:
                     first = match.group("args").split(",")[0].strip()
-                    if first and DECLARATION.match(first):
+                    # An empty argument list is still a claim: `f()` says the callable takes nothing, which
+                    # is a finding when a required parameter is missing.
+                    if not first or DECLARATION.match(first):
                         written = split_parameters(match.group("args"))
                         if written is not None:
                             out.append((index + 2, match.group("name"), written))

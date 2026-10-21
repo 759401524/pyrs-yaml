@@ -165,24 +165,24 @@ doc.sort_keys("$.environments")  # sort the environments
 
 ## 9. スキーマによる検証
 
-構造ルールを持つスキーマを定義し、設定を検証します：
+`Document.validate()` は JSON Schema を受け取り、評価を `jsonschema` に委譲します:
 
-```python title="スキーマによる検証"
-schema = """\
-name: app-config
-extends: core
-validate:
-  - path: $.app.name
-    type: str
-    required: true
-  - path: $.environments.*.debug
-    type: bool
-  - path: $.threshold
-    type: int
-"""
+```python title="JSON Schema による検証"
+schema = {
+    "type": "object",
+    "properties": {
+        "app": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        "threshold": {"type": "integer"},
+    },
+    "required": ["app"],
+}
 
 # Validate — raises YamlValidateError on failure
-pyrs_yaml.validate_against_schema(doc.to_yaml(), schema)
+doc.validate(schema)
 print("Configuration is valid!")
 ```
 

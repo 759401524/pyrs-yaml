@@ -388,36 +388,31 @@ def frontmatter(
 def validate(
     file: FILE_ARG = STDIN_FILE,
     *,
-    schema: Annotated[str | None, Parameter(name=["--schema"])] = None,
-    schema_file: Annotated[str | None, Parameter(name=["--schema-file"])] = None,
+    schema: Annotated[str | None, Parameter(name=["--schema", "--schema-file"])] = None,
     all_docs: ALL_DOCS = False,
 ) -> None:
-    """Validate YAML against a schema (registered name or schema-definition file).
+    """Check that YAML parses; with a schema, validate against JSON Schema.
 
     Parameters
     ----------
     file:
         YAML file to validate; ``-`` or omitted reads stdin.
     schema:
-        Registered schema name (mutually exclusive with --schema-file).
-    schema_file:
-        Path to a schema definition file (mutually exclusive with --schema).
+        Path to a JSON Schema document (draft 2020-12). Both ``--schema``
+        and ``--schema-file`` name this parameter.
     all_docs:
         Validate every document in the input stream.
     """
-    from pyrs_yaml import YamlValidateError, validate_against_schema
+    from pyrs_yaml import YamlValidateError
 
-    if schema and schema_file:
-        fail("--schema and --schema-file are mutually exclusive")
-    if not schema and not schema_file:
-        fail("one of --schema or --schema-file is required")
-
-    schema_src: str = read_text(schema_file) if schema_file else (schema or "")
     docs = load_documents(file) if all_docs else [load_document(file)]
+    if schema is None:
+        return
+    schema_src = read_text(schema)
     for i, doc in enumerate(docs):
         prefix = f"document {i}: " if len(docs) > 1 else ""
         try:
-            validate_against_schema(doc.to_yaml(), schema_src)
+            doc.validate(schema_src)
         except YamlValidateError as exc:
             fail(prefix + str(exc))
 

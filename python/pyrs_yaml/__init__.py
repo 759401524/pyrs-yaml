@@ -78,7 +78,6 @@ from .pyrs_yaml import (
     safe_dump,
     set_language,
     to_toml,
-    validate_against_registered_schema,
     validate_custom_types,
 )
 from .pyrs_yaml import (
@@ -104,9 +103,6 @@ from .pyrs_yaml import (
 )
 from .pyrs_yaml import (
     safe_loads as _safe_loads,
-)
-from .pyrs_yaml import (
-    validate_against_schema as _validate_against_schema,
 )
 
 _F = TypeVar("_F", bound=Callable[..., Any])
@@ -175,15 +171,10 @@ def _is_schema_dict(val: object) -> TypeGuard[_SchemaDict]:
 def _schema_to_yaml(schema: _SchemaDict) -> str:
     """Convert an inline schema dict to a YAML schema string.
 
-    The dict is written by this library's own serializer rather than emitted line by line, for two reasons the
-    hand-rolled version had:
-
-    - A pattern is arbitrary text. The only quoting rule that keeps it identical through a round trip is the one
-      `from_dict` already implements; choosing `'...'` unless the value contained an apostrophe produced text
-      like `"["']"`, which closes the string it was written inside.
-    - The schema language accepts a `validate` section, and the line emitter knew only `extends` and `rules`. A
-      dict that looked equivalent to the YAML text was registered with its validation rules silently removed, so
-      the schema it named accepted everything.
+    The dict is written by this library's own serializer rather than emitted line by line: a pattern is
+    arbitrary text, and the only quoting rule that keeps it identical through a round trip is the one
+    `from_dict` already implements - choosing `'...'` unless the value contained an apostrophe produced text
+    like `"["']"`, which closes the string it was written inside.
 
     `extends` keeps its old default of `core`, since a dict without it used to resolve against core.
     """
@@ -224,17 +215,6 @@ def _coerce_schema(schema: str | _SchemaDict | None) -> str | None:
         register_schema(name, yaml_str)
         return name
     raise TypeError(f"schema must be str or dict, got {type(schema).__name__}")
-
-
-def validate_against_schema(data: str, schema: str) -> None:
-    """Validate a YAML document against a schema's `validate` rules.
-
-    ``schema`` can be either a registered schema name or a schema definition
-    YAML string. Raises ``YamlValidateError`` listing every structural failure.
-    """
-    if "\n" in schema or "{" in schema:
-        return _validate_against_schema(data, schema)
-    return validate_against_registered_schema(data, schema)
 
 
 # Wrap YAML to accept inline dict schemas. PyO3 validates signature at the
@@ -496,7 +476,6 @@ __all__ = [
     "safe_loads_async",
     "set_language",
     "to_toml",
-    "validate_against_schema",
     "validate_custom_types",
 ]
 

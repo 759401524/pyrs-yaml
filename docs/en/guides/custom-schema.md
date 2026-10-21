@@ -99,62 +99,26 @@ print(pyrs_yaml.list_schemas())
 
 #### Structural validation
 
-A `validate` section in a schema definition adds structural checks on top of
-scalar type resolution. Use it with `validate_against_schema()` to check a
-document before using it:
+Structural checks are not part of scalar resolution. `Document.validate()` is the
+package's only validation surface: it accepts a
+[JSON Schema](https://json-schema.org/) and delegates evaluation to Python's
+`jsonschema`. A `validate:` section in a schema definition is not read.
 
-```yaml title="Schema with validation"
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-  - path: $.tags[*]
-    type: str
-  - path: $.numbers
-    sequence_of: int
-  - path: $.config
-    mapping_of: str
-  - path: $.extra
-    type: map
-```
-
-```python
+```python title="Validate with JSON Schema"
 import pyrs_yaml
 
-schema = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-"""
-
-pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
-# Raises YamlValidateError listing every failure:
-pyrs_yaml.validate_against_schema("port: abc\n", schema)
+doc = pyrs_yaml.parse("port: 8080\ntags: [web, api]\n")
+schema = {
+    "type": "object",
+    "properties": {"port": {"type": "integer"}},
+    "required": ["port"],
+}
+doc.validate(schema)  # None; raises YamlValidateError when the document fails
 ```
 
-- `path` — JSONPath-like location (`$.key`, `$.a.b`, `$.tags[*]`); omit for all scalars.
-  One `[*]` names one element, so `$.rows[*]` does not reach `$.rows[0].a`
-- `type` — a scalar must resolve to this YAML type (`null`/`bool`/`int`/`float`/`str`), or the
-  node must have this container shape (`map`/`seq`, also spelled `mapping`/`object`,
-  `sequence`/`array`/`list`). A container shape needs a `path`.
-- `sequence_of` / `mapping_of` — the node must be that container, and every element / value
-  must be the given type, which may itself be `map` or `seq`
-- `required` — the path must be present and non-null (combines with `type`)
-
-Scope decides how much a rule asserts. A rule that names a `path` is about that node, so a
-node of the wrong shape fails it: a mapping at `$.port` breaks `type: int`, a scalar at
-`$.config` breaks `mapping_of: str`. A pathless rule cannot name a node, so it selects the
-nodes it can describe instead — pathless `type: str` means "every scalar is a string",
-whatever else the document holds, and a pathless `type: map` would select nothing, so it is
-refused where it is written. Members are asserted either way: `sequence_of: int` has already
-said what its elements are, and a nested sequence is not one of them. One rule carries one
-check (`required` combines with it rather than competing). A rule about an aliased node
-(`b: *x`) is not decided, because the alias holds a name rather than a shape.
+The error carries the reference engine's message (`'port' is a required property`),
+and `jsonschema.validate()` on the same schema and instance reaches the same
+verdict. The [CLI guide](cli.md#cmd-validate) validates files against a schema file.
 
 ### Inline Dict Schema
 

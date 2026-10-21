@@ -381,7 +381,6 @@ settings = Settings()  # 通过 pyrs-yaml 从 config.yaml 加载
 | **Metadata editing** | **:material-check:  `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
 | **Style/format control** | **:material-check:  `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
 | **Deep editing** | **:material-check:  `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **:material-check:  `validate_against_schema()`** |
 | **Schema file IO** | **:material-check:  `load_schema()` / `list_schemas()`** |
 | **重复键** | **:material-check: 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
 | **自定义标签处理器** | **:material-check: `register_tag` 优先级链式处理** |

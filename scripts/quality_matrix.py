@@ -172,18 +172,13 @@ def roundtrip_target_for(crate: str, targets: list[str]) -> bool:
 #: identify it inside a property function. Written as fragments that are then matched against the files,
 #: not as a table of results, so adding a target or a module moves the row instead of leaving a
 #: hand-copied cell behind. A property counts for a row when it lives in that crate or carries one of
-#: those fragments: the schema language is *owned* by `pyrs-yaml-core` (`parser/yaml/schema_language.rs`)
-#: while `pyrs-schema` holds the resolver, so attributing by directory alone would have read as
-#: "schema has no property tier" - the opposite error to the one it was written to catch.
+#: those fragments. The last row owns no crate and no writer: JSON Schema validation is delegated to
+#: `jsonschema`, so its property tier is found by fragment and its round-trip cell is `n/a` by
+#: construction rather than by an empty measurement.
 FORMAT_ROWS = (
     ("YAML", "pyrs-yaml-core", "yaml", "yaml", ("yaml",)),
     ("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
     ("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
-    ("schema validation", "pyrs-schema", "schema", None, ("schema", "validate")),
-    # A row of its own, not a second authority file on the one above: that row measures the YAML rule
-    # language `validate_against_schema()` evaluates, while this one measures `Document.validate()`,
-    # which hands JSON Schema to Python's `jsonschema`. One corpus cannot vouch for both surfaces,
-    # and the row above owns no crate because the evaluation is not this repository's code.
     ("JSON Schema validation", None, "document_validate", None, ("json_schema",)),
 )
 
@@ -667,12 +662,10 @@ def authority_cell(path) -> dict:
 def format_matrix() -> dict:
     """The per-format tier table, derived from the files that declare the defence.
 
-    The point of deriving it is not tidiness. The hand-written table was wrong in two cells that only a
-    measurement finds: `schema validation` claimed no fuzz coverage while `validate_schema.rs` parses a
-    document and then walks it through `validate_node`, and the `property` column rested on a Rust-only
-    count of `prop_*` functions while the dialect rows are actually held up by the Python tier
-    (`tests/test_property_dialects.py`, 10 `@given` cases with stdlib `json`/`tomllib` and optional
-    `pyjson5` as external oracles).
+    The point of deriving it is not tidiness. The hand-written table was wrong in cells that only a
+    measurement finds: the `property` column rested on a Rust-only count of `prop_*` functions while the
+    dialect rows are actually held up by the Python tier (`tests/test_property_dialects.py`, 10 `@given`
+    cases with stdlib `json`/`tomllib` and optional `pyjson5` as external oracles).
     """
     targets = fuzz_targets()
     props = property_functions()
@@ -1151,8 +1144,8 @@ def format_verdict_lines(rows: dict) -> list:
     for label, row in rows.items():
         property_yes = bool(row["property_rust"]) or bool(row["property_python"])
         parity = row["cross_library"]["verdict"]
-        # Both schema rows judge a document; neither owns a writer, so there is nothing to round-trip.
-        schema_row = label in ("schema validation", "JSON Schema validation")
+        # The schema row judges a document and owns no writer, so there is nothing to round-trip.
+        schema_row = label == "JSON Schema validation"
         round_trip = "n/a" if schema_row else ("yes" if row["fuzz_round_trip"] else "no")
         lines.append(
             f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "

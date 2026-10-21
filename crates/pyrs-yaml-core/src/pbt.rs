@@ -847,42 +847,7 @@ mod tests {
         }
     }
 
-    // Validate that `validate_node` never panics on arbitrary trees + rules,
-    // and that every reported error path actually exists in the tree.
     proptest! {
-        #[test]
-        fn prop_validate_no_panic_and_real_paths(
-            node in arb_custom_node(),
-        ) {
-            let paths = collect_paths(&node);
-            prop_assume!(!paths.is_empty());
-            let resolver = crate::parser::yaml::schema_language::RuleResolver::with_validate_rules(
-                Vec::new(),
-                Some(Schema::Core),
-                vec![crate::parser::yaml::schema_language::ValidateRule::new(
-                    None,
-                    crate::parser::yaml::schema_language::ValidateKind::Type(
-                        crate::parser::yaml::schema_language::TypeSpec::Scalar(
-                            crate::parser::yaml::schema_language::YamlTypeKind::Str,
-                        ),
-                    ),
-                )],
-            );
-            // Every scalar must be a string — most tree scalars won't satisfy
-            // this, so errors (if any) must reference paths that exist.
-            let result = crate::parser::yaml::schema_language::validate_node(&node, &resolver, "");
-            let all_paths: std::collections::HashSet<String> = paths.into_iter().collect();
-            if let Err(errors) = result {
-                for e in &errors {
-                    prop_assert!(
-                        all_paths.contains(&e.path),
-                        "validate reported error at non-existent path '{}': {}",
-                        e.path, e.message
-                    );
-                }
-            }
-        }
-
         // Exercises `parse_schema_yaml` on random schema YAML — never panics.
         // Use arbitrary string in the "pattern" value position via a compact
         // char class that includes quotes and YAML punctuation.

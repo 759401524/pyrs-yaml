@@ -395,7 +395,6 @@ d = pyrs_yaml.safe_load(
 
 - **`extends`** — オプションのベーススキーマ（`core`、`json`、`failsafe`、`yaml1.1`）
 - **`rules`** — 順序付きの `{pattern, type}` リスト；最初にマッチしたものが適用
-- **`validate`** — オプションの構造検証ルール：パス修飾型（`$.port: int`）、コンテナチェック（`sequence_of`、`mapping_of`）、`required` 存在確認；`validate_against_schema(data, schema_yaml)` でドキュメントを検証
 - **対応型**：`null`、`bool`、`int`、`float`、`str`
 - 組み込み Core スキーマは引き続きゼロコスト `match` ディスパッチを使用（影響なし）
 - **ファイル I/O** — `load_schema(name, path)` で YAML ファイルからスキーマを読み込み；`list_schemas()` で登録済みの全スキーマを取得
@@ -692,8 +691,6 @@ __version__ = "0.18.1"
         - list_schemas
         - load_schema
         - compliance_report
-        - validate_against_registered_schema
-        - validate_against_schema
         - validate_custom_types
         - CustomType
         - YamlStream

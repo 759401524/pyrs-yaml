@@ -1,0 +1,7 @@
+name: seed
+extends: core
+rules:
+  - pattern: "^0x[0-9a-fA-F]+$"
+    type: int
+  - pattern: "^(yes|no)$"
+    type: bool
