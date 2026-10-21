@@ -41,6 +41,20 @@ status: new
   `docs/dev/quality-ledger.md`는 역사이며, 역사는 다섯 crate로 이루어진 foundation을 이름 붙여도
   됩니다. 적힌 시점의 사실이었기 때문입니다.
 
+- **crate 매트릭스는 서술이 아니라 측정으로 유지됩니다** —
+  `scripts/check_rust_python_decoupling.py`가 manifest에서 매트릭스를 직접 도출해 네 가지
+  규칙을 강제합니다. cdylib crate는 정확히 하나(확장 모듈), 다른 어떤 crate의 의존성 폐쇄에도
+  Python 런타임 crate가 없고, 확장 crate는 Rust 테스트 계층을 갖지 않으면서
+  `[lib] test = false`를 선언하며, 모든 `required-features` 항목은 선언되어 있고 기본값이 아닌
+  기능을 가리킵니다. 이 게이트는 엄격한 TOML 리더를 직접 가지고 있어서 `cargo`도 `tomllib`도
+  필요하지 않으며 패키지와 같은 Python 3.8 하한에서 동작합니다. cargo가 없는 Python 테스트
+  레그에서도 실행되는 이유입니다. `tests/test_rust_python_decoupling_gate.py`가 반증 제어입니다.
+  모든 규칙을 합성 트리에서 깨뜨려 판정이 뒤집히도록 요구하고, 리더는 이 저장소의 모든 manifest를
+  `tomllib`과 대조하며, 리더가 읽지 못하는 manifest는 통과가 아니라 종료 코드 2를 내야 합니다.
+  `crates/pyrs-yaml/Cargo.toml`이 `test = false`를 선언하므로 cargo는 확장 모듈의 테스트 타깃을
+  더 이상 만들지 않습니다. `prek.toml`의 훅이 manifest나 crate를 건드리는 변경마다 이 게이트를
+  실행합니다.
+
 ### 변경
 
 - **이벤트 스트림과 merge 해결기는 앵커를 crate의 노드 맵에 둡니다** — `#![no_std]` crate는

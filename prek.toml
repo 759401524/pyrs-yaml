@@ -107,6 +107,25 @@ entry = "python scripts/check_line_endings.py"
 pass_filenames = false
 priority = "checks"
 
+# The crate matrix is a claim about which crates need a Python runtime, and nothing measured it: an
+# engine crate could grow a `pyo3` edge, the extension could take a Rust test block back, and the
+# only symptom would arrive later, as a Rust test leg that cannot start without an interpreter.
+# `scripts/check_rust_python_decoupling.py` derives the matrix from the manifests themselves - no
+# hand-written crate list - and enforces four rules: exactly one crate is a cdylib (the extension),
+# no other crate's dependency closure carries a Python-runtime crate, the extension holds no Rust
+# test tier and declares `[lib] test = false`, and every `required-features` entry names a declared
+# feature that is not a default. It carries its own strict TOML reader, so it needs neither `cargo`
+# nor `tomllib` and runs on the same Python 3.8 floor as the package - including in the Python test
+# legs, where cargo is absent.
+[[repos.hooks]]
+id = "rust-python-decoupling"
+name = "Rust crates stay free of the Python runtime"
+language = "system"
+entry = "python scripts/check_rust_python_decoupling.py"
+files = "(^|/)Cargo\\.toml$|^crates/"
+pass_filenames = false
+priority = "checks"
+
 [[repos.hooks]]
 id = "changelog-mirror-sync"
 name = "changelog mirror sync"

@@ -12,6 +12,12 @@ categories = ["parser-implementations", "encoding"]
 [lib]
 name = "pyrs_yaml"
 crate-type = ["cdylib", "lib"]
+# The extension crate holds no Rust test tier: the tests that lived here moved to
+# `pyrs-yaml-core`, and a test target in this crate would put the interpreter back into
+# the Rust test legs. `scripts/check_rust_python_decoupling.py` is what keeps that true -
+# it fails when a `#[cfg(test)]` block, a `tests/` directory or a `[[test]]` target
+# reappears here, so this line cannot outlive the move.
+test = false
 
 [dependencies]
 pyrs-yaml-core = { path = "../pyrs-yaml-core" }

@@ -40,6 +40,18 @@ status: new
   镜像和 `docs/dev/quality-ledger.md` 都是历史，历史可以写五个 crate 的 foundation，因为写下它们的
   时候事实如此。
 
+- **crate 矩阵由测量维持，而不是靠叙述** —
+  `scripts/check_rust_python_decoupling.py` 从各 manifest 自身推导矩阵，并强制四条规则：恰好只有
+  一个 crate 是 cdylib（扩展模块本身）；其他任何 crate 的依赖闭包都不携带 Python 运行时 crate；
+  扩展 crate 不持有 Rust 测试层，并声明 `[lib] test = false`；每个 `required-features` 条目都指向
+  一个已声明且非默认的 feature。该门禁自带严格的 TOML 读取器，既不需要 `cargo` 也不需要
+  `tomllib`，因此可以在与本包相同的 Python 3.8 下限上运行——包括没有 cargo 的 Python 测试腿。
+  `tests/test_rust_python_decoupling_gate.py` 是它的反证控制：每条规则都在合成树上被破坏，并要求
+  判定随之翻转；读取器与本仓库每个 manifest 的 `tomllib` 结果逐一对照；读取器读不懂的 manifest
+  必须以退出码 2 结束，而不是算作通过。`crates/pyrs-yaml/Cargo.toml` 现在声明 `test = false`，
+  cargo 因此不再为扩展模块构建测试目标；`prek.toml` 里的钩子会在每次触及 manifest 或 crate 的
+  改动上运行这道门禁。
+
 ### 变更
 
 - **事件流和 merge 解析器把锚点留在 crate 的节点映射里** — `#![no_std]` 的 crate 无法书写

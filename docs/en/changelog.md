@@ -44,6 +44,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exempt: `CHANGELOG.md`, its four mirrors and `docs/dev/quality-ledger.md` are history, and history
   may name a five-crate foundation, because that is what was true when it was written.
 
+- **The crate matrix is measured, not described** — `scripts/check_rust_python_decoupling.py`
+  derives the matrix from the manifests themselves and enforces four rules: exactly one crate is a
+  cdylib (the extension), no other crate's dependency closure carries a Python-runtime crate, the
+  extension holds no Rust test tier and declares `[lib] test = false`, and every `required-features`
+  entry names a declared feature that is not a default. The gate carries its own strict TOML reader,
+  so it needs neither `cargo` nor `tomllib` and runs on the same Python 3.8 floor as the package -
+  including in the Python test legs, where cargo is absent.
+  `tests/test_rust_python_decoupling_gate.py` is the falsification control: every rule is broken on
+  a synthetic tree and required to flip the verdict, the reader is compared against `tomllib` on
+  every manifest in this repository, and a manifest the reader cannot understand must exit 2 rather
+  than pass. `crates/pyrs-yaml/Cargo.toml` now declares `test = false`, so cargo stops building a
+  test target for the extension, and the hook in `prek.toml` runs the gate on every change that
+  touches a manifest or a crate.
+
 ### Changed
 
 - **The event stream and the merge resolver keep their anchors in the crate's node map** — a
