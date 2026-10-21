@@ -792,6 +792,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to count instructions. No behaviour changes: `safe_load` and its siblings answer exactly the
   documents they answered before.
 
+- **The engine's CI legs no longer build the Python runtime** — `cargo test --workspace` and the
+  20 000-case property tier now pass `--exclude pyrs-yaml`, and `PYO3_PYTHON` goes with them.
+  Measured on this tree: the first command resolves 250 compilation units over 153 packages, and its
+  package set names `pyo3`, `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config`
+  and `numpy`; the same command with the exclusion resolves 220 units over 139 packages and names
+  none of them. What is given up is zero, and that is what licenses the exclusion: `cargo nextest
+  run --all` and the same run with the exclusion both execute 748 tests, and the extension has no
+  doctests to lose (`cargo test -p pyrs-yaml --doc` reports 0). The rule that keeps the two claims
+  together is `tests/test_ci_rust_leg_exclusion.py`, which reddens when a workspace-wide test leg
+  stops excluding the crate the decoupling gate names as the extension, keeps `PYO3_PYTHON` while
+  excluding it, excludes a different member instead, or when the MSRV leg starts excluding it —
+  because that leg's whole purpose is proving the declared floor for every crate, the shipped one
+  included. No published behaviour changes: the same 748 Rust tests and the same Python suite run.
+
 ### Removed
 
 - **The invented rule validator is retired; `Document.validate()` is the only schema surface** —

@@ -249,12 +249,24 @@ jobs:
           "$RUNNER_TEMP/refs/yq" --version
           "$RUNNER_TEMP/refs/jq" --version
 
+      # The extension crate is excluded here, and excluding it removes the whole Python-runtime half
+      # of the graph: measured on this tree, `cargo test --workspace --no-run --unit-graph` resolves
+      # 250 units over 153 packages including `pyo3`, `pyo3-ffi`, `pyo3-macros`,
+      # `pyo3-macros-backend`, `pyo3-build-config` and `numpy`, while the same command with
+      # `--exclude pyrs-yaml` resolves 220 units over 139 packages and names none of them. Nothing
+      # is given up: `cargo nextest run --all` and the same command with the exclusion both run 748
+      # tests, and the extension has no doctests to lose (`cargo test -p pyrs-yaml --doc` runs 0).
+      # The exclusion is licensed by the decoupling gate rather than by this comment - the gate
+      # fails if a Rust test tier ever reappears in that crate - and
+      # `tests/test_ci_rust_leg_exclusion.py` reddens when the workflow stops excluding the crate
+      # the gate names as the extension, or when the gate stops declaring it empty while the
+      # workflow still skips it. `PYO3_PYTHON` leaves with it: a step that builds no pyo3 has no
+      # interpreter to point at.
       - name: Run cargo tests
         env:
-          PYO3_PYTHON: python
           PYQ_DIALECT_YQ: ${{ runner.temp }}/refs/yq
           PYQ_DIALECT_JQ: ${{ runner.temp }}/refs/jq
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --exclude pyrs-yaml --locked
 
   # The tier exists because 256 cases is a sampling budget sized for speed:
   # `prop_toml_writer_is_fixed_point` needed more than 256 cases to reach the shape that relocates a
@@ -298,10 +310,12 @@ jobs:
         with:
           tool: nextest
 
+      # The same exclusion as the `Run cargo tests` step above, for the same measured reason: this
+      # leg runs the engine's properties, and the extension contributes no Rust test to run.
       - name: Elevated property tier
-        env:
-          PYO3_PYTHON: python
-        run: PROPTEST_CASES=20000 cargo nextest run --workspace --locked --partition count:${{ matrix.shard }}/4
+        run: >-
+          PROPTEST_CASES=20000 cargo nextest run --workspace --exclude pyrs-yaml --locked
+          --partition count:${{ matrix.shard }}/4
 
   msrv-check:
     needs: [changes]
@@ -318,6 +332,12 @@ jobs:
         with:
           key: msrv
 
+      # Deliberately NOT excluded, unlike the two engine legs above. This job exists to prove the
+      # declared floor compiles and passes for every crate in the workspace, the binding included;
+      # a `cargo +1.96 test` that skipped `pyrs-yaml` would document `rust-version = "1.96"` while
+      # enforcing it for seven crates. `tests/test_msrv_gate.py` pins the two command strings below
+      # against the manifests' floor, so narrowing this job is a change to that gate, not an edit to
+      # a step.
       - name: cargo check at MSRV
         run: cargo check --workspace --locked
 

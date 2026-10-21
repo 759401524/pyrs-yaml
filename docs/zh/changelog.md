@@ -617,6 +617,17 @@ status: new
   crate 仍在绑定 crate 的闭包里——以及绑定 crate 的 `ir_gate` 基准宿主，它启动 CPython 来统计指令
   数。行为没有变化：`safe_load` 及其同类函数回答的文档与此前完全一致。
 
+- **引擎的 CI 腿不再装配 Python 运行时** — `cargo test --workspace` 与提到 20 000 例的属性层
+  现在都传 `--exclude pyrs-yaml`，`PYO3_PYTHON` 也随之删除。在本树实测：前一条命令展开成跨 153
+  个包的 250 个编译单元，其集合点名 `pyo3`、`pyo3-ffi`、`pyo3-macros`、`pyo3-macros-backend`、
+  `pyo3-build-config` 与 `numpy`；同一条命令加上排除后是 139 个包、220 个单元，上述一个也不
+  剩。放弃的东西是零，而这正是许可这一排除的理由：`cargo nextest run --all` 与带排除的同一条
+  运行都执行 748 个测试，而扩展 crate 没有可丢的 doctest（`cargo test -p pyrs-yaml --doc` 报
+  0 个）。把这两项主张捆在一起的是 `tests/test_ci_rust_leg_exclusion.py`：当跨全工作区的测试腿
+  不再排除解耦门禁所点名的扩展 crate、排除了却仍设着 `PYO3_PYTHON`、改成排除别的成员，或者
+  MSRV 腿也开始排除时，它都会报红——因为那条腿的职责是就包括出货 crate 在内的每一个 crate 证明
+  声明的地板。公开行为没有变化：同样的 748 个 Rust 测试和同一套 Python 套件照旧运行。
+
 ### 移除
 
 - **自研规则校验退役；`Document.validate()` 成为唯一的 Schema 校验面** ——

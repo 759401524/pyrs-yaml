@@ -316,6 +316,16 @@ verdict to flip. Measured against the file as it ships: all 12 negative controls
 any one of the 7 rule bodies blinds exactly the controls that body stands behind, no more and no
 fewer - which is the only evidence that a passing control means anything.
 
+**Where the coupling is actually felt, and what CI does about it.** The graph, not the binaries:
+`cargo test --workspace --no-run` resolves 250 compilation units over 153 packages and names `pyo3`,
+`pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and `numpy`, while the same
+command with `--exclude pyrs-yaml` resolves 220 units over 139 packages and names none of them. Both
+run the same 748 Rust tests, and `cargo test -p pyrs-yaml --doc` reports 0, so the exclusion gives
+up nothing - which is a licence, not a proof, and the proof is the pairing
+`tests/test_ci_rust_leg_exclusion.py` enforces: an engine leg that stops excluding the crate the
+gate names as the extension reddens, and so does the MSRV leg if it ever starts, because that job's
+purpose is the declared floor for every crate, the shipped one included.
+
 **What this gate does not see.** The closure follows the workspace's `path` edges, so a
 Python-runtime crate reached only through a registry dependency's own dependency tree is outside its
 view; the direct `pyo3`/`numpy` edges it does see are the ones this repository controls. And R2
