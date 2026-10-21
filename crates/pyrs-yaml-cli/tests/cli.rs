@@ -46,6 +46,16 @@ fn run_with_stdin(args: &[&str], input: &str) -> (Option<i32>, String, String) {
     )
 }
 
+/// A scratch dir no other test in this process shares: the harness runs tests on threads, and
+/// `fs::write` truncates before it writes.
+fn fixture_dir(prefix: &str) -> std::path::PathBuf {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("{prefix}-{}-{serial}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 #[test]
 fn fmt_preserves_comments_and_order() {
     let (code, out, err) = run_with_stdin(&["fmt", "-"], "a: 1  # keep\nb:\n  - x\n  - y\n");
@@ -203,8 +213,7 @@ fn raw_flag_prints_bare_scalar() {
 fn file_extension_drives_auto_input_format() {
     // A .toml path must be ingested as TOML without --input; also covers
     // the file-argument path of the harness (run()).
-    let dir = std::env::temp_dir().join(format!("pyq-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq");
     let f = dir.join("cfg.toml");
     std::fs::write(&f, "x = 1\n").unwrap();
     let (code, out, err) = run(&["to-json", f.to_str().unwrap()]);
@@ -347,8 +356,7 @@ fn validate_reports_parse_and_schema_failures() {
     assert_eq!(code, Some(1));
     assert!(err.contains("unclosed bracket"), "{err}");
 
-    let dir = std::env::temp_dir().join(format!("pyq-val-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq-val");
     let rules = dir.join("rules.yaml");
     std::fs::write(
         &rules,
@@ -376,8 +384,7 @@ fn validate_reports_parse_and_schema_failures() {
 
 #[test]
 fn frontmatter_extracts_yaml_and_splits_body() {
-    let dir = std::env::temp_dir().join(format!("pyq-fm-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq-fm");
     let page = dir.join("page.md");
     let body = dir.join("body.md");
     std::fs::write(&page, "---\ntitle: Hi\ntags: [a, b]\n---\n# Body here\n").unwrap();
@@ -473,8 +480,7 @@ fn edit_pins_layout_of_untouched_lines() {
 
 #[test]
 fn inplace_rewrites_the_file() {
-    let dir = std::env::temp_dir().join(format!("pyq-ip-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq-ip");
     let f = dir.join("cfg.yaml");
     std::fs::write(&f, "a: 1  # keep\n").unwrap();
     let (code, _, err) = run(&["set", "--inplace", ".b", "2", f.to_str().unwrap()]);
@@ -501,8 +507,7 @@ fn fmt_sort_keys_orders_every_mapping() {
 
 #[test]
 fn fmt_inplace_rewrites_the_file() {
-    let dir = std::env::temp_dir().join(format!("pyq-fmtip-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq-fmtip");
     let f = dir.join("cfg.yaml");
     std::fs::write(&f, "a:\n  b: 1\n").unwrap();
     let (code, _, err) = run(&["fmt", "--indent", "4", "--inplace", f.to_str().unwrap()]);
@@ -601,8 +606,7 @@ fn input_json5_restores_spellings() {
 
 #[test]
 fn auto_detects_jsonc_and_json5_extensions() {
-    let dir = std::env::temp_dir().join(format!("pyq-dialect-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fixture_dir("pyq-dialect");
     let c = dir.join("cfg.jsonc");
     let five = dir.join("old.json5");
     std::fs::write(&c, "// hi\n{\"a\": 1}\n").unwrap();

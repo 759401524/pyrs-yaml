@@ -805,7 +805,9 @@ mod tests {
 
     #[test]
     fn a_filter_file_is_read_and_then_classified() {
-        let dir = std::env::temp_dir().join(format!("pyq-compat-{}", std::process::id()));
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let serial = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("pyq-compat-{}-{serial}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let good = dir.join("path.jq");
         std::fs::write(&good, ".a.b\n").unwrap();

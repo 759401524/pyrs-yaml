@@ -580,6 +580,15 @@ status: new
 
 ### 수정
 
+- **pyq의 모든 fixture 디렉터리는 이제 프로세스 id와 함께 카운터를 가집니다** — 방언 대조의 비교
+  디렉터리는 공유 경로가 `rust-lint`를 붉게 만들었을 때 이 보호를 얻었지만, 같은 crate의 나머지
+  쓰기는 여전히 프로세스 id만으로 이름을 지었습니다. `crates/pyrs-yaml-cli/tests/cli.rs`의 여섯 곳,
+  `crates/pyrs-yaml-cli/tests/compare.rs`의 `pair()` 헬퍼와 그 유일한 수동 사본, 그리고
+  `src/compat.rs`의 compat 필터 테스트입니다. 오늘의 테스트 중 같은 접두사나 tag를 고르는 쌍은
+  없으므로 이것은 두 번째로 재현된 충돌이 아니라 같은 불변 조건을 모든 곳으로 넓힌 것입니다.
+  카운터는 "접두사가 항상 유일하다"는 전제에 대한 의존을 없애고, `compare.rs`는 `pair()`의 두 번
+  쓰기를 손으로 복사하지 않습니다.
+
 - **방언 대조 비교들이 fixture 디렉터리를 공유했습니다** —
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs`는 임시 디렉터리에 프로세스 id로 이름을
   붙였기에, Rust 하네스가 하나의 테스트 바이너리를 같은 프로세스 안에서 스레드로 돌릴 때 모든 비교가

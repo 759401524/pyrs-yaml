@@ -486,6 +486,13 @@ status: new
 
 ### 修复
 
+- **pyq 的每个 fixture 目录现在都同时带进程 id 与计数器** - 方言档位的比较目录在共用路径让
+  `rust-lint` 变红时就加上了这道防护，而同一 crate 里其余写入仍只按进程 id 命名：
+  `crates/pyrs-yaml-cli/tests/cli.rs` 的六处、`crates/pyrs-yaml-cli/tests/compare.rs` 的 `pair()`
+  辅助函数及其唯一一处手写副本，以及 `src/compat.rs` 的 compat 过滤测试。目前没有哪两个测试选中同一
+  前缀或 tag，所以这是把同一条不变量推广到所有位置，而不是第二次复现出的冲突；计数器消除了对“前缀
+  始终唯一”的依赖，`compare.rs` 也不再手写一份 `pair()` 的两次写入。
+
 - **方言对拍的各条比较共用同一个 fixture 目录** -
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` 用进程 id 给临时 fixture 目录命名，而 Rust 框
   架会把一个测试二进制的各用例放进同一进程的多条线程并发跑，于是每条比较都在同一处反复重写
