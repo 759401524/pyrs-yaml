@@ -28,6 +28,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 WORKFLOWS = REPO / ".github" / "workflows"
@@ -167,19 +168,50 @@ def roundtrip_target_for(crate: str, targets: list[str]) -> bool:
     return any("roundtrip" in target and family in target for target in targets)
 
 
-#: Each row of the per-format table: the crate that owns the engine, the name fragment that identifies
+#: One row of the per-format table: the crate that owns the engine, the name fragment that identifies
 #: the format inside a fuzz target, the cross-library module's file stem, and the name fragments that
 #: identify it inside a property function. Written as fragments that are then matched against the files,
 #: not as a table of results, so adding a target or a module moves the row instead of leaving a
 #: hand-copied cell behind. A property counts for a row when it lives in that crate or carries one of
-#: those fragments. The last row owns no crate and no writer: JSON Schema validation is delegated to
-#: `jsonschema`, so its property tier is found by fragment and its round-trip cell is `n/a` by
-#: construction rather than by an empty measurement.
+#: those fragments.
+#:
+#: Two rows own no crate and no writer. JSON Schema validation is delegated to `jsonschema`, so its
+#: property tier is found by fragment and its round-trip cell is `n/a` by construction rather than by
+#: an empty measurement. The `rules:` schema language resolves scalars and owns no serializer of its
+#: own, so its round-trip cell is `n/a` for the same reason - the document it influences is the YAML
+#: row's, not a second one.
+#:
+#: `unit_scope` and `prop_scope` narrow a row to the files that declare the surface, because a
+#: surface that shares a crate with a format is not defended by that crate's tests. The schema rule
+#: language lives in `pyrs-yaml-core` beside the YAML engine: measured by the whole crate it would
+#: read as defended by hundreds of tests that never mention it, so its cells are counted in
+#: `src/parser/yaml/schema_language.rs` and in the one property function that names it.
+class FormatRow(NamedTuple):
+    label: str
+    crate: str | None
+    fragment: str
+    crosslib_stem: str | None
+    prop_fragments: tuple
+    unit_scope: str | None = None
+    prop_scope: str | None = None
+    writer: bool = True
+
+
 FORMAT_ROWS = (
-    ("YAML", "pyrs-yaml-core", "yaml", "yaml", ("yaml",)),
-    ("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
-    ("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
-    ("JSON Schema validation", None, "document_validate", None, ("json_schema",)),
+    FormatRow("YAML", "pyrs-yaml-core", "yaml", "yaml", ("yaml",)),
+    FormatRow("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
+    FormatRow("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
+    FormatRow("JSON Schema validation", None, "document_validate", None, ("json_schema",), writer=False),
+    FormatRow(
+        "Schema rule language",
+        "pyrs-yaml-core",
+        "parse_schema",
+        None,
+        ("schema",),
+        unit_scope="src/parser/yaml/schema_language.rs",
+        prop_scope="src/pbt.rs",
+        writer=False,
+    ),
 )
 
 #: An import in a cross-library module, mapped to the project dependency that has to be installed for
@@ -659,6 +691,44 @@ def authority_cell(path) -> dict:
     return {"verdict": "yes" if live else "no", "readers": sorted(readers), "bounded": bounded}
 
 
+def _unit_test_count(crate_dir: Path | None, scope: str | None) -> int:
+    """The `#[test]`s that defend this row, counted in the files the row names.
+
+    A row that owns its crate is measured by the whole crate. A row for a surface that shares
+    one is measured by the file that declares it: the schema rule language lives in
+    `pyrs-yaml-core` beside the YAML engine, and crediting that crate's tests to it would say
+    the row is defended by hundreds of tests that never mention it.
+    """
+    if not crate_dir or not crate_dir.is_dir():
+        return 0
+    if scope:
+        target = crate_dir / scope
+        if not target.exists():
+            return 0
+        paths = [target] if target.is_file() else sorted(target.rglob("*.rs"))
+    else:
+        paths = sorted(crate_dir.rglob("*.rs"))
+    return sum(len(re.findall(r"^\s*#\[test\]", read(path), re.MULTILINE)) for path in paths)
+
+
+def _row_properties(props: list[str], row: FormatRow) -> list[str]:
+    """The property functions this row's property cell counts.
+
+    An unscoped row is credited by its crate or by a name fragment in the function name. A
+    scoped row is credited only where the scope and the fragment agree: its own property has to
+    live in the file that declares the surface and carry the name that identifies it.
+    """
+    credited = []
+    for name in props:
+        path, _, function = name.partition("::")
+        if row.prop_scope is not None:
+            if row.prop_scope in path and any(frag in function for frag in row.prop_fragments):
+                credited.append(name)
+        elif (row.crate and f"crates/{row.crate}/" in path) or any(frag in function for frag in row.prop_fragments):
+            credited.append(name)
+    return credited
+
+
 def format_matrix() -> dict:
     """The per-format tier table, derived from the files that declare the defence.
 
@@ -672,15 +742,11 @@ def format_matrix() -> dict:
     crosslib_dir = REPO / "tests"
     rows: dict[str, dict] = {}
 
-    for label, crate, fragment, crosslib_stem, prop_fragments in FORMAT_ROWS:
+    for row in FORMAT_ROWS:
+        label, crate, fragment = row.label, row.crate, row.fragment
         crate_dir = REPO / "crates" / crate if crate else None
-        crate_tests = sorted(crate_dir.rglob("*.rs")) if crate_dir and crate_dir.is_dir() else []
-        unit = sum(len(re.findall(r"^\s*#\[test\]", read(path), re.MULTILINE)) for path in crate_tests)
-        rust_props = [
-            name
-            for name in props
-            if (crate and f"crates/{crate}/" in name) or any(frag in name.split("::", 1)[1] for frag in prop_fragments)
-        ]
+        unit = _unit_test_count(crate_dir, row.unit_scope)
+        rust_props = _row_properties(props, row)
 
         python_props = []
         for path in sorted((REPO / "tests").glob("test_property*.py")):
@@ -692,8 +758,8 @@ def format_matrix() -> dict:
         fuzz_round = sorted(name for name in targets if fragment in name and "roundtrip" in name)
 
         parity: dict = {"verdict": "n/a", "oracles": [], "restricted": []}
-        if crosslib_stem:
-            module = crosslib_dir / f"test_{crosslib_stem}_crosslib.py"
+        if row.crosslib_stem:
+            module = crosslib_dir / f"test_{row.crosslib_stem}_crosslib.py"
             if module.exists():
                 parity = crosslib_parity(label, module)
 
@@ -722,6 +788,7 @@ def format_matrix() -> dict:
             "fuzz_round_trip": fuzz_round,
             "cross_library": parity,
             "authority": authority,
+            "writer": row.writer,
         }
     return rows
 
@@ -1144,9 +1211,9 @@ def format_verdict_lines(rows: dict) -> list:
     for label, row in rows.items():
         property_yes = bool(row["property_rust"]) or bool(row["property_python"])
         parity = row["cross_library"]["verdict"]
-        # The schema row judges a document and owns no writer, so there is nothing to round-trip.
-        schema_row = label == "JSON Schema validation"
-        round_trip = "n/a" if schema_row else ("yes" if row["fuzz_round_trip"] else "no")
+        # A surface that owns no serializer has nothing to round-trip: the JSON Schema row judges a
+        # document through a delegated engine, and the schema rule language resolves scalars.
+        round_trip = "n/a" if not row["writer"] else ("yes" if row["fuzz_round_trip"] else "no")
         lines.append(
             f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "
             f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} "
