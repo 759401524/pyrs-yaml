@@ -597,6 +597,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every pyq fixture directory now carries a counter as well as the process id** - the dialect
+  tier's comparison directories got that guard when a shared path reddened `rust-lint`, and the
+  other writes in the same crate still named their directory after the process alone: six sites in
+  `crates/pyrs-yaml-cli/tests/cli.rs`, the `pair()` helper and its one manual copy in
+  `crates/pyrs-yaml-cli/tests/compare.rs`, and the compat filter test in `src/compat.rs`. No two of
+  today's tests pick the same prefix or tag, so this is the same invariant applied everywhere rather
+  than a second reproduced collision; the counter removes the dependency on that staying true, and
+  `compare.rs` loses its manual copy of `pair()`'s two writes.
+
 - **The dialect tier shared one fixture directory between its comparisons** -
   `crates/pyrs-yaml-cli/tests/dialect_vs_reference.rs` named its temporary fixture directory after
   the process, and the Rust harness runs a test binary's tests on threads inside that one process,
