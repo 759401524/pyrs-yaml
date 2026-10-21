@@ -675,6 +675,18 @@ status: new
 
 ### 修复
 
+- **CLI 命令面清单门禁现在真的执行了** - `tests/test_cli_binding_parity.py` 原先先用
+  `getattr(pyrs_yaml.cli, "app")` 取 App，而 `python/pyrs_yaml/cli/__init__.py` 并不绑定这个属性：它
+  只定义 `main()`。任何更早运行过 `from pyrs_yaml.cli.app import app` 的测试——`tests/test_cli.py` 就
+  在模块作用域里这么导入——都会把这个名字绑成子模块，于是 fixture 返回的是模块，`_commands` 不存在，
+  守卫便以「cyclopts 私有布局变了」为由跳过。实测：单跑该文件 22 条通过，把
+  `tests/test_cli.py::test_entry_point_without_cyclopts` 排在它前面就使清单断言变 SKIPPED，而本仓库
+  自有 runner 的 `test (ubuntu-latest, 3.10)` 日志里同一条也是跳过——即「注册的命令集等于文档清单」这
+  条断言在任何完整会话里都没跑过。现在 fixture 只接受带命令表的包属性；缺 `_commands` 是点名已安装
+  cyclopts 版本的失败，而不是与漂移无从区分的跳过；另加一条控制测试断言解析结果绝不会落在模块上，使
+  这一顺序回归报红而非静默。改动前还比对过清单本身：文档 18 个名字对注册 18 个，
+  `missing=[] extra=[]`，所以这次只是让守卫诚实，并未揭出面漂移。
+
 - **pyq 的每个 fixture 目录现在都同时带进程 id 与计数器** - 方言档位的比较目录在共用路径让
   `rust-lint` 变红时就加上了这道防护，而同一 crate 里其余写入仍只按进程 id 命名：
   `crates/pyrs-yaml-cli/tests/cli.rs` 的六处、`crates/pyrs-yaml-cli/tests/compare.rs` 的 `pair()`
