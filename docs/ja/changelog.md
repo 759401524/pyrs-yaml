@@ -33,6 +33,15 @@ status: new
   がないためです。`parse_medium` の割り当て上限は 74 回で、std ビルドの 67 回より各マッピング 1 回多
   く、`tests/alloc_gate.rs` は feature ごとに上限を記録します。
 
+- **no_std の記述は、実際に宣言されている crate と突き合わせられるようになりました** — foundation の
+  一覧は `#![no_std]` と書いた crate のルートから読み取られ、`tests/test_no_std_gate.py` はそれをさ
+  らに二つ、`ci.yml` の三つの `no-std-check` ステップと、現行の文書が名指しする crate と突き合わせま
+  す。`AGENTS.md` にはずっと無かった `no_std` の foundation の記述が加わり、`docs/dev/boundaries.md`
+  のそれを指す段落は、YAML エンジンがこの集合に加わったあとも五つの crate を名指ししていました。そう
+  言えたはずのゲートは注釈にすぎないものでした。日付のついた記録は対象外です。`CHANGELOG.md` とその
+  四つのミラー、そして `docs/dev/quality-ledger.md` は歴史であり、歴史は五つの crate からなる
+  foundation を名指ししてかまいません。書かれた時点での事実だからです。
+
 ### 変更
 
 - **イベントストリームと merge 解決器はアンカーを crate のノードマップに保持します** —

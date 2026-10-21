@@ -35,6 +35,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `parse_medium` allocation ceiling is 74 allocations against the std build's 67 — one more per
   mapping — and `tests/alloc_gate.rs` records a ceiling per feature set.
 
+- **The no_std story is checked against the crates the sources actually declare** — the foundation
+  set is read out of the crate roots that write `#![no_std]`, and `tests/test_no_std_gate.py` now
+  compares it with two more things: the three `no-std-check` steps in `ci.yml`, and the crates the
+  live documents name. `AGENTS.md` gained the `no_std` foundation story it never had, and the
+  paragraph in `docs/dev/boundaries.md` that pointed at it named five crates after the YAML engine
+  had joined the group — the gate that would have said so was a comment. The dated records are
+  exempt: `CHANGELOG.md`, its four mirrors and `docs/dev/quality-ledger.md` are history, and history
+  may name a five-crate foundation, because that is what was true when it was written.
+
 ### Changed
 
 - **The event stream and the merge resolver keep their anchors in the crate's node map** — a

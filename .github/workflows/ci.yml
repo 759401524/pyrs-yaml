@@ -363,12 +363,14 @@ jobs:
       # Building for `thumbv7em-none-eabi` proves the code links without std; it does not prove the
       # logic still works there, and the unit tests are the only thing that does - map lookups
       # agreeing with the node `Hash`/`Eq` impls, and no layout or ordering difference surviving the
-      # feature split. It runs over every foundation crate, because until now only two of them were
-      # covered: `cargo test --no-default-features -p pyrs-toml` did not even compile (a
+      # feature split. It runs over every foundation crate, and the list is not written here: a crate
+      # joins the group by declaring `#![no_std]` in its own root, and `tests/test_no_std_gate.py`
+      # fails if this step stops covering what the sources declare. (The step once covered two
+      # crates only - `cargo test --no-default-features -p pyrs-toml` did not even compile (a
       # recursion-limit case that spawns a thread to get a big stack), and nothing noticed, because
-      # this step listed the other two. The widening is worth 112 host tests that have never run
-      # without std - 58 in pyrs-json, 54 in pyrs-toml - and pyrs-event's test target compiling
-      # there at all.
+      # the step listed the other two. The widening that followed was worth 112 host tests that had
+      # never run without std - 58 in pyrs-json, 54 in pyrs-toml - and pyrs-event's test target
+      # compiling there at all.)
       - name: Run no_std unit tests on the host
         run: >
           cargo test --locked --no-default-features
@@ -381,10 +383,10 @@ jobs:
 
       # Re-enabling `std` must not have been "achieved" by deleting the
       # no_std path, so assert the default (std) configuration still compiles
-      # for the same bare-metal-shaped code path. It is the same five crates the two steps above
+      # for the same bare-metal-shaped code path. It covers the same crates the two steps above
       # cover, because a re-check that lists fewer crates than it just tested without std proves
       # the feature split only in one direction; `tests/test_no_std_gate.py` fails if the two lists
-      # drift. Measured on this tree: all five compile with default features.
+      # drift. Measured on this tree: every foundation crate compiles with default features.
       - name: Build with the default std feature
         run: >
           cargo check --locked

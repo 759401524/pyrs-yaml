@@ -32,6 +32,15 @@ status: new
   `alloc`에는 해시 함수가 없기 때문입니다. `parse_medium`의 할당 상한은 74회로, std 빌드의 67회보다
   매핑마다 한 번씩 많고, `tests/alloc_gate.rs`는 기능별로 상한을 기록합니다.
 
+- **no_std 이야는 실제로 선언된 crate와 맞춰보게 되었습니다** — foundation 목록은 `#![no_std]`를
+  적는 crate 루트에서 읽어 나오고, `tests/test_no_std_gate.py`는 이를 두 가지와 추가로 비교합니다.
+  `ci.yml`의 `no-std-check` 세 단계와, 현재 문서가 직접 이름 붙이는 crate입니다. `AGENTS.md`에는 늘
+  없던 `no_std` foundation 이야가 들어갔고, `docs/dev/boundaries.md`의 그것을 가리키던 문단은 YAML
+  엔진이 이 모임에 들어온 뒤에도 다섯 crate를 이름 붙이고 있었습니다. 그러고 말할 수 있었던 게이트는
+  주석에 지나지 않았습니다. 날짜가 붙은 기록은 예외입니다. `CHANGELOG.md`와 그 네 개의 미러, 그리고
+  `docs/dev/quality-ledger.md`는 역사이며, 역사는 다섯 crate로 이루어진 foundation을 이름 붙여도
+  됩니다. 적힌 시점의 사실이었기 때문입니다.
+
 ### 변경
 
 - **이벤트 스트림과 merge 해결기는 앵커를 crate의 노드 맵에 둡니다** — `#![no_std]` crate는

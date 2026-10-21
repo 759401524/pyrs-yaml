@@ -123,6 +123,16 @@ scenario more than 2% below its floor warns, more than 5% fails as `FLOOR_STALE`
 dispatch job above rather than a local `--update`, which would move the floor to this host.
 - `#[pymodule_init]` is prohibited — use inline `mod` for module declaration
 - Branch protection requires exactly one check name, `Test matrix (all legs)`, and `enforce_admins` is on. `ci.yml` therefore triggers on **every** pull request: a `changes` job classifies it (`git diff` excluding `*.md` and `docs/**`), the heavy legs run only when that says code changed, and `docs-gates` always runs the documentation gates plus `scripts/build-docs.py --strict`. A required check that never reports is a deadlock, not a pass — measured on PR #319, a prose-only pull request that could not be merged by any contributor route. Never re-add `paths-ignore` for prose to `ci.yml`; if a leg must be conditional, gate it on `needs.changes.outputs.code` **and** declare `changes` in that job's `needs`, or GitHub resolves the reference to an empty string and skips it silently (`tests/test_matrix_verdict_gate.py` fails on that).
+- The `no_std` foundation is six crates — `pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json`,
+  `pyrs-toml` and `pyrs-yaml-core` — and the set is derived rather than written down here: a crate
+  joins by declaring `#![no_std]` in its own root, and `tests/test_no_std_gate.py` compares that
+  derived set against the three `no-std-check` steps in `ci.yml` (the `thumbv7em-none-eabi` build,
+  the host unit tests under `--no-default-features`, the std re-check) *and* against the crates the
+  live documents name — this file and `docs/dev/boundaries.md` — so a crate that joins the group
+  without joining the gate, and a document that keeps naming the old group, are both red runs
+  rather than stale paragraphs. The dated records (`CHANGELOG.md` and its four mirrors,
+  `docs/dev/quality-ledger.md`) are history and are exempt: they may name a five-crate foundation,
+  because that is what was true when they were written.
 - Mapping order requires `IndexMap<CustomNode, CustomNode>`, not `HashMap`
 - Comment/anchor preservation needs `comment.rs` scanner — do not skip it
 

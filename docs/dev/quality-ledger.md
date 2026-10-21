@@ -7101,6 +7101,66 @@ Ir gate's six YAML scenarios.
 Counts: 748 Rust tests, 1,817 Python test functions, 9 fuzz targets over 168 seeds, 79 Unreleased
 entries per mirror.
 
+### (ex) The documents that describe the no_std foundation were one crate behind it (2026-10-21)
+
+The foundation was six crates after the YAML engine joined it (PR #571) - `pyrs-ast`, `pyrs-event`,
+`pyrs-schema`, `pyrs-json`, `pyrs-toml` and `pyrs-yaml-core` - and the set
+`tests/test_no_std_gate.py` derives is exactly those six. Three live documents still said five:
+
+- `docs/dev/boundaries.md` enumerated the foundation in prose ("the `no_std` job builds `pyrs-ast`,
+  `pyrs-event`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` for `thumbv7em-none-eabi`") and pointed
+  at "`AGENTS.md`'s `no_std` story" - a story `AGENTS.md` never had. Measured on the pre-change
+  file: zero occurrences of `no_std` in it at all.
+- `ci.yml`'s two comments said "the same five crates" and "all five compile", while the `-p` lists
+  below them named six.
+
+Nothing measured any of it. The gate compared the sources against the workflow's `-p` lists and said
+nothing about the prose, so the prose was free to drift while the code stayed correct - and a
+comment is not a gate.
+
+**The fix.** `AGENTS.md` gained the foundation story it never had; `docs/dev/boundaries.md` names
+all six and now points at a paragraph that exists; the two `ci.yml` comments describe the mechanism
+rather than a number ("a crate joins the group by declaring `#![no_std]` in its own root"), because
+a number in a comment is exactly what went stale.
+
+**The gate.** `tests/test_no_std_gate.py` now asks a third question: the crates the live documents
+name. A document's `no_std` story is the set of blocks that mention `no_std`, and a block ends at a
+blank line *or* at a markdown list item - `AGENTS.md` writes its facts as adjacent bullets with no
+blank line between them, so a paragraph-only split would have fused the whole list into one block
+and read every crate the file names as part of the story. The crates named in those blocks must
+equal the derived foundation in both directions: a missing crate is a stale list, an extra one is a
+claim nobody can check. A second test resolves "`X.md`'s `no_std` story" and requires the target to
+exist and to carry a `no_std` block, so the sentence that pointed at nothing cannot point at nothing
+again.
+
+**History is exempt, and that is the point.** `CHANGELOG.md` and its four mirrors and this ledger
+are dated records; they may name a five-crate foundation, because that is what was true when they
+were written. This is the rule `scripts/check_hole_claims.py` already applies to a closed quality
+hole: the instruction files are present tense, the dated records are history.
+
+**Two falsification probes, because a gate that has never been seen to bite is a comment.** Putting
+the stale five-crate enumeration back into `docs/dev/boundaries.md` made
+`uv run pytest tests/test_no_std_gate.py` exit 1 with "docs/dev/boundaries.md does not name
+['pyrs-yaml-core'] in its no_std story"; deleting the `AGENTS.md` bullet made it exit 1 on
+`test_the_no_std_pointer_resolves`. Both files were restored byte-identically afterwards.
+
+Verified: `cargo nextest run --all` 748 tests, `uv run pytest tests/ -q` 4043 passed and 11
+skipped, `uv run pytest tests/test_no_std_gate.py` 12 tests, `prek run --all-files` all hooks
+passed. The document gates agree too: `scripts/check_changelog_mirrors.py` five mirrors in sync,
+`scripts/check_cjk_localisation.py` 123 pages in their own script,
+`scripts/check_doc_wrapping.py` clean on the eight governed pages, and
+`scripts/quality_matrix.py --check-rows` agreeing with the count row. The command in `ci.yml`'s
+host step is this one, and it ran 658 tests - 34 / 7 / 83 / 43 / 94 / 397 by crate, doctests
+included:
+
+```text
+cargo test --locked --no-default-features \
+  -p pyrs-ast -p pyrs-event -p pyrs-schema -p pyrs-json -p pyrs-toml -p pyrs-yaml-core
+```
+
+Counts: 748 Rust tests, 1,830 Python test functions, 9 fuzz targets over 168 seeds, 80 Unreleased
+entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

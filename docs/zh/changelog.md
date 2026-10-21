@@ -32,6 +32,14 @@ status: new
   哈希器：`parse_medium` 的分配上限是 74 次分配，而 std 构建是 67 次——每个映射多一次——
   `tests/alloc_gate.rs` 按 feature 集分别记录这两个上限。
 
+- **no_std 的故事改为与源码实际声明的 crate 对账** — foundation 集合是从写出 `#![no_std]` 的 crate
+  根读出来的，`tests/test_no_std_gate.py` 现在把它与另外两样东西比较：`ci.yml` 里的三个
+  `no-std-check` 步骤，以及现行文档里点名的 crate。`AGENTS.md` 补上了它一直缺的那个 `no_std`
+  foundation 故事；而 `docs/dev/boundaries.md` 里指向它的那一段，在 YAML 引擎加入这个集合之后仍写着
+  五个 crate，本该说出这件事的门禁当时只是一句注释。有日期的记录不在此列：`CHANGELOG.md`、它的四份
+  镜像和 `docs/dev/quality-ledger.md` 都是历史，历史可以写五个 crate 的 foundation，因为写下它们的
+  时候事实如此。
+
 ### 变更
 
 - **事件流和 merge 解析器把锚点留在 crate 的节点映射里** — `#![no_std]` 的 crate 无法书写
