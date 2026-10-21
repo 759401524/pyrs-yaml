@@ -54,6 +54,13 @@ status: new
 
 ### 变更
 
+- **解耦门禁学会看守 bench 腿** — `scripts/check_rust_python_decoupling.py` 新增规则 R5：扩展 crate
+  不得持有不带 `required-features` 的 `[[bench]]` 目标，因为这种目标会被每条 workspace 级 bench
+  命令选中，进而重建 CI bench 腿刚刚排除的 `pyo3-build-config` 解释器探测。门禁原有四条规则；这
+  第五条锁住了 bench 腿作用域化的成果，使 `crates/pyrs-yaml` 里将来若出现无条件 bench 会变成红
+  跑，而非耦合的悄然回潮。`tests/test_rust_python_decoupling_gate.py` 在合成树上打破 R5 并要求
+  结论翻转——反证控制现为 13 条——而干净工作副本仍通过。
+
 - **CI 的 Rust 基准腿也不再需要解释器** — CodSpeed 的 `Rust benchmarks` 是最后一条把 Python 运行时拖
   入构建的腿，成因与测试腿相同：靠的是 workspace 的*成员身份*，而非依赖边。`cargo codspeed build` 会
   选中每个成员，于是编译了 `pyrs-yaml` cdylib 与探测解释器的 `pyo3-build-config` 构建脚本，尽管

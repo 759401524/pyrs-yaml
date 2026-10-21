@@ -58,6 +58,15 @@ status: new
 
 ### 変更
 
+- **分離ゲートが bench レグを守る** — `scripts/check_rust_python_decoupling.py` に規則 R5 を加えまし
+  た。拡張 crate は `required-features` を伴わない `[[bench]]` 目標を持ってはなりません。その種の目
+  標はあらゆる workspace 級 bench コマンドに選択され、CI の bench レグが今除外した
+  `pyo3-build-config` のインタプリタ探索を再構築してしまうからです。ゲートは四規則でしたが、この第五
+  規則が bench レグのスコープ化で得たものを固定し、`crates/pyrs-yaml` に無条件の bench が将来現れれ
+  ば、結合の静かな再帰ではなく失敗ランになります。`tests/test_rust_python_decoupling_gate.py` は合成
+  ツリーで R5 を壊し判定の反転を要求します（反証制御は 13 本）。そしてクリーンなワークスペースは引き
+  続き通過します。
+
 - **CI の Rust ベンチマークレッグもインタプリタを不要に** — CodSpeed の `Rust benchmarks` は、Python
   ランタイムをビルドに取り込んでいた最後のレッグで、原因はテストレッグと同じく依存エッジではなく
   workspace の*メンバーシップ*でした。`cargo codspeed build` は全メンバーを選択するため、`pyrs-yaml`

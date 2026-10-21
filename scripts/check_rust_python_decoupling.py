@@ -34,6 +34,11 @@ Four rules, each derived from the tree rather than from a list written by hand:
       default. That is what keeps the one Python-dependent Rust target in this repository - the
       instruction-count harness in the extension crate, which starts CPython itself - out of every
       default build.
+  R5  The extension crate holds no `[[bench]]` target without `required-features`. An unconditional
+      bench is selected by every workspace-wide bench command, so measuring the engine would build
+      the extension and its interpreter probe - the membership coupling the CI bench legs now
+      exclude with `--exclude pyrs-yaml`. `pyrs-yaml`'s `ir_gate` passes because it is gated on
+      `ir-gate`, which only `scripts/ir_gate.py` turns on.
 
 The manifests are read by a reader written for exactly the constructs Cargo manifests use, because
 `tomllib` is 3.11+ and this package supports 3.8. The reader refuses a construct it does not
@@ -531,6 +536,26 @@ def find_violations(root: pathlib.Path) -> tuple:
                         )
                     )
 
+    # R5 - the extension crate holds no unconditional bench target. A `[[bench]]`
+    # with no `required-features` is selected by every workspace-wide bench
+    # command, so measuring the engine would compile the extension and its
+    # `pyo3-build-config` build script, which needs an interpreter. This is the
+    # same membership coupling the CI legs exclude by `--exclude`; the gate keeps
+    # it from returning through a new bench target. `pyrs-yaml`'s `ir_gate` passes
+    # because it is gated on `ir-gate`, and only `scripts/ir_gate.py` turns it on.
+    for crate in extensions:
+        for target in crate.benches:
+            if not target.get("required-features"):
+                findings.append(
+                    (
+                        "R5",
+                        crate.declared_name,
+                        "the bench {} carries no required-features, so every workspace bench "
+                        "command builds the extension and its interpreter probe; gate it or move "
+                        "it to the crate it measures".format(target.get("name", "?")),
+                    )
+                )
+
     measurements = {
         "crates": len(crates),
         "extension": extensions[0].declared_name if extensions else None,
@@ -562,7 +587,8 @@ def main(argv: list) -> int:
             "\nR1 the cdylib crate and the Python-runtime crates are the same set.\n"
             "R2 the extension crate holds no Rust test tier, and says so with [lib] test = false.\n"
             "R3 no other crate may lose its tests - decoupling is the absence of the coupling.\n"
-            "R4 a feature-gated target names a declared feature that is off by default.",
+            "R4 a feature-gated target names a declared feature that is off by default.\n"
+            "R5 the extension crate holds no unconditional bench target.",
             file=sys.stderr,
         )
         return 1

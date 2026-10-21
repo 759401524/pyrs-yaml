@@ -60,6 +60,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The decoupling gate learned to guard the bench leg** — `scripts/check_rust_python_decoupling.py`
+  added rule R5: the extension crate may not hold an `[[bench]]` target without `required-features`,
+  because such a target is selected by every workspace-wide bench command and would rebuild the
+  `pyo3-build-config` interpreter probe the CI bench legs only just excluded. The gate had four
+  rules; this fifth locks in what the bench-leg scoping bought, so a future unconditional bench in
+  `crates/pyrs-yaml` is a red run rather than a quiet return of the coupling.
+  `tests/test_rust_python_decoupling_gate.py` breaks R5 on the synthetic tree and requires the
+  verdict to flip - 13 negative controls now - and the clean workspace still passes.
+
 - **The CI Rust benchmark leg builds without an interpreter too** - CodSpeed's `Rust benchmarks` was
   the last leg to pull the Python runtime, for the same reason the test legs did: workspace
   *membership*, not a dependency edge. `cargo codspeed build` selects every member, so it compiled
