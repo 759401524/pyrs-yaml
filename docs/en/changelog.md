@@ -19,6 +19,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The last parity hole closes: JSON5 and JSONC have a reference on every leg** — the registered
+  entry named the two dialects whose only outside reader was `pyjson5`, declared
+  `python_version >= '3.9' and python_version < '3.14'` with armv7l/s390x/ppc64le excluded, so the
+  3.8 floor this package promises and 3.14+ compared both against nothing while the leg reported
+  green. The pure-Python `json5` package (`>= 0.17.3`, `requires-python >= 3.8`, a `py3-none-any`
+  wheel) is declared in the test group and imported unconditionally by the two files that judge the
+  dialect; the comparisons that judge it carry no skip marker, and `pyjson5` stays as a second
+  opinion where its wheel installs. The two references disagree on two constructs, and the tests pin
+  this engine's reading instead of hiding the difference: a surrogate pair is combined into one
+  character here where the pure reader keeps the two UTF-16 code units, and a lone surrogate is
+  refused here where that reader accepts it. `tests/test_json5_spec_table.py` no longer gates its
+  whole module on `pyjson5`, so the spec table's rows stop skipping on the floor. Measured:
+  `cross_library.restricted` is empty, the JSON row's parity cell reads `yes`,
+  `.ci/quality-holes.json` holds only the schema row, and the external-authority column now yields a
+  verdict per file rather than crediting a name - a spec table that regresses behind a bounded
+  reader alone is emitted as a hole of the `authority-tier` kind, named for the file.
+
 - **The TOML three-way agreement now runs on every leg, not only above 3.11** — the cross-library
   module skipped its eleven pyrs/tomlkit/tomllib comparisons on 3.8 through 3.10, because `tomllib`
   arrives with 3.11 and nothing installed a reference reader below it. The backport `tomli>=2.0` is
