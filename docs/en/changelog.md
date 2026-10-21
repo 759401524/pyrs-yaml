@@ -19,6 +19,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The standard JSON Schema surface is judged by the official corpus, in a row of its own** —
+  `Document.validate()` hands evaluation to Python's `jsonschema` and keeps only the AST-to-instance
+  conversion, the schema acceptance and the `YamlValidateError` contract here, so the matrix's
+  existing `schema validation` row was measuring the *other* surface: the rule language
+  `validate_against_schema()` evaluates, which this repository invented. A new row,
+  `JSON Schema validation`, is credited by `tests/test_document_validate_suite.py` replaying the
+  official JSON-Schema-Test-Suite at commit `0b4a7fa` (46 files, 1302 cases). Measured on
+  `jsonschema` 4.26.0: 1261 cases reach the corpus's verdict - `refRemote.json` is excluded whole as
+  a contract boundary (no resolver is exposed, and one representative case is probed to keep that
+  exclusion live), and ten `dynamicRef`/`vocabulary`/`\p{...}` cases are named as boundaries of the
+  delegated engine. The same corpus replayed through `jsonschema.validate()` directly reaches the
+  same verdict on all 1302 cases, so no exclusion is attributable to the conversion. The exclusion
+  set is keyed on the installed version - the Python 3.8 leg resolves 4.23.0, which needs one more
+  named `unevaluatedProperties` case, fixed by 4.25.1 - and both directions are asserted: a named
+  case that starts agreeing reddens the run, and so does an unnamed one that stops agreeing. The
+  invented language keeps its registered hole `authority-tier:schema-validation` rather than
+  borrowing this corpus's credit; its exit now says that retiring it in favour of
+  `Document.validate()` closes it.
+
 - **`sort_keys` on a scalar path is a documented no-op, not a silent one** — `sort_keys("$.a")`
   returned `None` and changed nothing while `sort_keys("$.missing")` raised `YamlEditError`, and
   nothing the package shipped said so; the registry entry recorded the mismatch with the exit

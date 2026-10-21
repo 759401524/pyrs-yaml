@@ -17,6 +17,24 @@ status: new
 
 ### 変更
 
+- **標準の JSON Schema 面は公式コーパスによって判定され、独立した行を持ちます** —
+  `Document.validate()` は評価を Python の `jsonschema` に委ね、AST からインスタンスへの変換、
+  schema の受け付け、`YamlValidateError` 契約だけを本リポジトリに残します。そのため、マトリクスの
+  既存の `schema validation` 行は*別の*面——`validate_against_schema()` が評価する、本リポジトリが
+  発明した規則言語——を測っていました。新しい `JSON Schema validation` 行は
+  `tests/test_document_validate_suite.py` が公式 JSON-Schema-Test-Suite（コミット `0b4a7fa`、
+  46 ファイル、1302 ケース）を再生することで `yes` と記録されます。`jsonschema` 4.26.0 での実測:
+  1261 ケースがコーパスの結論に達し、`refRemote.json` は契約境界としてファイルごと除外され
+  （リゾルバーを公開しておらず、除外を生かすために代表 1 ケースだけを試行）、10 個の
+  `dynamicRef`/`vocabulary`/`\p{...}` ケースが委譲先エンジンの境界として名付けられています。
+  同じコーパスを `jsonschema.validate()` で直接再生しても全 1302 ケースで同じ結論になるため、
+  変換に帰属できる除外はありません。除外集合はインストールされたバージョンで切り替わります——
+  Python 3.8 レッグは 4.23.0 を解決し、`unevaluatedProperties` の 1 ケースを追加で除外する必要が
+  あります（4.25.1 で修正済み）——そして両方向を検証します。名前付きのケースが通り始めても、
+  名前のないケースが落ち始めても失敗します。発明された言語はこのコーパスの信用を借りず、登録済みの
+  穴 `authority-tier:schema-validation` を保持します。その出口は、`Document.validate()` に置き換え
+  れば穴が閉じると明記するようになりました。
+
 - **スカラーパスに対する `sort_keys` は、暗黙の成功ではなく文書化された no-op になりました** —
   `sort_keys("$.a")` は `None` を返して何も変えず、`sort_keys("$.missing")` は `YamlEditError` を
   送出するのに、同梱物はそのことを何も述べていませんでした。レジストリ項目はこの不一致を記録し、

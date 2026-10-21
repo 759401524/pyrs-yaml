@@ -180,6 +180,11 @@ FORMAT_ROWS = (
     ("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
     ("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
     ("schema validation", "pyrs-schema", "schema", None, ("schema", "validate")),
+    # A row of its own, not a second authority file on the one above: that row measures the YAML rule
+    # language `validate_against_schema()` evaluates, while this one measures `Document.validate()`,
+    # which hands JSON Schema to Python's `jsonschema`. One corpus cannot vouch for both surfaces,
+    # and the row above owns no crate because the evaluation is not this repository's code.
+    ("JSON Schema validation", None, "document_validate", None, ("json_schema",)),
 )
 
 #: An import in a cross-library module, mapped to the project dependency that has to be installed for
@@ -602,6 +607,31 @@ def _uses_reader(text: str, local: str) -> bool:
     return False
 
 
+def _gate_references(source: str, locals_of: list[str]) -> bool:
+    """Does a module-level gate *name* one of the readers, rather than merely contain its letters?
+
+    The check used to be `local in gate` on the gate's source text, so a corpus gate whose reason
+    carried the suite's URL (`.../json-schema-org/JSON-Schema-Test-Suite`) was read as a gate on the
+    `json` reader and lost its credit. A gate that cannot run without a reader mentions it as a
+    name - `pyjson5 is None` - so only identifiers and attribute roots count.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return any(local in source for local in locals_of)
+    roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            roots.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            base = node
+            while isinstance(base, ast.Attribute):
+                base = base.value
+            if isinstance(base, ast.Name):
+                roots.add(base.id)
+    return any(local.split(".")[0] in roots for local in locals_of)
+
+
 def authority_cell(path) -> dict:
     """Whether this file asks the format's rules of an authority that runs on every tested leg.
 
@@ -622,7 +652,7 @@ def authority_cell(path) -> dict:
     every_leg = [local for name, aliases in readers.items() if name not in bounded for local in aliases]
     locals_of = [local for aliases in readers.values() for local in aliases]
     gate = _blanket_gate(text)
-    if gate and any(local in gate for local in locals_of):
+    if gate and _gate_references(gate, locals_of):
         return {"verdict": "no", "readers": sorted(readers), "bounded": bounded}
     if not readers:
         return {"verdict": "yes" if _names_corpus(text) else "no", "readers": [], "bounded": []}
@@ -650,13 +680,13 @@ def format_matrix() -> dict:
     rows: dict[str, dict] = {}
 
     for label, crate, fragment, crosslib_stem, prop_fragments in FORMAT_ROWS:
-        crate_dir = REPO / "crates" / crate
-        crate_tests = sorted(crate_dir.rglob("*.rs")) if crate_dir.is_dir() else []
+        crate_dir = REPO / "crates" / crate if crate else None
+        crate_tests = sorted(crate_dir.rglob("*.rs")) if crate_dir and crate_dir.is_dir() else []
         unit = sum(len(re.findall(r"^\s*#\[test\]", read(path), re.MULTILINE)) for path in crate_tests)
         rust_props = [
             name
             for name in props
-            if f"crates/{crate}/" in name or any(frag in name.split("::", 1)[1] for frag in prop_fragments)
+            if (crate and f"crates/{crate}/" in name) or any(frag in name.split("::", 1)[1] for frag in prop_fragments)
         ]
 
         python_props = []
@@ -1121,7 +1151,9 @@ def format_verdict_lines(rows: dict) -> list:
     for label, row in rows.items():
         property_yes = bool(row["property_rust"]) or bool(row["property_python"])
         parity = row["cross_library"]["verdict"]
-        round_trip = "n/a" if label == "schema validation" else ("yes" if row["fuzz_round_trip"] else "no")
+        # Both schema rows judge a document; neither owns a writer, so there is nothing to round-trip.
+        schema_row = label in ("schema validation", "JSON Schema validation")
+        round_trip = "n/a" if schema_row else ("yes" if row["fuzz_round_trip"] else "no")
         lines.append(
             f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "
             f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} "

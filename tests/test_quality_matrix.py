@@ -657,6 +657,19 @@ AUTHORITY_USES = [
         "yes",
     ),
     (
+        "a corpus gate whose reason carries the suite's URL",
+        "import json\n\nimport pytest\n\nimport pyrs_yaml\n\n"
+        'SUITE_DIR = "Reference/JSON-Schema-Test-Suite"\n'
+        "pytestmark = pytest.mark.skipif(\n"
+        '    not __import__("pathlib").Path(SUITE_DIR).is_dir(),\n'
+        '    reason="clone https://github.com/json-schema-org/JSON-Schema-Test-Suite",\n'
+        ")\n\n\n"
+        "def test_every_case_validates():\n"
+        "    case = json.loads('{\"a\": 1}')\n"
+        '    assert pyrs_yaml.parse(json.dumps(case)).validate({"type": "object"}) is None\n',
+        "yes",
+    ),
+    (
         "a suite with the suffix and no corpus to replay",
         'import pyrs_yaml\n\n\ndef test_placeholder():\n    assert pyrs_yaml.parse("a: 1") is not None\n',
         "no",
@@ -1098,7 +1111,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
     """
     text = DOC_PATH.read_text(encoding="utf-8")
     cells = re.findall(
-        r"^\| (YAML|JSON / JSONC / JSON5|TOML|schema validation)"
+        r"^\| (YAML|JSON / JSONC / JSON5|TOML|schema validation|JSON Schema validation)"
         r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a)"
         r" \| (yes|no) \|$",
         text,
@@ -1108,7 +1121,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
         label: (unit, prop, parse, trip, parity, authority)
         for label, unit, prop, parse, trip, parity, authority in cells
     }
-    assert len(claimed) == 4, f"the page no longer states all four format rows: {claimed}"
+    assert len(claimed) == 5, f"the page no longer states all five surface rows: {claimed}"
 
     derived = {}
     for line in measured["format_verdicts"]:
@@ -1145,6 +1158,11 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert authority["JSON / JSONC / JSON5"]["verdict"] == "yes", authority
     assert authority["schema validation"]["verdict"] == "no", "a row with no outside authority has to say so"
     assert not authority["schema validation"]["files"], authority
+    # The standard surface is a row of its own: its authority is the official draft2020-12 corpus,
+    # and that corpus must not be credited to the homegrown YAML rule language beside it.
+    assert authority["JSON Schema validation"]["files"] == ["test_document_validate_suite.py"], authority
+    assert authority["JSON Schema validation"]["verdict"] == "yes", authority
+    assert not rows["JSON Schema validation"]["fuzz_parse"], "no Rust fuzz target names the delegated surface"
 
     # The parity column claims to read how `pyproject.toml` bounds each oracle, so every oracle a
     # cross-library test imports has to be found there at all. `ruamel.yaml` is imported under that
