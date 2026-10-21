@@ -239,3 +239,49 @@ Two environment facts belong to this measurement because they wasted it first: `
 the Windows host fails with `missing manifest in toolchain 1.97.1-x86_64-pc-windows-msvc` (that
 install is broken; use WSL for the pinned toolchain), and a `touch` is not an edit here - cargo
 fingerprints contents, so a mtime-only change legitimately rebuilds nothing.
+
+## The Rust test tier against the Python runtime (2026-10-21)
+
+The decoupling sequence started from a premise - "the Rust test and benchmark tiers depend on
+libpython" - and the premise is false at the binary level, so this section records what is true
+instead of what was assumed. The measurement: build every test artifact
+(`cargo test --workspace --no-run`), then read each PE import table for `python*.dll`.
+
+| reading | result |
+|:--|:--|
+| artifacts scanned under `target/debug/deps` | 848 |
+| artifacts naming a `python*.dll` | 1 - `pyrs_yaml.dll`, the extension cdylib itself |
+| Rust test binaries naming one | 0 |
+
+The linker prunes a dependency no symbol references, so a crate that compiles `pyo3` but never
+calls into it links no interpreter. The coupling that survives is a *build-graph* coupling, not a
+link one: `cargo tree -p pyrs-yaml -e normal --prefix none` still names `pyo3`, `pyo3-ffi`,
+`pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and `numpy`, so a consumer of the binding
+crate builds a Python runtime's worth of crates whether or not it links one.
+
+**What moved, and why it was movable.** The binding crate held exactly two `#[cfg(test)]` tests,
+both in `crates/pyrs-yaml/src/py/direct_load.rs`, and they pinned one decision: whether a document
+is inside the direct-load surface at all. That decision is a property of the document and the
+grammar - two byte-level pre-vetoes and the event layer's own answer - and not of the Python object
+the value becomes, so it now lives in the engine (`crates/pyrs-yaml-core/src/parser/yaml/direct.rs`)
+with its two tests beside it. The binding crate keeps the materialization, which is the only part
+that needs a Python object to exist.
+
+Measured after the move:
+
+- the binding crate's Rust test tier holds **0** tests (2 before);
+- the engine crate's closure names 75 unique crates and **none** of them is a Python-runtime crate;
+- the new module builds for `thumbv7em-none-eabi`
+  (`cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-yaml-core`), so
+  the decision it holds is `no_std`-clean like the rest of the engine.
+
+The closure table above re-measured on this tree with its own method (unique crate *names*) still
+reads 75 for `pyrs-yaml-core`, at `27031d12` and at `018bcc00` alike - the version-level difference
+that makes a raw `sort -u` report 76 is `granit-parser` appearing at two versions, one of which is
+the compile-time-only 1.3.0 described above.
+
+**What is not claimed.** The extension cdylib still links `python3.dll`, by definition: it is the
+Python extension. The binding crate's package closure still carries the six Python-runtime crates.
+And the binding crate's `ir_gate` bench harness uses `pyo3/auto-initialize`, so it starts CPython to
+measure instruction counts - the one Rust target in this repository that genuinely needs an
+interpreter, and the subject of the last step of this sequence.

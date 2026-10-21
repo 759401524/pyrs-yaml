@@ -765,6 +765,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_api_doc_signatures.py` now compares the same 35 names across all four locales'
   `reference.md` with no exception for this one.
 
+- **The direct-load eligibility decision moved into the engine crate** — whether a document falls
+  inside the value-only fast path is a property of the document and the grammar, not of the Python
+  object the value becomes, so the decision and the two tests that pin it now live in
+  `pyrs-yaml-core` (`crates/pyrs-yaml-core/src/parser/yaml/direct.rs`). The binding crate keeps
+  the materialization, the only part that needs a Python object to exist, and its Rust test tier
+  is now empty. The premise this step started from - that the Rust test tier needs a Python
+  runtime - does not hold at the binary level: of the 848 artifacts `cargo test --workspace
+  --no-run` builds, exactly one names a `python*.dll`, and it is the extension cdylib itself. What
+  stays coupled is the build graph - `pyo3`, `numpy` and their build-time crates are still in the
+  binding crate's closure - and the binding crate's `ir_gate` bench harness, which starts CPython
+  to count instructions. No behaviour changes: `safe_load` and its siblings answer exactly the
+  documents they answered before.
+
 ### Removed
 
 - **The invented rule validator is retired; `Document.validate()` is the only schema surface** —

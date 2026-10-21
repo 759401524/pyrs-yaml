@@ -714,6 +714,18 @@ status: new
   동작은 변하지 않는다(예전부터 import 가능). `tests/test_api_doc_signatures.py`는 이제 4개 로케일의
   `reference.md`에서 같은 35개 이름을 이 건에 대한 예외 없이 비교한다.
 
+- **직접 로드의 적합성 판정을 엔진 crate로 옮겼다** — 어떤 문서가 값 전용 빠른 경로의 안쪽에
+  들어가는지는 문서 그 자체와 문법이 정하는 것이지, 값이 마지막으로 어떤 Python 객체가 되느냐가
+  정하는 것이 아니다. 그래서 그 판정과 판정을 고정하는 두 개의 테스트는 이제 `pyrs-yaml-core`
+  (`crates/pyrs-yaml-core/src/parser/yaml/direct.rs`)에 놓였다. 바인딩 crate에는 값을 만들어 내는
+  일만 남는데, 이 부분이 Python 객체가 있어야만 동작하는 유일한 부분이고, 바인딩 crate의 Rust 테스트
+  단계는 이제 비어 있다. 이 단계의 출발 전제였던 "Rust 테스트 단계가 Python 런타임을 요구한다"는
+  주장은 바이너리 수준에서 사실이 아니다. `cargo test --workspace --no-run`이 만들어 낸 848개의
+  산출물 가운데 `python*.dll`을 이름으로 든 것은 하나뿐이고, 그것이 바로 확장 모듈 그 자체다. 여전히
+  묶여 있는 것은 빌드 그래프다. `pyo3`와 `numpy`, 그리고 그 빌드용 crate들이 바인딩 crate의 closure
+  안에 아직 있으며, 바인딩 crate의 `ir_gate` 벤치 하네스는 명령어 수를 세기 위해 CPython을 띄운다.
+  동작은 달라지지 않았다. `safe_load`과 그 형제함수는 예전과 똑같은 문서들에 똑같은 답을 준다.
+
 ### 제거
 
 - **자체 제작 규칙 검증기를 은퇴시키고 `Document.validate()`를 유일한 스키마 표면으로 삼습니다** ——
