@@ -1,11 +1,11 @@
-use pyrs_yaml::ast::CustomNode;
-use pyrs_yaml::parser::yaml::YamlSchema;
-use pyrs_yaml::py::editing;
-use pyrs_yaml::splice::SpliceState;
+use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_YAML, SMALL_YAML,
 };
 use pyrs_yaml_core::editing::Segment;
+use pyrs_yaml_core::editing::plan as editing;
+use pyrs_yaml_core::parser::yaml::YamlSchema;
+use pyrs_yaml_core::splice::SpliceState;
 use std::sync::Arc;
 
 // Shared fixtures for the LARGE_* documents below. Each macro expands to a
@@ -145,46 +145,46 @@ fn main() {
 // ── Parse benchmarks ──
 
 #[divan::bench]
-fn parse_small() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap()
+fn parse_small() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap()
 }
 
 #[divan::bench]
-fn parse_medium() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap()
+fn parse_medium() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap()
 }
 
 #[divan::bench]
-fn parse_large() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap()
+fn parse_large() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap()
 }
 
 #[divan::bench]
-fn parse_anchors() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap()
+fn parse_anchors() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap()
 }
 
 #[divan::bench]
-fn parse_comments() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(COMMENT_YAML, YamlSchema::Core).unwrap()
+fn parse_comments() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(COMMENT_YAML, YamlSchema::Core).unwrap()
 }
 
 #[divan::bench]
-fn parse_block_scalars() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap()
+fn parse_block_scalars() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap()
 }
 
 /// No `&` anchors — the common anchor-free document; per-event name resolution
 /// is a no-op so this measures the pure parse path.
 #[divan::bench]
-fn parse_large_no_extract() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(LARGE_NO_EXTRACT_YAML, YamlSchema::Core).unwrap()
+fn parse_large_no_extract() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(LARGE_NO_EXTRACT_YAML, YamlSchema::Core).unwrap()
 }
 
 /// Has `<<` merges — exercises the full merge resolution path.
 #[divan::bench]
-fn parse_large_with_merges() -> pyrs_yaml::ast::CustomNode {
-    pyrs_yaml::parser::parse(LARGE_MERGE_YAML, YamlSchema::Core).unwrap()
+fn parse_large_with_merges() -> pyrs_yaml_core::ast::CustomNode {
+    pyrs_yaml_core::parser::parse(LARGE_MERGE_YAML, YamlSchema::Core).unwrap()
 }
 
 // ── Parse sub-step micro-benchmarks (decompose parse cost) ──
@@ -254,8 +254,8 @@ fn resolve_core_type_many(bencher: divan::Bencher) {
         let mut n = 0usize;
         for s in scalars {
             if matches!(
-                pyrs_yaml::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Core),
-                pyrs_yaml::parser::yaml::types::YamlType::Str(_)
+                pyrs_yaml_core::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Core),
+                pyrs_yaml_core::parser::yaml::types::YamlType::Str(_)
             ) {
                 n += 1;
             }
@@ -306,8 +306,8 @@ fn resolve_yaml11_type_many(bencher: divan::Bencher) {
         let mut n = 0usize;
         for s in scalars {
             if matches!(
-                pyrs_yaml::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Yaml1_1),
-                pyrs_yaml::parser::yaml::types::YamlType::Str(_)
+                pyrs_yaml_core::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Yaml1_1),
+                pyrs_yaml_core::parser::yaml::types::YamlType::Str(_)
             ) {
                 n += 1;
             }
@@ -350,7 +350,7 @@ fn needs_quotes_over_scalars(bencher: divan::Bencher) {
     bencher.bench(|| {
         let mut n = 0usize;
         for s in scalars {
-            if pyrs_yaml::parser::yaml::schema::needs_quotes(s) {
+            if pyrs_yaml_core::parser::yaml::schema::needs_quotes(s) {
                 n += 1;
             }
         }
@@ -389,67 +389,67 @@ fn to_json_medium(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn serialize_small(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
 fn serialize_medium(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
 fn serialize_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
 fn serialize_anchors(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
 fn serialize_block_scalars(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 // ── Roundtrip benchmarks (parse + serialize, full pipeline) ──
 
 #[divan::bench]
 fn roundtrip_small() -> String {
-    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-    pyrs_yaml::serializer::to_yaml(&ast)
+    let ast = pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml_core::serializer::to_yaml(&ast)
 }
 
 #[divan::bench]
 fn roundtrip_medium() -> String {
-    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-    pyrs_yaml::serializer::to_yaml(&ast)
+    let ast = pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml_core::serializer::to_yaml(&ast)
 }
 
 #[divan::bench]
 fn roundtrip_large() -> String {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-    pyrs_yaml::serializer::to_yaml(&ast)
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml_core::serializer::to_yaml(&ast)
 }
 
 // ── Block-style serialize ──
 
 #[divan::bench]
 fn serialize_block(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    let ast = pyrs_yaml_core::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 // ── Editing benchmarks (pure AST mutation; lazy sync defers serialization) ──
 
 #[divan::bench]
 fn edit_set_small(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("key"))];
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -468,7 +468,7 @@ fn edit_set_small(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn edit_set_medium(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("database"))];
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -487,7 +487,7 @@ fn edit_set_medium(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn edit_set_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![
         Segment::Key(std::borrow::Cow::Borrowed("config")),
         Segment::Key(std::borrow::Cow::Borrowed("limits")),
@@ -510,7 +510,7 @@ fn edit_set_large(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn edit_insert_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -528,7 +528,7 @@ fn edit_insert_large(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn edit_delete_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -538,7 +538,7 @@ fn edit_delete_large(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn edit_batch_10(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let source: Arc<str> = Arc::from(LARGE_YAML);
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -585,21 +585,21 @@ fn key(k: &str) -> Segment<'_> {
 }
 
 fn parse_doc(yaml: &str) -> CustomNode {
-    pyrs_yaml::parser::parse(yaml, YamlSchema::Core).unwrap()
+    pyrs_yaml_core::parser::parse(yaml, YamlSchema::Core).unwrap()
 }
 
 /// Shared bodies for the large/complex document benches: the measured
 /// operation is identical, only the fixture generator differs.
 fn bench_serialize(bencher: divan::Bencher, yaml: String) {
     let ast = parse_doc(&yaml);
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    bencher.bench(|| pyrs_yaml_core::serializer::to_yaml(&ast));
 }
 
 fn bench_serialize_with_clone(bencher: divan::Bencher, yaml: String) {
     let ast = parse_doc(&yaml);
     bencher.bench(|| {
         let a = ast.clone();
-        pyrs_yaml::serializer::to_yaml(&a)
+        pyrs_yaml_core::serializer::to_yaml(&a)
     });
 }
 
@@ -718,36 +718,36 @@ fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn walk_small(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+    let ast = pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::walk(&ast));
 }
 
 #[divan::bench]
 fn scalars_small(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+    let ast = pyrs_yaml_core::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::scalars(&ast));
 }
 
 #[divan::bench]
 fn walk_medium(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+    let ast = pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::walk(&ast));
 }
 
 #[divan::bench]
 fn scalars_medium(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+    let ast = pyrs_yaml_core::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::scalars(&ast));
 }
 
 #[divan::bench]
 fn walk_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::walk(&ast));
 }
 
 #[divan::bench]
 fn scalars_large(bencher: divan::Bencher) {
-    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+    let ast = pyrs_yaml_core::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml_core::ast::scalars(&ast));
 }

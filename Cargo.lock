@@ -898,7 +898,6 @@ dependencies = [
 name = "pyrs-yaml"
 version = "0.18.1"
 dependencies = [
- "codspeed-divan-compat",
  "granit-parser 2.0.0",
  "indexmap",
  "numpy",
@@ -926,6 +925,7 @@ dependencies = [
 name = "pyrs-yaml-core"
 version = "0.18.1"
 dependencies = [
+ "codspeed-divan-compat",
  "granit-parser 2.0.0",
  "indexmap",
  "proptest",
