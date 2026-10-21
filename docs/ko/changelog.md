@@ -17,6 +17,17 @@ status: new
 
 ### 변경
 
+- **Ir 게이트가 cargo의 요약 대신 컴파일러 자체의 진단을 출력합니다** — harness 빌드가 실패하면
+  이전에는 `error: could not compile pyrs-yaml (lib) due to 1 previous error`만 표시되고 그
+  이상은 없었습니다. 게이트는 `--message-format=json`으로 빌드하므로 rustc의 진단이
+  `compiler-message` 레코드로 stdout으로 옮겨가지만, 출력하던 것은 `res.stderr`뿐이었습니다.
+  감춰져 있던 것은 게이트가 가장 잘 설명해야 할 실패, 즉 링크 오류
+  `rust-lld: unable to find library -lpython3.12`였고, 손으로 cargo를 다시 실행해야만 보였습니다.
+  이제 `build_diagnostics()`가 빌드 스트림의 rendered 진단을 모두 이어 붙이고, stdout에 하나도
+  없을 때만 stderr 끝부분으로 폴백합니다(툴체인 부재나 잘못된 manifest이며 컴파일 오류가
+  아닙니다). `tests/test_ir_gate_diagnostics.py`는 두 스트림과 폴백을 고정하며, stderr만
+  반환하도록 되돌린 변이에서 3개 중 2개가 실패했습니다.
+
 - **표준 JSON Schema 표면이 공식 코퍼스로 판정되며 독립된 행을 갖습니다** — `Document.validate()`는
   평가를 Python의 `jsonschema`에 맡기고 AST→인스턴스 변환, schema 수용, `YamlValidateError` 계약만
   이 저장소에 남깁니다. 그래서 매트릭스의 기존 `schema validation` 행은 *다른* 표면, 즉

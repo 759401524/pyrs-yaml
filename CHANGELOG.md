@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Ir gate prints the compiler's diagnostic instead of cargo's summary** — a failing harness
+  build reported only `error: could not compile pyrs-yaml (lib) due to 1 previous error` and
+  nothing else. The gate builds with `--message-format=json`, which moves rustc's diagnostics onto
+  stdout as `compiler-message` records, but it printed `res.stderr` alone, so the cause it was
+  hiding — `rust-lld: unable to find library -lpython3.12` — was only visible by rerunning cargo by
+  hand. `build_diagnostics()` now joins every rendered diagnostic from the build stream and falls
+  back to the stderr tail only when stdout carries none, which is the missing-toolchain and
+  bad-manifest case rather than a compile error. `tests/test_ir_gate_diagnostics.py` pins both
+  streams and the fallback; the mutation that returned stderr alone reddened two of its three tests.
+
 - **The standard JSON Schema surface is judged by the official corpus, in a row of its own** —
   `Document.validate()` hands evaluation to Python's `jsonschema` and keeps only the AST-to-instance
   conversion, the schema acceptance and the `YamlValidateError` contract here, so the matrix's
