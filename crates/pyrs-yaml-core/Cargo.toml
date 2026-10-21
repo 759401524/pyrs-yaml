@@ -11,16 +11,39 @@ repository = "https://github.com/759401524/pyrs-yaml"
 name = "pyrs_yaml_core"
 
 [dependencies]
-indexmap = "2.7"
-rust-i18n = "4.2"
-granit-parser = "2.0"
-regex = "1.11"
-thiserror = "2"
-pyrs-ast = { path = "../pyrs-ast", version = "0.18.1" }
-pyrs-event = { path = "../pyrs-event", version = "0.18.1" }
+# `default-features = false` keeps the dependency tree `no_std`-clean; the
+# `std` feature re-enables the std-only halves below.
+indexmap = { version = "2.7", default-features = false }
+# i18n is std-only by construction (rust-i18n reads locale files through std
+# and owns a process-global locale), so the engine compiles its error-message
+# catalog only when `std` is on.
+rust-i18n = { version = "4.2", optional = true }
+# The engine needs comment attachment in every build; `std` is what a bare
+# `granit-parser` default would add on top.
+granit-parser = { version = "2.0", default-features = false, features = ["comments", "error_messages"] }
+# User-defined `!schema` rules are a runtime feature of the binding: `regex`
+# is std-only here, so the YAML engine's own grammar never depends on it.
+regex = { version = "1.11", optional = true }
+thiserror = { version = "2", default-features = false }
+pyrs-ast = { path = "../pyrs-ast", version = "0.18.1", default-features = false }
+pyrs-event = { path = "../pyrs-event", version = "0.18.1", default-features = false }
 pyrs-schema = { path = "../pyrs-schema", version = "0.18.1" }
 
 [features]
+# `std` is on by default so every existing host consumer (the Python binding,
+# the CLI, the benches) keeps the exact API it had, including the i18n module
+# and the runtime schema registry. `no_std` users opt out with
+# `default-features = false` and get the parser, serializer, editing and
+# splice layers without a global mutable registry or translated catalogs.
+default = ["std"]
+std = [
+    "dep:rust-i18n",
+    "dep:regex",
+    "indexmap/std",
+    "thiserror/std",
+    "granit-parser/std",
+    "pyrs-ast/std",
+]
 # Opt-in build of the instruction-count gate binary; see the `[[bench]] ir_gate`
 # note below for why the target is feature-gated rather than always present.
 ir-gate = []

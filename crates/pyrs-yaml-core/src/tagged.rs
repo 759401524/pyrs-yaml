@@ -18,6 +18,9 @@
 //! tag were absent, which returned `1.2` (the type changed *and* the trailing zero was lost), `1`,
 //! `"yes"` and `"aGk="`.
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
 /// The integer spellings the `!!int` tag defines: an optional sign, then base-10 digits or a `0x` /
 /// `0o` / `0b` prefixed literal, plus YAML's legacy `07` octal.
 ///

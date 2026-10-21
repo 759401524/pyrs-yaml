@@ -92,15 +92,15 @@ def test_the_std_recheck_names_every_no_std_crate() -> None:
 
 
 def test_the_gate_reports_a_narrowed_recheck() -> None:
-    # The negative control, and it is the shape the file had before this change: three crates dropped
-    # from the std step while both no_std steps still named five.
+    # The negative control, and it is the shape the file had before this change: two crates kept in
+    # the std step while both no_std steps name the whole foundation.
     narrowed = {
         "pyrs-ast",
         "pyrs-schema",
     }
     no_std = FOUNDATION
     missing = _std_narrower_than_no_std(no_std, narrowed)
-    assert missing == {"pyrs-event", "pyrs-json", "pyrs-toml"}, sorted(missing)
+    assert missing == {"pyrs-event", "pyrs-json", "pyrs-toml", "pyrs-yaml-core"}, sorted(missing)
 
 
 def test_the_gate_reads_a_synthetic_step_list() -> None:

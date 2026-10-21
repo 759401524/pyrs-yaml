@@ -90,9 +90,22 @@ const TO_TOML_MEDIUM: Ceiling = Ceiling {
     allocs: 12,
     bytes: 1_208,
 };
+// The parse scenario is the one number that depends on the feature set. The std build tracks
+// seen scalar keys in a `HashSet` — one hash table per mapping — and keeps the committed line.
+// `alloc` carries no hasher, so the no_std build tracks them in the crate's `NodeMap`, whose
+// ordered entries vector is one more allocation per mapping; MEDIUM_YAML has five mappings, two
+// of them outgrowing the first table. Measured 2026-10-21 on the no-default-features build:
+// 74 allocations / 24952 bytes, against 67 / 24512 with std. The shipped engine is the std one,
+// and its line did not move.
+#[cfg(feature = "std")]
 const PARSE_MEDIUM: Ceiling = Ceiling {
     allocs: 67,
     bytes: 24_512,
+};
+#[cfg(not(feature = "std"))]
+const PARSE_MEDIUM: Ceiling = Ceiling {
+    allocs: 74,
+    bytes: 24_952,
 };
 const SERIALIZE_MEDIUM: Ceiling = Ceiling {
     allocs: 7,

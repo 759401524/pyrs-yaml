@@ -1,5 +1,7 @@
 //! Granit-parser integration tests
 
+use alloc::vec::Vec;
+
 struct EventSink<'a> {
     events: Vec<granit_parser::Event<'a>>,
 }

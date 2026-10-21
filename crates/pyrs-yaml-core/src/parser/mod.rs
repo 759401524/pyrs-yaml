@@ -8,12 +8,15 @@ pub use crate::parser::stream::{
 
 use crate::ast::{Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 use crate::parser::yaml::Schema;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::ops::Range;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
-use std::borrow::Cow;
-use std::ops::Range;
-use std::sync::Arc;
 use yaml::{
     BlockHeader, anchor_name_within, compute_line_offsets, detect_block_header, resolve_merge_keys,
 };
@@ -78,7 +81,7 @@ fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNo
     }
     let mut defined = Vec::new();
     collect_anchor_names(root, &mut defined);
-    let mut replacements = std::collections::HashMap::new();
+    let mut replacements = NodeMap::default();
     for (name, node) in orphans {
         if defined.contains(&name) || replacements.contains_key(&name) {
             continue;
@@ -145,10 +148,7 @@ fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
 /// leaves an alias in a key slot pointing at the dropped definition (the surviving
 /// entry supplies the key). If a future finding lands that shape, it owes a deliberate
 /// key-slot rewrite with its own ordering proof — not a silent leave-behind here.
-fn inline_aliases(
-    node: &mut CustomNode,
-    replacements: &std::collections::HashMap<String, CustomNode>,
-) {
+fn inline_aliases(node: &mut CustomNode, replacements: &NodeMap<String, CustomNode>) {
     if let Some(replacement) = match node {
         CustomNode::Alias { name } => replacements.get(name).cloned(),
         _ => None,
@@ -390,8 +390,8 @@ pub fn parse_all_documents(
         return Ok(vec![ParsedDocument { node, version }]);
     }
 
-    let results = std::mem::take(&mut receiver.documents);
-    let versions = std::mem::take(&mut receiver.document_versions);
+    let results = core::mem::take(&mut receiver.documents);
+    let versions = core::mem::take(&mut receiver.document_versions);
     let mut docs: Vec<ParsedDocument> = results
         .into_iter()
         .enumerate()
@@ -615,7 +615,7 @@ struct AstReceiver<'a> {
     /// declare a different version per document, so the pairing is kept, not collapsed.
     document_versions: Vec<Option<String>>,
     /// Current anchor ID to name mapping
-    anchors: std::collections::HashMap<usize, String>,
+    anchors: NodeMap<usize, String>,
     /// Standalone notes seen so far that have not met a node yet, in source
     /// order. A list, not a slot: stacking any number of comment lines above one
     /// key is ordinary, and overwriting here kept only the last of them.
@@ -650,6 +650,37 @@ struct AstReceiver<'a> {
     flow_indent_error: Option<ParseError>,
 }
 
+/// Scalar keys already seen in one mapping, keyed by content.
+///
+/// The std build keeps `HashSet`, the one-table-per-mapping structure
+/// `tests/alloc_gate.rs` prices. `alloc` carries no hasher, so the `no_std`
+/// build uses the crate's `NodeMap` instead, whose `FxHasher` needs no
+/// entropy; the ordered map's entries vector is the one extra allocation per
+/// mapping that the no_std ceiling records.
+#[cfg(feature = "std")]
+type SeenValueKeys = std::collections::HashSet<Arc<str>>;
+#[cfg(not(feature = "std"))]
+type SeenValueKeys = NodeMap<Arc<str>, ()>;
+
+#[cfg(feature = "std")]
+fn new_seen_value_keys() -> SeenValueKeys {
+    SeenValueKeys::new()
+}
+#[cfg(not(feature = "std"))]
+fn new_seen_value_keys() -> SeenValueKeys {
+    NodeMap::default()
+}
+
+/// Record `key` and report whether it was new to this mapping.
+#[cfg(feature = "std")]
+fn note_scalar_key(seen: &mut SeenValueKeys, key: &Arc<str>) -> bool {
+    seen.insert(Arc::clone(key))
+}
+#[cfg(not(feature = "std"))]
+fn note_scalar_key(seen: &mut SeenValueKeys, key: &Arc<str>) -> bool {
+    seen.insert(Arc::clone(key), ()).is_none()
+}
+
 #[derive(Debug)]
 enum ParseState {
     /// Building a mapping
@@ -665,7 +696,7 @@ enum ParseState {
         /// that re-parse rejected (libFuzzer `yaml_roundtrip` crash-3b0a7d1d).
         /// Holds `Arc<str>` so recording a seen key is a refcount bump off the
         /// node's existing allocation, not a fresh `String`.
-        seen_value_keys: std::collections::HashSet<Arc<str>>,
+        seen_value_keys: SeenValueKeys,
         /// Slot of this mapping's null key, once one is inserted — see the fold in
         /// `push_node`. Only one can exist, so remembering where it is keeps a
         /// null-key-heavy document linear instead of rescanning every key.
@@ -725,7 +756,7 @@ impl<'a> AstReceiver<'a> {
             documents: Vec::new(),
             document_version: None,
             document_versions: Vec::new(),
-            anchors: std::collections::HashMap::new(),
+            anchors: NodeMap::default(),
             comment_stack: Vec::new(),
             pending_standalone_comment: Vec::new(),
             document_ended: false,
@@ -1130,18 +1161,18 @@ impl<'a> AstReceiver<'a> {
                         // emits them identically. The `IndexMap` (keyed by the
                         // full node) alone misses those, so track the emitted
                         // value here and reject the collision (crash-3b0a7d1d).
-                        // `HashSet::insert` does the lookup and the store in a
-                        // single hashing pass and returns whether the value was
-                        // new, so the common no-duplicate key costs one probe and
-                        // an `Arc` refcount bump (no `String` allocation); the
-                        // `String` is materialized only when a collision is found.
+                        // The set's insert does the lookup and the store in a
+                        // single hashing pass, so the common no-duplicate key
+                        // costs one probe and an `Arc` refcount bump (no
+                        // `String` allocation); the `String` is materialized
+                        // only when a collision is found.
                         let value_dup: Option<String> = match &key {
                             // A tag replaces the implicit resolution, so `!a null`
                             // and `!A null` are different keys: their emitted lines
                             // carry the tag and re-read apart, which is exactly what
                             // must not be reported as a collision.
                             CustomNode::Scalar { value, meta, .. } if meta.tag().is_none() => {
-                                if seen_value_keys.insert(Arc::clone(value)) {
+                                if note_scalar_key(seen_value_keys, value) {
                                     None
                                 } else {
                                     Some(value.to_string())
@@ -1530,7 +1561,7 @@ impl<'a> AstReceiver<'a> {
         self.stack.push(ParseState::Mapping {
             pairs: NodeMap::default(),
             current_key: Box::new(None),
-            seen_value_keys: std::collections::HashSet::new(),
+            seen_value_keys: new_seen_value_keys(),
             null_key: None,
             anchor_id,
             tag: tag_obj,

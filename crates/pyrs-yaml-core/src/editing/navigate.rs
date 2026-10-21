@@ -5,7 +5,8 @@
 
 use crate::ast::CustomNode;
 use crate::ast::NodeMap;
-use std::borrow::Cow;
+use alloc::borrow::Cow;
+use alloc::string::ToString;
 
 /// ```
 /// use pyrs_yaml_core::editing::Segment;
@@ -209,6 +210,8 @@ pub fn navigate_mut<'a>(
 mod tests {
     use super::*;
     use crate::ast::CustomNode;
+    use alloc::string::String;
+    use alloc::vec::Vec;
 
     fn mk_scalar(s: &str) -> CustomNode {
         CustomNode::plain_scalar(s)
@@ -242,7 +245,7 @@ mod tests {
     }
 
     fn value_at(node: &CustomNode, key: &str) -> String {
-        let segs = [Segment::Key(std::borrow::Cow::Borrowed(key))];
+        let segs = [Segment::Key(alloc::borrow::Cow::Borrowed(key))];
         match navigate(node, &segs).expect("the path finds an entry") {
             CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
             other => format!("{other:?}"),

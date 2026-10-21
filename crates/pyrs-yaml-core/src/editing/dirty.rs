@@ -3,7 +3,8 @@
 //! This module defines the core types used by the editing primitives and
 //! splice assembly layer. It is pure Rust with no Python/PyO3 dependencies.
 
-use std::ops::Range;
+use alloc::string::String;
+use core::ops::Range;
 
 /// Describes the kind of edit operation to apply.
 ///
@@ -47,7 +48,7 @@ impl DirtyUnit {
     /// `SpliceState`). Panics-free: saturates at 0 defensively.
     pub fn shifted(&self, base: usize) -> DirtyUnit {
         let move_range =
-            |r: &std::ops::Range<usize>| r.start.saturating_sub(base)..r.end.saturating_sub(base);
+            |r: &core::ops::Range<usize>| r.start.saturating_sub(base)..r.end.saturating_sub(base);
         DirtyUnit {
             kind: match &self.kind {
                 DirtyKind::Region {

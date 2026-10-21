@@ -22,6 +22,8 @@
 use crate::ast::CustomNode;
 use crate::error::ParseError;
 use crate::parser::yaml::{Schema, SchemaResolver, YamlType};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use regex::Regex;
 use std::borrow::Cow;
 

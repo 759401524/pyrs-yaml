@@ -5,6 +5,8 @@ mod tests {
     use crate::parser::parse_with_options;
     use crate::parser::yaml::Schema;
     use crate::serializer::{SerializeOptions, to_yaml, to_yaml_with_options};
+    use alloc::string::{String, ToString};
+    use alloc::vec::Vec;
     use proptest::prelude::*;
 
     /// When a round-trip comparison fails, print a unified diff of the two
@@ -851,6 +853,7 @@ mod tests {
         // Exercises `parse_schema_yaml` on random schema YAML — never panics.
         // Use arbitrary string in the "pattern" value position via a compact
         // char class that includes quotes and YAML punctuation.
+        #[cfg(feature = "std")]
         #[test]
         fn prop_schema_parse_no_panic(schema_yaml in "[!#$%&()*+,-./:;<=>?@\\[\\]^_`{}~a-zA-Z0-9 \"']{0,200}\\n*") {
             let _ = crate::parser::yaml::schema_language::parse_schema_yaml(&schema_yaml);

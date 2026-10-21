@@ -4,7 +4,9 @@
 
 use crate::ast::CustomNode;
 use crate::error::{EditError, NavigateError};
-use std::ops::Range;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::ops::Range;
 
 use super::dirty::DirtyKind;
 use super::navigate::{Segment, mapping_key_index, normalize_index};

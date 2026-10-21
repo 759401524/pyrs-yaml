@@ -1,4 +1,5 @@
 use crate::ast::Chomping;
+use alloc::string::{String, ToString};
 
 /// 反转义双引号 YAML 字符串中的转义序列。
 ///

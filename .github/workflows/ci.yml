@@ -358,6 +358,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-yaml-core
 
       # Building for `thumbv7em-none-eabi` proves the code links without std; it does not prove the
       # logic still works there, and the unit tests are the only thing that does - map lookups
@@ -376,6 +377,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-yaml-core
 
       # Re-enabling `std` must not have been "achieved" by deleting the
       # no_std path, so assert the default (std) configuration still compiles
@@ -391,6 +393,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-yaml-core
 
   test:
     needs: [build, changes, matrix-plan]

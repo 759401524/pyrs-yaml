@@ -1,6 +1,8 @@
 use crate::ast::{Chomping, Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 use crate::error::{DepthError, SerializeError};
 use crate::parser::yaml::schema::core_type_is_non_string;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 /// 块标量头部的两项指示符，作为一组传递，避免在 `write_scalar` 及其下游
 /// 逐层加参数。

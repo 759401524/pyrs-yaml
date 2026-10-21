@@ -7,8 +7,10 @@
 //! slices of `base` (zero copy); regenerated ranges become `Owned` text.
 
 use crate::editing::{DirtyKind, DirtyUnit};
-use std::ops::Range;
-use std::sync::Arc;
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::ops::Range;
 
 /// One contiguous piece of the reassembled document.
 #[derive(Debug, Clone, PartialEq)]

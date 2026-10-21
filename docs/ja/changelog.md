@@ -15,7 +15,35 @@ status: new
 
 ### [Unreleased]
 
+### 追加
+
+- **YAML エンジンは標準ライブラリを持たないターゲットでもビルドできるようになりました** —
+  `pyrs-yaml-core` は `#![no_std]` になりました。パーサー、ラウンドトリップのシリアライザ、コメント
+  を保つ編集層、スプライスは `core` + `alloc` だけで動き、その下にある `granit-parser` はもともと
+  std なしでビルドされていました。`std` feature は既定で有効なままなので、Python バインディング、
+  CLI、各ベンチマークは従来の API を保ったままです。`std` が足すのはエンジンそのものではなく OS を要
+  する三つの面だけです。翻訳済みのエラーメッセージカタログ（rust-i18n はプロセスグローバルな locale
+  を持ちます）、実行時のスキーマレジストリ（グローバルな `RwLock`）、そして regex を使う利用者定義ス
+  キーマ言語です。`no_std` の呼び出し側は `pyrs_schema::types::Schema` のバリアントを直接組み立てて
+  スキーマを選びます。`ci.yml` の三つの `no-std-check` ステップは `thumbv7em-none-eabi` 用にこの
+  crate をビルドし、その単体テストをホストで走らせるようになり、`tests/test_no_std_gate.py` は
+  `#![no_std]` を宣言した crate のルートから foundation 一覧を読み取ります。no_std に入ったのにゲー
+  トに入っていない crate は、無言の抜けではなく赤の判定になります。`no_std` ビルドはすでに出現したス
+  カラーキーを `HashSet` ではなく crate の順序付きノードマップに記録します。`alloc` にはハッシュ関数
+  がないためです。`parse_medium` の割り当て上限は 74 回で、std ビルドの 67 回より各マッピング 1 回多
+  く、`tests/alloc_gate.rs` は feature ごとに上限を記録します。
+
 ### 変更
+
+- **イベントストリームと merge 解決器はアンカーを crate のノードマップに保持します** —
+  `#![no_std]` の crate は `std::collections::HashMap` を名前で持てないため、
+  `event_to_stream_event` と `resolve_anchor_name` は `&mut NodeMap<usize, String>` を受け取り、
+  merge 解決器のアンカーテーブルも `NodeMap<String, _>` になりました。AST がすでに使っていた
+  `FxHasher` 上の `IndexMap` そのものなので、アンカーの順序は挿入順になり、キー参照も実測で
+  安くなります。命令数ゲートの YAML シナリオで、木は `parse_anchors` -2.36%、
+  `parse_inline_merge` -2.32%、`parse_medium` -0.15%、`parse_small` -0.21% 動きました。確定済みの
+  下限は触っていないので、ゲートがこれら二つのシナリオで受け入れている余裕は速い方向に古くなり、
+  実行イメージでの更新を待っています。
 
 - **Ir ゲートは cargo の要約ではなくコンパイラ自身の診断を表示します** — harness のビルドが
   失敗したとき、これまでは

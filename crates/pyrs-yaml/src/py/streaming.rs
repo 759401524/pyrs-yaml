@@ -8,10 +8,11 @@
 use granit_parser::{BufferedInput, Parser as SaphyrParser, Span};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
+use crate::ast::NodeMap;
 use crate::parser::stream::event_to_stream_event;
 use crate::parser::{StreamEvent, StreamEventType};
 use crate::py::stream_events::stream_event_to_py_dict;
@@ -197,7 +198,7 @@ pub(crate) struct YamlStream {
     /// for deserialization (which we don't use). The `ChunkCharIter` is owned
     /// by `BufferedInput`, which is owned by the parser, so no dangling refs.
     parser: Option<SaphyrParser<'static, BufferedInput<ChunkCharIter>>>,
-    anchor_map: HashMap<usize, String>,
+    anchor_map: NodeMap<usize, String>,
     finished: bool,
     pending_error: Option<String>,
     /// Shared reader-error slot (mirrors ChunkCharIter.error). The iterator is
@@ -216,7 +217,7 @@ impl YamlStream {
         let parser = SaphyrParser::new_from_iter(chars);
         Self {
             parser: Some(parser),
-            anchor_map: HashMap::new(),
+            anchor_map: NodeMap::default(),
             finished: false,
             pending_error: None,
             error_slot: Some(error_slot),

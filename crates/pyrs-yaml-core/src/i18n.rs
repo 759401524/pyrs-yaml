@@ -30,7 +30,10 @@
 //! assert_eq!(msg, "test"); // 占位符 %{detail} 被替换为 "test"
 //! ```
 
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use std::cell::RefCell;
+use std::thread_local;
 
 /// 支持的语言列表
 pub const SUPPORTED_LANGUAGES: &[&str] = &["en", "zh-CN", "ja-JP", "ko-KR"];

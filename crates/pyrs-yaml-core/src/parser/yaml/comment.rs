@@ -1,3 +1,6 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+
 /// Pre-compute the byte offset of the start of each line in the given text.
 ///
 /// The returned vector has one entry per line, where `line_offsets[line]`
@@ -305,6 +308,7 @@ fn comment_opens_before_on_line(bytes: &[u8], byte: usize, floor: usize) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     /// The byte offset immediately after an `&name` token — the `byte_start` a
     /// granit event would carry for an anchored collection/null whose span is

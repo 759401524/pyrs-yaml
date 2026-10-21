@@ -1,7 +1,7 @@
 use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle};
 use crate::parser::is_null_key;
-use indexmap::IndexMap;
-use std::collections::HashMap;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 /// Recursion budget for merge/alias expansion. The `path` cycle guard bounds
 /// re-entry into an *already-expanding* anchor, but a pathological input can
@@ -20,7 +20,7 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
         return;
     }
     // First, collect all anchor names and their mappings
-    let mut anchors: HashMap<String, NodeMap<CustomNode, CustomNode>> = HashMap::new();
+    let mut anchors: NodeMap<String, NodeMap<CustomNode, CustomNode>> = NodeMap::default();
     collect_anchor_mappings(node, &mut anchors);
 
     // Then, resolve merge keys. `path` carries the anchor names whose expansion
@@ -88,7 +88,7 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// Recursively resolve merge keys in a node
 fn resolve_merges_recursive(
     node: &mut CustomNode,
-    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
 ) {
@@ -112,7 +112,7 @@ fn resolve_merges_recursive(
 /// Used for resolving merge keys (`<<`).
 fn collect_anchor_mappings(
     node: &CustomNode,
-    anchors: &mut HashMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &mut NodeMap<String, NodeMap<CustomNode, CustomNode>>,
 ) {
     match node {
         CustomNode::Mapping { pairs, meta, .. } => {
@@ -155,7 +155,7 @@ type AnchoredPairs = Vec<(String, CustomNode, CustomNode)>;
 /// Resolve merge keys in a mapping
 fn resolve_mapping_merges(
     pairs: &mut NodeMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
 ) {
@@ -265,8 +265,8 @@ fn resolve_mapping_merges(
         // one anchor and for a collision across the merge value: YAML 1.1 gives
         // each anchor its own precedence among the merge sources and lets the
         // mapping's own keys override all of them.
-        let mut pending: IndexMap<CustomNode, (String, CustomNode)> =
-            IndexMap::with_capacity(pairs.len());
+        let mut pending: NodeMap<CustomNode, (String, CustomNode)> =
+            NodeMap::with_capacity_and_hasher(pairs.len(), Default::default());
         for (source, key, value) in merged_pairs {
             pending.entry(key).or_insert((source, value));
         }
@@ -395,7 +395,7 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
 fn collect_merge_data(
     merge_value: &CustomNode,
     pairs: &NodeMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &[String],
     depth: usize,
 ) -> AnchoredPairs {
@@ -487,7 +487,7 @@ fn collect_inline_pairs(
 fn collect_merged_pairs_for_anchor(
     name: &str,
     pairs: &NodeMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &[String],
     depth: usize,
     result: &mut AnchoredPairs,
