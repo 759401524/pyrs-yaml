@@ -8,16 +8,7 @@ from pathlib import Path
 import pytest
 
 import pyrs_yaml
-from pyrs_yaml.compliance import compute_compliance, load_test_cases, run_test
-
-try:
-    import yaml
-
-    HAS_PYYAML = True
-except ImportError:
-    HAS_PYYAML = False
-    yaml = None
-
+from pyrs_yaml.compliance import HAS_PYYAML, compute_compliance, load_test_cases, run_test
 
 SUITE_DIR = "Reference/yaml-test-suite"
 

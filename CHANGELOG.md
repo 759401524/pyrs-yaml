@@ -9,6 +9,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The external-authority column stops crediting an import** — a `tests/test_*_suite.py` or
+  `*_spec_table.py` file read `yes` when it imported a reader no marker bounds, whether or not
+  anything in the file still reached it. The cell asked about dependencies rather than about tests,
+  so a comparison deleted beside a live-looking import would have left the column green. A file now
+  earns the reader credit only by reaching into that reader: a call in a test, or a callable wired
+  into a module-level table before any test runs - the shape the writer suites use. `json is None`
+  is a probe, not a comparison, and an import with no use is neither. The bounded branch keeps its
+  stricter rule, because a skip there can be the one that removes the reader from a leg; a corpus
+  suite still needs no reader, since a corpus has no reader to be absent. `tests/test_yaml_suite.py`
+  was the one file that read `yes` through a bare import: `import yaml` existed only to derive the
+  `HAS_PYYAML` flag its gates use, while PyYAML loads the corpus inside `pyrs_yaml.compliance`, so
+  the flag now comes from that module and the file is credited by the suite it runs. Controls pin
+  all four shapes - import-only and a `json is None` probe read `no`, a module-level reader table
+  and a corpus suite read `yes` - and the measured tree is unchanged: all seven authority files read
+  `yes`, the four format rows still read `authority=yes`, and the derived hole list is still the
+  single `authority-tier:schema-validation`.
+
 - **The last parity hole closes: JSON5 and JSONC have a reference on every leg** — the registered
   entry named the two dialects whose only outside reader was `pyjson5`, declared
   `python_version >= '3.9' and python_version < '3.14'` with armv7l/s390x/ppc64le excluded, so the
