@@ -1,4 +1,4 @@
-"""The JSON5 grammar, production by production, against the reference implementation.
+r"""The JSON5 grammar, production by production, against the reference implementation.
 
 Runs in normal CI. This tier exists because the property and fuzz tiers cannot ask the question
 this one asks: their oracles compare *paths that exist* - a round trip, a fixed point, a replay - so
@@ -158,7 +158,10 @@ def test_a_surrogate_pair_is_one_character_here_and_two_utf16_units_in_the_pure_
     # from the shared table: this is the only one of its 101 accept rows where the two disagree.
     doc = '{a: "' + UESC + "D83D" + UESC + 'DE00"}'
     assert pyrs_yaml.load_json5(doc) == {"a": "\U0001f600"}
-    assert json5.loads(doc) == {"a": "\ud83d\ude00"}
+    # `chr`, not `"\ud83d\ude00"`: Python decodes that escape in a literal into two lone
+    # surrogates, and 3.15 refuses to compile a constant holding them, so the test file would
+    # fail to collect before any assertion ran.
+    assert json5.loads(doc) == {"a": chr(0xD83D) + chr(0xDE00)}
     if pyjson5 is not None:
         assert pyjson5.loads(doc) == {"a": "\U0001f600"}
 
@@ -170,7 +173,7 @@ def test_a_lone_surrogate_is_not_an_identifier_start_and_only_the_pure_python_re
     doc = "{" + UESC + "D800: 1}"
     with pytest.raises(pyrs_yaml.YamlParseError):
         pyrs_yaml.load_json5(doc)
-    assert json5.loads(doc) == {"\ud800": 1}
+    assert json5.loads(doc) == {chr(0xD800): 1}
     if pyjson5 is not None:
         with pytest.raises(pyjson5.Json5Exception):
             pyjson5.loads(doc)
