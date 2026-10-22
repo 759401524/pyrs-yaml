@@ -651,7 +651,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: 버전
 
 ```python
-__version__ = "0.18.2"
+__version__ = "0.18.3"
 ```
 
 ## 자동 생성 API 참조
