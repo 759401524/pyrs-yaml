@@ -748,3 +748,58 @@ asserts that a plain scalar's bytes lie inside the source's range and that an es
 value owns its own — granit delivers exactly that split, measured rather than assumed. Reintroducing
 the per-scalar copy fails that test by name, and the floor for `stream_medium` now sits at the lower
 number, so a regression on this path costs a red leg instead of living quietly.
+
+## Streaming at scale: byte offsets, cancellable producers, chunked parse (2026-10-22, decisions on the table)
+
+This section scopes the part of pillar 6 the vocabulary work did not cover: making the stream fit a
+high-concurrency log or an event-sourced replay, and reading past what physical memory and a single
+core can do. The mmap read path is already delivered behind its opt-in feature (pull request #587);
+what follows is the rest, written as options and decisions rather than as code, because each of the
+three changes a public surface and so needs the maintainer's ruling before it is built.
+
+**What the tree does today, with the file the evidence lives in.**
+
+- A `StreamEvent` carries `line` and `column` only (`crates/pyrs-event/src/lib.rs:50`); there is no
+  byte offset on the event. A `LineTable` exists to turn an offset into a line/column
+  (`crates/pyrs-event/src/lib.rs:173`), so the offset is known while building the table but is then
+  projected away. A consumer cannot resume or replay from a source position, which is exactly what
+  event-sourcing asks for.
+- YAML has one genuinely incremental producer — `YamlStream` drives granit one event at a time under
+  `py.detach`, with `close()` and an error-once contract
+  (`crates/pyrs-yaml-core/src/parser/streaming.rs:196`). JSON and TOML do not: their `parse_stream`
+  binds build a whole `Vec` of events under a single detach and hand it over
+  (`crates/pyrs-yaml/src/py/functions.rs:325`), so they are neither cancellable nor back-pressured.
+- There is no async runtime anywhere in the repository — `tokio`, `async fn`, `Future`, and `poll`
+  return nothing across the tree. The Python-facing stream is a synchronous `__next__` iterator over
+  the pre-collected vector, and that path holds the GIL between events.
+- The replay story is JSON-only: `pyrs_json::from_events` folds events back into a tree; there is no
+  YAML or TOML fold.
+
+**Decision A — byte offsets on events.** Add `offset: usize` and `end: usize` to the `Scalar`,
+container, and `Comment` variants, populated from the spans the producers already hold. This is
+additive to a public type, so it is an Ask-First change, and it costs every producer a field. The
+alternative — leaving the vocabulary line/column only and telling consumers to keep their own offset
+table — pushes the event-sourcing requirement onto every user. Recommendation: add the offsets; it
+is the minimum that makes a resume/replay point nameable, and the data is already there.
+
+**Decision B — asynchronous, or merely incremental?** Two readings of "high-concurrency stream":
+(i) put a real `async` adapter on top, which means a runtime dependency and a new public async API —
+a large, backward-compatibility-sensitive change for pillar 2; (ii) keep the surface synchronous but
+finish what YAML started — give JSON and TOML the same one-event-at-a-time, detach-releasing,
+cancellable producer `YamlStream` has, so a consumer can stop mid-document and the GIL is free
+between events. Recommendation: do (ii) first. It is the higher-value, lower-risk half, needs no new
+runtime, and is backward compatible; (i) should only be taken once a concrete async consumer and its
+backpressure contract are named, not on spec.
+
+**Decision C — chunked parallel parse, scoped by what is actually parallelisable.** A context-free
+format like JSON can be split at top-level value boundaries and parsed across `rayon` workers, which
+serves a concatenated or JSON-sequence log. YAML and TOML cannot be byte-chunked safely:
+indentation, block scalars, and the explicit-key state make a chunk boundary change the parse, and
+the YAML char scanner is granit's, which the locked-parser rulings keep from being replaced here.
+Recommendation: scope chunked-parallel to JSON top-level value boundaries behind an opt-in feature
+with a parity gate against the serial path, and do not attempt it for YAML or TOML. This needs
+`rayon` (already approved for the pillar) but only for the JSON seam.
+
+**What this section is not.** None of A, B, or C is implemented on this branch; the mmap read path
+in pull request #587 is the only scale increment landed so far. Each decision above changes a public
+surface or adds a dependency, so the implementation follows the ruling, not the reverse.
