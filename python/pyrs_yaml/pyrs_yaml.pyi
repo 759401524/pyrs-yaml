@@ -559,6 +559,15 @@ def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool
     JSON readers, which carry that knob; TOML's nesting limit is the intermediate representation's
     own. The accept/reject verdict is the same one the tree route reaches with the same detail,
     because it is the same scanner: a document `load_json` refuses raises here too.
+
+    With `on_event` the events arrive as they are produced and returning `False` stops the producer,
+    not merely the delivery loop. What can stop is the format's own fact: `json`/`jsonc`/`json5`
+    stop scanning before the bytes of the next event, so a syntax error past that point is never
+    reached; `toml` stops emitting from the intermediate representation its scan already built, so a
+    refused document still raises — before any event is delivered. YAML's text producer is a push
+    adapter over a scanner that cannot be aborted, so there `False` stops delivery after the whole
+    document was parsed; `load_stream` is YAML's incremental surface. Without `on_event` the
+    iterator materialises the document first.
     """
 
 def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]":

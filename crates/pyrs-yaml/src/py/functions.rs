@@ -1,7 +1,10 @@
 //! Module-level Python-facing functions for `pyrs_yaml`.
 
+use std::ops::ControlFlow;
+
 use pyo3::prelude::*;
 
+use crate::parser::EventSink;
 use crate::py::convert::{
     directive_to_emit, format_i18n_error, negotiate_schema, node_to_pyobject_simple, parse_schema,
 };
@@ -285,6 +288,85 @@ pub(crate) fn safe_loads(
         .collect()
 }
 
+/// The callback path's sink: one event in, one callback out, with the GIL re-attached for the call.
+///
+/// Ruling B asks for one event at a time, and a batch of them would delay the callback's `False`
+/// until the batch filled — long enough for the producer to read input the consumer already said it
+/// did not want. So the stop is observed at the event it answers, not at a delivery boundary.
+struct CallbackSink<'cb> {
+    callback: &'cb Py<PyAny>,
+    error: Option<PyErr>,
+}
+
+impl<'cb> CallbackSink<'cb> {
+    fn new(callback: &'cb Py<PyAny>) -> Self {
+        Self {
+            callback,
+            error: None,
+        }
+    }
+
+    /// Hand one event to Python. `Break` means the producer must stop: the callback answered
+    /// `False`, or it raised — in which case the error is kept and outranks the producer's verdict.
+    fn deliver(&mut self, event: &crate::parser::StreamEvent<'_>) -> ControlFlow<()> {
+        let answer = {
+            let callback = self.callback;
+            Python::attach(move |py| -> PyResult<bool> {
+                let py_event = stream_event_to_py_dict(py, event)?;
+                let should_continue: bool = callback.bind(py).call1((py_event,))?.extract()?;
+                Ok(should_continue)
+            })
+        };
+        match answer {
+            Ok(true) => ControlFlow::Continue(()),
+            Ok(false) => ControlFlow::Break(()),
+            Err(error) => {
+                self.error = Some(error);
+                ControlFlow::Break(())
+            }
+        }
+    }
+}
+
+impl<'src, 'cb> EventSink<'src> for CallbackSink<'cb> {
+    fn event(&mut self, event: crate::parser::StreamEvent<'src>) -> ControlFlow<()> {
+        self.deliver(&event)
+    }
+}
+
+fn stream_parse_error(error: crate::parser::ParseError, key: &str) -> PyErr {
+    let detail = error.to_string();
+    YamlParseError::new_err(format_i18n_error(key, &[("detail", &detail)]))
+}
+
+/// Hand over a stream that was collected before delivery: YAML's push receiver cannot abort, and
+/// the no-callback iterator form outlives the call.
+fn finish_stream<'src>(
+    py: Python<'_>,
+    events: Vec<crate::parser::StreamEvent<'src>>,
+    on_event: Option<Py<PyAny>>,
+) -> PyResult<Py<PyAny>> {
+    if let Some(callback) = on_event {
+        let cb = callback.bind(py);
+        for event in &events {
+            let py_event = stream_event_to_py_dict(py, event)?;
+            let should_continue: bool = cb.call1((py_event,))?.extract()?;
+            if !should_continue {
+                break;
+            }
+        }
+        Ok(py.None())
+    } else {
+        // The iterator outlives this call and a `#[pyclass]` cannot borrow, so the stream detaches
+        // here — the one path that still copies every scalar out of the source.
+        let events: Vec<crate::parser::StreamEvent<'static>> =
+            events.into_iter().map(|event| event.into_owned()).collect();
+
+        let iter = StreamIterator { events, index: 0 };
+        Ok(iter.into_pyobject(py)?.into_any().unbind())
+    }
+}
+
 #[pyfunction]
 #[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000, *, format: "str" = "yaml") -> "StreamIterator | None")]
 /// Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
@@ -302,6 +384,15 @@ pub(crate) fn safe_loads(
 /// JSON readers, which carry that knob; TOML's nesting limit is the intermediate representation's
 /// own. The accept/reject verdict is the same one the tree route reaches with the same detail,
 /// because it is the same scanner: a document `load_json` refuses raises here too.
+///
+/// With `on_event` the events arrive as they are produced and returning `False` stops the producer,
+/// not merely the delivery loop. What can stop is the format's own fact: `json`/`jsonc`/`json5`
+/// stop scanning before the bytes of the next event, so a syntax error past that point is never
+/// reached; `toml` stops emitting from the intermediate representation its scan already built, so a
+/// refused document still raises — before any event is delivered. YAML's text producer is a push
+/// adapter over a scanner that cannot be aborted, so there `False` stops delivery after the whole
+/// document was parsed; `load_stream` is YAML's incremental surface. Without `on_event` the
+/// iterator materialises the document first.
 pub(crate) fn parse_stream(
     py: Python,
     yaml: &Bound<'_, PyAny>,
@@ -311,11 +402,14 @@ pub(crate) fn parse_stream(
 ) -> PyResult<Py<PyAny>> {
     let yaml_str: String = crate::py::document::coerce_str_or_bytes(yaml)?;
 
-    let events: Vec<crate::parser::StreamEvent<'_>> = match format {
-        "yaml" => py.detach(|| {
-            crate::parser::parse_stream_with_options(&yaml_str, max_depth)
-                .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
-        })?,
+    match format {
+        "yaml" => {
+            let events = py.detach(|| {
+                crate::parser::parse_stream_with_options(&yaml_str, max_depth)
+                    .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
+            })?;
+            finish_stream(py, events, on_event)
+        }
         "json" | "jsonc" | "json5" => {
             let dialect = match format {
                 "json" => pyrs_json::JsonParseOptions::STRICT,
@@ -326,53 +420,47 @@ pub(crate) fn parse_stream(
                 max_depth,
                 ..dialect
             };
-            py.detach(|| {
-                pyrs_json::parse_stream_with_options(&yaml_str, opts).map_err(|e| {
-                    YamlParseError::new_err(format_i18n_error(
-                        "json-parse-error",
-                        &[("detail", &e.to_string())],
-                    ))
-                })
-            })?
-        }
-        "toml" => py.detach(|| {
-            pyrs_toml::parse_stream(&yaml_str).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error(
-                    "toml-parse-error",
-                    &[("detail", &e.to_string())],
-                ))
-            })
-        })?,
-        other => {
-            return Err(YamlTypeError::new_err(format!(
-                "Unsupported format '{}'. Supported: yaml, json, jsonc, json5, toml",
-                other
-            )));
-        }
-    };
-
-    if let Some(callback) = on_event {
-        Python::attach(|py| -> PyResult<()> {
-            let cb = callback.bind(py);
-            for event in &events {
-                let py_event = stream_event_to_py_dict(py, event)?;
-                let should_continue: bool = cb.call1((py_event,))?.extract()?;
-                if !should_continue {
-                    break;
+            match on_event {
+                Some(callback) => {
+                    let mut sink = CallbackSink::new(&callback);
+                    let parsed = py.detach(|| {
+                        pyrs_json::parse_stream_with_options_to(&yaml_str, opts, &mut sink)
+                    });
+                    if let Some(error) = sink.error.take() {
+                        return Err(error);
+                    }
+                    parsed.map_err(|e| stream_parse_error(e, "json-parse-error"))?;
+                    Ok(py.None())
+                }
+                None => {
+                    let events = py
+                        .detach(|| pyrs_json::parse_stream_with_options(&yaml_str, opts))
+                        .map_err(|e| stream_parse_error(e, "json-parse-error"))?;
+                    finish_stream(py, events, None)
                 }
             }
-            Ok(())
-        })?;
-        Ok(py.None())
-    } else {
-        // The iterator outlives this call and a `#[pyclass]` cannot borrow, so the stream detaches
-        // here — the one path that still copies every scalar out of the source. The `on_event`
-        // branch above does not: its events die inside the loop, so they only ever borrow.
-        let events: Vec<crate::parser::StreamEvent<'static>> =
-            events.into_iter().map(|event| event.into_owned()).collect();
-
-        let iter = StreamIterator { events, index: 0 };
-        Ok(iter.into_pyobject(py)?.into_any().unbind())
+        }
+        "toml" => match on_event {
+            Some(callback) => {
+                let mut sink = CallbackSink::new(&callback);
+                let parsed = py.detach(|| pyrs_toml::parse_stream_to(&yaml_str, &mut sink));
+                if let Some(error) = sink.error.take() {
+                    return Err(error);
+                }
+                parsed.map_err(|e| stream_parse_error(e, "toml-parse-error"))?;
+                Ok(py.None())
+            }
+            None => {
+                let events = py
+                    .detach(|| pyrs_toml::parse_stream(&yaml_str))
+                    .map_err(|e| stream_parse_error(e, "toml-parse-error"))?;
+                finish_stream(py, events, None)
+            }
+        },
+        other => Err(YamlTypeError::new_err(format!(
+            "Unsupported format '{}'. Supported: yaml, json, jsonc, json5, toml",
+            other
+        ))),
     }
 }
 

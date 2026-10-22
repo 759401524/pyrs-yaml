@@ -15,6 +15,23 @@ status: new
 
 ### [Unreleased]
 
+### 추가
+
+- **JSON과 TOML 이벤트 스트림은 소비자가 멈춘 곳에서 멈춥니다** — 이전의
+  `parse_stream(..., on_event=...)`는 모든 형식에서 이벤트를 전부 모은 뒤에야 콜백을 호출했으므로,
+  첫 이벤트에서 `False`를 돌려줘도 스캔 전체 비용을 치렀고 문서 뒤쪽의 구문 오류도 도달해
+  발생했습니다. `pyrs_event::EventSink`는 이제 `ControlFlow`를 반환하고,
+  `pyrs_json::parse_stream_with_options_to` / `pyrs_toml::parse_stream_to`는 이벤트를 만들어 내는
+  즉시 sink로 넘깁니다. 콜백은 `Python::attach` 아래에서, 프로듀서는 `py.detach` 아래에서
+  실행됩니다. `False`가 멈출 수 있는 것은 형식 자체의 사실입니다 — JSON/JSON5는 다음 이벤트의
+  바이트에 도달하기 전에 순회를 멈추므로 중단점 뒤의 오류는 결코 읽히지 않고, TOML은 스캔이 이미
+  구축한 중간 표현에서 방출을 멈추므로 거부된 문서는 이벤트가 하나도 전달되기 전에 발생합니다.
+  YAML은 granit 위의 푸시 어댑터라(스캔을 중단할 수 없음) `False`는 전달만 멈추며, 증분 진입점은
+  여전히 `load_stream`입니다. 수집형 진입점은 `Vec` sink로 `_to` 진입점에 위임하므로 이터레이터와
+  콜백은 구조적으로 같은 스트림을 봅니다. 콜백 예외는 뒤따르는 파싱 오류보다 우선하며 `False`는
+  `None`을 반환합니다. `tests/test_streaming.py`의 일곱 테스트가 중단 접두사, 형식별 거부 사실, 오류
+  우선순위를 고정합니다.
+
 ### [v0.18.3] — 2026-10-22
 
 <details markdown="1">

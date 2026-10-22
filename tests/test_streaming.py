@@ -422,3 +422,74 @@ class TestMultiFormatStream:
         seen = []
         pyrs_yaml.parse_stream('{"a": 1}', on_event=lambda e: seen.append(1) or False, format="json")
         assert len(seen) == 1
+
+    def test_a_stopped_json_scan_never_reaches_the_error_after_it(self):
+        # The callback runs while the scanner walks, so `False` stops the walk: `oops` is past the
+        # stop and is never read. Without the stop the same document is refused, which is what
+        # makes this a claim about the scan rather than about delivery.
+        text = '{"a": 1, "b": oops}'
+        seen = []
+        out = pyrs_yaml.parse_stream(text, on_event=lambda e: seen.append(e) or len(seen) < 5, format="json")
+        assert out is None
+        assert [e["type"] for e in seen] == [
+            "stream_start",
+            "document_start",
+            "mapping_start",
+            "scalar",
+            "scalar",
+        ]
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            list(pyrs_yaml.parse_stream(text, format="json"))
+
+    def test_a_refused_toml_document_reaches_no_callback(self):
+        # TOML projects events from the tree its scan built, so the verdict arrives first: a stop
+        # cannot hide a refusal the document route would also make.
+        seen = []
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse_stream("x = ", on_event=lambda e: seen.append(e) or False, format="toml")
+        assert seen == []
+
+    def test_a_callback_error_outranks_the_parse_error_behind_it(self):
+        class StopError(Exception):
+            pass
+
+        def refuse_on_the_value(event):
+            if event["type"] == "scalar" and event["value"] == "1":
+                raise StopError("asked to stop")
+            return True
+
+        with pytest.raises(StopError):
+            pyrs_yaml.parse_stream('{"a": 1, "b": oops}', on_event=refuse_on_the_value, format="json")
+
+    def test_the_callback_sees_exactly_what_the_iterator_collects(self):
+        # A long document, so a delivery that dropped or repeated events would show up as a
+        # shorter or longer list than the collecting route's.
+        text = "[" + ",".join(str(i) for i in range(80)) + "]"
+        collected = list(pyrs_yaml.parse_stream(text, format="json"))
+        seen = []
+        pyrs_yaml.parse_stream(text, on_event=lambda e: seen.append(e) or True, format="json")
+        assert len(collected) > 64
+        assert seen == collected
+
+    def test_a_stop_keeps_the_prefix_and_drops_the_rest(self):
+        text = "[" + ",".join(str(i) for i in range(100)) + "]"
+        full = list(pyrs_yaml.parse_stream(text, format="json"))
+        seen = []
+        pyrs_yaml.parse_stream(text, on_event=lambda e: seen.append(e) or len(seen) < 70, format="json")
+        assert seen == full[:70]
+
+    def test_the_toml_callback_gets_the_collected_stream(self):
+        text = "\n".join(f"k{i} = {i}" for i in range(70)) + "\n"
+        collected = list(pyrs_yaml.parse_stream(text, format="toml"))
+        seen = []
+        pyrs_yaml.parse_stream(text, on_event=lambda e: seen.append(e) or True, format="toml")
+        assert len(collected) > 64
+        assert seen == collected
+
+    def test_the_yaml_text_producer_cannot_stop_its_scan(self):
+        # The documented boundary: granit's push receiver is not abortable, so the document is
+        # parsed in full before the first event is delivered and a refusal wins over the callback.
+        seen = []
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse_stream("a: [", on_event=lambda e: seen.append(e) or False, format="yaml")
+        assert seen == []

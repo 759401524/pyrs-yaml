@@ -541,3 +541,59 @@ fn the_seed_corpus_describes_the_same_document_twice() {
     // The unowned-note boundary is a real shape, and `crates/pyrs-toml/tests/event_stream.rs`
     // names it; this corpus is not required to carry one, so no floor is claimed for it.
 }
+
+#[test]
+fn a_sink_that_accepts_everything_sees_the_collecting_entry_point_its_events() {
+    // The two entry points are one reading of one representation, so a sink that consumes
+    // everything must observe exactly what the collecting route returns.
+    let src: &'static str = "# above\nx = 1\n# lead\n[a]\ny = [1, 2]\n[[p]]\nz = 'tail'\n";
+    let dialect = TomlDialect::V1_1;
+    let expected = parse_stream_with_dialect(src, dialect).expect("valid TOML");
+    let mut events = Vec::new();
+    pyrs_toml::parse_stream_with_dialect_to(src, dialect, &mut events).expect("valid TOML");
+    assert_eq!(events, expected);
+}
+
+#[test]
+fn a_sink_that_stops_gets_a_prefix_of_the_collected_stream() {
+    // Every stop point lands somewhere different - before a header's name, after a value, between
+    // two notes of one group, inside an array - so asking at each one proves the reading stops
+    // where the answer says rather than at the end of the construct it was in.
+    let src: &'static str = "x = 1\n# lead\n[a]\ny = [1, # beside\n 2]\n[[p]]\nz = 'tail'\n";
+    let dialect = TomlDialect::V1_1;
+    let full = parse_stream_with_dialect(src, dialect).expect("valid TOML");
+    for k in 1..=full.len() {
+        let mut got = Vec::new();
+        let mut seen = 0usize;
+        let mut sink = |event: pyrs_toml::StreamEvent<'static>| {
+            got.push(event);
+            seen += 1;
+            if seen == k {
+                std::ops::ControlFlow::Break(())
+            } else {
+                std::ops::ControlFlow::Continue(())
+            }
+        };
+        pyrs_toml::parse_stream_with_dialect_to(src, dialect, &mut sink).expect("valid TOML");
+        assert_eq!(
+            got,
+            full[..k],
+            "stopping after {k} events changed the prefix"
+        );
+    }
+}
+
+#[test]
+fn a_stopped_emission_still_reports_a_document_that_was_refused() {
+    // The representation is built before the first event exists, so the verdict is not the sink's
+    // to change: a sink that stops immediately hears no events and the refusal still reaches it.
+    let src: &'static str = "x = ";
+    let mut got = Vec::new();
+    let mut sink = |event: pyrs_toml::StreamEvent<'static>| {
+        got.push(event);
+        std::ops::ControlFlow::Break(())
+    };
+    let outcome = pyrs_toml::parse_stream_with_dialect_to(src, TomlDialect::V1_1, &mut sink);
+    assert!(outcome.is_err(), "an invalid document was accepted");
+    assert!(got.is_empty(), "an event was reported before the verdict");
+}

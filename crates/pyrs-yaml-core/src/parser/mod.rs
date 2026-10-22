@@ -3,7 +3,7 @@ pub mod yaml;
 
 pub use crate::error::{DepthError, ParseError};
 pub use crate::parser::stream::{
-    NoteOwner, StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
+    EventSink, NoteOwner, StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
 };
 
 use crate::ast::{Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};

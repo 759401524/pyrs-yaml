@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The JSON and TOML event streams stop where the consumer stops them** — `parse_stream(...,
+  on_event=...)` collected every event before the first callback ran, for every format, so a `False`
+  at the first event still paid for the whole scan and a syntax error later in the document was
+  reached and raised. `pyrs_event::EventSink` now returns `ControlFlow`, and
+  `pyrs_json::parse_stream_with_options_to` / `pyrs_toml::parse_stream_to` hand each event to a sink
+  as they produce it: the callback runs under `Python::attach`, the producer under `py.detach`. What
+  `False` can stop is the format's own fact — JSON/JSON5 halt the walk before the bytes of the next
+  event, so an error past the stop is never reached, TOML halts emission from the intermediate
+  representation its scan already built, so a refused document still raises before any event is
+  delivered, and YAML's push adapter over granit stops delivery after the (unabortable) parse,
+  leaving `load_stream` as YAML's incremental surface. Collecting entry points now delegate to the
+  `_to` ones with a `Vec` sink, so the iterator and the callback see the same stream by
+  construction. A callback exception outranks the parse error behind it, and `False` returns `None`.
+  Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
+  error precedence.
+
 ## [v0.18.3] — 2026-10-22
 
 <details markdown="1">

@@ -57,7 +57,9 @@ mod events;
 pub(crate) mod parser;
 mod writer;
 
-pub use events::{parse_stream, parse_stream_with_dialect};
+pub use events::{
+    parse_stream, parse_stream_to, parse_stream_with_dialect, parse_stream_with_dialect_to,
+};
 pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options};
 // The event vocabulary lives in its own crate so a reader can name it without pulling an engine; the
 // producer reports it, and re-exports it here the way the YAML and JSON engines do.

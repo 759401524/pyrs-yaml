@@ -20,9 +20,10 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::ops::ControlFlow;
 use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{DepthError, ParseError};
-use pyrs_event::{LineTable, NoteOwner, StreamEvent, StreamEventType};
+use pyrs_event::{EventSink, LineTable, NoteOwner, StreamEvent, StreamEventType};
 use pyrs_schema::schema::needs_quotes;
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -1533,29 +1534,38 @@ enum GroupSlot {
     AllLeading,
 }
 
-/// The collector the stream walk writes into: the source, its line table, and the events so far.
-struct StreamOut<'a> {
+/// The collector the stream walk writes into: the source, its line table, and the sink.
+struct StreamOut<'a, 's, S: ?Sized> {
     text: &'a str,
     lines: LineTable<'a>,
-    events: Vec<StreamEvent<'a>>,
+    sink: &'s mut S,
+    /// Set when the sink answered `Break`: every later emit is a no-op, and each walk step checks
+    /// this before scanning the input that would produce the next event.
+    stopped: bool,
 }
 
-impl<'a> StreamOut<'a> {
-    fn new(text: &'a str) -> Self {
+impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
+    fn new(text: &'a str, sink: &'s mut S) -> Self {
         Self {
             text,
             lines: LineTable::new(text),
-            events: Vec::new(),
+            sink,
+            stopped: false,
         }
     }
 
     fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
+        if self.stopped {
+            return;
+        }
         let (line, column) = self.lines.line_col(pos);
-        self.events.push(StreamEvent {
+        if let ControlFlow::Break(()) = self.sink.event(StreamEvent {
             event_type,
             line,
             column,
-        });
+        }) {
+            self.stopped = true;
+        }
     }
 
     /// A scalar whose text is the source's own bytes: a number, a keyword, an identifier key.
@@ -1601,6 +1611,9 @@ impl<'a> StreamOut<'a> {
         let all_leading = slot == GroupSlot::AllLeading
             || (group.len() > 1 && group.iter().filter(|note| !note.own_line).count() > 1);
         for note in group {
+            if self.stopped {
+                break;
+            }
             let leading = all_leading || note.own_line;
             let owner = match (side, leading) {
                 (NoteSide::Following, true) => NoteOwner::FollowingLeading,
@@ -1651,26 +1664,56 @@ pub fn parse_stream_with_options(
     text: &str,
     opts: JsonParseOptions,
 ) -> Result<Vec<StreamEvent<'_>>, ParseError> {
+    let mut events = Vec::new();
+    parse_stream_with_options_to(text, opts, &mut events)?;
+    Ok(events)
+}
+
+/// Describe a JSON, JSONC or JSON5 document as events, handing each one to `sink`.
+///
+/// The walk is the one [`parse_stream_with_options`] runs; the difference is who answers each
+/// event. `Break` stops the scan before the bytes that would produce the next event, so a later
+/// syntax error in the source is never reached and no `Err` is reported for it. `DocumentEnd` and
+/// `StreamEnd` are not reported on that path either — the consumer said it did not want the rest.
+///
+/// A sink that consumes everything sees exactly the events the collecting entry point returns.
+pub fn parse_stream_with_options_to<'a, S: EventSink<'a>>(
+    text: &'a str,
+    opts: JsonParseOptions,
+    sink: &mut S,
+) -> Result<(), ParseError> {
     let mut p = parser_from(text, opts);
-    let mut out = StreamOut::new(text);
+    let mut out = StreamOut::new(text, sink);
     out.at(0, StreamEventType::StreamStart);
     out.at(0, StreamEventType::DocumentStart);
+    if out.stopped {
+        return Ok(());
+    }
     p.ws();
     // The tree files the notes above the document on the root itself rather than on its first
     // member, so the stream reports them before the root's own events and every one of them
     // leads - the one group whose slot the tree states outright.
     let root_leading = core::mem::take(&mut p.pending_comment);
     out.group(root_leading, NoteSide::Following, GroupSlot::AllLeading);
+    if out.stopped {
+        return Ok(());
+    }
     p.stream_value(&mut out)?;
+    if out.stopped {
+        return Ok(());
+    }
     p.ws();
     let root_trailing = core::mem::take(&mut p.pending_comment);
     out.group(root_trailing, NoteSide::Preceding, GroupSlot::ByRule);
+    if out.stopped {
+        return Ok(());
+    }
     if p.pos != p.s.len() {
         return Err(p.err("trailing characters after the JSON value"));
     }
     out.at(p.pos, StreamEventType::DocumentEnd);
     out.at(p.pos, StreamEventType::StreamEnd);
-    Ok(out.events)
+    Ok(())
 }
 
 /// A stream that does not describe one JSON document, in the shape the scanner's own refusals use.
@@ -2076,7 +2119,16 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
 
 impl<'a> Parser<'a> {
     /// One nesting level of the stream walk, with the tree walk's budget and refusal.
-    fn stream_value(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+    ///
+    /// A stopped collector ends the descent unchanged: the sink has already refused the rest of
+    /// the stream, so no further byte is scanned and the budget is left as it was found.
+    fn stream_value<'s, S: EventSink<'a> + ?Sized>(
+        &mut self,
+        out: &mut StreamOut<'a, 's, S>,
+    ) -> Result<(), ParseError> {
+        if out.stopped {
+            return Ok(());
+        }
         self.depth += 1;
         if self.depth > self.max_depth {
             self.depth -= 1;
@@ -2088,7 +2140,10 @@ impl<'a> Parser<'a> {
     }
 
     /// The dispatch of `value_inner`, reporting events instead of nodes.
-    fn stream_value_inner(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+    fn stream_value_inner<'s, S: EventSink<'a> + ?Sized>(
+        &mut self,
+        out: &mut StreamOut<'a, 's, S>,
+    ) -> Result<(), ParseError> {
         let token = self.pos;
         match self.peek() {
             Some(b'{') => self.stream_object(out),
@@ -2135,7 +2190,13 @@ impl<'a> Parser<'a> {
     }
 
     /// The grammar is `number_source`; only the report differs from the tree walk.
-    fn stream_number(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+    ///
+    /// The token has to be scanned before it can be reported - the event's text is the source
+    /// spelling - so a stop here ends after the number, never inside it.
+    fn stream_number<'s, S: EventSink<'a> + ?Sized>(
+        &mut self,
+        out: &mut StreamOut<'a, 's, S>,
+    ) -> Result<(), ParseError> {
         let token = self.pos;
         let spelling = self.number_source()?;
         out.at(
@@ -2151,7 +2212,13 @@ impl<'a> Parser<'a> {
     }
 
     /// The dispatch of `object`, with every note group reported where the tree files it.
-    fn stream_object(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+    fn stream_object<'s, S: EventSink<'a> + ?Sized>(
+        &mut self,
+        out: &mut StreamOut<'a, 's, S>,
+    ) -> Result<(), ParseError> {
+        if out.stopped {
+            return Ok(());
+        }
         let open = self.pos;
         self.pos += 1; // '{'
         out.at(
@@ -2161,6 +2228,9 @@ impl<'a> Parser<'a> {
                 tag: None,
             },
         );
+        if out.stopped {
+            return Ok(());
+        }
         // The notes after `{` stay pending, as they do in the tree: the first key claims them, and
         // an empty mapping leaves them to the member that holds it.
         self.ws();
@@ -2171,6 +2241,9 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         loop {
+            if out.stopped {
+                return Ok(());
+            }
             self.ws();
             // The tree takes the notes here as the key's own group, so the stream does too - and
             // reports them before the key's own event, because the key is the node they ride.
@@ -2187,10 +2260,16 @@ impl<'a> Parser<'a> {
             };
             out.group(key_group, NoteSide::Following, GroupSlot::ByRule);
             out.decoded(token, key, style);
+            if out.stopped {
+                return Ok(());
+            }
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
             self.ws();
             self.stream_value(out)?;
+            if out.stopped {
+                return Ok(());
+            }
             // The notes around the value are one group in the tree, and the tree files them on the
             // value - so the stream reports them after the value's own events. A note between the
             // key and the colon lands here too, because the value's own container takes it when
@@ -2199,6 +2278,9 @@ impl<'a> Parser<'a> {
             self.ws();
             let value_group = core::mem::take(&mut self.pending_comment);
             out.group(value_group, NoteSide::Preceding, GroupSlot::ByRule);
+            if out.stopped {
+                return Ok(());
+            }
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -2222,7 +2304,13 @@ impl<'a> Parser<'a> {
     }
 
     /// The dispatch of `array`, reported the same way.
-    fn stream_array(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+    fn stream_array<'s, S: EventSink<'a> + ?Sized>(
+        &mut self,
+        out: &mut StreamOut<'a, 's, S>,
+    ) -> Result<(), ParseError> {
+        if out.stopped {
+            return Ok(());
+        }
         let open = self.pos;
         self.pos += 1; // '['
         out.at(
@@ -2232,6 +2320,9 @@ impl<'a> Parser<'a> {
                 tag: None,
             },
         );
+        if out.stopped {
+            return Ok(());
+        }
         // The notes after `[` stay pending, as they do in the tree: the first element claims them.
         self.ws();
         if self.peek() == Some(b']') {
@@ -2241,17 +2332,29 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         loop {
+            if out.stopped {
+                return Ok(());
+            }
             self.ws();
             // The notes above the element are the element's own leading group in the tree, so the
             // stream reports them before the element's own event.
             let element_group = core::mem::take(&mut self.pending_comment);
             out.group(element_group, NoteSide::Following, GroupSlot::ByRule);
+            if out.stopped {
+                return Ok(());
+            }
             self.stream_value(out)?;
+            if out.stopped {
+                return Ok(());
+            }
             // The notes after the element are a second group, and the tree files them on the same
             // node - so the stream reports them after the element's own events.
             self.ws();
             let after_group = core::mem::take(&mut self.pending_comment);
             out.group(after_group, NoteSide::Preceding, GroupSlot::ByRule);
+            if out.stopped {
+                return Ok(());
+            }
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -3764,6 +3867,77 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn the_incremental_entry_point_hands_the_collecting_entry_point_its_events() {
+        // The two entry points are the same walk, so a sink that accepts everything must observe
+        // exactly what the collecting route returns - notes, styles and positions included.
+        let text: &'static str = "{/*k*/ a: /*v*/ 'b' /*t*/, c: [1, /* between */ 2]}";
+        let opts = JsonParseOptions::JSON5;
+        let expected = parse_stream_with_options(text, opts).expect("valid JSON5");
+        let mut events = Vec::new();
+        parse_stream_with_options_to(text, opts, &mut events).expect("valid JSON5");
+        assert_eq!(events, expected);
+    }
+
+    #[test]
+    fn a_sink_that_stops_gets_a_prefix_of_the_collected_stream() {
+        // Every stop point lands somewhere different - before a key, after a value, inside a
+        // nested container, between two notes of one group - so asking at each one proves the walk
+        // stops where the answer says rather than at the end of the level it was in.
+        let text: &'static str = "{\"a\": [1, /* between */ {\"b\": \"x\"}], // c\n \"d\": null}";
+        let opts = JsonParseOptions::JSONC;
+        let full = parse_stream_with_options(text, opts).expect("valid JSONC");
+        for k in 1..=full.len() {
+            let mut got = Vec::new();
+            let mut seen = 0usize;
+            let mut sink = |event: StreamEvent<'static>| {
+                got.push(event);
+                seen += 1;
+                if seen == k {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            };
+            let outcome = parse_stream_with_options_to(text, opts, &mut sink);
+            assert!(
+                outcome.is_ok(),
+                "stopping after {k} events refused: {outcome:?}"
+            );
+            assert_eq!(
+                got,
+                full[..k],
+                "stopping after {k} events changed the prefix"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stopped_scan_never_reaches_the_error_after_it() {
+        // The honest boundary of this entry point: the walk is the scan, so a stop is a stop. The
+        // collecting route refuses this document for the syntax error after the first member; a
+        // sink that stops at the key never scans it, so it gets no error for bytes it never read.
+        let text: &'static str = "{\"a\": 1, \"b\": oops}";
+        assert!(parse_stream_with_options(text, JsonParseOptions::STRICT).is_err());
+        let mut got = Vec::new();
+        let mut seen = 0usize;
+        let mut sink = |event: StreamEvent<'static>| {
+            got.push(event);
+            seen += 1;
+            if seen == 4 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        };
+        let outcome = parse_stream_with_options_to(text, JsonParseOptions::STRICT, &mut sink);
+        assert!(
+            outcome.is_ok(),
+            "a stopped scan reported an error it never reached: {outcome:?}"
+        );
+        assert_eq!(got.len(), 4);
     }
 
     #[test]
