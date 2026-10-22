@@ -227,6 +227,7 @@ ORACLE_IMPORTS = {
     "tomlkit": "tomlkit",
     "json": "json",
     "tomllib": "tomllib",
+    "jsonschema": "jsonschema",
 }
 
 #: Readers that ship with the interpreter, and the version that introduced each. These are bounded by

@@ -58,6 +58,17 @@ status: new
 
 ### 変更
 
+- **`rules:` スキーマ言語が外部から判定される** — `tests/test_parse_schema_spec_table.py` は、文法が
+  受け付ける各 `type:` 名について、本リポジトリが所有しないものに問いかけます。あるルールが解決する
+  値は、その名が指し示す JSON スキーマ型のインスタンスなのか。この帰属は `jsonschema` が裁定し、
+  Python の `bool` が `int` のサブクラスであるにもかかわらず `boolean` と `integer` を排反に扱うた
+  め、型を誤ったルールは同意ではなく赤い実行になります。各行は同じ値が満たしてはならないおとり型を伴
+  い、確認がゴム印に落ちぬようにしています。`Schema rule language` 行の `external authority` セルは
+  `no` から `yes` へ移り、`authority-tier:schema-rule-language` の穴は登録解除され、
+  `.ci/quality-holes.json` は再び空になりました。`scripts/quality_matrix.py` はオラクル集合に
+  `jsonschema` を加え、認定がテストの実際に呼ぶ読み手から来るようにしました。ファイル名の接尾辞では
+  ありません。
+
 - **分離ゲートが bench レグを守る** — `scripts/check_rust_python_decoupling.py` に規則 R5 を加えまし
   た。拡張 crate は `required-features` を伴わない `[[bench]]` 目標を持ってはなりません。その種の目
   標はあらゆる workspace 級 bench コマンドに選択され、CI の bench レグが今除外した

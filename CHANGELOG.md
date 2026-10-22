@@ -50,6 +50,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The `rules:` schema language is judged from outside** — `tests/test_parse_schema_spec_table.py`
+  asks each `type:` name the grammar accepts a question this repository does not own: whether the
+  value a rule resolves is really an instance of the JSON Schema type that name denotes.
+  `jsonschema` owns that membership, and its disjointness of `boolean` and `integer` — even though
+  Python's `bool` subclasses `int` — means a mistyped rule is a red run, not an agreement; each row
+  carries a decoy type the same value must not satisfy, so the confirmation cannot be a rubber
+  stamp. The `external authority` cell of the `Schema rule language` row moves from `no` to `yes`,
+  the `authority-tier:schema-rule-language` hole is deregistered, and `.ci/quality-holes.json` is
+  empty again. `scripts/quality_matrix.py` gained `jsonschema` in its oracle set so the credit comes
+  from the reader the test calls, not from the file's suffix.
+
 - **The decoupling gate learned to guard the bench leg** — `scripts/check_rust_python_decoupling.py`
   added rule R5: the extension crate may not hold an `[[bench]]` target without `required-features`,
   because such a target is selected by every workspace-wide bench command and would rebuild the

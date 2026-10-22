@@ -1167,10 +1167,13 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert rule["fuzz_parse"] == ["parse_schema"], rule
     assert not rule["fuzz_round_trip"], rule
     assert rule["cross_library"]["verdict"] == "n/a", rule
-    # Its authority cell is the honest `no` that registers the hole: no test asks this grammar of
-    # something this repository does not own.
-    assert rule["authority"]["files"] == [], rule
-    assert rule["authority"]["verdict"] == "no", rule
+    # Its authority cell is now filled: `tests/test_parse_schema_spec_table.py` asks each `type:`
+    # name the grammar accepts whether the value it resolves is an instance of the JSON Schema type
+    # that name denotes, judged by `jsonschema` - a reader this repository does not own. The gap that
+    # was `authority-tier:schema-rule-language` is closed, so neither the file nor the row is a hole.
+    assert rule["authority"]["files"] == ["test_parse_schema_spec_table.py"], rule
+    assert rule["authority"]["verdict"] == "yes", rule
+    assert rule["authority"]["bounded"] == [], rule
 
     # The parity column claims to read how `pyproject.toml` bounds each oracle, so every oracle a
     # cross-library test imports has to be found there at all. `ruamel.yaml` is imported under that

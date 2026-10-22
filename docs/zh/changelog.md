@@ -54,6 +54,15 @@ status: new
 
 ### 变更
 
+- **`rules:` 模式语言首次接受外部裁判** — `tests/test_parse_schema_spec_table.py` 就语法所接受的每个
+  `type:` 名称，向本仓库并不拥有的东西提问：某条规则解析出的值，是否真是该名称所指代的 JSON Schema
+  类型的实例。这一成员关系由 `jsonschema` 裁定，而它对 `boolean` 与 `integer` 的互斥——尽管 Python 的
+  `bool` 是 `int` 的子类——意味着标错类型的规则是一次红跑，而非一次附议；每一行都附带一个同一值必须不
+  满足的诱饵类型，使这份确认无法沦为橡皮图章。`Schema rule language` 行的 `external authority` 单元
+  格由 `no` 变为 `yes`，`authority-tier:schema-rule-language` 缺口被撤销登记，
+  `.ci/quality-holes.json` 重新为空。`scripts/quality_matrix.py` 把 `jsonschema` 纳入其 oracle 集
+  合，于是这份认定来自测试实际调用的读取器，而非文件名后缀。
+
 - **解耦门禁学会看守 bench 腿** — `scripts/check_rust_python_decoupling.py` 新增规则 R5：扩展 crate
   不得持有不带 `required-features` 的 `[[bench]]` 目标，因为这种目标会被每条 workspace 级 bench
   命令选中，进而重建 CI bench 腿刚刚排除的 `pyo3-build-config` 解释器探测。门禁原有四条规则；这
