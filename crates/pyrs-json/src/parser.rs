@@ -22,7 +22,7 @@ use alloc::{
 };
 use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{DepthError, ParseError};
-use pyrs_event::{LineTable, StreamEvent, StreamEventType};
+use pyrs_event::{LineTable, NoteOwner, StreamEvent, StreamEventType};
 use pyrs_schema::schema::needs_quotes;
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -392,6 +392,13 @@ fn attach_pending(node: &mut CustomNode, pending: &[PendingComment]) {
 struct PendingComment {
     text: String,
     own_line: bool,
+    /// The source offset the comment token starts at.
+    ///
+    /// The tree route never reads it - it files a note by the rule, not by the
+    /// position - but the stream route reports every note at its own start, and
+    /// one group can span a value's text, so the offset has to travel with the
+    /// record instead of being re-read out of the source afterwards.
+    at: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -521,6 +528,7 @@ impl<'a> Parser<'a> {
                         self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
+                            at: body_start - 2,
                         });
                         if !own_line_seen {
                             self.inline_comments += 1;
@@ -548,6 +556,7 @@ impl<'a> Parser<'a> {
                         self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
+                            at: body_start - 2,
                         });
                         if !own_line_seen {
                             self.inline_comments += 1;
@@ -1499,34 +1508,29 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 // The tree-free event stream
 // ---------------------------------------------------------------------------
 
-/// Where each comment token inside `[from, to)` begins, in source order.
-fn comment_starts(text: &str, from: usize, to: usize) -> Vec<usize> {
-    let bytes = text.as_bytes();
-    let mut found = Vec::new();
-    let mut index = from;
-    while index + 1 < to {
-        if bytes[index] == b'/' {
-            if bytes[index + 1] == b'/' {
-                found.push(index);
-                index += 2;
-                while index < to && bytes[index] != b'\n' {
-                    index += 1;
-                }
-                continue;
-            }
-            if bytes[index + 1] == b'*' {
-                found.push(index);
-                index += 2;
-                while index + 1 < to && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
-                    index += 1;
-                }
-                index += 2;
-                continue;
-            }
-        }
-        index += 1;
-    }
-    found
+/// Which node a group of notes belongs to, in the order a consumer builds nodes.
+///
+/// The direction is what a source position cannot say: a note written *before* a value can belong
+/// to the value, and a note written *after* a value can belong to the value too. The producer
+/// knows which node it filed the note under, so it answers in the consumer's build order.
+#[derive(Clone, Copy)]
+enum NoteSide {
+    /// The node the consumer builds next.
+    Following,
+    /// The node the consumer built last.
+    Preceding,
+}
+
+/// Which slot the notes of one group take.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GroupSlot {
+    /// The tree's own rule (issue #361): two same-line notes cannot fit the one inline slot, so
+    /// every note in such a group leads; otherwise an own-line note leads and a same-line note
+    /// takes the inline slot.
+    ByRule,
+    /// Every note leads. The notes above the document are the one place the tree says so
+    /// outright, because the writer places them above the root rather than inside it.
+    AllLeading,
 }
 
 /// The collector the stream walk writes into: the source, its line table, and the events so far.
@@ -1581,24 +1585,35 @@ impl<'a> StreamOut<'a> {
         );
     }
 
-    /// Report the notes one separation run carried, in source order, each at its own start.
+    /// Report one group of notes, in source order, each at its own start.
     ///
-    /// `ws_extended` records a note's text and whether it began on a line of its own, but not where
-    /// it began, and adding an offset to `PendingComment` would charge the tree path for a fact only
-    /// the stream asks for. The run is short and its grammar is one line of thought — whitespace plus
-    /// `//…` and `/*…*/` — so the starts are re-read here and paired with the records in order.
-    fn drain(&mut self, pending: &mut Vec<PendingComment>, run_start: usize, run_end: usize) {
-        if pending.is_empty() {
+    /// The slot is the tree's own rule (issue #361): a group holding two same-line notes cannot
+    /// fit them in the one inline slot, so every note in it goes to the leading list; otherwise an
+    /// own-line note leads and a same-line note takes the inline slot.
+    ///
+    /// `side` says which node the group belongs to in the consumer's build order. The two facts
+    /// are separate on purpose: `owns_line` is what the source did, `owner` is where the note
+    /// lands, and only the producer knows the second one.
+    fn group(&mut self, group: Vec<PendingComment>, side: NoteSide, slot: GroupSlot) {
+        if group.is_empty() {
             return;
         }
-        let starts = comment_starts(self.text, run_start, run_end);
-        for (index, note) in pending.drain(..).enumerate() {
-            let pos = starts.get(index).copied().unwrap_or(run_end);
+        let all_leading = slot == GroupSlot::AllLeading
+            || (group.len() > 1 && group.iter().filter(|note| !note.own_line).count() > 1);
+        for note in group {
+            let leading = all_leading || note.own_line;
+            let owner = match (side, leading) {
+                (NoteSide::Following, true) => NoteOwner::FollowingLeading,
+                (NoteSide::Following, false) => NoteOwner::FollowingInline,
+                (NoteSide::Preceding, true) => NoteOwner::PrecedingLeading,
+                (NoteSide::Preceding, false) => NoteOwner::PrecedingInline,
+            };
             self.at(
-                pos,
+                note.at,
                 StreamEventType::Comment {
                     text: alloc::sync::Arc::from(note.text.as_str()),
-                    standalone: note.own_line,
+                    owns_line: note.own_line,
+                    owner,
                 },
             );
         }
@@ -1640,13 +1655,16 @@ pub fn parse_stream_with_options(
     let mut out = StreamOut::new(text);
     out.at(0, StreamEventType::StreamStart);
     out.at(0, StreamEventType::DocumentStart);
-    let before = p.pos;
     p.ws();
-    out.drain(&mut p.pending_comment, before, p.pos);
+    // The tree files the notes above the document on the root itself rather than on its first
+    // member, so the stream reports them before the root's own events and every one of them
+    // leads - the one group whose slot the tree states outright.
+    let root_leading = core::mem::take(&mut p.pending_comment);
+    out.group(root_leading, NoteSide::Following, GroupSlot::AllLeading);
     p.stream_value(&mut out)?;
-    let before = p.pos;
     p.ws();
-    out.drain(&mut p.pending_comment, before, p.pos);
+    let root_trailing = core::mem::take(&mut p.pending_comment);
+    out.group(root_trailing, NoteSide::Preceding, GroupSlot::ByRule);
     if p.pos != p.s.len() {
         return Err(p.err("trailing characters after the JSON value"));
     }
@@ -1672,39 +1690,132 @@ fn refuse(msg: &str) -> ParseError {
 /// for text, `hub_scalar` for a number or keyword, `single_quoted_node` for JSON5's own style - are
 /// the same functions the scanner calls, not a second copy of them.
 ///
-/// Two things a JSON stream cannot carry, both of them the vocabulary's limits rather than this
-/// reader's:
+/// The notes come back too. A `Comment` event names the node it rides in the consumer's own build
+/// order - the node the consumer builds next, or the one it built last - and the slot it takes
+/// there, so the fold puts every note back where the tree filed it: the leading list or the one
+/// inline slot, on the key or on the value, above the node or after it. That is the whole point of
+/// the two-field shape; a single boolean read two ways could not say any of it.
 ///
-/// - `Comment` events are not placed. The engine files a same-line note either on the value it
-///   follows or on the key that follows, deciding by which side of the comma the note sat, and a
-///   comma is no event - `a_same_line_note_between_a_value_and_the_next_member_has_two_readings`
-///   holds the two documents apart. `CustomNode`'s equality does compare the inline `comment` slot,
-///   so a caller comparing a replay against a tree has to empty the slots the stream cannot fill.
-/// - `anchor`, `tag` and `Alias` are YAML's grammar. A stream that carries them is not one this
-///   engine produced, and it is refused rather than silently dropped.
+/// What a JSON stream cannot carry is YAML's grammar: `anchor`, `tag` and `Alias` are refused
+/// rather than silently dropped.
 ///
 /// An empty stream, a second root value, a container closed with nothing open or with the wrong
 /// kind open, and a block scalar style JSON never writes are all refusals too: this is a public
 /// reader of a caller-supplied list, so it validates instead of trusting.
 pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError> {
-    enum Open {
-        Map(NodeMap<CustomNode, CustomNode>, Option<CustomNode>),
-        Seq(Vec<CustomNode>),
+    /// The notes one node owns, in the order the source wrote them.
+    #[derive(Default)]
+    struct Owned {
+        leading: Vec<pyrs_ast::ast::Comment>,
+        inline: Option<pyrs_ast::ast::Comment>,
     }
+
+    /// The member a mapping is in the middle of: the key, and the value once it has arrived.
+    ///
+    /// One slot rather than two, because a key and a complete member are never both pending:
+    /// the value that completes a member is the one that ends the key's wait.
+    enum Pending {
+        /// The key has arrived; its value has not.
+        Key(CustomNode),
+        /// The member is complete but not filed: a note may still ride its value.
+        Member(CustomNode, CustomNode),
+    }
+
+    /// One open container, with the state the tree walk keeps while it builds the same container.
+    enum Frame {
+        Map {
+            pairs: NodeMap<CustomNode, CustomNode>,
+            /// The member the mapping is in the middle of.
+            pending: Option<Pending>,
+            /// The notes the mapping itself owns.
+            own: Owned,
+            /// Whether a note was seen inside this mapping.
+            noted: bool,
+        },
+        Seq {
+            items: Vec<CustomNode>,
+            /// The item that is complete but not filed yet: a note may still ride it.
+            item: Option<CustomNode>,
+            /// The notes the sequence itself owns.
+            own: Owned,
+            /// Whether a note was seen inside this sequence.
+            noted: bool,
+        },
+    }
+
+    /// Put a note where the stream says it rides: the leading list, or the one inline slot.
+    ///
+    /// The tree's own `standalone` flag says the same thing - a note in the leading list carries
+    /// `true`, the note in the inline slot carries `false` - so a folded tree and a parsed one
+    /// compare equal on their decorations and not only on their structure.
+    fn apply(node: &mut CustomNode, text: alloc::sync::Arc<str>, leading: bool) {
+        let comment = pyrs_ast::ast::Comment {
+            text,
+            standalone: leading,
+        };
+        if leading {
+            node.push_leading_comment(comment);
+        } else {
+            node.set_comment(comment);
+        }
+    }
+
+    /// The notes a container owns, split into the leading list and the inline slot.
+    fn take_owned(following: &mut Vec<(alloc::sync::Arc<str>, bool)>) -> Owned {
+        let mut own = Owned::default();
+        for (text, leading) in core::mem::take(following) {
+            let comment = pyrs_ast::ast::Comment {
+                text,
+                standalone: leading,
+            };
+            if leading {
+                own.leading.push(comment);
+            } else {
+                own.inline = Some(comment);
+            }
+        }
+        own
+    }
+
+    /// The notes a container owns, put on the container itself.
+    fn apply_own(node: &mut CustomNode, own: Owned) {
+        for comment in own.leading {
+            node.push_leading_comment(comment);
+        }
+        if let Some(comment) = own.inline {
+            node.set_comment(comment);
+        }
+    }
+
+    /// File a map member the way the tree walk files it: the last value wins, the first position
+    /// is kept, and the notes the loser carried move to the survivor.
+    fn file_member(pairs: &mut NodeMap<CustomNode, CustomNode>, member: (CustomNode, CustomNode)) {
+        let (key, value) = member;
+        // The key's own notes are part of its identity, so they have to be read before the key
+        // moves into the map - a name repeated while a note kept the two apart stays twice.
+        let carried = notes_of(&key);
+        let (index, replaced) = pairs.insert_full(key, value);
+        if let Some(displaced) = replaced {
+            park_notes(pairs, index, displaced, carried);
+        }
+    }
+
+    /// Put a completed node where it belongs: the member of a mapping, the item of a sequence, or
+    /// the document's root.
     fn place(
-        stack: &mut [Open],
+        stack: &mut [Frame],
         root: &mut Option<CustomNode>,
         node: CustomNode,
     ) -> Result<(), ParseError> {
         match stack.last_mut() {
-            // Inside a mapping the scalars that are not containers arrive in pairs: name, value.
-            Some(Open::Map(pairs, name)) => match name.take() {
-                None => *name = Some(node),
-                Some(name) => {
-                    pairs.insert(name, node);
-                }
-            },
-            Some(Open::Seq(items)) => items.push(node),
+            Some(Frame::Map { pending, .. }) => {
+                // The value completes the member the key started.
+                let Some(Pending::Key(key)) = pending.take() else {
+                    return Err(refuse("a mapping's value arrived without a key"));
+                };
+                *pending = Some(Pending::Member(key, node));
+            }
+            Some(Frame::Seq { item, .. }) => *item = Some(node),
             None => {
                 if root.is_some() {
                     return Err(refuse("a second root value in one stream"));
@@ -1714,25 +1825,25 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
         }
         Ok(())
     }
-    fn close(
-        stack: &mut Vec<Open>,
-        root: &mut Option<CustomNode>,
-        mapping: bool,
-    ) -> Result<(), ParseError> {
-        let node = match stack.pop() {
-            Some(Open::Map(pairs, _)) if mapping => CustomNode::plain_mapping(pairs),
-            Some(Open::Seq(items)) if !mapping => CustomNode::plain_sequence(items),
-            Some(_) => {
-                return Err(refuse(
-                    "a container closed against the wrong kind of open frame",
-                ));
-            }
-            None => return Err(refuse("a container closed with nothing open")),
-        };
-        place(stack, root, node)
+
+    /// Record that a note was seen inside the container that is open now.
+    ///
+    /// The tree folds a repeated name when a note reached one of its keys, and the fold needs the
+    /// same answer: a note inside the container is the signal, and a container with no note in it
+    /// has nothing to fold.
+    fn mark_noted(stack: &mut [Frame]) {
+        match stack.last_mut() {
+            Some(Frame::Map { noted, .. }) => *noted = true,
+            Some(Frame::Seq { noted, .. }) => *noted = true,
+            None => {}
+        }
     }
-    let mut stack: Vec<Open> = Vec::new();
+
+    let mut stack: Vec<Frame> = Vec::new();
     let mut root: Option<CustomNode> = None;
+    // The notes that belong to the node the consumer builds next.
+    let mut following: Vec<(alloc::sync::Arc<str>, bool)> = Vec::new();
+
     for event in events {
         match &event.event_type {
             StreamEventType::MappingStart { anchor, tag } => {
@@ -1741,7 +1852,26 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                         "an anchored or tagged mapping is not JSON's to report",
                     ));
                 }
-                stack.push(Open::Map(NodeMap::default(), None));
+                match stack.last_mut() {
+                    Some(Frame::Map { pending, .. }) => {
+                        if !matches!(pending, Some(Pending::Key(_))) {
+                            return Err(refuse("a mapping cannot stand in a key's place"));
+                        }
+                    }
+                    Some(Frame::Seq { items, item, .. }) => {
+                        if let Some(done) = item.take() {
+                            items.push(done);
+                        }
+                    }
+                    None => {}
+                }
+                // The notes that came before this container are its own.
+                stack.push(Frame::Map {
+                    pairs: NodeMap::default(),
+                    pending: None,
+                    own: take_owned(&mut following),
+                    noted: false,
+                });
             }
             StreamEventType::SequenceStart { anchor, tag } => {
                 if anchor.is_some() || tag.is_some() {
@@ -1749,10 +1879,83 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                         "an anchored or tagged sequence is not JSON's to report",
                     ));
                 }
-                stack.push(Open::Seq(Vec::new()));
+                match stack.last_mut() {
+                    Some(Frame::Map { pending, .. }) => {
+                        if !matches!(pending, Some(Pending::Key(_))) {
+                            return Err(refuse("a sequence cannot stand in a key's place"));
+                        }
+                    }
+                    Some(Frame::Seq { items, item, .. }) => {
+                        if let Some(done) = item.take() {
+                            items.push(done);
+                        }
+                    }
+                    None => {}
+                }
+                stack.push(Frame::Seq {
+                    items: Vec::new(),
+                    item: None,
+                    own: take_owned(&mut following),
+                    noted: false,
+                });
             }
-            StreamEventType::MappingEnd => close(&mut stack, &mut root, true)?,
-            StreamEventType::SequenceEnd => close(&mut stack, &mut root, false)?,
+            StreamEventType::MappingEnd => {
+                let node = match stack.pop() {
+                    Some(Frame::Map {
+                        mut pairs,
+                        pending,
+                        own,
+                        noted,
+                    }) => {
+                        match pending {
+                            Some(Pending::Key(_)) => {
+                                return Err(refuse("a mapping ended on a key with no value"));
+                            }
+                            Some(Pending::Member(key, value)) => {
+                                file_member(&mut pairs, (key, value));
+                            }
+                            None => {}
+                        }
+                        if noted {
+                            collapse_noted_map(&mut pairs);
+                        }
+                        let mut node = CustomNode::plain_mapping(pairs);
+                        apply_own(&mut node, own);
+                        node
+                    }
+                    Some(Frame::Seq { .. }) => {
+                        return Err(refuse(
+                            "a container closed against the wrong kind of open frame",
+                        ));
+                    }
+                    None => return Err(refuse("a container closed with nothing open")),
+                };
+                place(&mut stack, &mut root, node)?;
+            }
+            StreamEventType::SequenceEnd => {
+                let node = match stack.pop() {
+                    Some(Frame::Seq {
+                        mut items,
+                        item,
+                        own,
+                        ..
+                    }) => {
+                        if let Some(done) = item {
+                            items.push(done);
+                        }
+                        let mut node = CustomNode::plain_sequence(items);
+                        apply_own(&mut node, own);
+                        node
+                    }
+                    Some(Frame::Map { .. }) => {
+                        return Err(refuse(
+                            "a container closed against the wrong kind of open frame",
+                        ));
+                    }
+                    None => return Err(refuse("a container closed with nothing open")),
+                };
+                place(&mut stack, &mut root, node)?;
+            }
             StreamEventType::Scalar {
                 value,
                 style,
@@ -1767,8 +1970,11 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                 // A mapping's name is the hub's plain-or-quoted text whatever spelling it arrived
                 // in - the tree's `object` calls `quoted_or_plain` on every key - while a value
                 // keeps the style it was written in.
-                let as_name = matches!(stack.last(), Some(Open::Map(_, None)));
-                let node = if as_name {
+                let as_name = matches!(
+                    stack.last(),
+                    Some(Frame::Map { pending, .. }) if !matches!(pending, Some(Pending::Key(_)))
+                );
+                let mut node = if as_name {
                     quoted_or_plain(Cow::Borrowed(value.as_ref()))
                 } else {
                     match style {
@@ -1792,15 +1998,69 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                         }
                     }
                 };
-                place(&mut stack, &mut root, node)?;
+                // The notes that came before this node ride it.
+                for (text, leading) in core::mem::take(&mut following) {
+                    apply(&mut node, text, leading);
+                }
+                match stack.last_mut() {
+                    Some(Frame::Map { pairs, pending, .. }) => {
+                        match pending.take() {
+                            // This scalar is the first key of the mapping.
+                            None => {
+                                *pending = Some(Pending::Key(node));
+                            }
+                            // This scalar is the value of the key that came before it.
+                            Some(Pending::Key(key)) => {
+                                *pending = Some(Pending::Member(key, node));
+                            }
+                            // The member before this one is complete, so it is filed now, and
+                            // this scalar is the next key.
+                            Some(Pending::Member(key, value)) => {
+                                file_member(pairs, (key, value));
+                                *pending = Some(Pending::Key(node));
+                            }
+                        }
+                    }
+                    Some(Frame::Seq { items, item, .. }) => {
+                        if let Some(done) = item.take() {
+                            items.push(done);
+                        }
+                        *item = Some(node);
+                    }
+                    None => {
+                        if root.is_some() {
+                            return Err(refuse("a second root value in one stream"));
+                        }
+                        root = Some(node);
+                    }
+                }
             }
             StreamEventType::Alias { name } => {
                 return Err(refuse(&format!("JSON has no alias, and {name} was one")));
             }
-            StreamEventType::Comment { .. } => {
-                // Not placed: which node a same-line note rides is the fact the stream cannot
-                // report, and the note texts themselves are counted by the tests that compare a
-                // stream with the document it came from.
+            StreamEventType::Comment { text, owner, .. } => {
+                mark_noted(&mut stack);
+                match owner {
+                    NoteOwner::FollowingLeading | NoteOwner::FollowingInline => {
+                        // The note belongs to the node the consumer builds next.
+                        following.push((text.clone(), owner.is_leading()));
+                    }
+                    NoteOwner::PrecedingLeading | NoteOwner::PrecedingInline => {
+                        // The note belongs to the node the consumer built last.
+                        let target = match stack.last_mut() {
+                            Some(Frame::Map { pending, .. }) => match pending {
+                                Some(Pending::Member(_, value)) => Some(value),
+                                Some(Pending::Key(_)) | None => None,
+                            },
+                            Some(Frame::Seq { item, .. }) => item.as_mut(),
+                            None => root.as_mut(),
+                        };
+                        let Some(node) = target else {
+                            return Err(refuse("a note arrived before the node it rides"));
+                        };
+                        apply(node, text.clone(), owner.is_leading());
+                    }
+                }
             }
             StreamEventType::StreamStart
             | StreamEventType::StreamEnd
@@ -1890,7 +2150,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// The dispatch of `object`, with every separation run reported as it is consumed.
+    /// The dispatch of `object`, with every note group reported where the tree files it.
     fn stream_object(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
         let open = self.pos;
         self.pos += 1; // '{'
@@ -1901,9 +2161,9 @@ impl<'a> Parser<'a> {
                 tag: None,
             },
         );
-        let before = self.pos;
+        // The notes after `{` stay pending, as they do in the tree: the first key claims them, and
+        // an empty mapping leaves them to the member that holds it.
         self.ws();
-        out.drain(&mut self.pending_comment, before, self.pos);
         if self.peek() == Some(b'}') {
             let close = self.pos;
             self.pos += 1;
@@ -1911,39 +2171,38 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         loop {
-            let before = self.pos;
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
+            // The tree takes the notes here as the key's own group, so the stream does too - and
+            // reports them before the key's own event, because the key is the node they ride.
+            let key_group = core::mem::take(&mut self.pending_comment);
             let token = self.pos;
-            if self.peek() == Some(b'"') {
-                let key = self.string()?;
-                out.decoded(token, key, ScalarStyle::DoubleQuoted);
+            let (key, style) = if self.peek() == Some(b'"') {
+                (self.string()?, ScalarStyle::DoubleQuoted)
             } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
-                let key = self.single_quoted_string()?;
-                out.decoded(token, key, ScalarStyle::SingleQuoted);
+                (self.single_quoted_string()?, ScalarStyle::SingleQuoted)
             } else if self.allow_unquoted_keys && self.at_identifier_start() {
-                let key = self.identifier_key()?;
-                out.decoded(token, key, ScalarStyle::Plain);
+                (self.identifier_key()?, ScalarStyle::Plain)
             } else {
                 return Err(self.err("expected a quoted object key"));
-            }
-            let before = self.pos;
+            };
+            out.group(key_group, NoteSide::Following, GroupSlot::ByRule);
+            out.decoded(token, key, style);
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
             self.expect(":", "expected `:` after the object key")?;
-            let before = self.pos;
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
             self.stream_value(out)?;
-            let before = self.pos;
+            // The notes around the value are one group in the tree, and the tree files them on the
+            // value - so the stream reports them after the value's own events. A note between the
+            // key and the colon lands here too, because the value's own container takes it when
+            // the value is a container; the tree files it on the value's first member then, and
+            // the stream reports it inside that container.
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
+            let value_group = core::mem::take(&mut self.pending_comment);
+            out.group(value_group, NoteSide::Preceding, GroupSlot::ByRule);
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
-                    let before = self.pos;
                     self.ws();
-                    out.drain(&mut self.pending_comment, before, self.pos);
                     if self.allow_trailing_commas && self.peek() == Some(b'}') {
                         let close = self.pos;
                         self.pos += 1;
@@ -1973,9 +2232,8 @@ impl<'a> Parser<'a> {
                 tag: None,
             },
         );
-        let before = self.pos;
+        // The notes after `[` stay pending, as they do in the tree: the first element claims them.
         self.ws();
-        out.drain(&mut self.pending_comment, before, self.pos);
         if self.peek() == Some(b']') {
             let close = self.pos;
             self.pos += 1;
@@ -1983,19 +2241,21 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         loop {
-            let before = self.pos;
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
+            // The notes above the element are the element's own leading group in the tree, so the
+            // stream reports them before the element's own event.
+            let element_group = core::mem::take(&mut self.pending_comment);
+            out.group(element_group, NoteSide::Following, GroupSlot::ByRule);
             self.stream_value(out)?;
-            let before = self.pos;
+            // The notes after the element are a second group, and the tree files them on the same
+            // node - so the stream reports them after the element's own events.
             self.ws();
-            out.drain(&mut self.pending_comment, before, self.pos);
+            let after_group = core::mem::take(&mut self.pending_comment);
+            out.group(after_group, NoteSide::Preceding, GroupSlot::ByRule);
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
-                    let before = self.pos;
                     self.ws();
-                    out.drain(&mut self.pending_comment, before, self.pos);
                     if self.allow_trailing_commas && self.peek() == Some(b']') {
                         let close = self.pos;
                         self.pos += 1;
@@ -3154,8 +3414,12 @@ mod tests {
                 format!("scalar[{style:?}]={value}")
             }
             StreamEventType::Alias { name } => panic!("JSON has no alias: {name}"),
-            StreamEventType::Comment { text, standalone } => {
-                format!("comment[standalone={standalone}]={text}")
+            StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            } => {
+                format!("comment[owns_line={owns_line},owner={owner:?}]={text}")
             }
         }
     }
@@ -3209,6 +3473,9 @@ mod tests {
     }
 
     /// Every note a tree carries, as text and standalone flag, in node order.
+    ///
+    /// The tree's flag is the placement: `true` means the note rides the node's leading list, and
+    /// the node's inline slot is the one note that does not.
     fn tree_notes(node: &CustomNode, into: &mut Vec<(String, bool)>) {
         if let Some(comment) = node.comment() {
             into.push((comment.text.to_string(), comment.standalone));
@@ -3230,6 +3497,21 @@ mod tests {
             }
             _ => {}
         }
+    }
+
+    /// Every note a stream reports, as text, the source fact and the owner.
+    fn stream_notes(events: &[StreamEvent<'_>]) -> Vec<(String, bool, NoteOwner)> {
+        events
+            .iter()
+            .filter_map(|event| match &event.event_type {
+                StreamEventType::Comment {
+                    text,
+                    owns_line,
+                    owner,
+                } => Some((text.to_string(), *owns_line, *owner)),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -3350,7 +3632,9 @@ mod tests {
         assert!(shapes.contains(&"scalar[Plain]=a".to_string()));
         assert!(shapes.contains(&"scalar[SingleQuoted]=k".to_string()));
         assert!(shapes.contains(&"scalar[SingleQuoted]=d".to_string()));
-        assert!(shapes.contains(&"comment[standalone=false]=note".to_string()));
+        assert!(
+            shapes.contains(&"comment[owns_line=false,owner=FollowingInline]=note".to_string())
+        );
     }
 
     #[test]
@@ -3526,44 +3810,42 @@ mod tests {
     fn a_note_reports_whether_it_began_on_a_line_of_its_own() {
         // The flag is what the scanner saw, which is not always the flag the tree ends up recording:
         // two same-line notes on one node are re-filed as leading notes (issue #361), and the stream
-        // keeps the reading the bytes gave.
+        // keeps the reading the bytes gave. The owner says the other half - which node the note
+        // rides and in which slot - so the two facts travel together instead of over each other.
         let text = "{\n  // own line\n  \"a\": 1, /* same line */ \"b\": 2\n}";
         let stream = parse_stream_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
-        let notes: Vec<(String, bool)> = stream
-            .iter()
-            .filter_map(|event| match &event.event_type {
-                StreamEventType::Comment { text, standalone } => {
-                    Some((text.to_string(), *standalone))
-                }
-                _ => None,
-            })
-            .collect();
+        let notes = stream_notes(&stream);
         assert_eq!(
             notes,
             [
-                ("own line".to_string(), true),
-                ("same line".to_string(), false)
+                ("own line".to_string(), true, NoteOwner::FollowingLeading),
+                ("same line".to_string(), false, NoteOwner::FollowingInline)
             ]
         );
     }
 
     #[test]
-    fn a_same_line_note_between_a_value_and_the_next_member_has_two_readings() {
-        // Both documents produce the same events in the same order: the value, then the note, then
-        // the next name. The tree has to choose a slot, and it chooses by which side of the comma
-        // the note sat - a fact a note's own position cannot carry. This is what the shared
-        // vocabulary still cannot express, and the reason the replay compares structure and values
-        // and counts notes rather than placing them.
+    fn a_same_line_note_around_a_comma_names_the_side_it_sat_on() {
+        // The comma that ends a pair is not an event, so a note's own position cannot say which
+        // node it belongs to: one note before the comma is the value's, the same note after it is
+        // the next key's. The producer files both by its own rule and now says so - the value's
+        // note is `Preceding`, the key's is `Following` - so the two documents no longer look
+        // alike, and a consumer can put each note back where the tree had it.
         let before_comma = r#"{"a": 1 /* x */, "b": 2}"#;
         let after_comma = r#"{"a": 1, /* x */ "b": 2}"#;
-        let shapes_of = |text: &str| -> Vec<String> {
-            parse_stream_with_options(text, JsonParseOptions::JSONC)
-                .expect("valid JSONC")
-                .iter()
-                .map(shape)
-                .collect()
+        let notes_of = |text: &str| -> Vec<(String, bool, NoteOwner)> {
+            stream_notes(
+                &parse_stream_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC"),
+            )
         };
-        assert_eq!(shapes_of(before_comma), shapes_of(after_comma));
+        assert_eq!(
+            notes_of(before_comma),
+            vec![("x".to_string(), false, NoteOwner::PrecedingInline)]
+        );
+        assert_eq!(
+            notes_of(after_comma),
+            vec![("x".to_string(), false, NoteOwner::FollowingInline)]
+        );
 
         // Which node each note landed on, as (owner, text, standalone).
         let owners_of = |text: &str| -> Vec<(String, String, bool)> {
@@ -3586,37 +3868,33 @@ mod tests {
         let only = |owner: &str| vec![(owner.to_string(), "x".to_string(), false)];
         assert_eq!(owners_of(before_comma), only("value"));
         assert_eq!(owners_of(after_comma), only("name"));
+
+        // The owner is the tree's own answer, so the fold puts the note back where the tree had
+        // it - the whole document, decorations included, not only its structure.
+        for text in [before_comma, after_comma] {
+            let tree = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+            let events =
+                parse_stream_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+            assert_eq!(fold(&events), tree, "the fold lost the note in {text}");
+        }
     }
 
     #[test]
-    fn the_two_walks_answer_different_questions_with_standalone() {
+    fn the_two_walks_answer_the_same_two_questions() {
         // Two same-line notes introduce one value. The single inline slot cannot hold both, so
         // #361 moves them to the node's leading list - and a leading-list note carries
-        // `standalone: true`, so in the tree the flag now means "this note rides the leading
-        // list". The stream reports what the scanner actually saw: neither note had a line to
-        // itself, so the flag means "own line" there. One boolean, two questions.
+        // `standalone: true`, so in the tree the flag means "this note rides the leading list".
+        // The stream reported the same boolean as "the source gave this note a line of its own",
+        // which the source did not: one boolean, two questions.
         //
-        // Pinned rather than fixed because the tree's reading is load-bearing for the JSONC
-        // writer's placement of these notes, and the stream's is the source fact; the replay
-        // comparisons in this repository's gates therefore match note *text* and leave the flag
-        // out. See docs/dev/event-stream.md, "What the replay gate found".
+        // The split answers them separately. `owner` is the tree's own placement - which node and
+        // which slot - and `owns_line` is the source fact, so the two walks now answer the same
+        // two questions and a consumer can rebuild the decorations.
         let text = r#"{"a" /* on the key */: /* on the value */ 1}"#;
         let tree = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
         let mut kept = Vec::new();
         tree_notes(&tree, &mut kept);
         kept.sort();
-        let mut reported: Vec<(String, bool)> =
-            parse_stream_with_options(text, JsonParseOptions::JSONC)
-                .expect("valid JSONC")
-                .iter()
-                .filter_map(|event| match &event.event_type {
-                    StreamEventType::Comment { text, standalone } => {
-                        Some((text.to_string(), *standalone))
-                    }
-                    _ => None,
-                })
-                .collect();
-        reported.sort();
         assert_eq!(
             kept,
             vec![
@@ -3624,13 +3902,94 @@ mod tests {
                 ("on the value".to_string(), true)
             ]
         );
+        let mut reported = stream_notes(
+            &parse_stream_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC"),
+        );
+        reported.sort();
         assert_eq!(
             reported,
             vec![
-                ("on the key".to_string(), false),
-                ("on the value".to_string(), false)
+                ("on the key".to_string(), false, NoteOwner::PrecedingLeading),
+                (
+                    "on the value".to_string(),
+                    false,
+                    NoteOwner::PrecedingLeading
+                )
             ]
         );
+    }
+
+    #[test]
+    fn every_note_the_tree_files_is_reported_with_the_same_owner() {
+        // The per-dialect invariant of decision 6: for every note the tree files on a node, the
+        // stream reports the same `owns_line` and the same `owner`. The tree's slot is its
+        // `standalone` flag - the leading list against the one inline slot - and the stream's is
+        // the owner's, so the two must agree note for note.
+        let cases: &[(JsonParseOptions, &str)] = &[
+            (JsonParseOptions::JSONC, "// above\n{}"),
+            (JsonParseOptions::JSONC, "{} // after"),
+            (JsonParseOptions::JSONC, "{\"a\": /*b*/ 1}"),
+            (JsonParseOptions::JSONC, "[1 /* trailing */, 2]"),
+            (
+                JsonParseOptions::JSONC,
+                "{\"a\": [\n  // line\n  1,\n  /* block */ 2\n] /* tail */}",
+            ),
+            (JsonParseOptions::JSONC, "[/* one */ /* two */ 1]"),
+            (JsonParseOptions::JSONC, "{\"a\": 1 /* x */, \"b\": 2}"),
+            (JsonParseOptions::JSONC, "{\"a\": 1, /* x */ \"b\": 2}"),
+            (JsonParseOptions::JSONC, "{\"a\": /* c */ {\"k\": 1}}"),
+            (JsonParseOptions::JSONC, "{\"a\": /* c */ [1]}"),
+            (JsonParseOptions::JSONC, "{\"a\": /* c */ {}}"),
+            (
+                JsonParseOptions::JSON5,
+                "{/*k*/ a: /*v*/ 'b' /*t*/, c: 1 // end\n}",
+            ),
+            (JsonParseOptions::JSON5, "[1, /* between */ 2]"),
+        ];
+        for (opts, text) in cases {
+            let tree = from_json_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must parse: {e}"));
+            let events = parse_stream_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must stream: {e}"));
+            let mut from_tree = Vec::new();
+            tree_notes(&tree, &mut from_tree);
+            let from_stream = stream_notes(&events);
+            assert_eq!(
+                from_tree.len(),
+                from_stream.len(),
+                "{text}: the tree keeps {} notes and the stream reports {}",
+                from_tree.len(),
+                from_stream.len()
+            );
+            // The slot has to agree note for note; the texts are matched as a multiset because
+            // the two walks meet the notes in different orders.
+            let mut tree_slots: Vec<(String, bool)> = from_tree.clone();
+            let mut stream_slots: Vec<(String, bool)> = from_stream
+                .iter()
+                .map(|(text, _, owner)| (text.clone(), owner.is_leading()))
+                .collect();
+            tree_slots.sort();
+            stream_slots.sort();
+            assert_eq!(
+                tree_slots, stream_slots,
+                "{text}: the tree's slots and the stream's owners disagree"
+            );
+            // The source fact has to agree with the placement: a note the source gave a line of
+            // its own always leads, and a note in the inline slot never had a line of its own.
+            for (note, owns_line, owner) in &from_stream {
+                assert!(
+                    !*owns_line || owner.is_leading(),
+                    "{text}: {note} had a line of its own but does not lead"
+                );
+                assert!(
+                    !owner.is_inline() || !*owns_line,
+                    "{text}: {note} takes the inline slot but had a line of its own"
+                );
+            }
+            // The owner is the tree's own answer, so the fold puts every note back where the
+            // tree had it - the whole document, decorations included.
+            assert_eq!(fold(&events), tree, "{text}: the fold lost a note");
+        }
     }
 
     #[test]
@@ -3701,7 +4060,7 @@ mod tests {
             );
         }
         // A well-formed stream of scalars, mappings and sequences round-trips through the reader,
-        // and a comment in the middle of one is carried without being placed.
+        // and a note in the middle of one is placed where its owner says it rides.
         let ok = vec![
             event(StreamEventType::StreamStart),
             event(StreamEventType::DocumentStart),
@@ -3710,16 +4069,22 @@ mod tests {
             plain("1"),
             event(StreamEventType::Comment {
                 text: alloc::sync::Arc::from("note"),
-                standalone: true,
+                owns_line: true,
+                owner: NoteOwner::PrecedingLeading,
             }),
             event(StreamEventType::MappingEnd),
             event(StreamEventType::DocumentEnd),
             event(StreamEventType::StreamEnd),
         ];
+        let mut value = CustomNode::plain_scalar("1");
+        value.push_leading_comment(pyrs_ast::ast::Comment {
+            text: alloc::sync::Arc::from("note"),
+            standalone: true,
+        });
         assert_eq!(
             fold(&ok),
             CustomNode::plain_mapping(
-                vec![(quoted_or_plain("k".into()), CustomNode::plain_scalar("1"),)]
+                vec![(quoted_or_plain("k".into()), value,)]
                     .into_iter()
                     .collect()
             ),
@@ -3755,8 +4120,8 @@ mod tests {
                 match (tree, stream) {
                     (Ok(node), Ok(events)) => {
                         assert_eq!(
-                            undecorated(&fold(&events)),
-                            undecorated(&node),
+                            fold(&events),
+                            node,
                             "{} [{opts:?}]: the stream replays a different document",
                             path.display()
                         );

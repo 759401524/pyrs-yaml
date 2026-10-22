@@ -1,4 +1,4 @@
-use crate::ast::{Comment, NodeMap, ScalarStyle, Tag};
+use crate::ast::{NodeMap, ScalarStyle, Tag};
 use crate::parser::yaml::anchor_name_within;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -7,15 +7,40 @@ use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 
-pub use pyrs_event::{StreamEvent, StreamEventType};
+pub use pyrs_event::{NoteOwner, StreamEvent, StreamEventType};
+
+/// A note that has been read but not yet placed: it will lead the next node
+/// the consumer builds.
+struct PendingNote {
+    /// The note's text, sanitised the way the tree sanitises it.
+    text: Arc<str>,
+    /// Whether the source gave the note a line of its own.
+    owns_line: bool,
+    /// The note's own place in the source, kept so the event carries it.
+    line: usize,
+    column: usize,
+}
+
+/// Where a same-line note lands, in the vocabulary's terms.
+enum InlineBinding {
+    /// The note trails the node the consumer built last, in its inline slot.
+    Preceding,
+    /// The note leads the container the consumer built last, in its leading list.
+    PrecedingLeading,
+    /// The note annotates a node that has not been built yet.
+    Following,
+}
 
 /// Event receiver that collects `StreamEvent`s from granit-parser.
 ///
 /// Mirrors the pattern used by `AstReceiver` in `parser::mod.rs` but
 /// emits lightweight structural events instead of building an AST.
 ///
-/// Pending standalone comments are emitted as `StreamEventType::Comment`
-/// events before the next structural event that carries anchor/tag/alias.
+/// A note is reported with the two facts the tree knows separately: whether
+/// the source gave it a line of its own (`owns_line`), and where the tree
+/// files it (`owner`). The tree's own reader is the reference for the second
+/// one, so a note that trails the node before it and a note that leads the
+/// node after it are told apart even though the source reads alike.
 pub struct StreamReceiver<'a> {
     /// Raw source text, needed to read an anchored node's `&name` back at its
     /// span (granit surfaces only the numeric anchor id, never the name).
@@ -24,7 +49,54 @@ pub struct StreamReceiver<'a> {
     /// so a span char index is already a byte offset).
     char_offsets: Option<Vec<usize>>,
     events: Vec<StreamEvent<'a>>,
-    pending_standalone_comment: Option<Comment>,
+    /// Notes read but not yet placed: each leads the next node the consumer
+    /// builds.
+    ///
+    /// A stack rather than a single slot, because a document may stack any
+    /// number of comment lines above one key and the single slot kept only the
+    /// last of them - a loss the tree does not have.
+    pending_notes: Vec<PendingNote>,
+    /// Whether the source can hold a note at all.
+    ///
+    /// Everything below - the pending stack, the node the consumer built last,
+    /// the root, the document's end - is only ever read when a note arrives,
+    /// and a YAML note starts with `#`, so a source without one cannot produce
+    /// a note and the placement machine is dead weight for it. One pass over
+    /// the source buys that answer, and it is the same laziness the tree's own
+    /// reader has: `AstReceiver` touches a note only when granit hands it one.
+    ///
+    /// The pass is a scalar byte loop, and the two spellings of the question
+    /// are the same loop: `str::contains` and `as_bytes().contains` measured
+    /// 252,210,277 instructions each over `stream_medium`'s 2000 parses, the
+    /// two builds agreeing to the instruction. An earlier version of this
+    /// comment called the `str` form the standard library's vectorised search
+    /// and put its cost at "less than a tenth" of the byte-slice form; the
+    /// measurement says otherwise, and the claim is withdrawn.
+    ///
+    /// What the pass costs and what it buys, measured on one tree by rewriting
+    /// this line four ways and reading `stream_medium` (a 298-byte document
+    /// with no note) once per rewrite:
+    ///
+    /// - the pass over the document: 483 instructions per parse (966,000 over
+    ///   2000 parses, about 1.6 per byte);
+    /// - the placement machine it skips: 1,624 instructions per parse;
+    /// - so the gate pays for itself by 1,141 instructions per parse, and the
+    ///   price of the gate is the scan - not the difference between the two
+    ///   `contains` spellings, which is zero.
+    has_notes: bool,
+    /// The byte end of the node the consumer built last: the candidate a
+    /// same-line note binds to.
+    last_node_end: Option<usize>,
+    /// Whether that node already carries an inline note.
+    last_node_noted: bool,
+    /// Whether that node is a container the reader has not filled yet.
+    last_node_open_container: bool,
+    /// Whether the current document has produced its root.
+    has_root: bool,
+    /// Whether the current document's root is a container.
+    root_is_container: bool,
+    /// Whether the current document has ended.
+    document_ended: bool,
     anchors: NodeMap<usize, String>,
     /// The byte this reader has seen text end at, which is the floor the anchor-name recovery may not
     /// read below.
@@ -55,25 +127,213 @@ impl<'a> StreamReceiver<'a> {
             yaml_text,
             char_offsets: (!is_ascii).then(|| super::char_to_byte_offsets(yaml_text)),
             events: Vec::new(),
-            pending_standalone_comment: None,
+            pending_notes: Vec::new(),
+            has_notes: yaml_text.contains('#'),
             anchors: NodeMap::default(),
             window_floor: 0,
             max_depth,
             depth: 0,
             max_depth_exceeded: false,
+            last_node_end: None,
+            last_node_noted: false,
+            last_node_open_container: false,
+            has_root: false,
+            root_is_container: false,
+            document_ended: false,
         }
     }
 
-    fn emit_pending_comment(&mut self, line: usize, column: usize) {
-        if let Some(comment) = self.pending_standalone_comment.take() {
-            self.events.push(StreamEvent {
-                event_type: StreamEventType::Comment {
-                    text: comment.text,
-                    standalone: comment.standalone,
-                },
+    /// Emit one note in the slot the tree files it under.
+    fn emit_note(
+        &mut self,
+        text: Arc<str>,
+        owns_line: bool,
+        owner: NoteOwner,
+        line: usize,
+        column: usize,
+    ) {
+        self.events.push(StreamEvent {
+            event_type: StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            },
+            line,
+            column,
+        });
+    }
+
+    /// Emit the notes waiting to lead the next node, in source order.
+    fn flush_pending_notes(&mut self) {
+        if self.pending_notes.is_empty() {
+            return;
+        }
+        for note in core::mem::take(&mut self.pending_notes) {
+            self.emit_note(
+                note.text,
+                note.owns_line,
+                NoteOwner::FollowingLeading,
+                note.line,
+                note.column,
+            );
+        }
+    }
+
+    /// Emit the notes still pending when the document ends.
+    ///
+    /// The tree files the first of them in the root's inline slot, because that
+    /// is the slot the writer read it from: the writer cannot hang an inline
+    /// note on a block container's last line, so it spills the note onto its
+    /// own trailing line and the reader reports it back from there. The stream
+    /// reports every one of them in that slot - a consumer that rebuilds a tree
+    /// keeps the first, which is the tree's own answer.
+    fn flush_trailing_notes(&mut self) {
+        if self.pending_notes.is_empty() {
+            return;
+        }
+        let owner = if self.has_root {
+            NoteOwner::PrecedingInline
+        } else {
+            // No node of its own: the note leads the null root the tree builds
+            // for such a document, and the consumer builds that root next.
+            NoteOwner::FollowingLeading
+        };
+        for note in core::mem::take(&mut self.pending_notes) {
+            self.emit_note(note.text, note.owns_line, owner, note.line, note.column);
+        }
+    }
+
+    /// Emit the notes still pending when the stream ends.
+    ///
+    /// Nothing followed them, so they lead the document's root - where the tree
+    /// files them too, since a document with no node of its own becomes a null
+    /// root carrying the notes it read. A note that arrives after the document
+    /// has ended lands on a root the consumer has already built, so it is the
+    /// root's *leading* list of a node built last.
+    fn flush_final_notes(&mut self) {
+        let owner = if self.has_root {
+            NoteOwner::PrecedingLeading
+        } else {
+            NoteOwner::FollowingLeading
+        };
+        for note in core::mem::take(&mut self.pending_notes) {
+            self.emit_note(note.text, note.owns_line, owner, note.line, note.column);
+        }
+    }
+
+    /// Record the document's root: the first node the reader produced, and the
+    /// node a trailing note falls back on.
+    fn note_the_root(&mut self, is_container: bool) {
+        if !self.has_root {
+            self.has_root = true;
+            self.root_is_container = is_container;
+        }
+    }
+
+    /// Decide where a same-line note lands.
+    ///
+    /// Mirrors the tree's `attach_inline_comment`: the note trails the node the
+    /// consumer built last, unless a line break separates it from that node -
+    /// then it annotates a node that has not arrived yet and leads it instead.
+    fn bind_inline(&mut self, comment_byte: usize) -> InlineBinding {
+        // The document has ended, so nothing it could trail remains - unless the
+        // finished root is a container, which really does report the note back
+        // from the last line of its body (the tree's rule, crash-7918272c).
+        if self.document_ended && !self.root_is_container {
+            return InlineBinding::Following;
+        }
+        // The node the consumer built last is a container with nothing in it
+        // yet: there is no child for the note to trail, so it leads the
+        // container - the slot the tree files it in.
+        if self.last_node_open_container {
+            return InlineBinding::PrecedingLeading;
+        }
+        let Some(node_end) = self.last_node_end else {
+            return InlineBinding::Following;
+        };
+        // A note on a later line than the candidate annotates a node that has
+        // not been produced yet.
+        if crate::parser::line_break_between(self.yaml_text, node_end, comment_byte) {
+            return InlineBinding::Following;
+        }
+        // The candidate already carries an inline note; the tree moves this one
+        // forward rather than overwriting the first, because two same-line notes
+        // cannot share the one inline slot.
+        if self.last_node_noted {
+            return InlineBinding::Following;
+        }
+        self.last_node_noted = true;
+        InlineBinding::Preceding
+    }
+
+    /// Handle a note granit reported: an own-line note leads the next node, and
+    /// a same-line note trails the node the consumer built last.
+    fn on_comment(
+        &mut self,
+        text: &str,
+        placement: &granit_parser::Placement,
+        span: Span,
+        line: usize,
+        column: usize,
+    ) {
+        let trimmed = text.trim_matches(pyrs_schema::is_yaml_blank);
+        // granit drops a contentless `#`/`# ` on re-read, so a consumer
+        // round-tripping through these events would drift on it; surface
+        // nothing for an empty comment (mirrors the AST receiver; libFuzzer
+        // `yaml_roundtrip` crash-0de6be17).
+        if trimmed.is_empty() {
+            return;
+        }
+        // The tree sanitises a note on ingest too, and the two readers have to
+        // report the same text: a code point that cannot appear inside a
+        // document makes the whole document unparseable (libFuzzer
+        // `yaml_roundtrip` crash-2d14c6f6).
+        let text: Arc<str> = if trimmed.chars().all(pyrs_schema::is_yaml_document_char) {
+            Arc::from(trimmed)
+        } else {
+            let cleaned: String = trimmed
+                .chars()
+                .filter(|&c| pyrs_schema::is_yaml_document_char(c))
+                .collect();
+            let cleaned = cleaned.trim_matches(pyrs_schema::is_yaml_blank);
+            if cleaned.is_empty() {
+                return;
+            }
+            Arc::from(cleaned)
+        };
+        // The source fact: granit reports a note as `Right` exactly when the
+        // line carried content before the `#`, so the placement answers "does
+        // this note own its line" on its own.
+        let owns_line = crate::parser::is_standalone_placement(placement);
+        if owns_line {
+            self.pending_notes.push(PendingNote {
+                text,
+                owns_line: true,
                 line,
                 column,
             });
+            return;
+        }
+        if *placement != granit_parser::Placement::Right {
+            // Placement is #[non_exhaustive]: other variants are ignored.
+            return;
+        }
+        let comment_byte = self.byte_start_of(&span);
+        match self.bind_inline(comment_byte) {
+            InlineBinding::Preceding => {
+                self.emit_note(text, false, NoteOwner::PrecedingInline, line, column);
+            }
+            InlineBinding::PrecedingLeading => {
+                self.emit_note(text, false, NoteOwner::PrecedingLeading, line, column);
+            }
+            InlineBinding::Following => {
+                self.pending_notes.push(PendingNote {
+                    text,
+                    owns_line: false,
+                    line,
+                    column,
+                });
+            }
         }
     }
 
@@ -117,31 +377,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 
         // Handle native comments from granit-parser
         if let Event::Comment(text, placement) = &event {
-            let trimmed = text.trim_matches(pyrs_schema::is_yaml_blank);
-            // granit drops a contentless `#`/`# ` on re-read, so a consumer
-            // round-tripping through these events would drift on it; surface
-            // nothing for an empty comment (mirrors the AST receiver; libFuzzer
-            // `yaml_roundtrip` crash-0de6be17).
-            if trimmed.is_empty() {
-                return;
-            }
-            let text = Arc::from(trimmed);
-            if crate::parser::is_standalone_placement(placement) {
-                self.pending_standalone_comment = Some(Comment {
-                    text,
-                    standalone: true,
-                });
-            } else if *placement == granit_parser::Placement::Right {
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::Comment {
-                        text,
-                        standalone: false,
-                    },
-                    line,
-                    column,
-                });
-            }
-            // Placement is #[non_exhaustive]: other variants are ignored.
+            self.on_comment(text, placement, span, line, column);
             return;
         }
 
@@ -165,15 +401,65 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
             }
         }
 
-        // emit_pending_comment timing: all events except StreamStart emit pending
-        // comment before themselves. Scalar does NOT emit pending (inline comments
-        // are handled by Event::Comment(Placement::Right) directly).
-        let needs_emit_pending = !matches!(
-            &stream_event.event_type,
-            StreamEventType::StreamStart | StreamEventType::Scalar { .. }
-        );
-        if needs_emit_pending {
-            self.emit_pending_comment(line, column);
+        // The placement machine runs only for a source that can hold a note; a
+        // source without one never reaches it (see `has_notes`).
+        if self.has_notes {
+            // A note read earlier leads the node the consumer builds next, and
+            // the tree files it in that node's leading list - so the two agree.
+            // An alias is not such a node: the tree's alias carries no metadata
+            // slot, so the note passes over it and leads whatever comes after.
+            //
+            // One match answers both questions - which node leads, and what the
+            // node the consumer builds last now is - because the two used to
+            // cost two dispatches per event.
+            match &stream_event.event_type {
+                StreamEventType::Scalar { .. } => {
+                    self.flush_pending_notes();
+                    self.last_node_end = Some(self.byte_end_of(&span));
+                    self.last_node_noted = false;
+                    self.last_node_open_container = false;
+                    self.note_the_root(false);
+                }
+                StreamEventType::MappingStart { .. } | StreamEventType::SequenceStart { .. } => {
+                    self.flush_pending_notes();
+                    self.last_node_noted = false;
+                    self.last_node_open_container = true;
+                    self.note_the_root(true);
+                }
+                StreamEventType::Alias { .. } => {
+                    self.last_node_end = Some(self.byte_end_of(&span));
+                    self.last_node_noted = false;
+                    self.last_node_open_container = false;
+                    self.note_the_root(false);
+                }
+                StreamEventType::MappingEnd | StreamEventType::SequenceEnd => {
+                    self.last_node_noted = false;
+                    self.last_node_open_container = false;
+                    // A flow container's own end carries the boundary. A block
+                    // container's end event sits on the token that follows it, so
+                    // the last child's end stands - which is the tree's own answer
+                    // for a block collection.
+                    if span.start.index() != span.end.index() {
+                        self.last_node_end = Some(self.byte_end_of(&span));
+                    }
+                }
+                StreamEventType::DocumentStart => {
+                    self.has_root = false;
+                    self.root_is_container = false;
+                    self.document_ended = false;
+                    self.last_node_end = None;
+                    self.last_node_noted = false;
+                    self.last_node_open_container = false;
+                }
+                StreamEventType::DocumentEnd => {
+                    // The document's trailing note: the tree files the first pending
+                    // note in the root's inline slot, so the stream reports that
+                    // slot - after the root was built and before the document ends.
+                    self.flush_trailing_notes();
+                    self.document_ended = true;
+                }
+                _ => {}
+            }
         }
 
         self.events.push(stream_event);
@@ -347,6 +633,10 @@ pub fn parse_stream_with_options(
         )));
     }
 
+    // A note nothing followed leads the document's root, which is where the
+    // tree files it too.
+    receiver.flush_final_notes();
+
     Ok(receiver.events)
 }
 
@@ -515,9 +805,15 @@ mod tests {
             .filter(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
             .collect();
         assert!(!comment_events.is_empty());
-        if let StreamEventType::Comment { text, standalone } = &comment_events[0].event_type {
+        if let StreamEventType::Comment {
+            text,
+            owns_line,
+            owner,
+        } = &comment_events[0].event_type
+        {
             assert_eq!(text.as_ref(), "standalone comment");
-            assert!(*standalone);
+            assert!(*owns_line, "the note had a line of its own");
+            assert_eq!(*owner, NoteOwner::FollowingLeading);
         }
     }
 
@@ -529,9 +825,15 @@ mod tests {
             .filter(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
             .collect();
         assert!(!comment_events.is_empty());
-        if let StreamEventType::Comment { text, standalone } = &comment_events[0].event_type {
+        if let StreamEventType::Comment {
+            text,
+            owns_line,
+            owner,
+        } = &comment_events[0].event_type
+        {
             assert_eq!(text.as_ref(), "inline comment");
-            assert!(!*standalone);
+            assert!(!*owns_line, "the note shared its line with the value");
+            assert_eq!(*owner, NoteOwner::PrecedingInline);
         }
     }
 
@@ -551,9 +853,15 @@ mod tests {
             comment_pos < mapping_pos,
             "comment should come before mapping_start"
         );
-        if let StreamEventType::Comment { text, standalone } = &events[comment_pos].event_type {
+        if let StreamEventType::Comment {
+            text,
+            owns_line,
+            owner,
+        } = &events[comment_pos].event_type
+        {
             assert_eq!(text.as_ref(), "mapping comment");
-            assert!(*standalone);
+            assert!(*owns_line);
+            assert_eq!(*owner, NoteOwner::FollowingLeading);
         }
     }
 

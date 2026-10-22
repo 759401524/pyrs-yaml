@@ -8,24 +8,31 @@
 //!
 //! - one verdict at one place: either both walks refuse with the same `ParseError`, or both accept;
 //! - what they carry: `from_events` of the stream is the same document as the tree the scanner
-//!   built - compared through the strict writer, which ignores comment slots because the stream
-//!   cannot report which node owns a same-line note - and the stream holds exactly the notes the
-//!   tree kept, in the same multiset.
+//!   built - compared through the strict writer, which forgets comment slots - and the stream holds
+//!   exactly the notes the tree kept, in the same multiset *and in the same slots*: a note is
+//!   compared by its text, the source fact and the owner, not by its text alone, because the
+//!   vocabulary can now say which node owns a same-line note (`docs/dev/event-stream.md`, "The note
+//!   flag split").
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use pyrs_ast::ast::CustomNode;
+use pyrs_event::NoteOwner;
 use pyrs_json::{
-    JsonParseOptions, from_events, from_json_with_options, parse_stream_with_options, to_json_text,
+    JsonParseOptions, StreamEventType, from_events, from_json_with_options,
+    parse_stream_with_options, to_json_text,
 };
 
-/// Every note text a tree carries.
-fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
+/// Every note text a tree carries, with the slot it rides in.
+///
+/// The tree's `standalone` flag is that slot: `true` is the leading list, `false` the one inline
+/// slot. The stream's owner names the same two slots, so the two are comparable.
+fn tree_notes(node: &CustomNode, into: &mut Vec<(String, bool)>) {
     if let Some(note) = node.comment() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     for note in node.leading_comments() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
@@ -41,6 +48,21 @@ fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
         }
         _ => {}
     }
+}
+
+/// Every note a stream reports, with the source fact and the owner.
+fn stream_notes(events: &[pyrs_event::StreamEvent<'_>]) -> Vec<(String, bool, NoteOwner)> {
+    events
+        .iter()
+        .filter_map(|event| match &event.event_type {
+            StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            } => Some((text.to_string(), *owns_line, *owner)),
+            _ => None,
+        })
+        .collect()
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -87,20 +109,31 @@ fuzz_target!(|data: &[u8]| {
                 replayed.is_ok()
             ),
         }
-        let mut kept: Vec<String> = Vec::new();
+        let mut kept: Vec<(String, bool)> = Vec::new();
         tree_notes(&node, &mut kept);
-        let mut reported: Vec<String> = events
+        let reported = stream_notes(&events);
+        // The full comment, not the text alone: the owner has to name the same slot the tree
+        // filed the note in, and the source fact has to agree with that slot.
+        let mut kept_slots = kept.clone();
+        let mut reported_slots: Vec<(String, bool)> = reported
             .iter()
-            .filter_map(|event| match &event.event_type {
-                pyrs_json::StreamEventType::Comment { text, .. } => Some(text.to_string()),
-                _ => None,
-            })
+            .map(|(text, _, owner)| (text.clone(), owner.is_leading()))
             .collect();
-        kept.sort();
-        reported.sort();
+        kept_slots.sort();
+        reported_slots.sort();
         assert_eq!(
-            kept, reported,
+            kept_slots, reported_slots,
             "{dialect}: the stream and the tree hold different notes for {text:?}"
         );
+        for (note, owns_line, owner) in &reported {
+            assert!(
+                !*owns_line || owner.is_leading(),
+                "{dialect}: {note} had a line of its own but does not lead"
+            );
+            assert!(
+                !owner.is_inline() || !*owns_line,
+                "{dialect}: {note} takes the inline slot but had a line of its own"
+            );
+        }
     }
 });

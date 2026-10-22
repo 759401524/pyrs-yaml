@@ -185,6 +185,15 @@ def _skel(text, fmt):
     return [(event["type"], event["value"], event["style"]) for event in pyrs_yaml.parse_stream(text, format=fmt)]
 
 
+def _notes(text, fmt):
+    """The `(text, style, owner)` of every note a stream reports."""
+    return [
+        (event["value"], event["style"], event["owner"])
+        for event in pyrs_yaml.parse_stream(text, format=fmt)
+        if event["type"] == "comment"
+    ]
+
+
 class TestMultiFormatStream:
     """`parse_stream(format=...)`: the one vocabulary, produced per format.
 
@@ -260,6 +269,41 @@ class TestMultiFormatStream:
         skeleton = _skel('{\n  // head\n  "a": 1, /* tail */\n  "b": 2\n}\n', "jsonc")
         assert ("comment", "head", "standalone") in skeleton
         assert ("comment", "tail", "inline") in skeleton
+
+    @pytest.mark.parametrize(
+        "text,fmt,expected",
+        [
+            ("# above\na: 1\n", "yaml", ("above", "standalone", "following_leading")),
+            ("a: 1 # on the value\n", "yaml", ("on the value", "inline", "preceding_inline")),
+            ("a: 1\n# trailing\n", "yaml", ("trailing", "standalone", "preceding_inline")),
+            ('{"a": 1 /* tail */}', "jsonc", ("tail", "inline", "preceding_inline")),
+            ("# above\na = 1\n", "toml", ("above", "standalone", "following_leading")),
+            ("a = 1 # tail\n", "toml", ("tail", "inline", "preceding_inline")),
+        ],
+    )
+    def test_a_note_reports_its_source_fact_and_its_owner(self, text, fmt, expected):
+        # One note, two facts, and the boundary names both: `style` answers the source's question
+        # (did the note have a line to itself) and `owner` answers the tree's (which node the note
+        # is filed under, and in which of its two slots). The three producers answer the source
+        # question the same way -- only blanks before the `#` mean the note had a line of its own --
+        # so the flag is one word across the dialects and the owner is what tells them apart.
+        assert _notes(text, fmt) == [expected]
+
+    def test_the_one_value_that_moved_is_the_shared_line_leading_note(self):
+        # TOML's old flag answered the slot question ("is this note in the leading list?"), so a
+        # note that shared its line with the text before it but still leads the next element used
+        # to read `standalone`. It now reads `inline` -- the source's own answer, which the other
+        # two producers always gave -- and `owner` carries the placement the old value carried.
+        # This is the one shipped Python value the split moves, and it is pinned so a future
+        # change to either half of the shape is a red run rather than a silent drift.
+        assert _notes("a = { x = 1, # shared\n  y = 2 }\n", "toml") == [("shared", "inline", "following_leading")]
+
+    def test_the_owner_key_is_only_on_a_comment(self):
+        # The vocabulary is one shape with a per-event field: the other seven keys are untouched,
+        # and a consumer that reads `owner` off a scalar would find nothing.
+        events = list(pyrs_yaml.parse_stream("# above\na: 1\n", format="yaml"))
+        assert [e["type"] for e in events if "owner" in e] == ["comment"]
+        assert set(events[0]) == {"type", "value", "style", "anchor", "tag", "line", "column"}
 
     def test_json5_reports_single_quoted_and_bare_forms_verbatim(self):
         # The number is the source's own spelling, not a canonicalised one: `.5` stays `.5`.

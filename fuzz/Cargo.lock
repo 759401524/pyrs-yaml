@@ -399,6 +399,7 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "pyrs-ast",
+ "pyrs-event",
  "pyrs-json",
  "pyrs-schema",
  "pyrs-toml",

@@ -1,7 +1,7 @@
 //! Convert `StreamEvent` to Python dict for stream parsing API.
 
 use crate::ast::ScalarStyle;
-use crate::parser::{StreamEvent, StreamEventType};
+use crate::parser::{NoteOwner, StreamEvent, StreamEventType};
 
 use pyo3::intern;
 use pyo3::prelude::*;
@@ -19,6 +19,20 @@ fn set_item_or_none<'a>(
     match value {
         Some(v) => dict.set_item(key, v),
         None => dict.set_item(key, py.None()),
+    }
+}
+
+/// The Python spelling of a note's owner.
+///
+/// The direction reads in the consumer's build order, so a consumer that
+/// rebuilds a tree knows which node to file the note under: the one it builds
+/// next (`following_*`) or the one it built last (`preceding_*`).
+fn owner_str(owner: NoteOwner) -> &'static str {
+    match owner {
+        NoteOwner::FollowingLeading => "following_leading",
+        NoteOwner::FollowingInline => "following_inline",
+        NoteOwner::PrecedingLeading => "preceding_leading",
+        NoteOwner::PrecedingInline => "preceding_inline",
     }
 }
 
@@ -122,8 +136,15 @@ pub(crate) fn stream_event_to_py_dict<'a>(
         StreamEventType::Alias { name } => {
             fill_event_dict(&dict, py, "alias", Some(name), None, None, None)?;
         }
-        StreamEventType::Comment { text, standalone } => {
-            let style_str = if *standalone { "standalone" } else { "inline" };
+        StreamEventType::Comment {
+            text,
+            owns_line,
+            owner,
+        } => {
+            // `style` answers the source's own question - did the note have a
+            // line to itself - and `owner` answers the tree's: which node the
+            // note is filed under, and in which of its two slots.
+            let style_str = if *owns_line { "standalone" } else { "inline" };
             fill_event_dict(
                 &dict,
                 py,
@@ -133,6 +154,7 @@ pub(crate) fn stream_event_to_py_dict<'a>(
                 None,
                 None,
             )?;
+            dict.set_item(intern!(py, "owner"), owner_str(*owner))?;
         }
     }
 

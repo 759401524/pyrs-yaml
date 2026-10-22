@@ -17,18 +17,17 @@
 //!   kept.
 //!
 //! The writer is the comparator on purpose: it forgets comment slots and re-derives everything
-//! else, so the equality says the two walks resolved the *data* alike. Note text is then compared
-//! as a multiset, which is the most the event vocabulary can promise — it has no way to say which
-//! node owns a same-line note (`docs/dev/event-stream.md`, "The one thing the vocabulary still
-//! cannot say"), and `standalone` is excluded because the two walks use that one boolean for two
-//! questions: the tree's says which slot a note rides, the stream's says whether the source gave
-//! it a line of its own. `the_two_walks_answer_different_questions_with_standalone` in
-//! `src/parser.rs` pins that divergence, found by this gate.
+//! else, so the equality says the two walks resolved the *data* alike. The notes are then compared
+//! in full - text, the source fact and the owner - because the event vocabulary can now say which
+//! node owns a same-line note (`docs/dev/event-stream.md`, "The note flag split"), and the replay
+//! asserts the stronger claim as well: the folded tree equals the scanned tree, decorations
+//! included, so every note lands in the slot the tree had it in.
 //!
 //! A dialect that refuses a seed skips it: the corpus deliberately holds bytes only some of the
 //! readers accept.
 
 use pyrs_ast::ast::CustomNode;
+use pyrs_event::NoteOwner;
 use pyrs_json::{
     JsonParseOptions, StreamEventType, from_events, from_json_with_options,
     parse_stream_with_options, to_json_text,
@@ -75,13 +74,16 @@ fn seeds() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Every note text a tree carries.
-fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
+/// Every note a tree carries, as its text and the slot it rides.
+///
+/// The tree's `standalone` flag is that slot: `true` is the leading list, `false` the one inline
+/// slot. The stream's owner names the same two slots, so the two are comparable.
+fn tree_notes(node: &CustomNode, into: &mut Vec<(String, bool)>) {
     if let Some(note) = node.comment() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     for note in node.leading_comments() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
@@ -97,6 +99,42 @@ fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
         }
         _ => {}
     }
+}
+
+/// Every note a stream reports, as its text, the source fact and the owner.
+fn stream_notes(events: &[pyrs_event::StreamEvent<'_>]) -> Vec<(String, bool, NoteOwner)> {
+    events
+        .iter()
+        .filter_map(|event| match &event.event_type {
+            StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            } => Some((text.to_string(), *owns_line, *owner)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_jsonc_document_rebuilds_itself_from_its_own_events() {
+    // The claim the corpus loop makes in the general case, named on one document: a JSONC source
+    // with a note on the key, one on the value, one after a pair and one inside a sequence folds
+    // back into the tree the parser built - every note in the slot it came from - and the strict
+    // writer writes the folded tree as the text the parser produced.
+    let text = r#"{"a" /* on the key */: /* on the value */ 1, // after a pair
+ "b": [/* inside a sequence */ 2]}"#;
+    let node = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+    let events = parse_stream_with_options(text, JsonParseOptions::JSONC).expect("streams");
+    let replay = from_events(&events).expect("its own stream replays");
+    assert_eq!(
+        to_json_text(&node).expect("writable"),
+        to_json_text(&replay).expect("writable"),
+        "the folded tree writes different text"
+    );
+    // The stronger claim, decorations included: the note that rode the key is still on the key,
+    // the one inside the sequence is still inside it.
+    assert_eq!(replay, node, "the folded tree filed a note in another slot");
 }
 
 #[test]
@@ -150,21 +188,38 @@ fn the_two_walks_describe_the_same_document() {
                     replayed.is_ok()
                 ),
             }
-            let mut kept: Vec<String> = Vec::new();
+            let mut kept: Vec<(String, bool)> = Vec::new();
             tree_notes(&node, &mut kept);
-            let mut reported: Vec<String> = events
+            let reported = stream_notes(&events);
+            // The full comment, not the text alone: the owner has to name the same slot the tree
+            // filed the note in, and the source fact has to agree with that slot.
+            let mut kept_slots = kept.clone();
+            let mut reported_slots: Vec<(String, bool)> = reported
                 .iter()
-                .filter_map(|event| match &event.event_type {
-                    StreamEventType::Comment { text, .. } => Some(text.to_string()),
-                    _ => None,
-                })
+                .map(|(text, _, owner)| (text.clone(), owner.is_leading()))
                 .collect();
-            kept.sort();
-            reported.sort();
+            kept_slots.sort();
+            reported_slots.sort();
             assert_eq!(
-                kept, reported,
+                kept_slots, reported_slots,
                 "{name} [{dialect}]: the stream and the tree hold different notes\n\
-                 tree: {kept:?}\nstream: {reported:?}\ninput:\n{text}"
+                 tree: {kept_slots:?}\nstream: {reported_slots:?}\ninput:\n{text}"
+            );
+            for (note, owns_line, owner) in &reported {
+                assert!(
+                    !*owns_line || owner.is_leading(),
+                    "{name} [{dialect}]: {note} had a line of its own but does not lead"
+                );
+                assert!(
+                    !owner.is_inline() || !*owns_line,
+                    "{name} [{dialect}]: {note} takes the inline slot but had a line of its own"
+                );
+            }
+            // The stronger claim: the folded tree is the scanned tree, decorations included, so
+            // every note lands in the slot the tree had it in.
+            assert_eq!(
+                replay, node,
+                "{name} [{dialect}]: the folded tree is not the scanned tree\ninput:\n{text}"
             );
         }
     }

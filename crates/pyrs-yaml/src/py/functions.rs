@@ -290,11 +290,15 @@ pub(crate) fn safe_loads(
 /// Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
 ///
 /// `format` chooses the producer: `yaml` (the default), `json`, `jsonc`, `json5` or `toml`. Every
-/// producer reports the one vocabulary, so the dicts keep the same seven keys and only the fields a
+/// producer reports the one vocabulary, so the dicts keep the same keys and only the fields a
 /// format has something to say about change. `style` is whatever that engine remembers: a JSON
 /// string reads `double_quoted` and a JSON number `plain`, JSON5 adds `single_quoted`, and a TOML
 /// literal `'…'` reads the same as a basic `"…"` because which quote was typed is not in its IR.
-/// `anchor` and `alias` stay YAML's own and never appear elsewhere. `max_depth` bounds the YAML and
+/// `anchor` and `alias` stay YAML's own and never appear elsewhere. A `comment` event carries two
+/// keys about the note: `style` says whether the source gave the note a line of its own, and
+/// `owner` says which node the note is filed under and in which of its two slots — the node the
+/// consumer builds next (`following_leading`, `following_inline`) or the one it built last
+/// (`preceding_leading`, `preceding_inline`). `max_depth` bounds the YAML and
 /// JSON readers, which carry that knob; TOML's nesting limit is the intermediate representation's
 /// own. The accept/reject verdict is the same one the tree route reaches with the same detail,
 /// because it is the same scanner: a document `load_json` refuses raises here too.

@@ -72,6 +72,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A note in an event stream says which node it belongs to** — `pyrs-event`'s
+  `StreamEventType::Comment` carried one flag, `standalone`, and it answered two questions at
+  once: did the note have a line to itself, which is a fact about the source, and which node is
+  the note filed under, which is a fact about the tree. A consumer that wanted to put the note
+  back where the tree had it could not ask the second question, so the flag is two now.
+  `owns_line` keeps the source's own answer, and a new `NoteOwner` enum carries the tree's:
+  `FollowingLeading`, `FollowingInline`, `PrecedingLeading` and `PrecedingInline`, named in the
+  consumer's build order, so `following_*` is the node the consumer builds next and `preceding_*`
+  the one it built last. Every Rust caller in this workspace that constructed
+  `StreamEventType::Comment` was updated in the same change, and these crates are not published,
+  so no shipped API moves; Python callers of `parse_stream` see the old `style` key
+  (`standalone` / `inline`) unchanged and gain an `owner` key naming the same four placements.
+  The three producers answer the new question from the node they filed the note under, so the
+  stream and the tree cannot disagree: the YAML producer files a note that trails a node in that
+  node's inline slot and a note that leads the next node in its leading list; the TOML producer
+  reports a table's own notes after the table's name, because the notes above `[a]` lead the
+  mapping `a` holds and not the name; and the JSON producer reports each group of notes with the
+  side and the slot the tree's own rule gives it. Two visible details follow: a TOML note written
+  after a comma now reports `style: "inline"` where it reported `standalone`, because the note did
+  not own its line and `owner` says where it belongs instead; and a TOML table's notes now arrive
+  after its key event rather than before it. The JSON producer also stopped re-reading the source
+  for the notes' offsets - the offset travels with the record - so the stream walk no longer
+  scans the text a second time. The split is proved by tiers that ask the tree and the stream the
+  same question: `crates/pyrs-yaml-core/tests/event_notes.rs` walks fourteen documents twice and
+  asserts that every note the tree files is reported in the same slot with the same direction and
+  the same own-line fact, the JSON and TOML replay suites compare the whole note instead of
+  skipping one of the two fields, and a JSONC document folded back from its own events
+  round-trips through the strict writer to the same text.
+
 - **The `rules:` schema language is judged from outside** — `tests/test_parse_schema_spec_table.py`
   asks each `type:` name the grammar accepts a question this repository does not own: whether the
   value a rule resolves is really an instance of the JSON Schema type that name denotes.
