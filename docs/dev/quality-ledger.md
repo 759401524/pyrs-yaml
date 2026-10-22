@@ -7491,6 +7491,68 @@ that does not project a tree, which JSON's is and TOML's is not. The YAML callba
 `False` there is a delivery stop rather than a scan stop; the docstring says so and no test claims
 otherwise.
 
+### (fe) A stream event now names its bytes, and the index that pays for it forgets what it passed (2026-10-23)
+
+`line` and `column` locate an event in text a consumer has to keep. Ruling A asked for the byte
+range instead, so an event-sourcing consumer can slice the source or resume from an offset without
+holding the document. `StreamEvent` now carries `offset` and `end` on every event of every producer,
+and the Python dicts of `parse_stream`, `load_stream` and `load_stream_file` gain the two keys.
+
+**The contract is a measurement, not a definition.** The five formats disagree about what a span is,
+and each disagreement is written down where it is produced rather than left for a consumer to
+discover. A quoted scalar's range covers the quotes the source typed (`'y'`, not `y`); a YAML block
+scalar's range is its body including the trailing newline and excluding the `|` and the indentation;
+a flow delimiter is exactly one byte and a block container is an empty range, because no character
+opens it; `document_start` covers `---` when the source wrote one. Where a producer records only a
+position, `end == offset` is the answer and the docs say so instead of inventing a length: every
+TOML event, because the IR keeps starts and a length would need a second scan of the token, plus
+YAML's block containers and stream markers; a document marker covers what the source wrote and is
+empty otherwise. `tests/test_streaming.py` pins the shapes by slicing the source at the reported
+range and comparing the slice to the token the source typed.
+
+**The sparse index is the whole issue on the incremental path.** granit reports char indices, and
+the string path already had the conversions: it builds a char→byte table only when the source is not
+ASCII. `load_stream` has no source to build a table from, so `ChunkCharIter` records one
+`(chars, bytes)` mark per multi-byte character while it decodes and nothing at all for ASCII - then
+`YamlStream` reads the marks under the same mutex the decode takes. Recording for the whole stream
+would have made the feature's memory O(non-ASCII characters), which contradicts the bound the
+streaming guide states for exactly this entry point. The marks therefore advance with the parser: a
+lookup turns the two ends of the current span into bytes, then forgets everything at or before the
+span's *start*, keeping a base pair that answers the dropped prefix
+(`base.bytes + (q - base.chars)`). Pruning to the start and not the end is deliberate - a flow
+collection's span can cover its children, and pruning past a child's position would answer the child
+from the wrong base. What remains is one mark per multi-byte character in the text between the last
+event and the parser's read-ahead, which is bounded by the largest token, not by the document.
+
+**Measured.** Rust: the whole workspace's nextest run. Python: `tests/test_streaming.py` collects
+69 items, seventeen of them new. The parity test feeds `load_stream` one byte at a time - the chunk
+boundary that can split a wide character - and now also a second document after a flow member, since
+that is where a wrong base would surface; it compares the whole event list against `parse_stream`'s.
+A falsification run replaced `byte_at` with the identity and the CJK case reported `end: 3` against
+`9`, so the parity test bites rather than agreeing by construction.
+
+The index has no Rust unit test, and the reason is a gate rather than an oversight: `ByteMarks`
+lives in the binding crate, which holds no Rust test tier (`scripts/check_rust_python_decoupling.py`
+rule R2, the measured decision in `docs/dev/boundaries.md`), so its evidence has to come from the
+Python surface. The lookup invariant is what the parity test checks - two routes over the same
+multi-byte document must report the same bytes. Pruning is not testable from there: keeping every
+mark answers every lookup correctly, so no observable assertion separates a bounded table from an
+unbounded one.
+
+**What it costs.** The Ir gate reads `stream_medium` +1.18% (251,020,333 → 253,988,248, three
+samples identical, enforcing image) against the 0.50% line. The movement is the payload: two `usize`
+fields on a struct pushed once per event, so it pays in the writes and again in every `Vec` growth
+copy. The same refresh rewrote all 22 floors, and the other 21 moved by at most 0.13%
+(`to_python_small`), so the line is not covering a second change of this size. This is the
+intended-cost channel `ir_gate.py` describes, and the floor is moved by the enforcing-image refresh
+with `accept_drift=stream_medium`, not by widening the line.
+
+**Not covered.** `end == offset` means TOML's stream cannot report a token's extent, and no test
+claims otherwise. The marks bound is the largest *token*, not a constant: one 100 MB scalar of CJK
+text still costs a mark per character while that token is being reported. And the range is source
+bytes, not the decoded value - a consumer that wants the decoded scalar still reads `value`, which
+is the split the stream already made.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

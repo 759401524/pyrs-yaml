@@ -23,7 +23,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 ```mermaid title="流式解析架构"
 graph LR
     A["YAML 文件 / 字符串"] --> B["惰性事件迭代器<br/>O(锚点数 + 64KB 块)"]
-    B --> C["事件字典<br/>type, value, style, anchor, tag, line, column"]
+    B --> C["事件字典<br/>type, value, style, anchor, tag, line, column, offset, end"]
     C --> D["消费者<br/>流式处理"]
 ```
 
@@ -126,6 +126,14 @@ def __next__() -> dict | None: ...
 | `tag` | `str` 或 `None` | 标签字符串（`!!str`、`!custom`） |
 | `line` | `int` | 行号（0 起始） |
 | `column` | `int` | 列号（0 起始） |
+| `offset` | `int` | 事件自身 token 的字节偏移，从源文本开头起算 |
+| `end` | `int` | 该 token 最后一个字节之后的位置 |
+
+`offset`/`end` 命名的是 token 本身而不是子树：带引号的标量范围包含源码写下的引号，注释范围
+包含其定界符，流式容器的范围就是那个定界符字节。若生产者只记录位置——TOML 的每个事件、YAML
+的块式容器与流标记——`end` 等于 `offset`；文档标记在源码写下 `---` 或 `...` 时覆盖它，否则为空。
+两者都落在字符边界上、不会倒置，也不超过
+源的字节长度，因此 `source.encode()[event["offset"]:event["end"]]` 总能解码。
 
 #### 事件类型
 

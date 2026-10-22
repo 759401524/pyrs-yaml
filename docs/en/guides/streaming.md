@@ -29,7 +29,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 ```mermaid title="Streaming parse architecture"
 graph LR
     A["YAML file / string"] --> B["Lazy event iterator<br/>O(anchors + 64KB chunk)"]
-    B --> C["Event dicts<br/>type, value, style, anchor, tag, line, column"]
+    B --> C["Event dicts<br/>type, value, style, anchor, tag, line, column, offset, end"]
     C --> D["Consumer<br/>streaming processing"]
 ```
 
@@ -143,6 +143,16 @@ Each event dict contains the following keys:
 | `tag` | `str` or `None` | Tag string (`!!str`, `!custom`) |
 | `line` | `int` | Line number (0-indexed) |
 | `column` | `int` | Column number (0-indexed) |
+| `offset` | `int` | Byte offset of the event's own token, counted from the start of the source |
+| `end` | `int` | One past the last byte of that token |
+
+`offset`/`end` name the token, not the subtree: a quoted scalar's range covers the quotes the
+source typed, a comment's range covers its delimiters, and a flow container's range is its
+delimiter byte. Where the producer records only a position — every TOML event, YAML's block
+containers and stream markers — `end` equals `offset`; a document marker covers `---` or `...`
+when the source wrote one, and is empty otherwise. Both are character boundaries,
+never reversed, and within the source's byte length, so `source.encode()[event["offset"]:event["end"]]`
+always decodes.
 
 #### Event Types
 

@@ -23,7 +23,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 ```mermaid title="스트리밍 파싱 아키텍처"
 graph LR
     A["YAML 파일 / 문자열"] --> B["지연 이벤트 반복자<br/>O(앵커 + 64KB 청크)"]
-    B --> C["이벤트 dict<br/>type, value, style, anchor, tag, line, column"]
+    B --> C["이벤트 dict<br/>type, value, style, anchor, tag, line, column, offset, end"]
     C --> D["소비자<br/>스트리밍 처리"]
 ```
 
@@ -126,6 +126,15 @@ def __next__() -> dict | None: ...
 | `tag` | `str` 또는 `None` | 태그 문자열(`!!str`, `!custom`) |
 | `line` | `int` | 줄 번호(0 기반) |
 | `column` | `int` | 열 번호(0 기반) |
+| `offset` | `int` | 이벤트 자체 토큰의 바이트 오프셋(소스 시작 기준) |
+| `end` | `int` | 해당 토큰의 마지막 바이트 다음 위치 |
+
+`offset`/`end`는 하위 트리가 아니라 토큰 자체를 가리킵니다. 인용된 스칼라의 범위는 소스에 적힌
+따옴표를 포함하고, 주석의 범위는 구분 기호를 포함하며, 플로 컨테이너의 범위는 구분 기호 1바이트
+입니다. 위치만 기록하는 경우——TOML의 모든 이벤트, YAML의 블록 컨테이너와 스트림 마커——
+`end`는 `offset`과 같습니다. 문서 마커는 소스가 `---`나 `...`를 적었다면 그 마커를 덮고,
+적지 않았다면 비어 있습니다. 둘 다 문자 경계에 있고 역전되지 않으며 소스의 바이트 길이를 넘지
+않으므로 `source.encode()[event["offset"]:event["end"]]`는 항상 디코딩됩니다.
 
 #### 이벤트 타입
 

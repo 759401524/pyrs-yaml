@@ -39,20 +39,38 @@ use alloc::vec::Vec;
 use core::ops::ControlFlow;
 use pyrs_ast::ast::{ScalarStyle, Tag};
 
-/// Line and column information for a YAML stream event.
+/// One event of a document stream, with the source position it names.
 ///
 /// The scalar text borrows from the parsed source (`Cow<'a, str>`) and owns only what a decoder
 /// had to produce — a double-quoted value with escapes arrives already decoded and owned, a plain
 /// or block value is a slice of the input. `into_owned` is the escape hatch for an owner that
 /// cannot carry the lifetime, which is what the Python boundary needs.
+///
+/// `line`/`column` answer *where a reader is*; `offset`/`end` answer *which bytes it read*. The two
+/// are the same position said in two units, and both are the producer's to report: a consumer that
+/// replays or resumes a stream needs the byte, because that is what a file can be seeked to, while
+/// a diagnostic needs the line and column.
+///
+/// `offset..end` is the event's own source range. It is empty where the producer's record carries a
+/// position but no text — a TOML event (its IR keeps starts, not ends), a block container's close
+/// (granit puts it on the token that follows the container), and a document or stream marker at the
+/// edge of the input. It is never reversed, and it always falls on character boundaries, so slicing
+/// the source with it cannot panic. Where the range is non-empty it is the token the event names,
+/// not the node's whole subtree: a `MappingStart` covers the opening `{` of a flow mapping and
+/// nothing of its members, because a producer that streams cannot know where its collection ends
+/// without buffering every event after it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamEvent<'a> {
     /// The type of event that occurred.
     pub event_type: StreamEventType<'a>,
     /// The line number (0-indexed) where the event starts.
     pub line: usize,
-    /// The column number (0-indexed) where the event starts.
+    /// The column number (0-indexed, counted in characters) where the event starts.
     pub column: usize,
+    /// The byte offset of the event's first source byte.
+    pub offset: usize,
+    /// One past the event's last source byte; equal to `offset` when the event names no text.
+    pub end: usize,
 }
 
 impl StreamEvent<'_> {
@@ -62,6 +80,8 @@ impl StreamEvent<'_> {
             event_type: self.event_type.into_owned(),
             line: self.line,
             column: self.column,
+            offset: self.offset,
+            end: self.end,
         }
     }
 }
@@ -363,11 +383,19 @@ mod tests {
     }
 
     /// The vocabulary has no constructor of its own, so a test builds the record directly.
+    ///
+    /// The byte range is derived from the line and column rather than passed in: these events are
+    /// not tied to a source, and what the two tests below ask is whether every field survives
+    /// ownership, not whether a particular byte is the right one. `end` is deliberately not equal
+    /// to `offset`, so an arm that drops either field lands on a different value.
     fn event<'a>(line: usize, column: usize, event_type: StreamEventType<'a>) -> StreamEvent<'a> {
+        let offset = line * 64 + column;
         StreamEvent {
             event_type,
             line,
             column,
+            offset,
+            end: offset + 1,
         }
     }
 
@@ -498,6 +526,8 @@ mod tests {
             assert_eq!(before, after, "owning changed {:?}", before.event_type);
             assert_eq!(before.line, after.line);
             assert_eq!(before.column, after.column);
+            assert_eq!(before.offset, after.offset);
+            assert_eq!(before.end, after.end);
         }
     }
 
@@ -693,10 +723,13 @@ mod tests {
             ];
 
             for event_type in variants {
+                let offset = positions.0 % 4096;
                 let event = StreamEvent {
                     event_type,
                     line: positions.0 % 64,
                     column: positions.1 % 64,
+                    offset,
+                    end: offset + positions.1 % 8,
                 };
                 prop_assert_eq!(&event, &event.clone());
                 let owned = event.clone().into_owned();
@@ -704,6 +737,8 @@ mod tests {
                 prop_assert_eq!(&owned, &owned.clone().into_owned(), "owning twice differs");
                 prop_assert_eq!(event.line, owned.line);
                 prop_assert_eq!(event.column, owned.column);
+                prop_assert_eq!(event.offset, owned.offset);
+                prop_assert_eq!(event.end, owned.end);
             }
         }
     }

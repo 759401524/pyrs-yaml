@@ -797,3 +797,63 @@ point, every stop point as an exact prefix, and the per-format error semantics a
 tests in `crates/pyrs-json/src/parser.rs` and `crates/pyrs-toml/tests/event_stream.rs`).
 `tests/test_streaming.py` pins the same at the Python boundary, including a stopped JSON scan that
 never reaches the invalid byte after it.
+
+## What a byte range answered (2026-10-23)
+
+<!-- landed: crates/pyrs-event/src/lib.rs::StreamEvent -->
+<!-- landed: crates/pyrs-yaml-core/src/parser/stream.rs::event_to_stream_event -->
+<!-- landed: crates/pyrs-json/src/parser.rs::at_range -->
+<!-- landed: crates/pyrs-toml/src/events.rs -->
+<!-- landed: crates/pyrs-yaml/src/py/streaming.rs::ByteMarks -->
+<!-- landed: tests/test_streaming.py::TestByteRanges -->
+
+`StreamEvent` carried a line and a column, which locate an event in text the consumer has to keep.
+It now carries `offset` and `end` as well: the first source byte the event names and one past the
+last, both character boundaries inside `len(source.encode())` and never reversed. Slicing the source
+at them always decodes — that is the whole promise, and it is what lets a consumer resume or re-read
+a token without holding the document.
+
+**The range is the token, not the subtree.** Measured per producer rather than defined in the
+abstract, because the five formats disagree and a consumer that assumed otherwise would slice the
+wrong thing:
+
+- A quoted scalar covers the quotes the source typed (`'y'` and `"y"` include their quotes), a plain
+  scalar is its own bytes, and a block scalar is its body with the trailing newline, excluding the
+  `|`/`>` indicator and the indentation.
+- A flow delimiter is exactly its one byte (`{`, `[`, `]`, `}`); a block container is empty because
+  no character opens it; a comment covers its delimiters — `#` to the line end, `//` likewise,
+  `/* ... */` through the closing `*/`.
+- A stream marker is always empty; a document marker is empty when the source wrote no `---`/`...`,
+  and is those three bytes when it did.
+
+Where a producer records only a position, `end == offset` is the answer and no extent is invented:
+every TOML event (its IR keeps starts, and a length would need a second scan of the token), and
+YAML's block containers and stream markers. `tests/test_streaming.py::TestByteRanges` pins each
+shape by slicing the source at the pair and comparing the slice to the token, across all five
+formats and both YAML routes.
+
+**Three producers reach the same pair from three places.** granit reports YAML spans as char
+indices, so the text route converts both ends through the char→byte table it already builds when the
+source is not ASCII. The JSON walker knows its byte position natively, and a comment's range is the
+text it consumed. The incremental reader has no source to build a table from — that is the point of
+it — so `ChunkCharIter` records a `(chars, bytes)` mark per multi-byte character while it decodes;
+ASCII needs none, because there the two offsets differ by a constant.
+
+**The index forgets what it passed.** One mark per non-ASCII character for the whole stream would
+make this feature's memory O(non-ASCII characters), contradicting the bound the streaming guide
+states for `load_stream`. The marks therefore advance with the parser: a lookup converts the two
+ends of the current span, then drops every mark at or before the span's *start* and folds it into a
+base pair that answers the dropped prefix. Pruning to the start and not the end is deliberate — a
+flow collection's span can cover its children, so pruning past a child's position would answer that
+child from the wrong base. What remains is bounded by the largest token, not by the document.
+
+**Cost, measured.** `stream_medium` reads +1.18% (251,020,333 → 253,988,248 instructions, three
+identical samples on the enforcing image) against the 0.50% line; the same refresh moved the other
+21 floors by at most 0.13%. The movement is the payload — two `usize` per event, paid in the writes
+and again in each `Vec` growth copy — so the floor moves through the enforcing-image refresh with
+`accept_drift=stream_medium`, not by widening the line.
+
+**Not answered.** TOML's stream still cannot report an extent, and no test claims it can. The marks
+are bounded by the largest token, not by a constant. And the range is source bytes, not the decoded
+value: a consumer that wants the scalar still reads `value`, which is the split the wording "token,
+not the subtree" describes.

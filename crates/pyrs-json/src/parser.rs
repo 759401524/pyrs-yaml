@@ -400,6 +400,8 @@ struct PendingComment {
     /// one group can span a value's text, so the offset has to travel with the
     /// record instead of being re-read out of the source afterwards.
     at: usize,
+    /// The offset one past the comment token: the line's end, or past the `*/`.
+    end: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -530,6 +532,7 @@ impl<'a> Parser<'a> {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                             at: body_start - 2,
+                            end: body_end,
                         });
                         if !own_line_seen {
                             self.inline_comments += 1;
@@ -558,6 +561,7 @@ impl<'a> Parser<'a> {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                             at: body_start - 2,
+                            end: self.pos,
                         });
                         if !own_line_seen {
                             self.inline_comments += 1;
@@ -1554,15 +1558,28 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
         }
     }
 
+    /// Report an event that names one position and no text.
     fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
+        self.at_range(pos, pos, event_type);
+    }
+
+    /// Report an event whose source token runs `offset..end`.
+    ///
+    /// The close markers (`}`/`]`) and the document markers name no text the consumer can read
+    /// back, and they arrive at one position: the delimiter itself for a close, EOF for a marker.
+    /// Only a delimiter's own byte is the token, so a close event spans that one byte and the
+    /// markers stay empty.
+    fn at_range(&mut self, offset: usize, end: usize, event_type: StreamEventType<'a>) {
         if self.stopped {
             return;
         }
-        let (line, column) = self.lines.line_col(pos);
+        let (line, column) = self.lines.line_col(offset);
         if let ControlFlow::Break(()) = self.sink.event(StreamEvent {
             event_type,
             line,
             column,
+            offset,
+            end,
         }) {
             self.stopped = true;
         }
@@ -1571,8 +1588,9 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
     /// A scalar whose text is the source's own bytes: a number, a keyword, an identifier key.
     fn plain(&mut self, from: usize, to: usize) {
         let text = self.text;
-        self.at(
+        self.at_range(
             from,
+            to,
             StreamEventType::Scalar {
                 value: Cow::Borrowed(&text[from..to]),
                 style: ScalarStyle::Plain,
@@ -1583,9 +1601,13 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
     }
 
     /// A string whose text a decoder produced, reported with the style it was written in.
-    fn decoded(&mut self, pos: usize, value: Cow<'a, str>, style: ScalarStyle) {
-        self.at(
-            pos,
+    ///
+    /// `from..to` is the source token, quotes and escapes included: that is what the event names,
+    /// even though its value has already been decoded.
+    fn decoded(&mut self, from: usize, to: usize, value: Cow<'a, str>, style: ScalarStyle) {
+        self.at_range(
+            from,
+            to,
             StreamEventType::Scalar {
                 value,
                 style,
@@ -1621,8 +1643,9 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
                 (NoteSide::Preceding, true) => NoteOwner::PrecedingLeading,
                 (NoteSide::Preceding, false) => NoteOwner::PrecedingInline,
             };
-            self.at(
+            self.at_range(
                 note.at,
+                note.end,
                 StreamEventType::Comment {
                     text: alloc::sync::Arc::from(note.text.as_str()),
                     owns_line: note.own_line,
@@ -2150,12 +2173,12 @@ impl<'a> Parser<'a> {
             Some(b'[') => self.stream_array(out),
             Some(b'"') => {
                 let value = self.string()?;
-                out.decoded(token, value, ScalarStyle::DoubleQuoted);
+                out.decoded(token, self.pos, value, ScalarStyle::DoubleQuoted);
                 Ok(())
             }
             Some(b'\'') if self.allow_single_quoted => {
                 let value = self.single_quoted_string()?;
-                out.decoded(token, value, ScalarStyle::SingleQuoted);
+                out.decoded(token, self.pos, value, ScalarStyle::SingleQuoted);
                 Ok(())
             }
             Some(b't') => {
@@ -2199,8 +2222,9 @@ impl<'a> Parser<'a> {
     ) -> Result<(), ParseError> {
         let token = self.pos;
         let spelling = self.number_source()?;
-        out.at(
+        out.at_range(
             token,
+            self.pos,
             StreamEventType::Scalar {
                 value: Cow::Borrowed(spelling),
                 style: ScalarStyle::Plain,
@@ -2221,8 +2245,9 @@ impl<'a> Parser<'a> {
         }
         let open = self.pos;
         self.pos += 1; // '{'
-        out.at(
+        out.at_range(
             open,
+            self.pos,
             StreamEventType::MappingStart {
                 anchor: None,
                 tag: None,
@@ -2237,7 +2262,7 @@ impl<'a> Parser<'a> {
         if self.peek() == Some(b'}') {
             let close = self.pos;
             self.pos += 1;
-            out.at(close, StreamEventType::MappingEnd);
+            out.at_range(close, close + 1, StreamEventType::MappingEnd);
             return Ok(());
         }
         loop {
@@ -2259,7 +2284,7 @@ impl<'a> Parser<'a> {
                 return Err(self.err("expected a quoted object key"));
             };
             out.group(key_group, NoteSide::Following, GroupSlot::ByRule);
-            out.decoded(token, key, style);
+            out.decoded(token, self.pos, key, style);
             if out.stopped {
                 return Ok(());
             }
@@ -2288,14 +2313,14 @@ impl<'a> Parser<'a> {
                     if self.allow_trailing_commas && self.peek() == Some(b'}') {
                         let close = self.pos;
                         self.pos += 1;
-                        out.at(close, StreamEventType::MappingEnd);
+                        out.at_range(close, close + 1, StreamEventType::MappingEnd);
                         return Ok(());
                     }
                 }
                 Some(b'}') => {
                     let close = self.pos;
                     self.pos += 1;
-                    out.at(close, StreamEventType::MappingEnd);
+                    out.at_range(close, close + 1, StreamEventType::MappingEnd);
                     return Ok(());
                 }
                 _ => return Err(self.err("expected `,` or `}` in object")),
@@ -2313,8 +2338,9 @@ impl<'a> Parser<'a> {
         }
         let open = self.pos;
         self.pos += 1; // '['
-        out.at(
+        out.at_range(
             open,
+            self.pos,
             StreamEventType::SequenceStart {
                 anchor: None,
                 tag: None,
@@ -2328,7 +2354,7 @@ impl<'a> Parser<'a> {
         if self.peek() == Some(b']') {
             let close = self.pos;
             self.pos += 1;
-            out.at(close, StreamEventType::SequenceEnd);
+            out.at_range(close, close + 1, StreamEventType::SequenceEnd);
             return Ok(());
         }
         loop {
@@ -2362,14 +2388,14 @@ impl<'a> Parser<'a> {
                     if self.allow_trailing_commas && self.peek() == Some(b']') {
                         let close = self.pos;
                         self.pos += 1;
-                        out.at(close, StreamEventType::SequenceEnd);
+                        out.at_range(close, close + 1, StreamEventType::SequenceEnd);
                         return Ok(());
                     }
                 }
                 Some(b']') => {
                     let close = self.pos;
                     self.pos += 1;
-                    out.at(close, StreamEventType::SequenceEnd);
+                    out.at_range(close, close + 1, StreamEventType::SequenceEnd);
                     return Ok(());
                 }
                 _ => return Err(self.err("expected `,` or `]` in array")),
@@ -4177,6 +4203,8 @@ mod tests {
                 event_type,
                 line: 0,
                 column: 0,
+                offset: 0,
+                end: 0,
             }
         }
         let scalar = |text: &str, style| {
