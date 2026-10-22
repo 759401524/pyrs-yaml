@@ -71,6 +71,15 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | v0.2.0 | 2026-07-26 | — |
 | v0.1.0 | 2026-07-25 | [CHANGELOG.md §\[0.1.0\]](CHANGELOG.md#010---2026-07-25) |
 
+### The v0.18.2 tag is not a release
+
+`v0.18.2` has a tag on this repository and no row above, and that is the accurate shape. The tag
+(`20ff0e7b`) fired Publish, the run failed at wheel-leg collection before a wheel was built, and the
+Release job skipped, so PyPI has `0.18.0` and `0.18.1` and never had `0.18.2`. What that release was
+going to carry shipped as `v0.18.3`, together with the collection fix that the failure caused. The
+tag stays as the record of the failed run rather than being deleted; the number describes no
+installable package, which is why it is absent from the table a reader uses to find one.
+
 ---
 
 ## Planned
