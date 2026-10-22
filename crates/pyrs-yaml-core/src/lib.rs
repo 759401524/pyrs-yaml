@@ -39,6 +39,8 @@ pub use pyrs_ast::{ast, error};
 pub mod bench_inputs;
 pub mod editing;
 #[cfg(feature = "std")]
+pub mod file;
+#[cfg(feature = "std")]
 pub mod i18n;
 pub mod parser;
 pub mod serializer;

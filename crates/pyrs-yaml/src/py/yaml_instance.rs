@@ -174,16 +174,23 @@ impl YAML {
         let parse_schema_value = explicit
             .clone()
             .unwrap_or(crate::parser::yaml::Schema::Core);
-        let content = crate::py::read_file_to_string(path)?;
+        // See the `parse_file` pyfunction: with `mmap` this borrows a read-only
+        // map of a regular file, otherwise the same `read_to_string`. `text`
+        // outlives the body so `content` and the source built from it stay valid.
+        let text = pyrs_yaml_core::file::read_file_text(path)
+            .map_err(|e| crate::py::file_read_error(&e.to_string(), path))?;
+        let content = text
+            .as_str()
+            .map_err(|e| crate::py::file_read_error(&e.to_string(), path))?;
         let parsed = py.detach(|| {
             crate::parser::parse_document(
-                &content,
+                content,
                 resolve_merges,
                 parse_schema_value,
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
-            .map_err(|e| parse_error_to_py_err(e, &content, self.max_depth))
+            .map_err(|e| parse_error_to_py_err(e, content, self.max_depth))
         })?;
         let declared = parsed.version.as_deref();
         let effective = negotiate_schema(explicit, declared, self.honor_version_directive);

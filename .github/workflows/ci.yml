@@ -417,6 +417,17 @@ jobs:
           -p pyrs-toml
           -p pyrs-yaml-core
 
+      # The `mmap` read path is off by default, so no other matrix leg exercises it, and a default-off
+      # feature left unchecked rots the way the no_std list once did silently. Building alone is not
+      # enough — the `file.rs` byte-parity and error-parity tests are gated `#[cfg(feature = "mmap")]`
+      # and a step that only compiles them proves the feature links, not that it works. This runs them
+      # on the Linux runner (the mapped and directory-fallback paths are OS-dependent, so Windows-only
+      # execution would leave the Linux semantics unguarded). The `memmap2` seam needs no interpreter,
+      # so it rides this job alongside the no_std steps rather than pulling the Python runtime back in.
+      - name: Test the opt-in mmap read path
+        run: >
+          cargo test --locked --features mmap -p pyrs-yaml-core
+
   test:
     needs: [build, changes, matrix-plan]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}

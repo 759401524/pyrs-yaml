@@ -89,15 +89,21 @@ pub(crate) fn format_source_snippet(
     )
 }
 
+/// Map an IO failure on a file read to `PyIOError` with the i18n
+/// `file-read-error` message. One definition so the `read_to_string` path and
+/// the memory-mapped path (which turns a bad byte into the same `InvalidData`
+/// message) report a failure to Python identically.
+pub(crate) fn file_read_error(detail: &str, path: &str) -> pyo3::PyErr {
+    pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+        "file-read-error",
+        &[("detail", detail), ("path", path)],
+    ))
+}
+
 /// Read a UTF-8 file, mapping IO failures to `PyIOError` with the i18n
 /// `file-read-error` message.
 pub(crate) fn read_file_to_string(path: &str) -> PyResult<String> {
-    std::fs::read_to_string(path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-            "file-read-error",
-            &[("detail", &e.to_string()), ("path", path)],
-        ))
-    })
+    std::fs::read_to_string(path).map_err(|e| file_read_error(&e.to_string(), path))
 }
 
 /// Open a file for reading, mapping IO failures to `PyIOError` with the same
