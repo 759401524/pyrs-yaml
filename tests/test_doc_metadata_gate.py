@@ -17,6 +17,14 @@ copy-pasted from README advice and why the source looked fine everywhere it was 
 
 Both are properties of the page that only the renderer cares about, so this gate asks the renderer's
 questions without running it: does the block parse, and does every fold carry the attribute.
+
+The third rule is not about rendering but about shape, and it exists because the second one could not
+catch it. A fold that carries `markdown="1"` is a fold the renderer can open, and the rule never asks
+whether a fold is *there* - so v0.18.1 and v0.18.2 arrived as the only unfolded releases on all five
+release-note pages, with every gate green, while the site renders a 2,700-line changelog whose newest
+entries sit open above twenty folded ones. The release cut is where that happens, which is why the
+canonical English page is in scope too: `CHANGELOG.md` has no front matter by design, and a rule that
+skipped it for that reason would skip the file that rotted.
 """
 
 from __future__ import annotations
@@ -127,3 +135,58 @@ def test_the_hook_and_the_pr_gate_are_both_wired(checker):
     assert "python scripts/check_doc_metadata.py" in prek, prek
     workflow = (REPO_ROOT / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
     assert "scripts/check_doc_metadata.py" in workflow, workflow
+
+
+# ── the third rule: a released section is folded ───────────────────────────────
+#
+# The rule above reads a fold's attributes and never asks whether one exists, so v0.18.1 and v0.18.2
+# arrived as the only unfolded releases on all five pages and every gate stayed green: the site renders
+# a 2,700-line changelog with its newest entries open and everything older collapsed, which is the
+# opposite of what the fold is for.
+
+
+FOLDED = (
+    REPAIRED_EN + '\n## [v0.18.2] — 2026-10-22\n\n<details markdown="1">\n<summary>themes</summary>\n\n'
+    '### Added\n\n- item\n\n</details>\n\n## [v0.18.1] — 2026-10-17\n\n<details markdown="1">\n'
+    "<summary>themes</summary>\n\n### Fixed\n\n- item\n\n</details>\n"
+)
+
+
+def test_a_release_without_its_fold_is_a_finding(checker):
+    """The shape that shipped, and the shape that replaced it."""
+    unfolded = FOLDED.replace('<details markdown="1">\n<summary>themes</summary>\n\n', "")
+    found = checker.findings("docs/en/changelog.md", unfolded)
+    reasons = " | ".join(message for _f, _l, message in found)
+    assert "no fold under it" in reasons, reasons
+    assert "v0.18.2" in reasons and "v0.18.1" in reasons, reasons
+    assert checker.findings("docs/en/changelog.md", FOLDED) == []
+
+
+def test_a_fold_without_a_summary_label_is_a_finding(checker):
+    """An empty fold label is the other half of the same rendering failure."""
+    unlabelled = FOLDED.replace("<summary>themes</summary>\n\n", "")
+    found = checker.findings("docs/en/changelog.md", unlabelled)
+    assert any("without a <summary> label" in message for _f, _l, message in found), found
+
+
+def test_an_unclosed_fold_is_a_finding(checker):
+    """A fold that never closes swallows the rest of the page."""
+    unbalanced = FOLDED.replace("</details>\n\n## [v0.18.1]", "## [v0.18.1]", 1)
+    found = checker.findings("docs/en/changelog.md", unbalanced)
+    assert any("left unclosed" in message for _f, _l, message in found), found
+
+
+def test_the_root_changelog_is_read_for_its_folds_not_its_metadata(checker):
+    """`CHANGELOG.md` carries no front matter by design; that must not become an excuse to skip it."""
+    found = checker.findings("CHANGELOG.md", "# Changelog\n\n## [v0.18.2] — 2026-10-22\n\n### Added\n\n- item\n")
+    reasons = " | ".join(message for _f, _l, message in found)
+    assert "no YAML front matter" not in reasons, reasons
+    assert "no fold under it" in reasons, reasons
+
+
+def test_every_released_section_of_the_five_release_pages_is_folded(checker):
+    """Green is a claim about the tree, so the rule runs over the real pages here."""
+    for rel in checker.RELEASE_PAGES:
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        found = [message for _f, _l, message in checker.findings(rel, text) if "fold" in message]
+        assert found == [], (rel, found)
