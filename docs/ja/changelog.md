@@ -19,6 +19,12 @@ status: new
 
 ### 追加
 
+- **ライブ文書の landed 主張がコードを名指しします** — `docs/dev/event-stream.md` は docs-only コミ
+  ット `0a074148` しか含まない trunk に対して "decision 6 landed" と書いていましたが、設計文書の現在
+  時制をツリーと照合する検査はありませんでした。`scripts/check_landed_claims.py` は今や、landed や
+  shipped と書いた見出しの翌行に、その文を真にするファイル（`::識別子` を可）を載せることを要求しま
+  す。`landed-claims` prek フックとして、また `tests/test_landed_claims_gate.py` 経由で走ります。
+
 - **キャンセルされた CI レグは自動的に再実行されます** — `.github/workflows/ci-rerun-cancelled.yml`
   は pull request 上で CI ワークフローが終了したときに発火し、`scripts/ci_rerun_gate.py` 経由で、あ
   るレグが `cancelled` なのに他のレグは緑で `failure` はゼロ、というときだけ、試行回数の上限を超えな

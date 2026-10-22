@@ -249,6 +249,22 @@ pass_filenames = false
 files = "^(\\.ci/requirements-test\\.txt|tests/.*\\.py)$"
 priority = "checks"
 
+# A live design document speaks in the present tense, and nothing read it: `docs/dev/event-stream.md` carried
+# "decision 6 landed" for a day against a trunk that only had the docs-only commit `0a074148` - the split's code
+# never merged, `git log origin/main -S owns_line -- '*.rs'` is empty there, and `event_notes.rs` never existed.
+# `hole-claims` guards the instruction files against the measured matrix, so the artefact left outside every gate
+# was a design doc's own claim about the code. The rule is narrow: a heading saying something landed or shipped
+# carries the file - optionally `::symbol` - that makes it true, on the line under it. The hook fires on the code
+# too, because deleting a symbol a live doc points at is the same defect seen from the other side.
+[[repos.hooks]]
+id = "landed-claims"
+name = "live docs lock each landed claim to code"
+language = "system"
+entry = "python scripts/check_landed_claims.py"
+pass_filenames = false
+files = "^(docs/dev/.*\\.md|crates/.*\\.rs|python/pyrs_yaml/pyrs_yaml\\.pyi)$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
