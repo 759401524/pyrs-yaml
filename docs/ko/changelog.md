@@ -17,6 +17,15 @@ status: new
 
 ### 추가
 
+- **취소된 CI 레그는 자동으로 재실행됩니다** — `.github/workflows/ci-rerun-cancelled.yml`는 pull
+  request에서 CI 워크플로가 끝나면 발동하고, `scripts/ci_rerun_gate.py`를 통해, 한 레그가
+  `cancelled`인데 나머지는 초록이고 `failure`는 없을 때에만, 시도 상한을 넘지 않는 범위에서 그
+  실행을 재실행합니다. 상한은 무한 재실행을 막습니다. 전에는 `cancel-in-progress` 치환이나 러너
+  회수로 취소된 레그가 이번 변경과 무관한 이유로 필수 검사 `Test matrix (all legs)` 판정을 빨갛게
+  만들어, 사람이 Re-run을 누를 때까지 병합할 수 없었습니다. 판정의 허용 집합은 그대로 두었습니다 —
+  `cancelled`는 여전히 병합을 거부 — 따라서 이는 예외가 아니라 재시도 하나를 더하는 것입니다.
+  `tests/test_ci_rerun_gate.py`는 판정을 양방향으로, 배선을 계약으로 고정합니다.
+
 - **YAML 엔진이 표준 라이브러리가 없는 타깃에서도 빌드됩니다** — `pyrs-yaml-core`이 이제
   `#![no_std]`입니다. 파서, 왕복 직렬화기, 주석을 보존하는 편집 계층, 스플라이스가 `core` + `alloc`
   만으로 동작하며, 그 아래의 `granit-parser`는 원래 std 없이 빌드된 crate입니다. `std` 기능은

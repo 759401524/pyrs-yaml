@@ -19,6 +19,13 @@ status: new
 
 ### 新增
 
+- **被取消的 CI 腿会自动重跑** — `.github/workflows/ci-rerun-cancelled.yml` 在 CI 工作流于某 pull
+  request 结束时通知我，并经由 `scripts/ci_rerun_gate.py` 只在「某条腿被 `cancelled`、其余腿皆绿、且
+  没有 `failure`」时重跑，且不超过尝试上限以防循环。此前被 `cancel-in-progress` 取代或运行器回收而
+  取消的腿，会把必需的 `Test matrix (all legs)` 结论判红——原因却与本次改动无关——要人工按下 Re-run
+  才能合并。结论的 accept-set 未动：`cancelled` 仍拒绝合并，所以这是加一次重试，而非开一个例外。
+  `tests/test_ci_rerun_gate.py` 双向钉住该决策，并把接线当作契约。
+
 - **YAML 引擎现在可以面向没有标准库的目标构建** — `pyrs-yaml-core` 现在是 `#![no_std]`：
   解析器、往返序列化器、保留注释的编辑层和 splice 只依赖 `core` + `alloc`，其下的
   `granit-parser` 本来就是不带 std 构建的。`std` feature 默认仍然开启，因此 Python 绑定、CLI 和

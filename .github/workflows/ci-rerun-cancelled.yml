@@ -1,0 +1,55 @@
+# Re-run a cancelled CI leg instead of waiting for a human to press the button.
+#
+# Why `workflow_run` and not a retry inside `ci.yml`: a leg cancelled by `cancel-in-progress`
+# supersession or a reclaimed runner finishes the run red through the fan-in verdict
+# (`scripts/check_matrix_verdict.py` accepts `success` only, and correctly refuses `cancelled`), but
+# nothing inside that same run can re-run itself once it has stopped. Triggering on the CI workflow
+# finishing is the only shape that can see "every leg reported except one, and that one was cancelled".
+#
+# The decision is not in here. `scripts/ci_rerun_gate.py` holds every rule - it re-runs only a
+# cancelled leg on a run that has a green leg and no failed leg, and only below the attempt cap -
+# because those rules are testable there and in `tests/test_ci_rerun_gate.py`, and a workflow block is
+# not. The verdict's accept-set is deliberately untouched: a cancelled leg still blocks a merge until a
+# re-run makes it green, so this bot adds a retry, not an exception.
+name: Re-run cancelled CI legs
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ci-rerun-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: Retry a leg cancelled on an otherwise-green run
+    # Pull requests only: the ruled pain is a green-but-one-leg-cancelled merge, and a bot that
+    # re-runs `main` would touch the release build's history. The script decides the rest.
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Exit 1 is "not eligible" - most finished runs are not the cancelled-on-green shape - and a
+      # green step. Exit 2 is the run failing, because the jobs could not be read or the re-run call
+      # did not land. Exit 0 means a re-run was dispatched.
+      - name: Decide, and re-run only what the rules allow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -o pipefail
+          python scripts/ci_rerun_gate.py \
+            --run "${{ github.event.workflow_run.id }}" \
+            --attempt "${{ github.event.workflow_run.run_attempt }}" \
+            || { code=$?; [ "$code" -eq 1 ] && exit 0; exit "$code"; }

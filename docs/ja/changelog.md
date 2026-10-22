@@ -17,6 +17,15 @@ status: new
 
 ### 追加
 
+- **キャンセルされた CI レグは自動的に再実行されます** — `.github/workflows/ci-rerun-cancelled.yml`
+  は pull request 上で CI ワークフローが終了したときに発火し、`scripts/ci_rerun_gate.py` 経由で、あ
+  るレグが `cancelled` なのに他のレグは緑で `failure` はゼロ、というときだけ、試行回数の上限を超えな
+  い範囲でその実行を再実行します。上限はループを防ぎます。以前は `cancel-in-progress` の置換やランナ
+  ーの回収でキャンセルされたレグが、変更とは無関係な理由で必須の `Test matrix (all legs)` 判定を赤に
+  し、人が Re-run を押すまで合併できませんでした。判定の受理集合は変えていません — `cancelled` は今
+  も合併を拒む — ゆえにこれは例外ではなく再試行 one つを足すだけです。`tests/test_ci_rerun_gate.py`
+  は決定を双方向で、配線を契約として固定します。
+
 - **YAML エンジンは標準ライブラリを持たないターゲットでもビルドできるようになりました** —
   `pyrs-yaml-core` は `#![no_std]` になりました。パーサー、ラウンドトリップのシリアライザ、コメント
   を保つ編集層、スプライスは `core` + `alloc` だけで動き、その下にある `granit-parser` はもともと
