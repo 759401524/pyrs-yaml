@@ -17,6 +17,9 @@ status: new
 
 ### [v0.18.2] — 2026-10-22
 
+<details markdown="1">
+<summary>ツリーを読む検査 · crate 行列 · コメントの帰属 · 広い wheel 行列</summary>
+
 ### 追加
 
 - **ライブ文書の landed 主張がコードを名指しします** — `docs/dev/event-stream.md` は docs-only コミ
@@ -886,6 +889,12 @@ status: new
 
 ### 修正
 
+- **最新の二つのリリースも従来どおり折りたたまれました** - `## [v0.18.1]` と `## [v0.18.2]` は五枚の
+  リリースノートすべてで `<details markdown="1">` 折りたたみを欠いており、v0.12.x 以降のすべてのリリ
+  ースがそれを持つ唯一の例外でした。`scripts/check_doc_metadata.py` は折りたたみの属性だけを読み、そ
+  の有無を見ていませんでした。両節を折り直し、折りたたみも `<summary>` もないリリース節は赤くなりま
+  す。
+
 - **wheel レッグがスイートの import をインストールします** - `.ci/requirements-test.txt` はリリース
   ワークフローがインストールする唯一の要求ファイルで、`tomlkit` も `json5` も名を上げていませんでし
   た。四つのテストモジュールはどちらもモジュールスコープで取り込みます。本リリース最初の Publish で
@@ -1045,7 +1054,12 @@ status: new
   `a_compact_items_note_settles_above_the_sequences_header` と再実行したシード
   `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed` で固定。
 
+</details>
+
 ### [v0.18.1] — 2026-10-17
+
+<details markdown="1">
+<summary>フリースレッド 3.15t wheel · Linux arm64 · merge キーのコメント保持</summary>
 
 ### 追加
 
@@ -1067,6 +1081,8 @@ status: new
   をその値に渡してしまい、ドキュメントは 2 回目の出力でしか安定しなかった。書き手はペア開始時に取得
   したオフセットを使い、その行を値自身の `~` で先に閉じる（libFuzzer `yaml_roundtrip`
   crash-08cf4fe4）。
+
+</details>
 
 ### [v0.18.0] — 2026-10-17
 

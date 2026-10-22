@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [v0.18.2] — 2026-10-22
 
+<details markdown="1">
+<summary>gates that read the tree · crate matrix · note ownership · wider wheels</summary>
+
 ### Added
 
 - **A landed claim in a live document names its code** - `docs/dev/event-stream.md` said "decision 6
@@ -921,6 +924,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The two newest releases are folded like every older one** - `## [v0.18.1]` and `## [v0.18.2]`
+  reached all five release-note pages without the `<details markdown="1">` fold that every release
+  since v0.12.x carries, because `scripts/check_doc_metadata.py` read a fold's attributes and never
+  asked whether one existed. Both sections are folded now, and the checker fails a released section
+  that has no fold or no `<summary>` - four new tests among the eleven, including the shape that
+  shipped.
+
 - **The wheel legs install what the suite imports** - `.ci/requirements-test.txt` is the only
   requirement file the release workflow installs, and it named neither `tomlkit` nor `json5`, which
   four test modules import at module scope. The first Publish run for this release reddened five
@@ -1088,7 +1098,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   crash-2fc59020). Pinned by `a_compact_items_note_settles_above_the_sequences_header` and the
   replayed seed `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed`.
 
+</details>
+
 ## [v0.18.1] — 2026-10-17
+
+<details markdown="1">
+<summary>free-threaded 3.15t wheels · Linux arm64 · merge-key notes kept</summary>
 
 ### Added
 
@@ -1112,6 +1127,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   document settled only on its second emission. The writer now closes that line with the value's
   own `~` first, working from an offset captured when the pair started (libFuzzer
   `yaml_roundtrip` crash-08cf4fe4).
+
+</details>
 
 ## [v0.18.0] — 2026-10-17
 

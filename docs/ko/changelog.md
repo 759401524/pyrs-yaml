@@ -17,6 +17,9 @@ status: new
 
 ### [v0.18.2] — 2026-10-22
 
+<details markdown="1">
+<summary>트리를 읽는 관문 · crate 행렬 · 주석 귀속 · 넓은 wheel 행렬</summary>
+
 ### 추가
 
 - **라이브 문서의 landed 주장이 코드를 지목합니다** — `docs/dev/event-stream.md`는 docs-only 커밋
@@ -867,6 +870,11 @@ status: new
 
 ### 수정
 
+- **가장 최근 두 릴리스도 이전처럼 접힙니다** - `## [v0.18.1]`과 `## [v0.18.2]`는 다섯 릴리스 노트
+  모두에서 `<details markdown="1">` 접기를 빼먹었습니다. v0.12.x 이후 모든 릴리스가 그 접기를
+  가집니다. `scripts/check_doc_metadata.py`는 접기의 속성만 보고 존재는 묻지 않았습니다. 이제 두
+  절을 접었고, 접기나 `<summary>`가 없는 릴리스 절은 바로 빨개집니다.
+
 - **wheel 레그가 스위트가 들여오는 것을 설치합니다** - `.ci/requirements-test.txt`는 릴리스
   워크플로가 설치하는 유일한 요구 파일인데 `tomlkit`과 `json5`를 모두 적지 않았습니다. 네 테스트
   모듈은 둘 다 모듈 범위에서 들여옵니다. 이 릴리스의 첫 Publish에서는 wheel이 하나도 올라가기 전에
@@ -1020,7 +1028,12 @@ status: new
   crash-2fc59020). `a_compact_items_note_settles_above_the_sequences_header`와 재실행한 시드
   `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed`가 이를 고정합니다.
 
+</details>
+
 ### [v0.18.1] — 2026-10-17
+
+<details markdown="1">
+<summary>프리 스레드 3.15t wheel · Linux arm64 · merge 키 주석 보존</summary>
 
 ### 추가
 
@@ -1041,6 +1054,8 @@ status: new
   키의 주석은 쌍 줄 위에 쓰인다. 바로 위가 태그만 있는 값(`k: !:`)이면 판독기는 주석을 그 값에
   넘겨 버려 문서가 두 번째 출력에서야 안정되었다. 작성기는 쌍이 시작될 때 캡처한 오프셋으로 그
   줄을 값 자체의 `~`로 먼저 닫는다(libFuzzer `yaml_roundtrip` crash-08cf4fe4).
+
+</details>
 
 ### [v0.18.0] — 2026-10-17
 

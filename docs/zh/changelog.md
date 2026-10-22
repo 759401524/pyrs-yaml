@@ -19,6 +19,9 @@ status: new
 
 ### [v0.18.2] — 2026-10-22
 
+<details markdown="1">
+<summary>会读代码树的门禁 · crate 矩阵 · 注释归属 · 更宽的 wheel 矩阵</summary>
+
 ### 新增
 
 - **设计文档里的已落地声明要指认代码** — `docs/dev/event-stream.md` 曾在只包含 docs-only 提交
@@ -719,6 +722,10 @@ status: new
 
 ### 修复
 
+- **最新两个发布也按老规矩折叠** - `## [v0.18.1]` 与 `## [v0.18.2]` 在五份发布说明里都缺了
+  `<details markdown="1">` 折叠，而自 v0.12.x 起的每个发布都有。`scripts/check_doc_metadata.py`
+  只读折叠的属性，从不问它在不在。两节现已折叠，缺折叠或缺 `<summary>` 的已发布小节会直接判红。
+
 - **wheel 测试腿装上套件真正导入的依赖** - `.ci/requirements-test.txt` 是发布工作流唯一安装的需求文
   件，而它既没有声明 `tomlkit`，也没有声明 `json5`，但有四个测试模块在模块作用域导入它们。本版本第一
   次 Publish 在还没有上传任何 wheel 时就有五条 wheel 腿在收集阶段变红，`Release` 作业被跳过，所以
@@ -846,7 +853,12 @@ status: new
   crash-2fc59020）。由 `a_compact_items_note_settles_above_the_sequences_header` 与重放的种子
   `fuzz/seeds/edit_yaml/former-crash-2fc59020.seed` 固定。
 
+</details>
+
 ### [v0.18.1] — 2026-10-17
+
+<details markdown="1">
+<summary>自由线程 3.15t wheel · Linux arm64 · 保住 merge 键的注释</summary>
 
 ### 新增
 
@@ -866,6 +878,8 @@ status: new
   若正上方是一个只渲染成标签的值（`k: !:`），读取器会把注释判给该值，文档要到第二轮才稳定。写入器
   现在先用该值自己的 `~` 闭合该行，所用偏移在 pair 开始时即已捕获（libFuzzer `yaml_roundtrip`
   crash-08cf4fe4）。
+
+</details>
 
 ### [v0.18.0] — 2026-10-17
 
