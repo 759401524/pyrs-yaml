@@ -18,7 +18,7 @@ bogus heading, the mirror checker read the version headings fine, and `rumdl` do
 built by a workflow that runs on push to `main` rather than on pull requests, so three merged pull
 requests carried the damage before anyone opened a rendered page.
 
-Two rules, both stated structurally so the hook needs nothing but the standard library (PyYAML is used
+Three rules, all stated structurally so the hook needs nothing but the standard library (PyYAML is used
 as a confirmation when it happens to be installed, never as a requirement):
 
 - a metadata line carries one key. A second `key:` on the same line is the join, and it is reported with
@@ -28,6 +28,10 @@ as a confirmation when it happens to be installed, never as a requirement):
   prints its own `####` headings, bullet lists and code fences as text - which is what the deployed
   changelog pages showed for all 21 folded releases. GitHub parses `<details>` bodies either way, which
   is why the shape looked correct everywhere a human read it.
+- a released section of a release-note page is folded. The second rule asks whether a fold is written
+  properly and never whether one exists, so v0.18.1 and v0.18.2 arrived as the only unfolded releases on
+  all five pages and every gate stayed green; the site then renders a 2,700-line changelog with its newest
+  entries unfolded while everything older is collapsed.
 """
 
 from __future__ import annotations
@@ -46,6 +50,20 @@ KEY = re.compile(r"^\s*([A-Za-z_][\w-]*):")
 JOINED = re.compile(r"^\s*[A-Za-z_][\w-]*:\s+\S.*\s[A-Za-z_][\w-]*:\s")
 FOLD = re.compile(r"^\s*<details(?![^>]*\bmarkdown=)")
 
+# The five release-note pages, by path. Every released section of these pages is a fold, and the fold is
+# what keeps a 1,000-line changelog readable on the site: v0.12.x through v0.18.0 all carry one, and v0.18.1
+# and v0.18.2 arrived without it - a shape no rule read, because the fold rule above only refuses the wrong
+# opening tag and never asks whether a fold exists.
+RELEASE_PAGES = (
+    "CHANGELOG.md",
+    "docs/en/changelog.md",
+    "docs/ja/changelog.md",
+    "docs/ko/changelog.md",
+    "docs/zh/changelog.md",
+)
+RELEASE_HEADING = re.compile(r"^#{2,3} \[(v\d+\.\d+\.\d+)\]")
+FOLD_OPEN = '<details markdown="1">'
+
 
 def pages(paths: list) -> list:
     """The files this gate owns: the hook's arguments, or every tracked page of the published tree.
@@ -54,12 +72,13 @@ def pages(paths: list) -> list:
     glob form skips a locale's own top level, which is exactly where the four changelog pages live, and
     the first version of this function passed its own coverage test only because the test asked a
     different question. `git ls-files` returns every tracked path under the directory, so a page cannot
-    hide at either depth.
+    hide at either depth. The root `CHANGELOG.md` joins the default scope because it is the canonical
+    English release note - a rule about release pages that never reads it can pass while it rots.
     """
     if paths:
         return [path for path in paths if path.endswith(".md")]
     tracked = subprocess.run(
-        ["git", "ls-files", "--", *(f"docs/{locale}" for locale in LOCALES)],
+        ["git", "ls-files", "--", *(f"docs/{locale}" for locale in LOCALES), "CHANGELOG.md"],
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -83,9 +102,11 @@ def findings(rel: str, text: str) -> list:
     out = []
     lines = text.split("\n")
     block, after = block_of(lines)
-    if block is None:
+    # Only the site's own pages carry front matter; the root CHANGELOG.md is a plain Markdown file that
+    # is read by this gate for its folds, not for its metadata.
+    if rel.startswith("docs/") and block is None:
         out.append((rel, 1, "no YAML front matter: the page has no title, description or tags"))
-    else:
+    elif block is not None:
         seen = []
         for offset, line in enumerate(block, start=2):
             if not line.strip() or line.lstrip().startswith(("#", "- ", "* ")):
@@ -113,6 +134,33 @@ def findings(rel: str, text: str) -> list:
     for offset, line in enumerate(lines[body_start:], start=body_start + 1):
         if FOLD.match(line):
             out.append((rel, offset, 'a raw <details> hides its body from the renderer; write <details markdown="1">'))
+    if rel in RELEASE_PAGES:
+        opens = sum(1 for line in lines if line.strip() == FOLD_OPEN)
+        closes = sum(1 for line in lines if line.strip() == "</details>")
+        if opens != closes:
+            out.append((rel, 1, f"{opens} folds open and {closes} close, so a release section is left unclosed"))
+        for offset, line in enumerate(lines, start=1):
+            heading = RELEASE_HEADING.match(line)
+            if heading is None:
+                continue
+            open_at = offset
+            while open_at < len(lines) and not lines[open_at].strip():
+                open_at += 1
+            if open_at >= len(lines) or lines[open_at].strip() != FOLD_OPEN:
+                out.append(
+                    (
+                        rel,
+                        offset,
+                        f"{heading.group(1)} is a released section with no fold under it - every other"
+                        " release on this page is folded, and an unfolded release buries the page",
+                    )
+                )
+                continue
+            summary_at = open_at + 1
+            while summary_at < len(lines) and not lines[summary_at].strip():
+                summary_at += 1
+            if summary_at >= len(lines) or not lines[summary_at].strip().startswith("<summary>"):
+                out.append((rel, open_at + 1, f"{heading.group(1)}'s fold opens without a <summary> label"))
     return out
 
 

@@ -208,13 +208,15 @@ priority = "checks"
 # body of a raw HTML block only when the opening tag carries the `markdown` attribute, and a fold
 # without it prints its own `####` headings, lists and code fences as text - which is how all 21 folded
 # releases arrived on the site. GitHub parses `<details>` bodies either way, so the source looked right
-# wherever a human read it.
+# wherever a human read it. The third rule asks whether a fold exists at all: v0.18.1 and v0.18.2 were
+# the only unfolded releases on five pages, and the rule that read the tag's attributes could not see a
+# page missing one. Root `CHANGELOG.md` is in scope because it is the canonical English release note.
 [[repos.hooks]]
 id = "doc-metadata"
 name = "page metadata parses and folds render"
 language = "system"
 entry = "python scripts/check_doc_metadata.py"
-files = "^docs/(en|ja|ko|zh)/.*\\.md$"
+files = "^(CHANGELOG\\.md|docs/(en|ja|ko|zh)/.*\\.md)$"
 priority = "checks"
 
 # The file an agent trusts most was the one artefact outside the quality gate. `AGENTS.md` described
