@@ -17,6 +17,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.2] — 2026-10-22
+
 ### 新增
 
 - **被取消的 CI 腿会自动重跑** — `.github/workflows/ci-rerun-cancelled.yml` 在 CI 工作流于某 pull

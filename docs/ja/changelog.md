@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.2] — 2026-10-22
+
 ### 追加
 
 - **キャンセルされた CI レグは自動的に再実行されます** — `.github/workflows/ci-rerun-cancelled.yml`
