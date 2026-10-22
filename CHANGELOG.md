@@ -11,6 +11,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A landed claim in a live document names its code** - `docs/dev/event-stream.md` said "decision 6
+  landed" against a trunk that carried only the docs-only commit `0a074148`, and nothing compared a
+  design doc's present tense with the tree. `scripts/check_landed_claims.py` now requires a heading
+  saying landed or shipped to carry, on the line below it, the file - optionally `::symbol` - that
+  makes the sentence true; it runs as the `landed-claims` prek hook and through
+  `tests/test_landed_claims_gate.py`.
+
 - **A cancelled CI leg re-runs itself** — `.github/workflows/ci-rerun-cancelled.yml` fires when the
   CI workflow finishes on a pull request and, through `scripts/ci_rerun_gate.py`, re-runs that run
   only when a leg was `cancelled` on a run whose other legs went green and none failed, and only

@@ -223,6 +223,7 @@ same day. Nothing in plan B waits on a maintainer now: what the next step waits 
 reader that the 2026-10-13 ruling reordered it behind.
 
 ## What the second walk answered (2026-10-16, step 2 shipped tree-free)
+<!-- landed: crates/pyrs-json/src/parser.rs::parse_stream_with_options -->
 
 `pyrs_json::parse_stream` / `parse_stream_with_options` are the second producer, built the way the
 ruling ordered it: a walk of its own over the scanners the tree route already has, so nothing is
@@ -290,6 +291,8 @@ published the fold - see "What the replay gate answered".)* The Python-facing su
 the four doc locales are the last step of plan B and were not touched.
 
 ### What the replay gate answered (2026-10-16, step 4)
+<!-- landed: crates/pyrs-json/src/parser.rs::from_events -->
+<!-- landed: crates/pyrs-json/tests/events_replay.rs -->
 
 `pyrs_json::from_events` is public, which is what the paragraph above asked for first: the TOML
 producer had to answer the same questions before a fold froze one producer's assumptions. It is also
@@ -325,6 +328,8 @@ note text and leave the flag out. A replay that rebuilds decorations - which is 
 Python-facing step will be asked for - needs those to be two fields, not one boolean read two ways.
 
 ## What the third producer answered (2026-10-16, TOML)
+<!-- landed: crates/pyrs-toml/src/events.rs::parse_stream_with_dialect -->
+<!-- landed: crates/pyrs-toml/tests/event_stream.rs -->
 
 `pyrs_toml::parse_stream` and `parse_stream_with_dialect` are step 3, and they take the opposite
 route from step 2 on purpose. A second scanning pass was the right shape for JSON, where the whole
@@ -419,6 +424,7 @@ agree on, whereas JSON's fold exists because its stream and its tree are built b
 walks.
 
 ## What the Python surface answered (2026-10-16, step 5)
+<!-- landed: crates/pyrs-yaml/src/py/functions.rs::parse_stream, tests/test_streaming.py -->
 
 `parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")` now picks the producer:
 `yaml`, `json`, `jsonc`, `json5` or `toml`. The maintainer ruling that shaped it was a choice
@@ -529,6 +535,9 @@ instruction-count leg to judge; the numbers above come from reading the shipped 
 `parse_stream`, recorded in the ledger entry that carries this decision.
 
 ## What the note flag split answered (2026-10-21, decision 6 landed)
+<!-- landed: crates/pyrs-event/src/lib.rs::NoteOwner -->
+<!-- landed: crates/pyrs-event/src/lib.rs::owns_line -->
+<!-- landed: crates/pyrs-yaml-core/tests/event_notes.rs -->
 
 The section above is the proposal; this is what the tree does. The shape shipped as designed:
 `pyrs-event`'s `Comment` carries `text`, `owns_line` and `owner`, and `NoteOwner` is the four-case
@@ -716,6 +725,8 @@ again.
    made the question measurable.
 
 ## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
+<!-- landed: crates/pyrs-event/src/lib.rs::Cow -->
+<!-- landed: crates/pyrs-yaml-core/benches/ir_gate.rs::stream_medium -->
 
 The ruling was `Cow<'a, str>`: move granit's own `Cow` into the event instead of copying it out with
 `value.to_string()`. `stream_medium` — the scenario #405 added *before* the change so that the gate

@@ -21,6 +21,12 @@ status: new
 
 ### 新增
 
+- **设计文档里的已落地声明要指认代码** — `docs/dev/event-stream.md` 曾在只包含 docs-only 提交
+  `0a074148` 的主干上写着 "decision 6 landed"，而没有任何检查把设计文档的现在时与代码对账。
+  `scripts/check_landed_claims.py` 现在要求声称 landed 或 shipped 的标题在下一行写出让这句话为真的文
+  件（可选 `::标识符`）；它作为 `landed-claims` prek 钩子运行，并由
+  `tests/test_landed_claims_gate.py` 把关。
+
 - **被取消的 CI 腿会自动重跑** — `.github/workflows/ci-rerun-cancelled.yml` 在 CI 工作流于某 pull
   request 结束时通知我，并经由 `scripts/ci_rerun_gate.py` 只在「某条腿被 `cancelled`、其余腿皆绿、且
   没有 `failure`」时重跑，且不超过尝试上限以防循环。此前被 `cancel-in-progress` 取代或运行器回收而

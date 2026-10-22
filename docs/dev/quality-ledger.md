@@ -7371,6 +7371,45 @@ expression selects. A distribution whose import name differs from its distributi
 by an explicit map in the script, so a new authority must be named there deliberately; that is the
 seam an unlisted wheel-leg dependency could still slip through.
 
+### (fb) A design document's "landed" now names the code that makes it true (2026-10-22)
+
+`docs/dev/event-stream.md` carried "What the note flag split answered (2026-10-21, decision 6
+landed)" against a trunk whose `.rs` history never contained `owns_line`
+(`git log origin/main -S owns_line -- '*.rs'` returned nothing, and
+`crates/pyrs-yaml-core/tests/event_notes.rs` did not exist there). The prose arrived through the
+docs-only commit `0a074148`; the implementation was a local change that never opened a pull request.
+Every existing gate was satisfied: `scripts/check_hole_claims.py` reads the instruction files
+against the measured matrix, `tests/test_quality_matrix.py` reads the registry against the
+measurement. A design document's present tense was the artefact outside all of them.
+
+**The rule.** A heading in a live document (`docs/dev/*.md`, derived by glob) that says something
+`landed` or `shipped` carries, on the next non-blank line, `<!-- landed: <path>[::<symbol>] -->`. A
+path must be a file in the tree; a `::symbol` must appear in it as a whole word. Locks are accepted
+under headings that do not need one, and an unresolvable lock is a finding wherever it sits - so
+adding evidence is always legal and stale evidence is always caught. `docs/dev/quality-ledger.md` is
+exempt by name because it is a dated record; the locale changelogs for the same reason.
+
+**Measured on this tree.** `python scripts/check_landed_claims.py` reads 3 live documents, finds 3
+claim headings and 6 locks, and exits 0. Three claim headings were wrapped
+(`step 2 shipped tree-free`, `decision 6 landed`, `decision 3 landed`) and three more carry evidence
+without being required to (`step 4` replay, the TOML producer, the Python surface). Scope was
+calibrated before the rule was written: on the tree before the locks existed the checker reported
+exactly those 3 headings and nothing else, no false hit in `boundaries.md` or `perf.md`.
+
+**Seen to bite.** Two ways, both from the pre-#589 state. Deleting a lock leaves
+`## What the note flag split answered (2026-10-21, decision 6 landed)` bare, which is exit 1 (pinned
+by `tests/test_landed_claims_gate.py::test_the_heading_that_rotted_is_caught`). And a lock naming
+the symbol the docs claimed resolves on today's tree but would not have resolved on `eb1e9a44`,
+where `crates/pyrs-event/src/lib.rs` contains `NoteOwner` 0 times (measured with
+`git show eb1e9a44:… | grep -c`); today it appears 24 times. A symbol that disappears is the same
+finding, which is why the hook fires on `crates/**/*.rs` and the stub, not only on documents.
+
+**Not covered.** The lock proves the named artefact exists, not that it behaves as the paragraph
+claims - that is still the job of the test tiers each entry names. A claim written without the words
+`landed` or `shipped` needs no lock, so the convention depends on design docs using the heading
+shape the checker reads; that seam is named here rather than hidden, and `event-stream.md` is the
+only live document that carries the shape today.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

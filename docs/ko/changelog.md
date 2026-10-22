@@ -19,6 +19,12 @@ status: new
 
 ### 추가
 
+- **라이브 문서의 landed 주장이 코드를 지목합니다** — `docs/dev/event-stream.md`는 docs-only 커밋
+  `0a074148`만 담긴 트렁크에 "decision 6 landed"라고 적고 있었고, 설계 문서의 현재 시제 서술을
+  트리와 견주는 관문이 없었습니다. `scripts/check_landed_claims.py`는 이제 landed나 shipped라고 쓴
+  제목 바로 아래 줄에 그 문장을 참으로 만드는 파일(`::식별자` 선택)을 적도록 요구합니다.
+  `landed-claims` prek 훅으로, 그리고 `tests/test_landed_claims_gate.py`를 통해 실행됩니다.
+
 - **취소된 CI 레그는 자동으로 재실행됩니다** — `.github/workflows/ci-rerun-cancelled.yml`는 pull
   request에서 CI 워크플로가 끝나면 발동하고, `scripts/ci_rerun_gate.py`를 통해, 한 레그가
   `cancelled`인데 나머지는 초록이고 `failure`는 없을 때에만, 시도 상한을 넘지 않는 범위에서 그
