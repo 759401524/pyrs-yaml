@@ -7410,6 +7410,37 @@ claims - that is still the job of the test tiers each entry names. A claim writt
 shape the checker reads; that seam is named here rather than hidden, and `event-stream.md` is the
 only live document that carries the shape today.
 
+### (fc) A fold the gate never asks about (2026-10-22)
+
+Every released section of the five release-note pages is folded - `<details markdown="1">`, a
+`<summary>` of the release's themes, and a `</details>` before the next version heading - from
+v0.12.x through v0.18.0. `v0.18.1` and `v0.18.2` arrived without one, on all five pages, and every
+gate stayed green: `scripts/check_doc_metadata.py` asks whether a fold carries the `markdown`
+attribute the renderer needs and never whether a fold exists, so the newest entries render unfolded
+above twenty folded ones.
+
+**The rule now reads the shape, not only the attributes.** A `##`/`###` heading of the form
+`[vX.Y.Z]` on a release page must be followed - blank line allowed - by `<details markdown="1">`,
+and the first non-blank line after that must start with `<summary>`; opens and closes are counted
+per page. `CHANGELOG.md` joined the gate's default scope even though it carries no front matter by
+design, because it is the canonical English page and a rule that skipped it would skip the file that
+rotted.
+
+**Measured.** Before the repair the scan reported exactly 2 unfolded release headings in each of the
+five pages (`v0.18.2`, `v0.18.1`) and nothing else - no historical release needed an exemption.
+After: `unwrapped=[]` in all five, with `27` folds open and `27` close per page, and
+`python scripts/check_doc_metadata.py` exits 0 across 165 pages. `tests/test_doc_metadata_gate.py`
+grew from 6 to 11 tests, the four new falsifications being the unfolded page, a fold with no
+`<summary>`, an unclosed fold, and the root page's exemption-from-metadata that must not become an
+exemption-from-folds.
+
+**Not covered.** The rule reads headings and tags, not the renderer: a fold that parses but wraps
+the wrong range (a section that swallows the next heading) is caught only by the open/close balance,
+which sees counts rather than nesting. And the ceiling the release notes grew against - entry
+length, median 10 lines against history's 3.5-7 - is stated in the writing contract rather than
+gated, because history itself runs up to 19 lines and a number that old would have to be exempted to
+pass.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
