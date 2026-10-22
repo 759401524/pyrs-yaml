@@ -7331,6 +7331,46 @@ in another". The producer was restored byte-identically (`sha256sum -c` reports
 restoration was followed by a rebuild, because restoring a file's bytes does not make cargo rebuild
 it, and a green run against the mutated binary would have been a false green.
 
+### (fa) The release was the first gate that read the wheel legs' requirement file (2026-10-22)
+
+The v0.18.2 tag fired Publish and five wheel legs reddened before a wheel uploaded. Not a build
+failure: four collection errors. `tests/test_toml_writer_suite.py` and `tests/test_toml_crosslib.py`
+import `tomlkit` at module scope, `tests/test_json5_spec_table.py` and `tests/test_json_crosslib.py`
+import `json5`, and `.ci/requirements-test.txt` - the only requirement file `publish.yml` and
+`.ci/pytest-wheel.sh` install - named neither. The `Release` job was skipped, so nothing reached
+PyPI and the tag cost a re-tag rather than a withdrawn release.
+
+The pair arrived 2026-10-18 with `02f7bbf7`, "test(toml): judge the TOML writer by parsers we do not
+own", and no gate could have seen it: the PR matrix installs the project's dev groups, and
+`pyproject.toml` does declare `tomlkit>=0.12` and `json5>=0.17.3` there. Only the release reads the
+thin file. A missing *test* dependency was therefore discoverable exactly where it was most
+expensive, which is the definition of a defence that is a report rather than a gate.
+
+Reproduced before fixing it, by blocking the two names in `sys.modules` and running those four
+files: the same four `ModuleNotFoundError` collection errors Publish printed, in 0.41s, on this
+host.
+
+**The fix is two lines and the guard is the point.** `tomlkit` and `json5` are declared in
+`.ci/requirements-test.txt`, and `scripts/check_wheel_requirements.py` now judges every module-scope
+import in `tests/` against that file: standard library and this repository's own modules are
+excluded, anything else must resolve to a distribution the file names. It is wired into `prek.toml`
+(`wheel-requirements`, fires on `.ci/requirements-test.txt` and `tests/**/*.py`) so the drift is
+caught at the edit that causes it, and into the matrix through
+`tests/test_wheel_requirements_gate.py` (7 tests).
+
+**The gate was seen to bite.** Deleting the two lines and re-running it prints the four findings by
+file and name, and exits 1; an import outside the map is reported as "named nowhere" instead of
+being ignored, so the vocabulary cannot narrow silently. Two shapes must stay quiet and are pinned:
+an import inside `try:` is the fallback AGENTS.md asks for around optional cross-library readers,
+and charging those would push every optional import toward a bare import to keep the hook green - a
+wider hole than the one being closed.
+
+**What the guard does not see.** It judges imports at module scope, not symbols a test reaches
+through another module, and it charges only what the suite imports - not what a leg's `-k`
+expression selects. A distribution whose import name differs from its distribution name is carried
+by an explicit map in the script, so a new authority must be named there deliberately; that is the
+seam an unlisted wheel-leg dependency could still slip through.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

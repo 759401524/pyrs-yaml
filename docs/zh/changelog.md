@@ -713,6 +713,14 @@ status: new
 
 ### 修复
 
+- **wheel 测试腿装上套件真正导入的依赖** - `.ci/requirements-test.txt` 是发布工作流唯一安装的需求文
+  件，而它既没有声明 `tomlkit`，也没有声明 `json5`，但有四个测试模块在模块作用域导入它们。本版本第一
+  次 Publish 在还没有上传任何 wheel 时就有五条 wheel 腿在收集阶段变红，`Release` 作业被跳过，所以
+  PyPI 上什么都没落下。PR 矩阵不可能看见这件事：它安装开发依赖组，而那里两者都已声明。现在两个都补上
+  声明，并且 `scripts/check_wheel_requirements.py`（一个 prek 钩子，由
+  `tests/test_wheel_requirements_gate.py` 把关）会把 `tests/` 里每个模块作用域的 import 与该文件对
+  账，于是这类漂移在引发它的改动处暴露，而不是在打 tag 时。
+
 - **CLI 命令面清单门禁现在真的执行了** - `tests/test_cli_binding_parity.py` 原先先用
   `getattr(pyrs_yaml.cli, "app")` 取 App，而 `python/pyrs_yaml/cli/__init__.py` 并不绑定这个属性：它
   只定义 `main()`。任何更早运行过 `from pyrs_yaml.cli.app import app` 的测试——`tests/test_cli.py` 就
