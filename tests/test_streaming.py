@@ -162,6 +162,149 @@ class TestStreamEventFields:
         assert types[-1] == "stream_end"
 
 
+class TestByteRanges:
+    """`offset`/`end`: which source bytes an event names.
+
+    The range is the event's own token, not its subtree, and a producer that records only a
+    position answers `end == offset` rather than inventing an extent -- TOML's IR keeps starts,
+    and YAML's block containers and stream markers are positions. A document marker covers
+    `---`/`...` when the source wrote one and is a position when it did not.
+    """
+
+    @pytest.mark.parametrize(
+        "text,fmt",
+        [
+            ("a: 1\nb: [x, 'y']\n# note\nc: |\n  body\n", "yaml"),
+            ("日本語: 🎉\n", "yaml"),
+            ('{\n  "a": [1, true, null],\n  "b": "s"\n}\n', "json"),
+            ('{\n  // head\n  "a": 1, /* tail */\n  "b": 2\n}\n', "jsonc"),
+            ("{名字: '值', n: .5}\n", "json5"),
+            ("# head\n[t]\nx = 1\ny = [2]\n", "toml"),
+        ],
+    )
+    def test_every_range_is_inside_the_source_and_never_reversed(self, text, fmt):
+        source = text.encode()
+        events = list(pyrs_yaml.parse_stream(text, format=fmt))
+        assert events
+        for event in events:
+            assert 0 <= event["offset"] <= event["end"] <= len(source), event
+            # Decoding proves both endpoints sit on character boundaries, so a consumer can slice
+            # the source at them even when the line holds wide characters.
+            source[event["offset"] : event["end"]].decode()
+
+    @pytest.mark.parametrize(
+        "text,fmt,value,token",
+        [
+            ("k: 'y'\n", "yaml", "y", "'y'"),
+            ('k: "y"\n', "yaml", "y", '"y"'),
+            ("k: |\n  body\n", "yaml", "body\n", "body\n"),
+            ('{"a": "v"}', "json", "v", '"v"'),
+            ("{a: 'v'}", "json5", "v", "'v'"),
+            ('{"a": 1}', "json", "1", "1"),
+        ],
+    )
+    def test_a_scalar_names_its_own_token_not_its_decoded_value(self, text, fmt, value, token):
+        # A quoted scalar's range covers the quotes the source typed; the `value` is what the
+        # reader resolved. Both facts are needed to re-read the token without the tree.
+        events = list(pyrs_yaml.parse_stream(text, format=fmt))
+        scalar = next(e for e in events if e["type"] == "scalar" and e["value"] == value)
+        assert text.encode()[scalar["offset"] : scalar["end"]] == token.encode()
+
+    def test_toml_names_each_token_start_and_says_it_has_no_end(self):
+        # The IR records where a key or value begins and nothing about where it stops, so the
+        # producer answers `end == offset`. The starts are pinned because they are the one thing
+        # this route can promise, and a projection that lost them would have nothing left.
+        text = 'a = 1\n"lit key" = "basic"\nn = 0b101\n'
+        events = list(pyrs_yaml.parse_stream(text, format="toml"))
+        assert [(e["value"], e["offset"]) for e in events if e["type"] == "scalar"] == [
+            ("a", 0),
+            ("1", 4),
+            ("lit key", 6),
+            ("basic", 18),
+            ("n", 26),
+            ("0b101", 30),
+        ]
+        assert all(e["end"] == e["offset"] for e in events)
+
+    def test_a_flow_delimiter_names_its_own_byte(self):
+        # A flow container is a real byte on the line; the block form is a position only, because
+        # no character opens it. The asymmetry is the producers' own, and this is where it is
+        # written down rather than discovered by a consumer.
+        text = '{"a": [1]}'
+        named = [
+            (e["type"], text.encode()[e["offset"] : e["end"]].decode())
+            for e in pyrs_yaml.parse_stream(text, format="json")
+            if e["type"] in ("mapping_start", "mapping_end", "sequence_start", "sequence_end")
+        ]
+        assert named == [
+            ("mapping_start", "{"),
+            ("sequence_start", "["),
+            ("sequence_end", "]"),
+            ("mapping_end", "}"),
+        ]
+        block = list(pyrs_yaml.parse_stream("a:\n  b: 1\n", format="yaml"))
+        for event in block:
+            if event["type"].startswith(("mapping_", "stream_", "document_")):
+                assert event["end"] == event["offset"], event
+
+    def test_a_comment_range_covers_its_delimiters(self):
+        # The note's text is stripped of them, so the range is the only place a consumer can read
+        # what the source actually wrote.
+        text = '{\n  // head\n  "a": 1, /* tail */\n  "b": 2\n}\n'
+        got = [
+            text.encode()[e["offset"] : e["end"]].decode()
+            for e in pyrs_yaml.parse_stream(text, format="jsonc")
+            if e["type"] == "comment"
+        ]
+        assert got == ["// head", "/* tail */"]
+        yaml_text = "# note\na: 1\n"
+        note = next(e for e in pyrs_yaml.parse_stream(yaml_text, format="yaml") if e["type"] == "comment")
+        assert yaml_text.encode()[note["offset"] : note["end"]] == b"# note"
+
+    def test_a_document_marker_covers_the_marker_the_source_wrote(self):
+        # The markers that stand for a boundary rather than a character are empty ranges; the two
+        # that an author may write are exactly their three bytes. A consumer restoring a document
+        # from these ranges needs both facts.
+        for text, document_start, document_end in [("---\na: 1\n", "---", ""), ("a: 1\n...\n", "", "...")]:
+            ranges = {
+                e["type"]: text.encode()[e["offset"] : e["end"]].decode()
+                for e in pyrs_yaml.parse_stream(text, format="yaml")
+                if e["type"].startswith(("document_", "stream_"))
+            }
+            assert ranges == {
+                "stream_start": "",
+                "document_start": document_start,
+                "document_end": document_end,
+                "stream_end": "",
+            }, text
+
+    def test_the_incremental_reader_names_the_same_bytes_as_the_text_route(self):
+        # `YamlStream` keeps no copy of the source, so it rebuilds byte offsets from a sparse
+        # char index while the text route converts granit's char spans against its line table.
+        # A wide character is the only input where the two can disagree, and a one-byte-at-a-time
+        # feed is where a chunk boundary can split one.
+        class Trickle:
+            def __init__(self, text):
+                self.data = text.encode()
+
+            def read(self, _size):
+                chunk, self.data = self.data[:1], self.data[1:]
+                return chunk
+
+        for text in [
+            "日本語: [🎉, 1]\n",
+            "a: 🎉\n日本語: x\n",
+            # A second document and a flow member after it: the reader forgets the marks behind
+            # each event, so a document boundary is where a wrong base would surface.
+            "a: 🎉\n---\n棒: [🎉, 2]\n",
+        ]:
+            as_text = list(pyrs_yaml.parse_stream(text, format="yaml"))
+            for source in (io.StringIO(text), Trickle(text)):
+                as_stream = list(pyrs_yaml.YAML().load_stream(source))
+                assert as_stream == as_text, type(source).__name__
+            assert any(e["offset"] for e in as_text)
+
+
 class TestBlockScalarStyle:
     """stream_events style field for block scalars (audit §15)."""
 
@@ -303,7 +446,17 @@ class TestMultiFormatStream:
         # and a consumer that reads `owner` off a scalar would find nothing.
         events = list(pyrs_yaml.parse_stream("# above\na: 1\n", format="yaml"))
         assert [e["type"] for e in events if "owner" in e] == ["comment"]
-        assert set(events[0]) == {"type", "value", "style", "anchor", "tag", "line", "column"}
+        assert set(events[0]) == {
+            "type",
+            "value",
+            "style",
+            "anchor",
+            "tag",
+            "line",
+            "column",
+            "offset",
+            "end",
+        }
 
     def test_json5_reports_single_quoted_and_bare_forms_verbatim(self):
         # The number is the source's own spelling, not a canonicalised one: `.5` stays `.5`.

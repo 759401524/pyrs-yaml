@@ -23,7 +23,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 ```mermaid title="ストリーム解析のアーキテクチャ"
 graph LR
     A["YAML ファイル / 文字列"] --> B["遅延イベントイテレータ<br/>O(アンカー + 64KB チャンク)"]
-    B --> C["イベント dict<br/>type, value, style, anchor, tag, line, column"]
+    B --> C["イベント dict<br/>type, value, style, anchor, tag, line, column, offset, end"]
     C --> D["消費者<br/>ストリーム処理"]
 ```
 
@@ -126,6 +126,16 @@ def __next__() -> dict | None: ...
 | `tag` | `str` または `None` | タグ文字列（`!!str`、`!custom`） |
 | `line` | `int` | 行番号（0 始まり） |
 | `column` | `int` | 列番号（0 始まり） |
+| `offset` | `int` | イベント自身のトークンのバイトオフセット（ソース先頭から） |
+| `end` | `int` | そのトークンの最後のバイトの次 |
+
+`offset`/`end` が指すのは部分木ではなくトークンそのものです。引用符付きスカラーの範囲は
+ソースに書かれた引用符を含み、コメントの範囲はその区切り記号を含み、フローコンテナの範囲は
+区切り記号の 1 バイトです。位置しか記録しない場合——TOML の全イベント、YAML のブロック
+コンテナとストリームマーカー——`end` は `offset` と等しくなります。文書マーカーはソースが
+`---` や `...` を書いていればそのマーカーを覆い、書いていなければ空です。どちらも
+文字境界にあり、逆転せず、ソースのバイト長を超えないため、
+`source.encode()[event["offset"]:event["end"]]` は常にデコードできます。
 
 #### イベントタイプ
 

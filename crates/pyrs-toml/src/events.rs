@@ -151,6 +151,12 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> Events<'a, 's, S> {
         }
     }
 
+    /// Report an event at `pos`.
+    ///
+    /// The IR records where a key, value, header or note starts and nothing about where it ends,
+    /// so `end` is `offset`: this producer names a position, not a range. The contract allows
+    /// exactly that, and inventing an end from the node's text would guess at spellings the
+    /// projection never saw (a dotted inline member is a joined name the source never wrote).
     fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
         if self.stopped {
             return;
@@ -160,6 +166,8 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> Events<'a, 's, S> {
             event_type,
             line,
             column,
+            offset: pos,
+            end: pos,
         }) {
             self.stopped = true;
         }

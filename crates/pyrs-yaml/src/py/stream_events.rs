@@ -60,8 +60,12 @@ pub(crate) fn stream_event_to_py_dict<'a>(
     event: &StreamEvent,
 ) -> PyResult<Bound<'a, PyDict>> {
     let dict = PyDict::new(py);
+    // `line`/`column` say where a reader is; `offset`/`end` say which source bytes the event
+    // names. Both are on every event: an event that names no text has `end == offset`.
     dict.set_item(intern!(py, "line"), event.line)?;
     dict.set_item(intern!(py, "column"), event.column)?;
+    dict.set_item(intern!(py, "offset"), event.offset)?;
+    dict.set_item(intern!(py, "end"), event.end)?;
 
     match &event.event_type {
         StreamEventType::StreamStart => {

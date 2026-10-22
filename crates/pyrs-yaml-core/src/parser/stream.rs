@@ -19,6 +19,9 @@ struct PendingNote {
     /// The note's own place in the source, kept so the event carries it.
     line: usize,
     column: usize,
+    /// The note's byte extent, kept for the same reason.
+    offset: usize,
+    end: usize,
 }
 
 /// Where a same-line note lands, in the vocabulary's terms.
@@ -144,22 +147,17 @@ impl<'a> StreamReceiver<'a> {
     }
 
     /// Emit one note in the slot the tree files it under.
-    fn emit_note(
-        &mut self,
-        text: Arc<str>,
-        owns_line: bool,
-        owner: NoteOwner,
-        line: usize,
-        column: usize,
-    ) {
+    fn emit_note(&mut self, note: PendingNote, owner: NoteOwner) {
         self.events.push(StreamEvent {
             event_type: StreamEventType::Comment {
-                text,
-                owns_line,
+                text: note.text,
+                owns_line: note.owns_line,
                 owner,
             },
-            line,
-            column,
+            line: note.line,
+            column: note.column,
+            offset: note.offset,
+            end: note.end,
         });
     }
 
@@ -169,13 +167,7 @@ impl<'a> StreamReceiver<'a> {
             return;
         }
         for note in core::mem::take(&mut self.pending_notes) {
-            self.emit_note(
-                note.text,
-                note.owns_line,
-                NoteOwner::FollowingLeading,
-                note.line,
-                note.column,
-            );
+            self.emit_note(note, NoteOwner::FollowingLeading);
         }
     }
 
@@ -199,7 +191,7 @@ impl<'a> StreamReceiver<'a> {
             NoteOwner::FollowingLeading
         };
         for note in core::mem::take(&mut self.pending_notes) {
-            self.emit_note(note.text, note.owns_line, owner, note.line, note.column);
+            self.emit_note(note, owner);
         }
     }
 
@@ -217,7 +209,7 @@ impl<'a> StreamReceiver<'a> {
             NoteOwner::FollowingLeading
         };
         for note in core::mem::take(&mut self.pending_notes) {
-            self.emit_note(note.text, note.owns_line, owner, note.line, note.column);
+            self.emit_note(note, owner);
         }
     }
 
@@ -305,12 +297,18 @@ impl<'a> StreamReceiver<'a> {
         // line carried content before the `#`, so the placement answers "does
         // this note own its line" on its own.
         let owns_line = crate::parser::is_standalone_placement(placement);
+        // `granit` spans the note's `#` through its last non-blank character, which is the whole
+        // of what the event names - so the span is also the extent the event reports.
+        let offset = self.byte_start_of(&span);
+        let end = self.byte_end_of(&span);
         if owns_line {
             self.pending_notes.push(PendingNote {
                 text,
                 owns_line: true,
                 line,
                 column,
+                offset,
+                end,
             });
             return;
         }
@@ -318,13 +316,32 @@ impl<'a> StreamReceiver<'a> {
             // Placement is #[non_exhaustive]: other variants are ignored.
             return;
         }
-        let comment_byte = self.byte_start_of(&span);
-        match self.bind_inline(comment_byte) {
+        match self.bind_inline(offset) {
             InlineBinding::Preceding => {
-                self.emit_note(text, false, NoteOwner::PrecedingInline, line, column);
+                self.emit_note(
+                    PendingNote {
+                        text,
+                        owns_line: false,
+                        line,
+                        column,
+                        offset,
+                        end,
+                    },
+                    NoteOwner::PrecedingInline,
+                );
             }
             InlineBinding::PrecedingLeading => {
-                self.emit_note(text, false, NoteOwner::PrecedingLeading, line, column);
+                self.emit_note(
+                    PendingNote {
+                        text,
+                        owns_line: false,
+                        line,
+                        column,
+                        offset,
+                        end,
+                    },
+                    NoteOwner::PrecedingLeading,
+                );
             }
             InlineBinding::Following => {
                 self.pending_notes.push(PendingNote {
@@ -332,6 +349,8 @@ impl<'a> StreamReceiver<'a> {
                     owns_line: false,
                     line,
                     column,
+                    offset,
+                    end,
                 });
             }
         }
@@ -382,23 +401,24 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
         }
 
         let byte_start = self.byte_start_of(&span);
+        let byte_end = self.byte_end_of(&span);
         let yaml = self.yaml_text;
         // The floor is read before this event's own span is folded in: it is where the text *behind*
         // this node ended, which is what a `Start` event of an anchored container needs in order to be
         // named from its parent's window, as `begin_container` does on the tree path.
         let floor = self.window_floor;
-        let Some(stream_event) =
-            event_to_stream_event(event, span, &mut self.anchors, &mut |_id| {
-                anchor_name_within(yaml, byte_start, Some(floor))
-            })
-        else {
+        let Some(stream_event) = event_to_stream_event(
+            event,
+            span,
+            byte_start,
+            byte_end,
+            &mut self.anchors,
+            &mut |_id| anchor_name_within(yaml, byte_start, Some(floor)),
+        ) else {
             return; // non_exhaustive wildcard
         };
-        if span.start.index() != span.end.index() {
-            let end = self.byte_end_of(&span);
-            if end > self.window_floor {
-                self.window_floor = end;
-            }
+        if span.start.index() != span.end.index() && byte_end > self.window_floor {
+            self.window_floor = byte_end;
         }
 
         // The placement machine runs only for a source that can hold a note; a
@@ -415,7 +435,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
             match &stream_event.event_type {
                 StreamEventType::Scalar { .. } => {
                     self.flush_pending_notes();
-                    self.last_node_end = Some(self.byte_end_of(&span));
+                    self.last_node_end = Some(byte_end);
                     self.last_node_noted = false;
                     self.last_node_open_container = false;
                     self.note_the_root(false);
@@ -427,7 +447,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                     self.note_the_root(true);
                 }
                 StreamEventType::Alias { .. } => {
-                    self.last_node_end = Some(self.byte_end_of(&span));
+                    self.last_node_end = Some(byte_end);
                     self.last_node_noted = false;
                     self.last_node_open_container = false;
                     self.note_the_root(false);
@@ -440,7 +460,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                     // the last child's end stands - which is the tree's own answer
                     // for a block collection.
                     if span.start.index() != span.end.index() {
-                        self.last_node_end = Some(self.byte_end_of(&span));
+                        self.last_node_end = Some(byte_end);
                     }
                 }
                 StreamEventType::DocumentStart => {
@@ -476,9 +496,16 @@ fn convert_tag(tag: Option<&granit_parser::Tag>) -> Option<Tag> {
 /// Contains no comment dependencies (those stay in `StreamReceiver::on_event`);
 /// anchor name injected via `resolve_anchor` callback. Returns `None` for
 /// non_exhaustive wildcard.
+///
+/// `offset`/`end` are the span's byte extent, which the caller converts because only it holds the
+/// char-index table a non-ASCII source needs. They arrive as parameters rather than being read
+/// from `span` here so this function stays independent of how a producer tracks bytes - the
+/// incremental reader indexes a stream that is not in memory.
 pub fn event_to_stream_event<'a, F>(
     event: Event<'a>,
     span: Span,
+    offset: usize,
+    end: usize,
     anchor_map: &mut NodeMap<usize, String>,
     resolve_anchor: &mut F,
 ) -> Option<StreamEvent<'a>>
@@ -550,6 +577,8 @@ where
         event_type,
         line,
         column,
+        offset,
+        end,
     })
 }
 
@@ -1067,9 +1096,15 @@ mod tests {
         // bug). Both shapes therefore flow through byte-identical.
         let mut anchor_map = NodeMap::default();
         let decoded = Event::Scalar("a\n\t".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
-        let ev =
-            super::event_to_stream_event(decoded, mk_span(1, 0), &mut anchor_map, &mut |_| None)
-                .expect("scalar maps to Some");
+        let ev = super::event_to_stream_event(
+            decoded,
+            mk_span(1, 0),
+            0,
+            0,
+            &mut anchor_map,
+            &mut |_| None,
+        )
+        .expect("scalar maps to Some");
         match ev.event_type {
             super::StreamEventType::Scalar {
                 value,
@@ -1086,9 +1121,15 @@ mod tests {
         }
         let mut anchor_map = NodeMap::default();
         let raw_pair = Event::Scalar("a\\n".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
-        let ev =
-            super::event_to_stream_event(raw_pair, mk_span(1, 0), &mut anchor_map, &mut |_| None)
-                .expect("scalar maps to Some");
+        let ev = super::event_to_stream_event(
+            raw_pair,
+            mk_span(1, 0),
+            0,
+            0,
+            &mut anchor_map,
+            &mut |_| None,
+        )
+        .expect("scalar maps to Some");
         match ev.event_type {
             super::StreamEventType::Scalar { value, .. } => {
                 assert_eq!(value, "a\\n", "second decode must not collapse raw pairs");
@@ -1101,7 +1142,10 @@ mod tests {
     fn event_to_stream_event_plain_scalar_passthrough() {
         let mut anchor_map = NodeMap::default();
         let event = Event::Scalar("hello".into(), SaphyrScalarStyle::Plain, 0, None);
-        let ev = super::event_to_stream_event(event, mk_span(2, 4), &mut anchor_map, &mut |_| None)
+        let ev =
+            super::event_to_stream_event(event, mk_span(2, 4), 8, 13, &mut anchor_map, &mut |_| {
+                None
+            })
             .unwrap();
         match ev.event_type {
             super::StreamEventType::Scalar { value, style, .. } => {
@@ -1111,16 +1155,20 @@ mod tests {
             other => panic!("wrong variant: {:?}", other),
         }
         assert_eq!((ev.line, ev.column), (1, 4)); // line = span.line - 1
+        // The byte extent is the caller's answer, carried through unchanged: this function has no
+        // source text to convert char indices against.
+        assert_eq!((ev.offset, ev.end), (8, 13));
     }
 
     #[test]
     fn event_to_stream_event_anchor_resolves_and_registers() {
         let mut anchor_map = NodeMap::default();
         let event = Event::Scalar("v".into(), SaphyrScalarStyle::Plain, 7, None);
-        let ev = super::event_to_stream_event(event, mk_span(1, 0), &mut anchor_map, &mut |id| {
-            Some(format!("anchor_{}", id))
-        })
-        .unwrap();
+        let ev =
+            super::event_to_stream_event(event, mk_span(1, 0), 0, 0, &mut anchor_map, &mut |id| {
+                Some(format!("anchor_{}", id))
+            })
+            .unwrap();
         match ev.event_type {
             super::StreamEventType::Scalar {
                 anchor: Some(name), ..
@@ -1138,6 +1186,8 @@ mod tests {
         let ev = super::event_to_stream_event(
             Event::Alias(3),
             mk_span(1, 0),
+            0,
+            0,
             &mut anchor_map,
             &mut |_| None,
         )
@@ -1151,6 +1201,8 @@ mod tests {
         let ev = super::event_to_stream_event(
             Event::Alias(3),
             mk_span(1, 0),
+            0,
+            0,
             &mut anchor_map,
             &mut |_| None,
         )
@@ -1166,6 +1218,8 @@ mod tests {
             super::event_to_stream_event(
                 Event::Comment(Default::default(), Default::default()),
                 mk_span(1, 0),
+                0,
+                0,
                 &mut anchor_map,
                 &mut |_| None
             )

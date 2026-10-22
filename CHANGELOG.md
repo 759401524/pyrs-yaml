@@ -25,6 +25,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
   error precedence.
 
+- **Every stream event names the source bytes it came from** — an event carried a line and a column,
+  so a consumer that wanted to resume from it could only count lines back through text it had to
+  keep. `StreamEvent` now carries `offset` and `end` on every event of every producer: `offset` is
+  the first source byte the event names, `end` one past the last, both character boundaries inside
+  the source's byte length. The range is the token, not the subtree — a quoted scalar includes its
+  quotes, a flow delimiter is one byte, a block container is empty — and `end == offset` where a
+  producer records a position and no extent: every TOML event (its IR keeps starts), a YAML stream
+  marker and a block container. A document marker covers `---` or `...` when the source wrote one
+  and is empty when it did not. granit hands YAML char indices, so the text route
+  converts them through the offsets it already computes and the incremental reader keeps one
+  `(chars, bytes)` mark per non-ASCII character and none for ASCII, which is what keeps
+  `load_stream`'s chunked memory flat. `parse_stream` and `load_stream` event dicts gain the two
+  keys. Seventeen tests in `tests/test_streaming.py` pin the ranges across all five formats and both
+  YAML routes, including a reader fed one byte at a time.
+
 ### Fixed
 
 - **The deployed site's table of contents lists each section beside its version** — the four
