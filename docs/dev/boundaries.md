@@ -346,3 +346,23 @@ legs use. Measured on this tree: the scoped build selects `yaml_bench` and `cli_
 zero `pyo3`/`numpy`, and the job drops its `setup-python` step because nothing in it probes for an
 interpreter anymore. The `ir_gate` target is unaffected - it is gated on `ir-gate`, was never a
 CodSpeed benchmark, and is built only by `scripts/ir_gate.py`.
+
+## The mmap read path is a gated feature, not a default (2026-10-22)
+
+`pyrs-yaml-core` gained an `mmap` feature that maps a regular file with `memmap2` and parses
+straight from the page cache, dropping the `read_to_string` heap copy from the read path; the
+`Arc<str>` an editable document keeps for round-trip is still allocated, because a document's
+lifetime must not ride on a mapping of a file the caller can truncate from under it (a truncated map
+faults `SIGBUS`). That caveat is the whole reason it is a feature and not the default, the same
+backward-compatible shape the `std` split took: `default = ["numpy"]` is unchanged, so the wheel
+ships the read path it always had and only an opt-in rebuild turns the map on.
+
+The gate is the seam's behaviour, not its speed. `read_file_text` maps only a regular, non-empty
+file and falls back to `std::fs::read_to_string` for an empty file, a directory, or a non-regular
+path, so those keep the IO error bytes Python already saw, and a non-UTF-8 mapped file is rejected
+with the same `InvalidData` message — `crates/pyrs-yaml-core/src/file.rs` asserts the byte-for-byte
+match and every error-parity case. The `no-std-check` job now builds the crate `--features mmap` so
+a default-off feature cannot rot the way the no_std crate list once did silently; because `mmap`
+implies `std`, the `thumbv7em-none-eabi` build never enables it and the no_std foundation is
+unaffected. A measured instruction-count figure belongs in `perf.md` only once taken on the
+enforcing image; none is claimed here.

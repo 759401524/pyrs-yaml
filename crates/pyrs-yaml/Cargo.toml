@@ -34,6 +34,10 @@ pyo3-build-config = "0.29.2"
 [features]
 default = ["numpy"]
 numpy = ["dep:numpy"]
+# Memory-map a regular file on `parse_file`'s read path. Passthrough to the
+# engine's `mmap` feature; off by default, so the wheel that ships reads files
+# exactly as it always did and only an opt-in rebuild turns the map on.
+mmap = ["pyrs-yaml-core/mmap"]
 # Opt-in build of the instruction-count harness binary below. Nothing in the shipped
 # extension depends on it: the seam (`bench_to_python`) is compiled out of every build that does not
 # ask for it, so the Python-visible surface is unchanged by adding a performance target.

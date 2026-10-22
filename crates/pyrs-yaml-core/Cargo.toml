@@ -24,6 +24,10 @@ granit-parser = { version = "2.0", default-features = false, features = ["commen
 # User-defined `!schema` rules are a runtime feature of the binding: `regex`
 # is std-only here, so the YAML engine's own grammar never depends on it.
 regex = { version = "1.11", optional = true }
+# The `mmap` feature maps a file instead of copying it on the read path. A
+# regular, non-empty file is parsed straight through the page cache; see the
+# module docs of `src/file.rs` for why the map is opt-in, not the default.
+memmap2 = { version = "0.9", optional = true }
 thiserror = { version = "2", default-features = false }
 pyrs-ast = { path = "../pyrs-ast", version = "0.18.3", default-features = false }
 pyrs-event = { path = "../pyrs-event", version = "0.18.3", default-features = false }
@@ -47,6 +51,10 @@ std = [
 # Opt-in build of the instruction-count gate binary; see the `[[bench]] ir_gate`
 # note below for why the target is feature-gated rather than always present.
 ir-gate = []
+# Memory-map a regular file on the read path instead of copying it first.
+# Implies `std` (memmap2 needs an OS); off by default, so the shipped wheel
+# keeps the `read_to_string` behaviour it always had.
+mmap = ["std", "dep:memmap2"]
 
 [dev-dependencies]
 # Cross-format property/integration suites (fmt_pbt, integration/*) exercise

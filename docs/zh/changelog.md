@@ -29,7 +29,6 @@ status: new
   法中止），`False` 只停止送达，增量入口仍是 `load_stream`。收集式入口现在以 `Vec` sink 委托给 `_to`
   入口，迭代器与回调看到的流因此结构化地相同。回调抛出的异常优先于其后的解析错误，`False` 返回
   `None`。`tests/test_streaming.py` 的七条测试钉住停止前缀、各格式的拒绝事实与错误优先级。
-
 - **每个流事件都指认它来自的源字节** — 事件此前只带行列号，希望从某个事件处续读的消费者只能沿着自己
   必须保留的文本往回数行。`StreamEvent` 现在为每种生产者的每个事件都带上 `offset` 与 `end`：`offset`
   是该事件所指的第一个源字节，`end` 是最后一个字节之后，两者都是落在源字节长度之内的字符边界。区间是
@@ -40,6 +39,9 @@ status: new
   一条 `(chars, bytes)` 标记、ASCII 一条都不留，这正是 `load_stream` 的分块内存保持平坦的原因。
   `parse_stream` 与 `load_stream` 的事件字典多出这两个键。`tests/test_streaming.py` 的十七条测试钉住
   全部五种格式与 YAML 两条路径上的区间，其中包括按单字节喂入的读取器。
+- **可选 `mmap` 读路径** — 开启后 `parse_file` 直接从内存映射解析非空常规文件，省掉
+  `read_to_string` 的整文件拷贝；默认关闭（`default = ["numpy"]` 不变）。空文件、目录、
+  非常规路径与非 UTF-8 输入保持原有报错；详见 `docs/dev/boundaries.md`。
 
 #### 修复
 

@@ -62,16 +62,24 @@ pub(crate) fn parse_file(
     let parse_schema_value = explicit
         .clone()
         .unwrap_or(crate::parser::yaml::Schema::Core);
-    let content = crate::py::read_file_to_string(path)?;
+    // With the `mmap` feature this borrows a read-only map of a regular file
+    // (no whole-file heap copy on the read side); otherwise it is the same
+    // `read_to_string`. `text` stays alive for the whole body, so `content` and
+    // the `Arc<str>` source built from it are valid.
+    let text = pyrs_yaml_core::file::read_file_text(path)
+        .map_err(|e| crate::py::file_read_error(&e.to_string(), path))?;
+    let content = text
+        .as_str()
+        .map_err(|e| crate::py::file_read_error(&e.to_string(), path))?;
     let parsed = py.detach(|| {
         crate::parser::parse_document(
-            &content,
+            content,
             true,
             parse_schema_value,
             max_depth,
             allow_duplicate_keys,
         )
-        .map_err(|e| parse_error_to_py_err(e, &content, max_depth))
+        .map_err(|e| parse_error_to_py_err(e, content, max_depth))
     })?;
     let declared = parsed.version.as_deref();
     let effective = negotiate_schema(explicit, declared, honor_version_directive);

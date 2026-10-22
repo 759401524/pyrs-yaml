@@ -34,7 +34,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   construction. A callback exception outranks the parse error behind it, and `False` returns `None`.
   Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
   error precedence.
-
 - **Every stream event names the source bytes it came from** — an event carried a line and a column,
   so a consumer that wanted to resume from it could only count lines back through text it had to
   keep. `StreamEvent` now carries `offset` and `end` on every event of every producer: `offset` is
@@ -49,6 +48,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `load_stream`'s chunked memory flat. `parse_stream` and `load_stream` event dicts gain the two
   keys. Seventeen tests in `tests/test_streaming.py` pin the ranges across all five formats and both
   YAML routes, including a reader fed one byte at a time.
+- **Opt-in `mmap` read path** — `parse_file` parses a regular non-empty file straight from a memory
+  map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
+  (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
+  existing errors; see `docs/dev/boundaries.md`.
 
 #### Fixed
 
