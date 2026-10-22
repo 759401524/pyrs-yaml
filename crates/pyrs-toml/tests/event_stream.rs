@@ -7,7 +7,7 @@
 //! for.
 
 use pyrs_ast::ast::{CustomNode, ScalarStyle};
-use pyrs_toml::{TomlDialect, from_toml_with_options, parse_stream_with_dialect};
+use pyrs_toml::{NoteOwner, TomlDialect, from_toml_with_options, parse_stream_with_dialect};
 
 /// One scalar reduced to what both descriptions can state.
 fn scalar_token(text: &str, style: ScalarStyle, tag: Option<&pyrs_ast::ast::Tag>) -> String {
@@ -64,13 +64,16 @@ fn event_shape(events: &[pyrs_toml::StreamEvent<'_>]) -> Vec<String> {
         .collect()
 }
 
-/// Every note in the tree, in node order.
-fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
+/// Every note in the tree, with the slot it sits in.
+///
+/// The tree's flag is the placement: `true` means the note rides the node's leading list, and the
+/// node's inline slot is the one note that does not.
+fn tree_notes(node: &CustomNode, into: &mut Vec<(String, bool)>) {
     if let Some(note) = node.comment() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     for note in node.leading_comments() {
-        into.push(note.text.to_string());
+        into.push((note.text.to_string(), note.standalone));
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
@@ -88,13 +91,26 @@ fn tree_notes(node: &CustomNode, into: &mut Vec<String>) {
     }
 }
 
-fn stream_notes(events: &[pyrs_toml::StreamEvent<'_>]) -> Vec<String> {
+/// Every note the stream reports, with the source's own fact and the owner it names.
+fn stream_notes(events: &[pyrs_toml::StreamEvent<'_>]) -> Vec<(String, bool, NoteOwner)> {
     events
         .iter()
         .filter_map(|event| match &event.event_type {
-            pyrs_toml::StreamEventType::Comment { text, .. } => Some(text.to_string()),
+            pyrs_toml::StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            } => Some((text.to_string(), *owns_line, *owner)),
             _ => None,
         })
+        .collect()
+}
+
+/// The same notes read as the slot each one takes, which is what the tree and the stream agree on.
+fn stream_slots(notes: &[(String, bool, NoteOwner)]) -> Vec<(String, bool)> {
+    notes
+        .iter()
+        .map(|(text, _, owner)| (text.clone(), owner.is_leading()))
         .collect()
 }
 
@@ -141,8 +157,12 @@ fn the_stream_reports_a_document_in_structural_order() {
                 pyrs_toml::StreamEventType::Alias { name } => {
                     panic!("TOML has no alias: {name}")
                 }
-                pyrs_toml::StreamEventType::Comment { text, standalone } => {
-                    format!("comment[standalone={standalone}]{text}")
+                pyrs_toml::StreamEventType::Comment {
+                    text,
+                    owns_line,
+                    owner,
+                } => {
+                    format!("comment[owns_line={owns_line},owner={owner:?}]{text}")
                 }
             };
             format!("{kind}@{}:{}", event.line, event.column)
@@ -155,12 +175,15 @@ fn the_stream_reports_a_document_in_structural_order() {
             "stream-start@0:0",
             "document-start@0:0",
             "mapping-start[false]@0:0",
-            // The note above `[a]` is reported where the note is, before the table it leads.
-            "comment[standalone=true]lead@0:0",
             // A header names its table inside the brackets that open it: the key sits at 8,
             // the `MappingStart` it belongs to at 7. Structural order, not byte order, is what
             // a consumer walks - and TOML is the only one of the five formats that inverts them.
             "scalar[Plain][tag=None]a@1:1",
+            // The note above `[a]` leads the table, not its name: the tree files it on the
+            // mapping the header opens, so the stream reports it after the name and before the
+            // mapping starts - the one order in which the note's owner is the node a consumer
+            // builds next.
+            "comment[owns_line=true,owner=FollowingLeading]lead@0:0",
             "mapping-start[false]@1:0",
             // `b.c = 1`: the dotted key's own level, then the pair's name at 14 and its value
             // at 18, all on the line the document wrote them on.
@@ -228,13 +251,75 @@ fn every_note_the_tree_keeps_the_stream_reports_too() {
         let mut from_tree = Vec::new();
         tree_notes(&tree, &mut from_tree);
         let events = parse_stream_with_dialect(src, TomlDialect::V1_1).expect("valid TOML");
-        let from_stream = stream_notes(&events);
+        let mut from_stream = stream_slots(&stream_notes(&events));
+        // The stream's order is the one a consumer walks, the tree's is the one a node holds, so
+        // the two are compared as the multisets they are.
+        from_tree.sort();
+        from_stream.sort();
         assert_eq!(from_tree, from_stream, "note sets differ for {src:?}");
         assert!(
             !from_tree.is_empty(),
             "the fixture stopped carrying a note at all: {src:?}"
         );
     }
+}
+
+/// The two facts a note carries: what the source did, and where the tree filed it.
+#[test]
+fn every_note_the_tree_files_is_reported_with_the_same_owner() {
+    let cases: &[&str] = &[
+        "# above\na = 1 # after\n",
+        "# one\n# two\nb = 2\n",
+        "[s] # on the header\n# above the key\nk = 1 # after the value\n",
+        "arr = [\n  # above the element\n  1, # after it\n]\n",
+        "tbl = {\n  # above the member\n  k = 1 # after it\n}\n",
+        "[[p]]\n# above the element\nx = 1\n[[p]]\n# above the second\nx = 2\n",
+        "a.b = 1 # after\n",
+        "# lead\n[a]\nk = 1\n",
+    ];
+    for src in cases {
+        let tree = from_toml_with_options(src, TomlDialect::V1_1).expect("valid TOML");
+        let mut kept = Vec::new();
+        tree_notes(&tree, &mut kept);
+        let events = parse_stream_with_dialect(src, TomlDialect::V1_1).expect("valid TOML");
+        let reported = stream_notes(&events);
+        let mut slots = stream_slots(&reported);
+        kept.sort();
+        slots.sort();
+        assert_eq!(
+            kept, slots,
+            "the two readers file the notes differently for {src:?}"
+        );
+        for (_, owns_line, owner) in &reported {
+            assert!(
+                !owns_line || owner.is_leading(),
+                "a note that had a line to itself leads: {src:?}"
+            );
+            assert!(
+                !owner.is_inline() || !owns_line,
+                "the inline slot never holds a note that had a line to itself: {src:?}"
+            );
+        }
+    }
+}
+
+/// A note the source wrote on a line it did not own can still lead the node the tree files it on.
+#[test]
+fn a_note_that_shared_a_line_can_still_lead_the_next_element() {
+    // TOML files a comment with the element that follows it, because a comment runs to the end of
+    // its line. This one shared the line with the value before it - so the source gave it no line
+    // of its own, and the tree still puts it above the next element. The two facts are separate,
+    // which is the whole reason the flag was split.
+    let src = "arr = [1, # shared\n  2]\n";
+    let events = parse_stream_with_dialect(src, TomlDialect::V1_1).expect("valid TOML");
+    assert_eq!(
+        stream_notes(&events),
+        [("shared".to_string(), false, NoteOwner::FollowingLeading)]
+    );
+    let tree = from_toml_with_options(src, TomlDialect::V1_1).expect("valid TOML");
+    let mut kept = Vec::new();
+    tree_notes(&tree, &mut kept);
+    assert_eq!(kept, [("shared".to_string(), true)]);
 }
 
 #[test]
@@ -249,18 +334,28 @@ fn a_note_the_tree_has_no_slot_for_is_still_in_the_stream() {
     let events = parse_stream_with_dialect(src, TomlDialect::V1_1).expect("valid TOML");
     assert_eq!(
         kept,
-        Vec::<String>::new(),
+        Vec::<(String, bool)>::new(),
         "the tree gained a slot for a loose note"
     );
-    assert_eq!(stream_notes(&events), ["nobody's note".to_string()]);
+    assert_eq!(
+        stream_notes(&events),
+        [(
+            "nobody's note".to_string(),
+            true,
+            NoteOwner::PrecedingLeading
+        )]
+    );
     // A document that is *only* a note has no key to miss it, so both routes keep it.
     let only = "# just this\n";
     let tree = from_toml_with_options(only, TomlDialect::V1_1).expect("valid TOML");
     let mut kept = Vec::new();
     tree_notes(&tree, &mut kept);
     let events = parse_stream_with_dialect(only, TomlDialect::V1_1).expect("valid TOML");
-    assert_eq!(kept, ["just this".to_string()]);
-    assert_eq!(stream_notes(&events), ["just this".to_string()]);
+    assert_eq!(kept, [("just this".to_string(), true)]);
+    assert_eq!(
+        stream_notes(&events),
+        [("just this".to_string(), true, NoteOwner::PrecedingLeading)]
+    );
 }
 
 #[test]
@@ -414,8 +509,11 @@ fn the_seed_corpus_describes_the_same_document_twice() {
                     let reported = stream_notes(&events);
                     // The stream never loses a note and never invents one; it may report a note the
                     // AST has no slot for, which is the boundary named above.
+                    let mut slots = stream_slots(&reported);
+                    kept.sort();
+                    slots.sort();
                     assert!(
-                        kept.iter().all(|note| reported.contains(note)),
+                        kept.iter().all(|note| slots.contains(note)),
                         "{} [{dialect:?}]: the tree kept {kept:?}, the stream reported {reported:?}",
                         path.display()
                     );

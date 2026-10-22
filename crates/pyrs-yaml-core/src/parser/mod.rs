@@ -3,7 +3,7 @@ pub mod yaml;
 
 pub use crate::error::{DepthError, ParseError};
 pub use crate::parser::stream::{
-    StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
+    NoteOwner, StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
 };
 
 use crate::ast::{Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
@@ -204,6 +204,46 @@ pub(crate) fn is_standalone_placement(p: &granit_parser::Placement) -> bool {
             | granit_parser::Placement::Free
             | granit_parser::Placement::Last
     )
+}
+
+/// True when a line break separates the candidate node's end from the comment,
+/// i.e. the comment is on a strictly later line.
+///
+/// Only the gap between the two is scanned, so this stays `O(distance)`;
+/// building a whole-document line table here would put an `O(len)` pass on
+/// the first comment of every document, on the parse hot path. A comment
+/// that starts at or before the candidate's real end - notably a note on a
+/// block scalar's header line, while granit spans that node at its
+/// *content* - is never reported as separated, so it keeps binding inline.
+///
+/// Shared by the tree and the stream: both ask the same question of the same
+/// text, and the answer decides whether a same-line note trails the node
+/// before it or leads the node after it.
+pub(crate) fn line_break_between(text: &str, node_end: usize, comment_byte: usize) -> bool {
+    let bytes = text.as_bytes();
+    // A block collection's span runs through the line break that ends its own
+    // line, so `node_end` can already sit on the *next* line and the gap it
+    // produces holds no break even though the note is on later text. Back over
+    // the blanks the span swallowed before looking for the break: `b:` /
+    // ` ?` (span `4..6`) / `? #i` otherwise looked same-line, the note landed
+    // as the nested mapping's trailing comment, the writer spilled it inside
+    // that mapping, the re-read gave it to the shallower next entry, and
+    // ownership climbed a level every round (libFuzzer `yaml_roundtrip`
+    // crash-0e1c4378, minimised to `b:\n ?\n? #i`).
+    let mut end = node_end.min(bytes.len());
+    while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'\r' | b'\n') {
+        end -= 1;
+    }
+    // The break is `\n`, `\r\n` or a lone `\r` - the set granit splits lines on,
+    // which the blank trim above already knows. Reading only `\n` called
+    // `- :\r- #-` same-line, so its note bound back onto the mapping instead of
+    // carrying to the item that follows; the writer then placed a container note by
+    // its own rule, the re-read handed the same note to the pair's value, and the
+    // document needed two rounds to settle.
+    comment_byte > end
+        && bytes
+            .get(end..comment_byte.min(bytes.len()))
+            .is_some_and(|gap| gap.iter().any(|b| *b == b'\n' || *b == b'\r'))
 }
 
 /// Drive `AstReceiver` over `yaml` with the shared error contract:
@@ -814,42 +854,6 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// True when a line break separates the candidate node's end from the comment,
-    /// i.e. the comment is on a strictly later line.
-    ///
-    /// Only the gap between the two is scanned, so this stays `O(distance)`;
-    /// building a whole-document line table here would put an `O(len)` pass on
-    /// the first comment of every document, on the parse hot path. A comment
-    /// that starts at or before the candidate's real end - notably a note on a
-    /// block scalar's header line, while granit spans that node at its
-    /// *content* - is never reported as separated, so it keeps binding inline.
-    fn line_break_between(text: &str, node_end: usize, comment_byte: usize) -> bool {
-        let bytes = text.as_bytes();
-        // A block collection's span runs through the line break that ends its own
-        // line, so `node_end` can already sit on the *next* line and the gap it
-        // produces holds no break even though the note is on later text. Back over
-        // the blanks the span swallowed before looking for the break: `b:` /
-        // ` ?` (span `4..6`) / `? #i` otherwise looked same-line, the note landed
-        // as the nested mapping's trailing comment, the writer spilled it inside
-        // that mapping, the re-read gave it to the shallower next entry, and
-        // ownership climbed a level every round (libFuzzer `yaml_roundtrip`
-        // crash-0e1c4378, minimised to `b:\n ?\n? #i`).
-        let mut end = node_end.min(bytes.len());
-        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'\r' | b'\n') {
-            end -= 1;
-        }
-        // The break is `\n`, `\r\n` or a lone `\r` - the set granit splits lines on,
-        // which the blank trim above already knows. Reading only `\n` called
-        // `- :\r- #-` same-line, so its note bound back onto the mapping instead of
-        // carrying to the item that follows; the writer then placed a container note by
-        // its own rule, the re-read handed the same note to the pair's value, and the
-        // document needed two rounds to settle.
-        comment_byte > end
-            && bytes
-                .get(end..comment_byte.min(bytes.len()))
-                .is_some_and(|gap| gap.iter().any(|b| *b == b'\n' || *b == b'\r'))
-    }
-
     /// Record a trailing (`Placement::Right`) note.
     ///
     /// Returns `true` when the note landed on an existing node (or on the
@@ -939,7 +943,7 @@ impl<'a> AstReceiver<'a> {
 
         if candidate
             .as_ref()
-            .is_some_and(|range| Self::line_break_between(self.yaml_text, range.end, comment_byte))
+            .is_some_and(|range| line_break_between(self.yaml_text, range.end, comment_byte))
         {
             return false;
         }

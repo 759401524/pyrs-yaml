@@ -63,6 +63,26 @@ status: new
 
 ### 变更
 
+- **事件流中的注释会说明它属于哪个节点** — `pyrs-event` 的 `StreamEventType::Comment` 原本只带一个
+  标志位 `standalone`，而它同时回答了两个问题：这条注释是否独占一行（源码的事实），以及这条注释
+  被归档在哪个节点上（树的事实）。想把注释放回树归档它的位置的消费方无法问出第二个问题，于是这个
+  标志位现在拆成了两个。`owns_line` 保留源码自己的答案，新增的 `NoteOwner` 枚举承载树的答案：
+  `FollowingLeading`、`FollowingInline`、`PrecedingLeading` 与 `PrecedingInline`，按消费方的构建
+  顺序命名——`following_*` 是消费方接下来要构建的节点，`preceding_*` 是它刚构建完的那个节点。直接
+  构造 `StreamEventType::Comment` 的 Rust 调用方都在这次改动里一并更新，而这些 crate 并未发布，
+  所以已经交付的 API 没有移动；`parse_stream` 的 Python 调用方看到的 `style` 键
+  （`standalone` / `inline`）保持不变，另外多出一个 `owner` 键，用同样的四种拼写命名。三个生产者
+  都从自己归档注释的那个节点出发回答新问题，于是事件流与树不可能不一致：YAML 生产者把拖在某个节点
+  之后的注释放进该节点的行内槽，把引领下一个节点的注释放进它的前置列表；TOML 生产者在表名之后才
+  报告表自己的注释，因为 `[a]` 上方的注释引领的是 `a` 持有的映射而不是表名；JSON 生产者按树自己的
+  规则报告每组注释的方向与槽位。由此带来两处可见变化：写在逗号之后的 TOML 注释现在报告
+  `style: "inline"`，而此前报告 `standalone`，因为那条注释并没有独占一行，由 `owner` 来说明它属于
+  哪里；TOML 表的注释现在排在它的键事件之后，而不是之前。JSON 生产者也不再为注释的偏移重新扫描
+  源码——偏移随记录一起传递——于是事件遍历不再第二次扫描文本。这一拆分由同时向树和事件流提问的
+  测试层证明：`crates/pyrs-yaml-core/tests/event_notes.rs` 对十四个文档各走两遍，断言树归档的每条
+  注释都以相同的槽位、相同的方向和相同的独占行事实被报告；JSON 与 TOML 的重放套件比较整条注释，
+  而不是跳过其中一个字段；一份 JSONC 文档从自己的事件折叠回来后，经过严格写入器往返得到同一段文本。
+
 - **`rules:` 模式语言首次接受外部裁判** — `tests/test_parse_schema_spec_table.py` 就语法所接受的每个
   `type:` 名称，向本仓库并不拥有的东西提问：某条规则解析出的值，是否真是该名称所指代的 JSON Schema
   类型的实例。这一成员关系由 `jsonschema` 裁定，而它对 `boolean` 与 `integer` 的互斥——尽管 Python 的

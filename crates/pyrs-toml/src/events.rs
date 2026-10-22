@@ -51,7 +51,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use pyrs_ast::error::ParseError;
-use pyrs_event::{LineTable, StreamEvent, StreamEventType};
+use pyrs_event::{LineTable, NoteOwner, StreamEvent, StreamEventType};
 
 /// Describe a TOML document as the events it is made of, in the default dialect.
 pub fn parse_stream(src: &str) -> Result<Vec<StreamEvent<'_>>, ParseError> {
@@ -84,7 +84,10 @@ pub fn parse_stream_with_dialect(
     }
     out.at(0, StreamEventType::MappingEnd);
     for note in leftover.iter() {
-        out.note(note, true);
+        // A note no key or header claimed has no slot in a document that has keys of its own; the
+        // tree drops it and the stream keeps it. The node built last is the root, and the root's
+        // leading list is where the tree puts it when the document is nothing but that note.
+        out.note(note, NoteOwner::PrecedingLeading);
     }
     let end = src.len();
     out.at(end, StreamEventType::DocumentEnd);
@@ -117,14 +120,44 @@ impl<'a> Events<'a> {
         });
     }
 
-    fn note(&mut self, note: &Note, standalone: bool) {
+    /// One note, with the two facts a reader needs to put it back where the tree filed it.
+    ///
+    /// `owns_line` is the source's own: the note had a line to itself, or it shared one with the
+    /// text before it. `owner` is the tree's placement, said in the consumer's build order - the
+    /// node the consumer builds next, or the one it built last, and which of the two slots the
+    /// note takes there. TOML's projection files a note in exactly one of two slots, so the
+    /// direction follows the slot and the only pairings that occur are `FollowingLeading` (a note
+    /// above a key, a table or an element) and `PrecedingInline` (a note that ended a line).
+    fn note(&mut self, note: &Note, owner: NoteOwner) {
+        let owns_line = self.owns_line(note.at);
         self.at(
             note.at,
             StreamEventType::Comment {
                 text: Arc::from(note.text.as_str()),
-                standalone,
+                owns_line,
+                owner,
             },
         );
+    }
+
+    /// Whether the note began on a line of its own.
+    ///
+    /// The IR keeps where the note started, not what stood before it, so the producer reads the
+    /// line back: whitespace only up to a line break means the note had the line to itself. A note
+    /// the tree files above a key can still fail this test - `# …` written after a comma shares
+    /// the line with the value before it, and TOML files it above the *next* element - which is
+    /// why the two facts are separate.
+    fn owns_line(&self, at: usize) -> bool {
+        let bytes = self.text.as_bytes();
+        let mut i = at;
+        while i > 0 {
+            match bytes[i - 1] {
+                b' ' | b'\t' => i -= 1,
+                b'\n' => return true,
+                _ => return false,
+            }
+        }
+        true
     }
 
     /// A key's text, borrowed from the source wherever the source really says that.
@@ -160,19 +193,23 @@ impl<'a> Events<'a> {
         match entry {
             TomlTable::Value(value, anns) => {
                 for note in anns.leading.iter() {
-                    self.note(note, true);
+                    self.note(note, NoteOwner::FollowingLeading);
                 }
                 self.key(name, anns.key_at);
                 self.value(value, anns.value_at);
                 if let Some(note) = anns.trailing.as_ref() {
-                    self.note(note, false);
+                    self.note(note, NoteOwner::PrecedingInline);
                 }
             }
             TomlTable::Implicit(table) | TomlTable::Explicit(table) => {
-                for note in table.leading.iter() {
-                    self.note(note, true);
-                }
                 self.key(name, table.key_at);
+                // The tree files a table's own notes on the *table*, not on its name: the notes
+                // above `[a]` lead the mapping `a` holds. The stream reports them where that is
+                // true - after the name and before the mapping opens - because the node a consumer
+                // builds next is the one the note leads.
+                for note in table.leading.iter() {
+                    self.note(note, NoteOwner::FollowingLeading);
+                }
                 self.body(table);
             }
             TomlTable::ArrayOfTables(list) => {
@@ -184,9 +221,6 @@ impl<'a> Events<'a> {
                 let open = head.map(|table| table.at).unwrap_or(0);
                 let key_at = head.map(|table| table.key_at).unwrap_or(0);
                 for (index, table) in list.iter().enumerate() {
-                    for note in table.leading.iter() {
-                        self.note(note, true);
-                    }
                     if index == 0 {
                         self.key(name, key_at);
                         self.at(
@@ -196,6 +230,11 @@ impl<'a> Events<'a> {
                                 tag: None,
                             },
                         );
+                    }
+                    // An element's own notes lead the element's mapping, so they are reported
+                    // after the sequence opens and before the element does.
+                    for note in table.leading.iter() {
+                        self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.body(table);
                 }
@@ -214,7 +253,7 @@ impl<'a> Events<'a> {
             },
         );
         if let Some(note) = table.comment.as_ref() {
-            self.note(note, false);
+            self.note(note, NoteOwner::PrecedingInline);
         }
         for (name, entry) in table.entries.iter() {
             self.entry(name, entry);
@@ -235,11 +274,11 @@ impl<'a> Events<'a> {
                 );
                 for (item, anns) in items.iter() {
                     for note in anns.leading.iter() {
-                        self.note(note, true);
+                        self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.value(item, anns.value_at);
                     if let Some(note) = anns.trailing.as_ref() {
-                        self.note(note, false);
+                        self.note(note, NoteOwner::PrecedingInline);
                     }
                 }
                 self.at(at, StreamEventType::SequenceEnd);
@@ -254,12 +293,12 @@ impl<'a> Events<'a> {
                 );
                 for (name, item, anns) in members.iter() {
                     for note in anns.leading.iter() {
-                        self.note(note, true);
+                        self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.key(name, anns.key_at);
                     self.value(item, anns.value_at);
                     if let Some(note) = anns.trailing.as_ref() {
-                        self.note(note, false);
+                        self.note(note, NoteOwner::PrecedingInline);
                     }
                 }
                 self.at(at, StreamEventType::MappingEnd);

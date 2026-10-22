@@ -21,11 +21,12 @@
 //! close event's offset exists in the stream and nowhere else, and a header's key precedes the
 //! `MappingStart` it opens.
 //!
-//! One limit is still open and is measured rather than argued: `Comment::standalone` answers *which
-//! slot this note rides* in the tree and *whether the source gave it a line* in the stream, so a
-//! same-line note's owning node cannot be rebuilt from these events. Rebuilding decorations from a
-//! stream needs two fields, not one boolean read two ways — `docs/dev/event-stream.md` carries that
-//! as the step that follows this one.
+//! The limit this crate was measured against is now closed: a note carries *two* facts instead of
+//! one boolean read two ways. `Comment::owns_line` is the source fact — whether the source gave
+//! the note a line of its own — and `Comment::owner` is the placement the tree files it under,
+//! expressed as the node the note rides relative to the consumer's own build order. A consumer
+//! that rebuilds a tree from a stream can therefore put every note back in the slot it came from
+//! — `docs/dev/event-stream.md` carries the decision and the gate that holds it.
 
 #![no_std]
 
@@ -61,6 +62,67 @@ impl StreamEvent<'_> {
             line: self.line,
             column: self.column,
         }
+    }
+}
+
+/// Which node a note is filed under, and in which of its two slots.
+///
+/// The tree files every note in one of two slots: the node's *leading* list, for a note that
+/// precedes the node, and the node's *inline* slot, for a note that rides the node's own line.
+/// The stream reports the same placement, but the consumer that rebuilds a tree sees the nodes
+/// in the order the producer emitted them, so "precedes" and "rides" have to be said relative to
+/// that order rather than relative to the source text.
+///
+/// Hence two axes: the direction and the slot.
+///
+/// - `Following*` — the note belongs to the node the consumer builds **next**.
+/// - `Preceding*` — the note belongs to the node the consumer built **last**.
+///
+/// The direction is what removes the ambiguity the source text cannot: a note between a key and
+/// its value is written *before* the value, but the tree files it under the value, and a note
+/// after a value but before the next key is written *after* the value yet still belongs to the
+/// next key. Only the producer knows which node it filed the note under, so only the producer
+/// can answer, and it answers in the consumer's build order.
+///
+/// The slot is the tree's own two-slot model, so a consumer that rebuilds a tree puts the note
+/// back where the tree had it — `pyrs_ast::ast::CustomNode` keeps that model unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NoteOwner {
+    /// The leading list of the node that follows — the consumer builds it next.
+    FollowingLeading,
+    /// The inline slot of the node that follows — the consumer builds it next.
+    FollowingInline,
+    /// The leading list of the node that precedes — the consumer built it last.
+    PrecedingLeading,
+    /// The inline slot of the node that precedes — the consumer built it last.
+    PrecedingInline,
+}
+
+impl NoteOwner {
+    /// Whether this owner points at the node the consumer has not built yet.
+    pub fn is_following(self) -> bool {
+        matches!(
+            self,
+            NoteOwner::FollowingLeading | NoteOwner::FollowingInline
+        )
+    }
+
+    /// Whether this owner points at the node the consumer built last.
+    pub fn is_preceding(self) -> bool {
+        !self.is_following()
+    }
+
+    /// Whether this owner names the node's leading list rather than its inline slot.
+    pub fn is_leading(self) -> bool {
+        matches!(
+            self,
+            NoteOwner::FollowingLeading | NoteOwner::PrecedingLeading
+        )
+    }
+
+    /// Whether this owner names the node's inline slot rather than its leading list.
+    pub fn is_inline(self) -> bool {
+        !self.is_leading()
     }
 }
 
@@ -114,9 +176,20 @@ pub enum StreamEventType<'a> {
     Comment {
         /// The comment text (without the `#` prefix and leading space).
         text: Arc<str>,
-        /// Whether this is a standalone line comment (`true`) or an inline
-        /// comment at the end of a line (`false`).
-        standalone: bool,
+        /// Whether the source gave this note a line of its own.
+        ///
+        /// This is the *source fact*, and it is what the old single `standalone` flag was read as
+        /// on the stream side: a note the source wrote on a line by itself (`true`) against one it
+        /// wrote at the end of a line that carries something else (`false`).
+        owns_line: bool,
+        /// Which node the note is filed under, and in which of its two slots.
+        ///
+        /// This is the *placement*, and it is what the old single `standalone` flag was read as on
+        /// the tree side: the tree files a note in the leading list of the node that follows it or
+        /// in the inline slot of the node it rides. The two questions are not the same question —
+        /// two same-line notes cannot share one inline slot, so the tree files them in the leading
+        /// list instead — which is why one boolean could not carry both.
+        owner: NoteOwner,
     },
 }
 
@@ -146,9 +219,15 @@ impl StreamEventType<'_> {
                 StreamEventType::SequenceStart { anchor, tag }
             }
             StreamEventType::Alias { name } => StreamEventType::Alias { name },
-            StreamEventType::Comment { text, standalone } => {
-                StreamEventType::Comment { text, standalone }
-            }
+            StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            } => StreamEventType::Comment {
+                text,
+                owns_line,
+                owner,
+            },
             StreamEventType::StreamStart => StreamEventType::StreamStart,
             StreamEventType::StreamEnd => StreamEventType::StreamEnd,
             StreamEventType::DocumentStart => StreamEventType::DocumentStart,
@@ -317,7 +396,8 @@ mod tests {
                 0,
                 StreamEventType::Comment {
                     text: Arc::from("note"),
-                    standalone: true,
+                    owns_line: true,
+                    owner: NoteOwner::FollowingLeading,
                 },
             ),
         ]
@@ -391,19 +471,47 @@ mod tests {
             0,
             StreamEventType::Comment {
                 text: Arc::clone(&text),
-                standalone: false,
+                owns_line: false,
+                owner: NoteOwner::PrecedingInline,
             },
         );
         let owned = event.into_owned();
         let StreamEventType::Comment {
             text: owned_text,
-            standalone,
+            owns_line,
+            owner,
         } = owned.event_type
         else {
             panic!("owning a comment stopped being a comment");
         };
         assert!(Arc::ptr_eq(&text, &owned_text));
-        assert!(!standalone);
+        assert!(!owns_line);
+        assert_eq!(owner, NoteOwner::PrecedingInline);
+    }
+
+    /// The four owners are four different claims, and a helper that answers one of them for the
+    /// wrong owner is a helper that lies. Each axis is checked on its own: the direction and the
+    /// slot are independent, so a mix-up in either has to be visible.
+    #[test]
+    fn an_owner_names_a_direction_and_a_slot_independently() {
+        let owners = [
+            NoteOwner::FollowingLeading,
+            NoteOwner::FollowingInline,
+            NoteOwner::PrecedingLeading,
+            NoteOwner::PrecedingInline,
+        ];
+        for owner in owners {
+            assert_eq!(owner.is_following(), owner.is_preceding() ^ true);
+            assert_eq!(owner.is_leading(), owner.is_inline() ^ true);
+        }
+        assert!(NoteOwner::FollowingLeading.is_following());
+        assert!(NoteOwner::FollowingLeading.is_leading());
+        assert!(NoteOwner::FollowingInline.is_following());
+        assert!(!NoteOwner::FollowingInline.is_leading());
+        assert!(NoteOwner::PrecedingLeading.is_preceding());
+        assert!(NoteOwner::PrecedingLeading.is_leading());
+        assert!(NoteOwner::PrecedingInline.is_preceding());
+        assert!(!NoteOwner::PrecedingInline.is_leading());
     }
 
     proptest! {
@@ -465,7 +573,9 @@ mod tests {
             positions in (any::<usize>(), any::<usize>()),
             quoted in any::<bool>(),
             anchored in any::<bool>(),
-            standalone in any::<bool>(),
+            owns_line in any::<bool>(),
+            following in any::<bool>(),
+            leading in any::<bool>(),
         ) {
             let text: String = body.into_iter().collect();
             let value = if borrowed {
@@ -479,6 +589,12 @@ mod tests {
                 ScalarStyle::Plain
             };
             let anchor = anchored.then(|| text.clone());
+            let owner = match (following, leading) {
+                (true, true) => NoteOwner::FollowingLeading,
+                (true, false) => NoteOwner::FollowingInline,
+                (false, true) => NoteOwner::PrecedingLeading,
+                (false, false) => NoteOwner::PrecedingInline,
+            };
 
             let variants = alloc::vec![
                 StreamEventType::Scalar {
@@ -498,7 +614,8 @@ mod tests {
                 StreamEventType::Alias { name: text.clone() },
                 StreamEventType::Comment {
                     text: Arc::from(text.as_str()),
-                    standalone,
+                    owns_line,
+                    owner,
                 },
                 StreamEventType::StreamStart,
                 StreamEventType::MappingEnd,
