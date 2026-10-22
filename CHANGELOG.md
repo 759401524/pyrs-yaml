@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v0.18.2] — 2026-10-22
+
 ### Added
 
 - **A cancelled CI leg re-runs itself** — `.github/workflows/ci-rerun-cancelled.yml` fires when the

@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.2] — 2026-10-22
+
 ### 추가
 
 - **취소된 CI 레그는 자동으로 재실행됩니다** — `.github/workflows/ci-rerun-cancelled.yml`는 pull

@@ -650,7 +650,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: バージョン
 
 ```python
-__version__ = "0.18.1"
+__version__ = "0.18.2"
 ```
 
 ## 自動生成の API リファレンス
