@@ -759,3 +759,41 @@ asserts that a plain scalar's bytes lie inside the source's range and that an es
 value owns its own — granit delivers exactly that split, measured rather than assumed. Reintroducing
 the per-scalar copy fails that test by name, and the floor for `stream_medium` now sits at the lower
 number, so a regression on this path costs a red leg instead of living quietly.
+
+## What the incremental step answered (2026-10-22, ruling B's last step)
+
+<!-- landed: crates/pyrs-event/src/lib.rs::EventSink -->
+<!-- landed: crates/pyrs-json/src/parser.rs::parse_stream_with_options_to -->
+<!-- landed: crates/pyrs-toml/src/events.rs::parse_stream_with_dialect_to -->
+<!-- landed: crates/pyrs-yaml/src/py/functions.rs::CallbackSink -->
+
+Ruling B kept the surface synchronous and dependency-free, so "incremental" could not mean a
+runtime. It means the producer owns the loop and the consumer answers each event:
+`EventSink::event` returns `ControlFlow<()>`, `Break` ends the loop, and a `Vec` implements the same
+trait by collecting — which is why each collecting entry point is now a short delegation to its
+`_to` twin and one walk feeds both.
+
+What can be stopped is one fact per producer, and each entry point says which:
+
+- `pyrs_json::parse_stream_with_options_to` walks the source itself. `Break` stops the walk before
+  the bytes of the next event are read, so `DocumentEnd` / `StreamEnd` are never delivered and a
+  syntax error past the stop is never reached.
+- `pyrs_toml::parse_stream_with_dialect_to` projects events from the IR. The scan is complete before
+  the first event, so `Break` stops the emission and not the scan; a refused document is still
+  refused with the same `ParseError`, before any event reaches the sink.
+- The YAML text producer is a push adapter over granit's receiver, which cannot be aborted. Its
+  Python `on_event` is therefore a delivery stop after the whole document was parsed, and
+  `load_stream` remains YAML's incremental surface.
+
+The Python `on_event` callback in `pyrs_yaml.parse_stream` is wired to the first two: the producer
+runs under `py.detach` and the sink re-attaches to call the callback that answers each event. It
+delivers one event at a time on purpose — buffering a batch would delay the `False` until the batch
+filled, which is input the consumer already said it did not want. A callback that raises stops the
+producer too, and its exception outranks a later parse error; a callback that returns `False`
+produces `None`, not an error.
+
+The gates pin three things in each engine: the full-consuming sink against the collecting entry
+point, every stop point as an exact prefix, and the per-format error semantics above (the stream
+tests in `crates/pyrs-json/src/parser.rs` and `crates/pyrs-toml/tests/event_stream.rs`).
+`tests/test_streaming.py` pins the same at the Python boundary, including a stopped JSON scan that
+never reaches the invalid byte after it.

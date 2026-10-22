@@ -7441,6 +7441,56 @@ length, median 10 lines against history's 3.5-7 - is stated in the writing contr
 gated, because history itself runs up to 19 lines and a number that old would have to be exempted to
 pass.
 
+### (fd) A cancelled stream is a property of the producer, not of the delivery loop (2026-10-22)
+
+`parse_stream(..., on_event=...)` read as an incremental API and behaved as a replay: every format
+collected its events into a `Vec` and only then called the callback, so a `False` at the first event
+paid for the entire scan, and a syntax error after the stop was reached and raised. Ruling B asked
+for one event at a time without an async runtime, which makes cancellability a producer fact: the
+producer owns the loop, so only the producer can decline to read the bytes.
+
+**The vocabulary is a `ControlFlow` answer.** `pyrs_event::EventSink` returns `ControlFlow<()>` -
+`Break` means "do not emit the next event" - and `Vec<StreamEvent>` implements it by collecting, so
+the existing entry points keep their signatures. The impl for
+`F: FnMut(StreamEvent) -> ControlFlow<()>` is the one producers themselves take; a blanket `&mut S`
+impl was not added because it conflicts with that one.
+
+**Each producer stops what it can.** `pyrs_json::parse_stream_with_options_to` hands the event to
+the sink inside the walk, so `Break` exits before the next token is read and `{"a": 1, "b": oops}`
+stopped at the fifth event never reaches `oops`. `pyrs_toml::parse_stream_to` projects from the
+intermediate representation its scan already built, so `Break` stops the emission while a refused
+document still raises - the refusal is a fact of the parse, not of the delivery. YAML's text path
+remains a push adapter over granit and cannot abort; `load_stream` is its incremental surface.
+
+**The binding keeps the GIL released between events.** The producer runs under `py.detach(|| ...)`
+and the sink re-attaches with `Python::attach` for each callback. Batching was implemented and
+removed: with a batch of 64 the callback's `False` is not observed until the batch fills, which
+delays the stop past the scan it was meant to avoid, so the stop is observed at the event it
+answers. A callback `PyErr` is stored on the sink, the producer sees `Break`, and the callback error
+is returned before the producer's parse error.
+
+**Measured.** `tests/test_streaming.py` reports 52 passed, seven of them new: JSON stops before the
+error after the stop; a refused TOML document reaches no callback and raises; a callback exception
+outranks the parse error behind it; a callback that accepts everything sees exactly the iterator's
+events (80 values); a stop keeps the 70-event prefix; the TOML callback sees the collected stream
+(70 keys); the YAML text producer delivers no event from a document it cannot parse. Rust: 608
+tests passed across `pyrs-event`, `pyrs-json`, `pyrs-toml` and `pyrs-yaml-core`, including the JSON
+and TOML tests that compare the `_to` route with the collecting route event for event, and the two
+`EventSink` falsifications - a `Vec` sink that broke would truncate silently, and a closure impl
+that swallowed or inverted the answer would turn a cancelled stream into a complete one. The
+collecting entry points delegate to the `_to` ones with a `Vec` sink, so the two routes agree by
+construction and the producer tests pin the delegation rather than a hand-copied fixture. The Ir
+gate reads all 22 scenarios within tolerance; the largest move is `stream_medium` +0.44% against the
+0.50% line, and that scenario is YAML's stream walk, which this change does not touch — CI's
+enforcing image decides it.
+
+**Not covered.** Cancellation is not a memory bound: JSON stops its walk, but the events it already
+emitted are still held by the caller, and TOML's intermediate representation is built before any
+callback runs - a consumer that needs the scan itself to be constant-memory still needs a producer
+that does not project a tree, which JSON's is and TOML's is not. The YAML callback path is eager, so
+`False` there is a delivery stop rather than a scan stop; the docstring says so and no test claims
+otherwise.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

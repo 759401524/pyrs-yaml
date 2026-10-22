@@ -7,7 +7,7 @@ use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 
-pub use pyrs_event::{NoteOwner, StreamEvent, StreamEventType};
+pub use pyrs_event::{EventSink, NoteOwner, StreamEvent, StreamEventType};
 
 /// A note that has been read but not yet placed: it will lead the next node
 /// the consumer builds.

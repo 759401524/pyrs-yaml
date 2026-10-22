@@ -39,6 +39,7 @@ mod writer;
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_events, from_json, from_json_with_max_depth,
     from_json_with_options, from_json5, from_jsonc, parse_stream, parse_stream_with_options,
+    parse_stream_with_options_to,
 };
 // The event vocabulary lives in its own crate so a downstream reader can name it without pulling an
 // engine; the JSON producer reports it, and re-exports it here the way the YAML engine does.

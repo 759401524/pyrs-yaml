@@ -50,8 +50,9 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::ops::ControlFlow;
 use pyrs_ast::error::ParseError;
-use pyrs_event::{LineTable, NoteOwner, StreamEvent, StreamEventType};
+use pyrs_event::{EventSink, LineTable, NoteOwner, StreamEvent, StreamEventType};
 
 /// Describe a TOML document as the events it is made of, in the default dialect.
 pub fn parse_stream(src: &str) -> Result<Vec<StreamEvent<'_>>, ParseError> {
@@ -67,8 +68,34 @@ pub fn parse_stream_with_dialect(
     src: &str,
     dialect: TomlDialect,
 ) -> Result<Vec<StreamEvent<'_>>, ParseError> {
+    let mut events = Vec::new();
+    parse_stream_with_dialect_to(src, dialect, &mut events)?;
+    Ok(events)
+}
+
+/// Describe a TOML document as events, handing each one to `sink`, in the default dialect.
+pub fn parse_stream_to<'a, S: EventSink<'a>>(src: &'a str, sink: &mut S) -> Result<(), ParseError> {
+    parse_stream_with_dialect_to(src, TomlDialect::default(), sink)
+}
+
+/// Describe a TOML document as events, handing each one to `sink`, with the grammar pinned to
+/// `dialect`.
+///
+/// The scan is *not* incremental, and that is the one place this producer differs from JSON's.
+/// Which tables a header may open and where an array-of-tables gains a tail are a policy the
+/// engine authors once while it builds the intermediate representation; the events are a reading
+/// of that representation, so it is complete before the first event exists. `Break` therefore stops
+/// the emission, not the scan: a document that will be refused is refused before any event reaches
+/// the sink, and `Err` is reported whatever the sink answered.
+///
+/// A sink that consumes everything sees exactly the events the collecting entry point returns.
+pub fn parse_stream_with_dialect_to<'a, S: EventSink<'a>>(
+    src: &'a str,
+    dialect: TomlDialect,
+    sink: &mut S,
+) -> Result<(), ParseError> {
     let (root, leftover) = parse_ir(src, dialect)?;
-    let mut out = Events::new(src);
+    let mut out = Events::new(src, sink);
     out.at(0, StreamEventType::StreamStart);
     out.at(0, StreamEventType::DocumentStart);
     // The root mapping is opened by no header: its construct is the document itself.
@@ -80,44 +107,62 @@ pub fn parse_stream_with_dialect(
         },
     );
     for (name, entry) in root.entries.iter() {
+        if out.stopped {
+            return Ok(());
+        }
         out.entry(name, entry);
     }
     out.at(0, StreamEventType::MappingEnd);
     for note in leftover.iter() {
+        if out.stopped {
+            return Ok(());
+        }
         // A note no key or header claimed has no slot in a document that has keys of its own; the
         // tree drops it and the stream keeps it. The node built last is the root, and the root's
         // leading list is where the tree puts it when the document is nothing but that note.
         out.note(note, NoteOwner::PrecedingLeading);
     }
+    if out.stopped {
+        return Ok(());
+    }
     let end = src.len();
     out.at(end, StreamEventType::DocumentEnd);
     out.at(end, StreamEventType::StreamEnd);
-    Ok(out.events)
+    Ok(())
 }
 
 /// The writer for one document's events.
-struct Events<'a> {
+struct Events<'a, 's, S: ?Sized> {
     text: &'a str,
     lines: LineTable<'a>,
-    events: Vec<StreamEvent<'a>>,
+    sink: &'s mut S,
+    /// Set when the sink answered `Break`: every later emit is a no-op. The IR is already built
+    /// by then, so this stops the reading rather than the scan.
+    stopped: bool,
 }
 
-impl<'a> Events<'a> {
-    fn new(text: &'a str) -> Self {
+impl<'a, 's, S: EventSink<'a> + ?Sized> Events<'a, 's, S> {
+    fn new(text: &'a str, sink: &'s mut S) -> Self {
         Self {
             text,
             lines: LineTable::new(text),
-            events: Vec::new(),
+            sink,
+            stopped: false,
         }
     }
 
     fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
+        if self.stopped {
+            return;
+        }
         let (line, column) = self.lines.line_col(pos);
-        self.events.push(StreamEvent {
+        if let ControlFlow::Break(()) = self.sink.event(StreamEvent {
             event_type,
             line,
             column,
-        });
+        }) {
+            self.stopped = true;
+        }
     }
 
     /// One note, with the two facts a reader needs to put it back where the tree filed it.
@@ -129,6 +174,9 @@ impl<'a> Events<'a> {
     /// direction follows the slot and the only pairings that occur are `FollowingLeading` (a note
     /// above a key, a table or an element) and `PrecedingInline` (a note that ended a line).
     fn note(&mut self, note: &Note, owner: NoteOwner) {
+        if self.stopped {
+            return;
+        }
         let owns_line = self.owns_line(note.at);
         self.at(
             note.at,
@@ -175,6 +223,9 @@ impl<'a> Events<'a> {
     }
 
     fn key(&mut self, name: &str, at: usize) {
+        if self.stopped {
+            return;
+        }
         let style = toml_key_style(name);
         let value = self.key_text(name, at);
         self.at(
@@ -190,24 +241,39 @@ impl<'a> Events<'a> {
 
     /// One table entry: its leading notes, its name, whatever the name holds, its trailing note.
     fn entry(&mut self, name: &str, entry: &TomlTable) {
+        if self.stopped {
+            return;
+        }
         match entry {
             TomlTable::Value(value, anns) => {
                 for note in anns.leading.iter() {
+                    if self.stopped {
+                        return;
+                    }
                     self.note(note, NoteOwner::FollowingLeading);
                 }
                 self.key(name, anns.key_at);
                 self.value(value, anns.value_at);
+                if self.stopped {
+                    return;
+                }
                 if let Some(note) = anns.trailing.as_ref() {
                     self.note(note, NoteOwner::PrecedingInline);
                 }
             }
             TomlTable::Implicit(table) | TomlTable::Explicit(table) => {
                 self.key(name, table.key_at);
+                if self.stopped {
+                    return;
+                }
                 // The tree files a table's own notes on the *table*, not on its name: the notes
                 // above `[a]` lead the mapping `a` holds. The stream reports them where that is
                 // true - after the name and before the mapping opens - because the node a consumer
                 // builds next is the one the note leads.
                 for note in table.leading.iter() {
+                    if self.stopped {
+                        return;
+                    }
                     self.note(note, NoteOwner::FollowingLeading);
                 }
                 self.body(table);
@@ -221,8 +287,14 @@ impl<'a> Events<'a> {
                 let open = head.map(|table| table.at).unwrap_or(0);
                 let key_at = head.map(|table| table.key_at).unwrap_or(0);
                 for (index, table) in list.iter().enumerate() {
+                    if self.stopped {
+                        return;
+                    }
                     if index == 0 {
                         self.key(name, key_at);
+                        if self.stopped {
+                            return;
+                        }
                         self.at(
                             open,
                             StreamEventType::SequenceStart {
@@ -230,10 +302,16 @@ impl<'a> Events<'a> {
                                 tag: None,
                             },
                         );
+                        if self.stopped {
+                            return;
+                        }
                     }
                     // An element's own notes lead the element's mapping, so they are reported
                     // after the sequence opens and before the element does.
                     for note in table.leading.iter() {
+                        if self.stopped {
+                            return;
+                        }
                         self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.body(table);
@@ -245,6 +323,9 @@ impl<'a> Events<'a> {
 
     /// The container itself and everything inside it.
     fn body(&mut self, table: &CowTable) {
+        if self.stopped {
+            return;
+        }
         self.at(
             table.at,
             StreamEventType::MappingStart {
@@ -252,10 +333,19 @@ impl<'a> Events<'a> {
                 tag: None,
             },
         );
+        if self.stopped {
+            return;
+        }
         if let Some(note) = table.comment.as_ref() {
             self.note(note, NoteOwner::PrecedingInline);
+            if self.stopped {
+                return;
+            }
         }
         for (name, entry) in table.entries.iter() {
+            if self.stopped {
+                return;
+            }
             self.entry(name, entry);
         }
         // A close event carries its construct's own opening offset: TOML never wrote an end.
@@ -263,6 +353,9 @@ impl<'a> Events<'a> {
     }
 
     fn value(&mut self, value: &TomlValue, at: usize) {
+        if self.stopped {
+            return;
+        }
         match value {
             TomlValue::Array(items) => {
                 self.at(
@@ -272,11 +365,23 @@ impl<'a> Events<'a> {
                         tag: None,
                     },
                 );
+                if self.stopped {
+                    return;
+                }
                 for (item, anns) in items.iter() {
+                    if self.stopped {
+                        return;
+                    }
                     for note in anns.leading.iter() {
+                        if self.stopped {
+                            return;
+                        }
                         self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.value(item, anns.value_at);
+                    if self.stopped {
+                        return;
+                    }
                     if let Some(note) = anns.trailing.as_ref() {
                         self.note(note, NoteOwner::PrecedingInline);
                     }
@@ -291,12 +396,27 @@ impl<'a> Events<'a> {
                         tag: None,
                     },
                 );
+                if self.stopped {
+                    return;
+                }
                 for (name, item, anns) in members.iter() {
+                    if self.stopped {
+                        return;
+                    }
                     for note in anns.leading.iter() {
+                        if self.stopped {
+                            return;
+                        }
                         self.note(note, NoteOwner::FollowingLeading);
                     }
                     self.key(name, anns.key_at);
+                    if self.stopped {
+                        return;
+                    }
                     self.value(item, anns.value_at);
+                    if self.stopped {
+                        return;
+                    }
                     if let Some(note) = anns.trailing.as_ref() {
                         self.note(note, NoteOwner::PrecedingInline);
                     }

@@ -36,6 +36,7 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::ops::ControlFlow;
 use pyrs_ast::ast::{ScalarStyle, Tag};
 
 /// Line and column information for a YAML stream event.
@@ -62,6 +63,39 @@ impl StreamEvent<'_> {
             line: self.line,
             column: self.column,
         }
+    }
+}
+
+/// Where a producer sends the events it emits.
+///
+/// This is the abstraction that makes a synchronous producer cancellable without a runtime: the
+/// producer owns the loop, the consumer answers each event, and `Break` turns the loop's own next
+/// check into an early exit. A `Vec` implements it by collecting; a closure implements it by
+/// deciding.
+///
+/// A producer that receives `Break` stops before the event it would have emitted next, so
+/// `DocumentEnd` and `StreamEnd` are never delivered on that path — the consumer said it did not
+/// want the rest. What the consumer can stop is one fact per producer and each entry point says
+/// which: a producer that walks the source while emitting stops the walk itself, while one that
+/// projects events from a tree built first stops the emission and not the build.
+pub trait EventSink<'a> {
+    /// Receive one event. `Break` asks the producer to stop emitting.
+    fn event(&mut self, event: StreamEvent<'a>) -> ControlFlow<()>;
+}
+
+impl<'a> EventSink<'a> for Vec<StreamEvent<'a>> {
+    fn event(&mut self, event: StreamEvent<'a>) -> ControlFlow<()> {
+        self.push(event);
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'a, F> EventSink<'a> for F
+where
+    F: FnMut(StreamEvent<'a>) -> ControlFlow<()>,
+{
+    fn event(&mut self, event: StreamEvent<'a>) -> ControlFlow<()> {
+        self(event)
     }
 }
 
@@ -401,6 +435,43 @@ mod tests {
                 },
             ),
         ]
+    }
+
+    #[test]
+    fn a_vec_sink_collects_every_event_and_never_asks_the_producer_to_stop() {
+        // The Vec impl is what the existing entry points will use, so its answer has to be the
+        // "keep going" one for every event — a sink that broke here would silently truncate.
+        let events: Vec<StreamEvent<'static>> = one_of_every_variant();
+        let mut collected = Vec::new();
+        for event in events.iter().cloned() {
+            assert_eq!(
+                EventSink::event(&mut collected, event),
+                ControlFlow::Continue(())
+            );
+        }
+        assert_eq!(collected, events);
+    }
+
+    #[test]
+    fn a_closure_sink_forwards_the_event_and_the_answer_it_returns() {
+        // Producers decide nothing about the answer: they hand the event to the sink and obey what
+        // comes back. A closure impl that swallowed or inverted the answer would turn a cancelled
+        // stream into a complete one, and no producer-side test could see the difference.
+        let events: Vec<StreamEvent<'static>> = one_of_every_variant();
+        let mut seen = Vec::new();
+        let mut sink = |event: StreamEvent<'static>| -> ControlFlow<()> {
+            seen.push(event.line);
+            if seen.len() == 3 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        };
+        let answers: Vec<_> = events.into_iter().map(|event| sink.event(event)).collect();
+        assert_eq!(seen.len(), answers.len());
+        assert_eq!(answers[0], ControlFlow::Continue(()));
+        assert_eq!(answers[2], ControlFlow::Break(()));
+        assert_eq!(answers[3], ControlFlow::Continue(()));
     }
 
     #[test]

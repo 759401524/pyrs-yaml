@@ -17,6 +17,19 @@ status: new
 
 ### [Unreleased]
 
+### 新增
+
+- **JSON 与 TOML 事件流在消费者停下的地方停下** — 此前 `parse_stream(..., on_event=...)` 对每种格式
+  都先收齐全部事件再逐条回调，因此第一个事件就返回 `False` 仍要付出整次扫描的代价，文档后段的语法错
+  误也仍会被读到并抛出。`pyrs_event::EventSink` 现在返回 `ControlFlow`，
+  `pyrs_json::parse_stream_with_options_to` / `pyrs_toml::parse_stream_to` 在产出每个事件时即刻交给
+  sink：回调在 `Python::attach` 下运行，生产者在 `py.detach` 下运行。`False` 能停下的是格式自身的事
+  实——JSON/JSON5 在下一个事件的字节之前停止走查，停止点之后的错误永不被读到；TOML 从扫描已构建的中间
+  表示停止发射，因此被拒绝的文档仍会在任何事件送达之前抛出；YAML 是 granit 之上的推送适配器（扫描无
+  法中止），`False` 只停止送达，增量入口仍是 `load_stream`。收集式入口现在以 `Vec` sink 委托给 `_to`
+  入口，迭代器与回调看到的流因此结构化地相同。回调抛出的异常优先于其后的解析错误，`False` 返回
+  `None`。`tests/test_streaming.py` 的七条测试钉住停止前缀、各格式的拒绝事实与错误优先级。
+
 ### [v0.18.3] — 2026-10-22
 
 <details markdown="1">
