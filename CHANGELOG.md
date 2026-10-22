@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A cancelled CI leg re-runs itself** — `.github/workflows/ci-rerun-cancelled.yml` fires when the
+  CI workflow finishes on a pull request and, through `scripts/ci_rerun_gate.py`, re-runs that run
+  only when a leg was `cancelled` on a run whose other legs went green and none failed, and only
+  below an attempt cap so it cannot loop. A leg cancelled by `cancel-in-progress` supersession or a
+  reclaimed runner used to turn the required `Test matrix (all legs)` verdict red for reasons that
+  were not the change's, and a human had to press Re-run before anything could merge. The verdict's
+  accept-set is untouched — a `cancelled` leg still refuses a merge — so this adds a retry, not an
+  exception. `tests/test_ci_rerun_gate.py` pins the decision in both directions and the wiring as a
+  contract.
+
 - **The YAML engine builds for a target that has no standard library** — `pyrs-yaml-core` is now
   `#![no_std]`: the parser, the round-trip serializer, the comment-preserving edit layer and the
   splices run on `core` + `alloc` alone, on top of a `granit-parser` that was already built without
