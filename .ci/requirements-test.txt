@@ -6,6 +6,12 @@ numpy>=1.16.0; python_version < '3.14' and platform_machine != 'armv7l' and plat
 hypothesis>=6.113.0
 PyYAML>=6.0
 ruamel-yaml>=0.18.16
+# The TOML and JSON5 writer suites judge those formats by parsers this repository does not own, and they
+# import them at module scope on purpose: a skipped authority is the failure mode, not a fallback. The
+# v0.18.2 tag found out the only file the wheel legs install did not name them, so five legs reddened at
+# collection before any wheel uploaded. scripts/check_wheel_requirements.py guards the pairing.
+tomlkit>=0.12
+json5>=0.17.3
 jsonschema>=4.25.1; python_version >= "3.9"
 jsonschema>=4.18.0,<4.25.1; python_version < "3.9"
 # scripts/build-docs.py imports it, and tests/test_scripts_import_on_supported_python.py imports

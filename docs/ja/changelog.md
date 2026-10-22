@@ -880,6 +880,15 @@ status: new
 
 ### 修正
 
+- **wheel レッグがスイートの import をインストールします** - `.ci/requirements-test.txt` はリリース
+  ワークフローがインストールする唯一の要求ファイルで、`tomlkit` も `json5` も名を上げていませんでし
+  た。四つのテストモジュールはどちらもモジュールスコープで取り込みます。本リリース最初の Publish で
+  は、wheel が一つもアップロードされる前に五条の wheel レッグが収集で赤くなり、`Release` ジョブはス
+  キップされました。ですから PyPI には何も届いていません。PR マトリクスは開発グループをインストール
+  するので、そこでは両方が宣言済みであり、この失敗は見えませんでした。今は両方を宣言し、
+  `scripts/check_wheel_requirements.py`（prek フックで、`tests/test_wheel_requirements_gate.py` が
+  門）が `tests/` のモジュールスコープ import をそのファイルと照合します。
+
 - **CLI コマンド面の一覧ゲートが実際に走るようになりました** - `tests/test_cli_binding_parity.py` は
   `getattr(pyrs_yaml.cli, "app")` を先に読んで App を解決していましたが、
   `python/pyrs_yaml/cli/__init__.py` はその属性を束縛しません。`main()` だけを定義しています。それよ

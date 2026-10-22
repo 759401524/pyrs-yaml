@@ -927,6 +927,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The wheel legs install what the suite imports** - `.ci/requirements-test.txt` is the only
+  requirement file the release workflow installs, and it named neither `tomlkit` nor `json5`, which
+  four test modules import at module scope. The first Publish run for this release reddened five
+  wheel legs at collection before a wheel uploaded and the `Release` job skipped, so nothing reached
+  PyPI. The PR matrix could not have caught it: it installs the dev groups, where both are declared.
+  Both are declared now, and `scripts/check_wheel_requirements.py` (a prek hook, gated by
+  `tests/test_wheel_requirements_gate.py`) judges every module-scope import in `tests/` against that
+  file, so the drift is caught at the edit that causes it rather than at a tag.
+
 - **The CLI command-surface inventory gate now executes** - `tests/test_cli_binding_parity.py`
   resolved the App by reading `getattr(pyrs_yaml.cli, "app")` first, and
   `python/pyrs_yaml/cli/__init__.py` binds no such attribute: it defines only `main()`. Any earlier

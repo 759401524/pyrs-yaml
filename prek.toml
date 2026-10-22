@@ -234,6 +234,21 @@ entry = "python scripts/check_hole_claims.py"
 files = "^(AGENTS|CLAUDE)\\.md$"
 priority = "checks"
 
+# The release is the only place that reads `.ci/requirements-test.txt`, so a missing test dependency arrived as a
+# failed tag instead of a failed run: Publish for v0.18.2 reddened five wheel legs at collection because four test
+# modules import `tomlkit` and `json5` at module scope and only the PR matrix's dev groups declare them. The rule
+# charges a module-scope import that is neither the standard library nor this repository's own modules, and leaves
+# a `try:`-guarded optional reader alone - charging those would push every optional import toward a bare import to
+# keep the hook green, which is the wider hole.
+[[repos.hooks]]
+id = "wheel-requirements"
+name = "wheel legs install what the suite imports"
+language = "system"
+entry = "python scripts/check_wheel_requirements.py"
+pass_filenames = false
+files = "^(\\.ci/requirements-test\\.txt|tests/.*\\.py)$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

@@ -861,6 +861,15 @@ status: new
 
 ### 수정
 
+- **wheel 레그가 스위트가 들여오는 것을 설치합니다** - `.ci/requirements-test.txt`는 릴리스
+  워크플로가 설치하는 유일한 요구 파일인데 `tomlkit`과 `json5`를 모두 적지 않았습니다. 네 테스트
+  모듈은 둘 다 모듈 범위에서 들여옵니다. 이 릴리스의 첫 Publish에서는 wheel이 하나도 올라가기 전에
+  다섯 wheel 레그가 수집 단계에서 빨개지고 `Release` 잡이 건너뛰었으니 PyPI에 도달한 것은 없습니다.
+  PR 매트릭스는 개발 그룹을 설치하고 거기서는 둘 다 선언되어 있어 이 실패를 볼 수 없었습니다. 이제
+  둘을 선언하고, `scripts/check_wheel_requirements.py`(prek 훅이며
+  `tests/test_wheel_requirements_gate.py`가 지킴)가 `tests/`의 모듈 범위 들여오기를 그 파일과
+  대조합니다.
+
 - **CLI 명령 면 목록 게이트가 실제로 실행됩니다** - `tests/test_cli_binding_parity.py`는
   `getattr(pyrs_yaml.cli, "app")`를 먼저 읽어 App을 해결했지만 `python/pyrs_yaml/cli/__init__.py`는
   해당 속성을 바인딩하지 않습니다. `main()`만 정의합니다. 앞서 `from pyrs_yaml.cli.app import app`을
