@@ -17,7 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [Unreleased]
 
-### [v0.18.2] — 2026-10-22
+### [v0.18.3] — 2026-10-22
 
 <details markdown="1">
 <summary>gates that read the tree · crate matrix · note ownership · wider wheels</summary>
@@ -937,7 +937,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **The two newest releases are folded like every older one** - `## [v0.18.1]` and `## [v0.18.2]`
+- **The two newest releases are folded like every older one** - `## [v0.18.1]` and `## [v0.18.3]`
   reached all five release-note pages without the `<details markdown="1">` fold that every release
   since v0.12.x carries, because `scripts/check_doc_metadata.py` read a fold's attributes and never
   asked whether one existed. Both sections are folded now, and the checker fails a released section

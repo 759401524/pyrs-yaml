@@ -7414,7 +7414,7 @@ only live document that carries the shape today.
 
 Every released section of the five release-note pages is folded - `<details markdown="1">`, a
 `<summary>` of the release's themes, and a `</details>` before the next version heading - from
-v0.12.x through v0.18.0. `v0.18.1` and `v0.18.2` arrived without one, on all five pages, and every
+v0.12.x through v0.18.0. `v0.18.1` and `v0.18.3` arrived without one, on all five pages, and every
 gate stayed green: `scripts/check_doc_metadata.py` asks whether a fold carries the `markdown`
 attribute the renderer needs and never whether a fold exists, so the newest entries render unfolded
 above twenty folded ones.
@@ -7427,7 +7427,7 @@ design, because it is the canonical English page and a rule that skipped it woul
 rotted.
 
 **Measured.** Before the repair the scan reported exactly 2 unfolded release headings in each of the
-five pages (`v0.18.2`, `v0.18.1`) and nothing else - no historical release needed an exemption.
+five pages (`v0.18.3`, `v0.18.1`) and nothing else - no historical release needed an exemption.
 After: `unwrapped=[]` in all five, with `27` folds open and `27` close per page, and
 `python scripts/check_doc_metadata.py` exits 0 across 165 pages. `tests/test_doc_metadata_gate.py`
 grew from 6 to 11 tests, the four new falsifications being the unfolded page, a fold with no

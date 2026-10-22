@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml-cli"
-version = "0.18.2"
+version = "0.18.3"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
@@ -14,9 +14,9 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 indexmap = { version = "2", features = ["std"] }
-pyrs-yaml-core = { path = "../pyrs-yaml-core", version = "0.18.2" }
-pyrs-json = { path = "../pyrs-json", version = "0.18.2" }
-pyrs-toml = { path = "../pyrs-toml", version = "0.18.2" }
+pyrs-yaml-core = { path = "../pyrs-yaml-core", version = "0.18.3" }
+pyrs-json = { path = "../pyrs-json", version = "0.18.3" }
+pyrs-toml = { path = "../pyrs-toml", version = "0.18.3" }
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "5.0" }
