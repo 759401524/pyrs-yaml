@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 748 Rust `#[test]`, 1,861 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 748 Rust `#[test]`, 1,863 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 28 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -102,9 +102,9 @@ Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell agains
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
 | JSON Schema validation | no | no | no | n/a | n/a | yes |
-| Schema rule language | yes | yes | yes | n/a | n/a | no |
+| Schema rule language | yes | yes | yes | n/a | n/a | yes |
 
-**There are two schema surfaces, and only one of them is judged from outside.** `Document.validate()`
+**There are two schema surfaces, and both are now judged from outside.** `Document.validate()`
 accepts JSON Schema and delegates evaluation to Python's `jsonschema`, keeping the AST-to-instance conversion, schema
 acceptance and the `YamlValidateError` contract on this side. The rule *validator* this repository
 invented is gone: it was retired on 2026-10-21 in favour of this standard surface, because nothing
@@ -173,11 +173,15 @@ It is deliberately not the
 parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
 neither side ever accepted - a path that does not exist has nothing to disagree with.
 The JSON Schema row reads `yes` through `tests/test_document_validate_suite.py`. The rule language's
-row reads `no`, and that is the blind spot the matrix reports: the `rules:` grammar was invented here,
-so the unit, property and fuzz tiers ask the engine what it believes and no outside reader exists to
-contradict it. It is registered as `authority-tier:schema-rule-language`, so the registry holds an
-entry again - and the reading of an empty registry, that nothing is unmeasured rather than nothing is
-unjudged, is a statement about the measurement, not a claim of coverage.
+row reads `yes` too: `tests/test_parse_schema_spec_table.py` asks each `type:` name the `rules:`
+grammar accepts whether the value it resolves is really an instance of the JSON Schema type that name
+denotes, and `jsonschema` - which owns that membership - can refuse it. The decoy beside every row
+(a standard type the same value must NOT satisfy) is what stops the confirmation being a rubber stamp;
+JSON Schema keeps `boolean` and `integer` disjoint even though Python's `bool` subclasses `int`, so a
+tag the grammar got wrong is a red run, not an agreement. The blind spot this closed was registered as
+`authority-tier:schema-rule-language` and is now gone, so the registry is empty again - and the reading
+of an empty registry, that nothing is unmeasured rather than nothing is unjudged, is a statement about
+the measurement, not a claim of coverage.
 
 `partial` in the parity column is measured per dialect, not per family. The column reads the readers
 each `test_*_crosslib.py` imports - at module level, or through a `pytest.importorskip` inside the test
@@ -626,8 +630,8 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| *none measured* | the rule *validator* `validate_against_schema()` judged was invented in this repository, so the unit, property and fuzz tiers all asked the engine what it believes and parity had no second implementation to disagree with; the standard `Document.validate()` surface beside it was replayed against the official draft2020-12 corpus while the invented one had no outside authority at all | closed on 2026-10-21 by retiring the validator in favour of `Document.validate()`: `validate_against_schema()`, `validate_against_registered_schema()`, `TypeSpec`, `ValidateKind`, `ValidateRule` and `SchemaValidationError` are deleted, `tests/test_document_validate_suite.py` is the authority for the standard surface, and the retired validator has no row in `format_matrix()` - the `rules:` language it read is a separate surface, registered below |
-| `authority-tier:schema-rule-language` | the `rules:` schema language - the scalar-type resolution grammar behind `register_schema()`, `load_schema()`, `list_schemas()` and `YAML(schema=...)` - was invented in this repository and no specification defines it, so the unit tier (eleven `#[test]`s in `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs`), the property tier (`prop_schema_parse_no_panic`) and the fuzz tier (`fuzz/fuzz_targets/parse_schema.rs`) all ask the engine what it believes, and parity has no second implementation to disagree with | either a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` whose name carries the surface's fragment asks the `rules:` grammar of something this repository does not own, so the `authority` cell of the `Schema rule language` row reads `yes`, or the surface leaves the tree and the row leaves with it |
+| *none measured* | the rule *validator* `validate_against_schema()` judged was invented in this repository, so the unit, property and fuzz tiers all asked the engine what it believes and parity had no second implementation to disagree with; the standard `Document.validate()` surface beside it was replayed against the official draft2020-12 corpus while the invented one had no outside authority at all | closed on 2026-10-21 by retiring the validator in favour of `Document.validate()`: `validate_against_schema()`, `validate_against_registered_schema()`, `TypeSpec`, `ValidateKind`, `ValidateRule` and `SchemaValidationError` are deleted, `tests/test_document_validate_suite.py` is the authority for the standard surface, and the retired validator has no row in `format_matrix()` - the `rules:` language it read is a separate surface, whose own `authority-tier` gap was closed the next day (row below) |
+| *none measured* | the `rules:` schema language - the scalar-type resolution grammar behind `register_schema()`, `load_schema()`, `list_schemas()` and `YAML(schema=...)` - was invented in this repository and no specification defines it, so the unit tier (eleven `#[test]`s in `crates/pyrs-yaml-core/src/parser/yaml/schema_language.rs`), the property tier (`prop_schema_parse_no_panic`) and the fuzz tier (`fuzz/fuzz_targets/parse_schema.rs`) all asked the engine what it believes, and parity had no second implementation to disagree with; registered as `authority-tier:schema-rule-language` | closed on 2026-10-22 by `tests/test_parse_schema_spec_table.py`, which asks each `type:` name the grammar accepts a question `jsonschema` owns - is the resolved value really an instance of the JSON Schema type that name denotes - with a decoy type the same value must not satisfy, so the authority can refuse; `authority["files"]` for the row is now `["test_parse_schema_spec_table.py"]` and its verdict `yes` |
 | *none measured* | the site configuration declared the Python docstring handler, its load paths and fourteen render options while not one page under any locale contained a `:::` directive — `mkdocstrings_directives()` found zero, so `docs/<locale>/api/*.md` were hand-typed signatures, nothing compared them with the generated `python/pyrs_yaml/pyrs_yaml.pyi`, and a bump of the docs toolchain could not be checked against output it never produced | satisfied: five API pages per locale now carry directives and the four-locale `--strict` build renders them (`yaml-document` 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48), while the page that names no directive stays at zero — measured by `mkdocstrings_directives()` against `mkdocstrings_declared()` |
 | *none measured* | the site was rendered only by a workflow that triggers on push to `main`, so a page that fails when *rendered* was found by whoever opened it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | satisfied by `ci.yml`'s `docs-gates` job, which runs the page-metadata, heading, mirror, purity and i18n gates and then `scripts/build-docs.py` for all four locales under `--strict` on every pull request; `renders_the_site()` measures it off the declaring files rather than off a list kept beside them |
 | *none measured* | a required check that never reports is not a green light but a deadlock: branch protection names `Test matrix (all legs)`, `ci.yml` excluded `*.md` and `docs/**` from its triggers, and PR #319 arrived with every check it produced passing and the merge refused with `Required status check "Test matrix (all legs)" is expected` — a documentation change could not merge by any route an ordinary contributor has | satisfied by the same change: `ci.yml` triggers on every pull request, a `changes` job classifies the changeset, and the verdict tolerates a skipped heavy leg only while the classifier reports `code=false` — tested in both directions in `tests/test_matrix_verdict_gate.py` |

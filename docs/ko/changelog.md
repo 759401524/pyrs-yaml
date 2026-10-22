@@ -57,6 +57,17 @@ status: new
 
 ### 변경
 
+- **`rules:` 스키마 언어를 외부에서 판정** — `tests/test_parse_schema_spec_table.py`는 문법이
+  받아들이는 각 `type:` 이름에 대해 이 저장소가 소유하지 않은 무언가에게 묻습니다. 규칙이 해석한
+  값이 그 이름이 가리키는 JSON 스키마 타입의 인스턴스가 정말 맞는가. 이 귀속은 `jsonschema`가
+  판정하고, Python의 `bool`이 `int`의 하위 클래스임에도 `boolean`과 `integer`를 서로 배타로
+  다루므로, 타입을 그른 규칙은 합의가 아니라 실패(빨간 실행)가 됩니다. 각 행은 같은 값이 만족해서는
+  안 되는 미끼 타입을 곁들여, 확인이 도장 놀음이 되지 않게 합니다. `Schema rule language` 행의
+  `external authority` 칸은 `no`에서 `yes`로 바뀌고, `authority-tier:schema-rule-language` 구멍은
+  등록에서 빠지며, `.ci/quality-holes.json`은 다시 비어 있습니다. `scripts/quality_matrix.py`는
+  오라클 집합에 `jsonschema`를 더해, 인정이 파일 접미사가 아니라 테스트가 실제로 호출하는 리더에서
+  나오도록 했습니다.
+
 - **분리 게이트가 bench 레그를 지킴** — `scripts/check_rust_python_decoupling.py`에 규칙 R5를
   추가했습니다. 확장 crate는 `required-features` 없는 `[[bench]]` 대상을 둘 수 없습니다. 그런
   대상은 모든 workspace-급 bench 명령에 선택되어, CI bench 레그가 막 제거한 `pyo3-build-config`

@@ -12,12 +12,5 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": [
-  {
-   "id": "authority-tier:schema-rule-language",
-   "opened": "2026-10-21",
-   "exit": "either a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` whose name carries the surface's fragment asks the `rules:` grammar of something this repository does not own, so the `authority` cell of the `Schema rule language` row reads `yes`, or the surface leaves the tree and the row leaves with it",
-   "why": "the `rules:` schema language was invented here, so the unit, property and fuzz tiers all ask the engine what it believes and no outside reader exists to contradict it"
-  }
- ]
+ "holes": []
 }
