@@ -174,6 +174,23 @@ class TestJsonDialects:
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.from_json("{a: 1,}")
 
+    def test_json5_key_refusal_names_the_bare_identifier(self):
+        # The wording a Python caller reads is the dialect's own answer. JSON5 also takes a bare
+        # identifier in key position, so its refusal must not demand a quote the grammar allows
+        # without one; the narrow dialects keep demanding the quote.
+        for loader in (pyrs_yaml.from_json5, pyrs_yaml.load_json5):
+            with pytest.raises(pyrs_yaml.YamlParseError, match="bare identifier"):
+                loader("{1: 2}")
+        narrow = (
+            pyrs_yaml.from_json,
+            pyrs_yaml.load_json,
+            pyrs_yaml.from_jsonc,
+            pyrs_yaml.load_jsonc,
+        )
+        for loader in narrow:
+            with pytest.raises(pyrs_yaml.YamlParseError, match="expected a quoted object key"):
+                loader("{1: 2}")
+
     def test_from_json5_non_finite_survives_the_hub_as_a_number(self):
         """#312: a JSON5 infinity must mean the same thing in every reader of the hub.
 

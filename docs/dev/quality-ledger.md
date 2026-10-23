@@ -7844,6 +7844,37 @@ inside `std`'s pattern machinery, whose break vocabulary must equal granit's - a
 no win claimed here. No scenario was added, so no new floor: these four already existed, which is
 the point of pricing a target before moving it.
 
+### (fk) The JSON5 key refusal stopped demanding a quote (2026-10-23)
+
+**Premise, and a claim this record's predecessor got wrong.** (fi) noted that a fixture test had
+surfaced a wording defect and filed it separately: in key position the reader says `expected a
+quoted object key` while JSON5's grammar also accepts a bare identifier, so the error names a
+spelling the dialect does not require. The same entry asserted that the tree route's copy of that
+message "is correct where it stands". It is not, and the test written here proved it before the fix
+did: one `Parser` serves all three dialects, both walks read the same `allow_unquoted_keys` flag,
+so `{1: 2}` through the tree route refuses with the same sentence the stream route uses. A claim
+about a shared code path cannot be settled by reading the one branch that was in front of the
+author.
+
+**What changed.** The wording now comes from the dialect. `Parser::key_expectation` returns
+`expected an object key (a quoted string or a bare identifier)` where unquoted keys are allowed and
+the old `expected a quoted object key` where they are not, and both call sites ask it. Strict JSON
+and JSONC are byte-for-byte unchanged because their flags say so, and nothing moved on the success
+path: the helper is reached only on the way out with an error, so no scenario pays for it.
+
+**Control.** `the_key_position_error_names_what_the_dialect_accepts` asks five combinations - JSON5
+by the tree route and by the stream route, strict JSON and JSONC by the tree route, strict JSON by
+the stream route - and asserts opposite wordings on the two halves, so pinning the helper to either
+string alone reddens it. Before the helper existed the failure was real and it named the line (fi)
+had called correct. `tests/test_json.py::test_json5_key_refusal_names_the_bare_identifier` asks the
+same question one layer out, through the shipped Python module and all four loaders, because the
+sentence a caller reads is the contract being changed.
+
+**Not covered.** Only the two sites (fi) named were touched; the rest of the dialect's error surface
+was not swept, and no test asserts the wording of any other refusal. `(fj)` was the writer-scan
+record still under review while this one was written, so this entry keeps `(fk)` rather than
+re-lettering a head a reviewer was reading; the rebase left the two in date order.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
