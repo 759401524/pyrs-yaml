@@ -109,6 +109,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The event stream now has a floor at the long-value shape** — the record that added the four
+  long-value reader floors named the gap it left in one clause: "`stream_medium` and the NDJSON path
+  still carry short values, and the event path has no long-string scenario of its own". One scenario
+  closes the event half: `stream_long_strings` runs the same `Work::Stream` over `LONG_YAML`, the
+  same eight 256-character records the four writer floors use, so those numbers differ only in the
+  shape of the strings they carry. On the image that enforces them the long shape costs
+  276,633,813 counted instructions against `stream_medium`'s 255,359,778 - **+8.33%** - the first
+  reading this gate can give for a long body on the event path. The refresh needed exactly one
+  `accept_drift` name: growing the harness moved `parse_inline_merge` from 355,404,524 to
+  359,069,238 (+1.03%), a scenario this change does not enter, while `stream_medium` itself came up
+  +0.485% - inside the line, so nothing else was excused. All thirty-one floors now come from that
+  run, `QUALITY_MATRIX.md` §2 counts them out loud, and
+  `tests/test_ir_baseline_workflow.py` fails if the sentence and the file disagree.
 - **The long-string measurement surface now covers all five formats** — the vectorized readers
   shipped floors for the long-value shape at strict JSON and TOML only, because the gate pairs a
   bridge's reader with its writer and the two dialect bridges had neither. Four scenarios carry it
@@ -130,7 +143,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that loses its comments cannot keep the scenario honest unnoticed; one already caught a fixture of
   this author's that emitted a double comma. The two writer floors also record what the outbound
   scan costs today, before anything proposes to vectorize it.
-
 - **The long-string shape now has a committed measurement on both channels** — every benchmark in
   this tree reads short values (`MEDIUM_JSON`'s longest is 21 characters, and both leaderboard
   documents build `item_N` names), so the bulk scan this release vectorized could only be measured

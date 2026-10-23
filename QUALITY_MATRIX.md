@@ -534,11 +534,12 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — thirty of them, since the binding harness joined, since each cross-format
+from — thirty-one of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
-those bridges grew a long-value twin at both ends, and since the long-value shape then reached the
-two dialect bridges as well, and
+those bridges grew a long-value twin at both ends, since the long-value shape then reached the
+two dialect bridges as well, and since the event path grew that same long-value twin (`stream_long_strings`,
+which costs 8.33% more than `stream_medium` on the very same eight records), and
 `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
 them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
