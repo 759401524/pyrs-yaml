@@ -99,6 +99,14 @@ status: new
   `from_json_medium`（-0.905%）靠自己留在了线内。重测也移动过一个已公布的比值：上一条记录写下
   8.33% 的事件对，在这次运行里读作 8.16%，`QUALITY_MATRIX.md` §2 现在带的是新的那个数——由
   `tests/test_ir_baseline_workflow.py` 对着文件核，而不是对着记忆核。
+- **每条 Rust 基准现在各自一个进程跑** — `codspeed-divan-compat` 从 5.0 升到 6.0。上游的 6.0.0 给
+  每条 Divan 基准另起进程，于是一条基准留下的分配器状态不再污染后面的基准，官方口径是抖动超过
+  1% 的基准少约 70%；`CODSPEED_PROCESS_ISOLATION=false` 可退回旧行为。决定合并的东西都没动：
+  判定仍是 `Test matrix (all legs)`，指令地板是提交在树里的 `.ci/ir-baseline.json`，文档里的
+  墙钟数字仍来自 `.ci/perf-snapshot.json`。会动的是 CodSpeed 看板——6.0 自己声明升级会让部分
+  数值漂移，所以跨过这次 bump 读出的趋势线不是同一次度量；run-to-run 的偏差正在同一 head 上
+  实测，拿到数之前不声称结论。`cargo codspeed build --workspace --exclude pyrs-yaml` 用 5.0.3
+  的 CLI 对着 6.0 runtime 建出了两套 suite；CI 装的 CLI 不钉版本，而 6.0.0 与 runtime 同日发布。
 - **事件流现在有了属于自己的长值地板** — 记下四条长值读路径地板的那条记录，也写下了它留下的
   缺口：“`stream_medium` 与 NDJSON 路径仍然只带短值，而事件路径没有属于自己的长字符串场景”。
   一条场景补上事件这一半：`stream_long_strings` 用同一个 `Work::Stream` 跑 `LONG_YAML`，也就是
