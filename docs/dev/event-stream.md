@@ -800,6 +800,45 @@ Recommendation: scope chunked-parallel to JSON top-level value boundaries behind
 with a parity gate against the serial path, and do not attempt it for YAML or TOML. This needs
 `rayon` (already approved for the pillar) but only for the JSON seam.
 
+**Measured before any dependency (2026-10-23).** A throwaway probe on a 24-core host, release build,
+took 50,000 records of one shape (7.44 MiB as NDJSON and as a single array document) and split the
+work over `std::thread::scope` - the cheapest possible merge, none at all. Each worker either builds
+a tree per record with `from_json` or streams a record's events into a sink that discards them
+(`parse_stream_with_options_to`); times are the best of five.
+
+| step                                 | NDJSON    | array document             |
+| ------------------------------------ | --------- | -------------------------- |
+| boundary pre-pass                    | 2.27 ms   | 3.04 ms                    |
+| serial, events to a sink             | 23.98 ms  | 19.79 ms whole (23.00 split) |
+| serial, one tree per record, kept    | 200.06 ms | 194-197 ms as one tree     |
+| 8 threads, events to a sink          | 3.62 ms   | 3.51 ms                    |
+| 16 threads, events to a sink         | 2.80 ms   | 2.24 ms                    |
+| 8 threads, one tree per record, kept | 91.46 ms  | -                          |
+| 16 threads, one tree per record      | 88.23 ms  | -                          |
+
+Against what the same consumer pays serially, scan included: an event consumer gains 4.1x at eight
+threads and 4.7x at sixteen on the log, 3.0x and 3.8x on the array document. A consumer that keeps
+one tree per record gains 2.2x at either width, and that ceiling is not threads - it is the 50,000
+live trees, which cost about 80 ms of wall clock however many workers built them (the parse alone
+scales 6.4x at eight). **The measurement narrows the recommendation**: parallelise the sink surface,
+not `from_json`; the tree-building entry point is not worth a dependency at 2.2x. It also prices the
+honest serial baseline: the per-record split loop is *slower* than one whole-document stream on the
+array (23.00 against 19.79 ms), because 50,000 calls pay the per-call setup, so the win has to be
+measured against the whole-document stream.
+
+**What the probe also found.** The same run exposed a quadratic defect in the serial event stream:
+`LineTable::line_col` counted characters from the line's start on every query, so a document without
+newlines cost a pass over the whole text per event - 4.9 s for a 1.5 MB one-line array, quadrupling
+per doubling. Pull request #597 replaces that with a forward cursor, and the numbers above are
+measured with the fix in tree, where a one-line document and its newline-per-record twin land within
+1 ms of each other.
+
+**Not measured.** Memory bandwidth is not separated from allocator contention in the kept-tree
+figure, so 2.2x is the sum a caller experiences rather than an attribution. Nor is a real merge:
+each worker returns its own `Vec` with no flattening or ordering step, which makes 2.2x an upper
+bound for trees and 4.1x one for events. All of this is one host's wall clock; CI judges
+instructions, not these ratios.
+
 **What this section is not.** None of A, B, or C is implemented on this branch; the mmap read path
 in pull request #587 is the only scale increment landed so far. Each decision above changes a public
 surface or adds a dependency, so the implementation follows the ruling, not the reverse.
