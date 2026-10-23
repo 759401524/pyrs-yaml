@@ -79,6 +79,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The long-string measurement surface now covers all five formats** — the vectorized readers
+  shipped floors for the long-value shape at strict JSON and TOML only, because the gate pairs a
+  bridge's reader with its writer and the two dialect bridges had neither. Four scenarios carry it
+  end to end now: `from_jsonc_long_strings` at 141,062,599 counted instructions,
+  `from_json5_long_strings` at 99,998,599, `to_jsonc_long_strings` at 60,056,647 and
+  `to_json5_long_strings` at 60,480,707 - each the largest of three samples at 0.000% spread, all
+  thirty numbers written by the refresh dispatch on the image that enforces them. That run needed no
+  `accept_drift` name at all: growing the set from 26 to 30 crossed the 0.50% line for nobody, the
+  largest upward move being `from_toml_medium` at +0.363%, so the same dispatch also re-measured the
+  four floors the previous change recorded - `from_json_long_strings` 112,664,928 → 112,987,111,
+  `from_toml_long_strings` 109,254,466 → 109,535,451, `to_json_long_strings` 58,550,997 →
+  58,550,735, `to_toml_long_strings` 72,438,982 → 72,438,675. The fixtures are
+  `bench_inputs::long_string_jsonc` (2,557 bytes: the same eight records, a line comment and a block
+  comment between members) and
+  `long_string_json5` (2,550 bytes: single-quoted values - the dialect whose string body the
+  single-quote instantiation of the vector scans - bare keys, and a trailing comma on every member).
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins both to the record list the strict JSON fixture
+  renders, to a widest run of exactly `LONG_VALUE`, and to carrying both comment forms, so a fixture
+  that loses its comments cannot keep the scenario honest unnoticed; one already caught a fixture of
+  this author's that emitted a double comma. The two writer floors also record what the outbound
+  scan costs today, before anything proposes to vectorize it.
+
 - **The long-string shape now has a committed measurement on both channels** — every benchmark in
   this tree reads short values (`MEDIUM_JSON`'s longest is 21 characters, and both leaderboard
   documents build `item_N` names), so the bulk scan this release vectorized could only be measured

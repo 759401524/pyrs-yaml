@@ -40,8 +40,8 @@ use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, 
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
-    MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML, long_string_json, long_string_toml,
-    long_string_yaml,
+    MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML, long_string_json, long_string_json5,
+    long_string_jsonc, long_string_toml, long_string_yaml,
 };
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::parser::{parse, parse_stream};
@@ -56,6 +56,8 @@ const ITERATIONS: u32 = 2_000;
 static LONG_JSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_json);
 static LONG_TOML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_toml);
 static LONG_YAML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_yaml);
+static LONG_JSONC: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_jsonc);
+static LONG_JSON5: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_json5);
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum Work {
@@ -143,19 +145,34 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // pins that they still parse and still mean `MEDIUM_JSON`.
         ("from_jsonc_medium", MEDIUM_JSONC, Work::FromJsonc),
         ("from_json5_medium", MEDIUM_JSON5, Work::FromJson5),
-        // The two spokes again, over values long enough that a reader spends most of its bytes
-        // inside the bulk string scan. `MEDIUM_JSON`'s longest value is 21 characters, which
-        // never leaves the first sixteen-byte vector, so the search that was vectorized is
-        // nearly invisible there: the medium floors prove the change did not make the short path
-        // do more work, these two prove the long path does less. The documents differ from the
-        // medium ones in string length and in nothing else.
+        // The long-value shape for every reader this release moved: strict JSON, TOML, JSONC and
+        // JSON5. `MEDIUM_JSON`'s longest value is 21 characters, which never leaves the first
+        // sixteen-byte vector, so the search that was vectorized is nearly invisible there: the
+        // medium floors prove the change did not make the short path do more work, these prove the
+        // long path does less. Each document differs from its medium twin in string length (and, for
+        // the two dialects, in the comments and quoting their own grammar needs) and in nothing else.
         ("from_json_long_strings", LONG_JSON.as_str(), Work::FromJson),
         ("from_toml_long_strings", LONG_TOML.as_str(), Work::FromToml),
-        // The outbound halves of the same two bridges, over the same records: the gate pairs a
+        (
+            "from_jsonc_long_strings",
+            LONG_JSONC.as_str(),
+            Work::FromJsonc,
+        ),
+        // JSON5 is the dialect whose string body is scanned by the single-quote instantiation of the
+        // vector, so its long shape is a different code path from the three above, not a spelling.
+        (
+            "from_json5_long_strings",
+            LONG_JSON5.as_str(),
+            Work::FromJson5,
+        ),
+        // The outbound halves of the same four bridges, over the same records: the gate pairs a
         // bridge's reader with its writer and reports a one-sided pair as a blind spot, and the
-        // writers are where a long value is asked whether it needs quoting at all.
+        // writers are where a long value is asked whether it needs quoting at all. These four are
+        // also the floors the writer-side scan will be priced against before anyone vectorizes it.
         ("to_json_long_strings", LONG_YAML.as_str(), Work::ToJson),
         ("to_toml_long_strings", LONG_YAML.as_str(), Work::ToToml),
+        ("to_jsonc_long_strings", LONG_YAML.as_str(), Work::ToJsonc),
+        ("to_json5_long_strings", LONG_YAML.as_str(), Work::ToJson5),
         ("to_jsonc_medium", MEDIUM_YAML, Work::ToJsonc),
         ("to_json5_medium", MEDIUM_YAML, Work::ToJson5),
         // The event path over the same fixture the AST scenarios read, so the two are comparable:
