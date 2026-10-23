@@ -1299,6 +1299,29 @@ plus the two differential tests in each crate, which ask every offset of a corpu
 value, and the run that passes the same 200 tests with the vector path compiled out - the path the
 aarch64 wheels take.
 
+**The outbound scan was the other half of that pillar, and it is a vector now.** (fi) recorded four
+writer floors at the long-value shape precisely so this sentence could be measured rather than
+proposed: `write_json_string` is 75.12% of `to_json_long_strings` and `push_quoted` 69.01% of
+`to_toml_long_strings`, and the classification inside each is 84.5-97.9% of that. Three scans
+changed. `write_json_string` and `write_single_quoted` ask one SSE2 pass for the first byte needing
+a decision - {delimiter, `\`, `b < 0x20`}, const-generic so strict JSON, JSONC and JSON5 each
+monomorphize their own delimiter - and copy the clean prefix before the char loop resumes verbatim;
+`write_basic_body` had asked `any(forbidden_single_line)`, which answers a yes/no question and then
+threw the walk away by re-running it, so it gained a position over {`"`, `\`, C0, DEL`} and the same
+prefix copy, with DEL given its own equality mask because the saturating subtract that catches the
+C0 range cannot see 0x7f at all. The floors those three moves take down, read on the enforcing
+image by the refresh artifact this change carries, largest of three samples: 58,550,735 →
+22,038,711, 72,438,675 → 28,254,711, 60,056,647 → 23,544,666 and 60,480,707 → 23,968,721. Two
+boundaries travel with them. The medium shape is where a 16-byte question costs more than it saves,
+and the image said so precisely: `to_json_medium` rose to 21,492,584, +0.52%, the one scenario the
+dispatch had to be told to accept, while `to_jsonc_medium` (+0.48%) and `to_json5_medium` (+0.47%)
+stayed inside the line, `to_toml_medium` came down 0.84%, and `parse_inline_merge` - which the
+development host had put at +0.55%, a YAML scenario this change does not touch - read +0.00% there.
+That pair of readings is the case for the channel: a host number can name a mover that does not
+exist. And `to_json`'s same-session wall-clock pair does not separate at the timer's 100 ns
+precision (1.199 µs → 399.9 ns on TOML, 943.5 → 431.1 on JSONC, 987.2 → 474.9 on JSON5, but
+931 ns both ways on JSON): where the clock cannot see it, the claim is the floor.
+
 The same surface now reaches the two dialect bridges this release also moved:
 `bench_inputs::long_string_jsonc` (2,557 bytes - the same eight members with a line comment and a
 block comment between them) and `long_string_json5` (2,550 bytes - single-quoted values, which is

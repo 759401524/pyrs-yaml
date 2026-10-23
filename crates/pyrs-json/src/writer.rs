@@ -573,7 +573,16 @@ fn json5_integer_part(int: &str) -> bool {
 /// for scalars the parser tagged `ScalarStyle::SingleQuoted`.
 fn write_single_quoted(text: &str, out: &mut String) {
     out.push('\'');
-    for c in text.chars() {
+    // The same boundary the double-quoted writer uses, with the dialect's own delimiter: the run up
+    // to the first byte that needs a decision is copied, and the char loop below it runs verbatim.
+    let pos = escape_start::<b'\''>(text.as_bytes(), 0);
+    if pos == text.len() {
+        out.push_str(text);
+        out.push('\'');
+        return;
+    }
+    out.push_str(&text[..pos]);
+    for c in text[pos..].chars() {
         match c {
             '\'' => out.push_str("\\'"),
             '\\' => out.push_str("\\\\"),
@@ -645,6 +654,76 @@ fn canonical_float(f: f64) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Escape scanning on the way out
+//
+// Both string writers ask "does this run hold a byte that must be escaped?" before they copy it. On
+// a document whose values are long that question is 75.12% of `to_json_long_strings`, and the
+// single-quoted path had no bulk copy at all (`docs/dev/quality-ledger.md` (fi) records both
+// floors). Every byte it stops on is ASCII - a multi-byte sequence has every byte >= 0x80 and can
+// never match - so the readers' sixteen-byte trick applies here too. SSE2 is part of the x86_64
+// baseline: no dependency, no runtime detection, no `std`.
+// ---------------------------------------------------------------------------
+
+/// Index of the first byte at or after `pos` the char loop must decide about - the dialect's
+/// delimiter, an escape introducer, or a control byte - or `bytes.len()` when nothing does.
+///
+/// `QUOTE` selects the delimiter: `"` for strict JSON and JSONC, `'` for a JSON5 single-quoted
+/// string. The answer is an ASCII byte index, so it is always a `char` boundary.
+#[inline]
+fn escape_start<const QUOTE: u8>(bytes: &[u8], pos: usize) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        escape_start_sse2::<QUOTE>(bytes, pos)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        escape_start_scalar::<QUOTE>(bytes, pos)
+    }
+}
+
+fn escape_start_scalar<const QUOTE: u8>(bytes: &[u8], mut pos: usize) -> usize {
+    while pos < bytes.len() {
+        let b = bytes[pos];
+        if b == QUOTE || b == b'\\' || b < 0x20 {
+            break;
+        }
+        pos += 1;
+    }
+    pos
+}
+
+/// Sixteen bytes per iteration; the last partial vector falls back to the scalar loop, so a value
+/// that ends near a vector boundary keeps the old answer exactly.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn escape_start_sse2<const QUOTE: u8>(bytes: &[u8], mut pos: usize) -> usize {
+    use core::arch::x86_64::*;
+    let len = bytes.len();
+    // SAFETY: SSE2 is in the x86_64 baseline, and the loop only loads when `pos + 16 <= len`, so
+    // every 16-byte vector lies inside the slice.
+    unsafe {
+        let quote = _mm_set1_epi8(QUOTE as i8);
+        let slash = _mm_set1_epi8(b'\\' as i8);
+        let ctl = _mm_set1_epi8(0x1f);
+        let zero = _mm_setzero_si128();
+        while pos + 16 <= len {
+            let v = _mm_loadu_si128(bytes.as_ptr().add(pos) as *const __m128i);
+            // Saturating subtract makes `v <= 0x1f` the only zero, i.e. `v < 0x20` unsigned.
+            let m = _mm_or_si128(
+                _mm_or_si128(_mm_cmpeq_epi8(v, quote), _mm_cmpeq_epi8(v, slash)),
+                _mm_cmpeq_epi8(_mm_subs_epu8(v, ctl), zero),
+            );
+            let mask = _mm_movemask_epi8(m) as u32;
+            if mask != 0 {
+                return pos + mask.trailing_zeros() as usize;
+            }
+            pos += 16;
+        }
+    }
+    escape_start_scalar::<QUOTE>(bytes, pos)
+}
+
 fn write_json_string(text: &str, out: &mut String) {
     out.push('"');
     // Fast path: when no byte needs escaping (the common case for short ASCII or
@@ -653,28 +732,24 @@ fn write_json_string(text: &str, out: &mut String) {
     // the measured hot spot of `to_json`. Byte-identical to the char loop, which
     // still runs verbatim from the first escapable byte. The boundary `pos` is an
     // ASCII byte (< 0x20, `"` or `\`), so it is always a `char` boundary.
-    match text
-        .as_bytes()
-        .iter()
-        .position(|&b| b < 0x20 || b == b'"' || b == b'\\')
-    {
-        None => out.push_str(text),
-        Some(pos) => {
-            out.push_str(&text[..pos]);
-            for c in text[pos..].chars() {
-                match c {
-                    '"' => out.push_str("\\\""),
-                    '\\' => out.push_str("\\\\"),
-                    '\n' => out.push_str("\\n"),
-                    '\r' => out.push_str("\\r"),
-                    '\t' => out.push_str("\\t"),
-                    '\u{8}' => out.push_str("\\b"),
-                    '\u{c}' => out.push_str("\\f"),
-                    c if (c as u32) < 0x20 => {
-                        let _ = write!(out, "\\u{:04x}", c as u32);
-                    }
-                    c => out.push(c),
+    let pos = escape_start::<b'"'>(text.as_bytes(), 0);
+    if pos == text.len() {
+        out.push_str(text);
+    } else {
+        out.push_str(&text[..pos]);
+        for c in text[pos..].chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\u{8}' => out.push_str("\\b"),
+                '\u{c}' => out.push_str("\\f"),
+                c if (c as u32) < 0x20 => {
+                    let _ = write!(out, "\\u{:04x}", c as u32);
                 }
+                c => out.push(c),
             }
         }
     }
@@ -1207,5 +1282,86 @@ mod tests {
             failures.len(),
             failures.join("\n")
         );
+    }
+
+    /// The vector scan replaces a byte-at-a-time predicate that decides where escaping begins, so a
+    /// stop set differing by one byte would silently rewrite escapes rather than crash. Every byte
+    /// value is asked for at every offset of a tail crossing the vector boundary, for both
+    /// delimiters, against an inline restatement of the set.
+    #[test]
+    fn the_escape_scan_stops_where_the_byte_loop_stops_at_every_offset() {
+        let mut corpus: Vec<u8> = (0..=255u8).collect();
+        corpus.push(0xE2);
+        corpus.push(0x82);
+        corpus.push(0xAC);
+        for start in 0..corpus.len() {
+            let tail = &corpus[start..];
+            let plain = tail
+                .iter()
+                .position(|&b| b == b'"' || b == b'\\' || b < 0x20)
+                .unwrap_or(tail.len());
+            let single = tail
+                .iter()
+                .position(|&b| b == b'\'' || b == b'\\' || b < 0x20)
+                .unwrap_or(tail.len());
+            assert_eq!(escape_start::<b'"'>(tail, 0), plain, "offset {start}");
+            assert_eq!(escape_start::<b'\''>(tail, 0), single, "offset {start}");
+        }
+    }
+
+    /// The fast path must be byte-identical to the char loop at the lengths where a vector boundary
+    /// falls inside the value, including a stop byte at index 15, 16 and 17. The two writers spell
+    /// a control byte's escape in different cases, so each keeps its own.
+    #[test]
+    fn a_bulk_copied_prefix_writes_what_the_char_loop_would_have_written() {
+        fn expected(text: &str, delimiter: char, upper: bool) -> String {
+            let mut out = String::new();
+            out.push(delimiter);
+            for c in text.chars() {
+                if c == delimiter || c == '\\' {
+                    out.push('\\');
+                    out.push(c);
+                } else if c == '\n' {
+                    out.push_str("\\n");
+                } else if c == '\r' {
+                    out.push_str("\\r");
+                } else if c == '\t' {
+                    out.push_str("\\t");
+                } else if (c as u32) < 0x20 {
+                    let code = c as u32;
+                    let escape = if upper {
+                        format!("\\u{code:04X}")
+                    } else {
+                        format!("\\u{code:04x}")
+                    };
+                    out.push_str(&escape);
+                } else {
+                    out.push(c);
+                }
+            }
+            out.push(delimiter);
+            out
+        }
+        for length in [0usize, 1, 15, 16, 17, 31, 33, 256] {
+            for stop in ['"', '\\', '\u{1}', '’'] {
+                for at in 0..=length {
+                    let text = format!("{}{}{}", "a".repeat(at), stop, "a".repeat(length - at));
+                    let mut quoted = String::new();
+                    write_json_string(&text, &mut quoted);
+                    let mut single = String::new();
+                    write_single_quoted(&text, &mut single);
+                    assert_eq!(
+                        quoted,
+                        expected(&text, '"', false),
+                        "length {length} at {at}"
+                    );
+                    assert_eq!(
+                        single,
+                        expected(&text, '\'', true),
+                        "length {length} at {at}"
+                    );
+                }
+            }
+        }
     }
 }

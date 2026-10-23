@@ -131,6 +131,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The outbound escape scan runs sixteen bytes at a time in the JSON and TOML writers** — the
+  readers were vectorized first because their share was bigger; the writers' turn came once the
+  long-value shape had committed floors (#600), and the question "does this value need escaping?"
+  measured 75.12% of `to_json_long_strings` and 69.01% of `to_toml_long_strings`.
+  `write_json_string` and `write_single_quoted` now take the first byte needing a decision from one
+  SSE2 pass over {delimiter, `\`, `b < 0x20`} - const-generic, so strict JSON, JSONC and JSON5 each
+  monomorphize their own delimiter - and copy the clean prefix in one `push_str` before the char
+  loop runs verbatim. `write_basic_body` had asked `any(forbidden_single_line)` and then re-walked
+  the whole value; it now gets a position over {`"`, `\`, C0, DEL`}, with DEL its own equality mask
+  because the saturating subtract that catches the C0 range cannot see it. Measured on the
+  enforcing image by the refresh dispatch this change carries, largest of three samples:
+  58,550,735 → 22,038,711 (−62.36%), 72,438,675 → 28,254,711 (−60.99%), 60,056,647 → 23,544,666
+  (−60.80%) and 60,480,707 → 23,968,721 (−60.37%). The same-session wall-clock pair, with only the
+  dispatch swapped, is 1.199 µs → 399.9 ns on TOML, 943.5 ns → 431.1 ns on JSONC and 987.2 ns →
+  474.9 ns on JSON5, while `to_json`'s pair does not separate at the timer's 100 ns precision - so
+  its claim is the floor, not the clock. Four new tests ask every byte value at every offset of a
+  corpus crossing the vector boundary, and the output pair at lengths 0, 1, 15, 16, 17, 31, 33 and
+  256: mutating TOML's DEL mask from `0x7f` to `0x7e` reddens both of them, and compiling the
+  vector out leaves all 187 unit tests green on the scalar path the aarch64 wheels take. Short
+  values are a different shape and no win is claimed there - the same scan is 25.95-26.61% of those
+  scenarios - and one of them paid: `to_json_medium` rose to 21,492,584, +0.52%, the price of
+  asking a 16-byte question of a 21-byte value, named in that dispatch so every other move still
+  refuses itself. `to_jsonc_medium` (+0.48%) and `to_json5_medium` (+0.47%) stayed inside the line,
+  `to_toml_medium` came down 0.84%, and `parse_inline_merge` - a YAML scenario, +0.55% on the
+  development host - read +0.00% on the image, which is why the move is decided there. The YAML
+  writer is untouched, its quoting answer is already one byte pass, and the only lead left there is
+  `serialize_block_scalars`' line-break search inside `std`'s pattern machinery.
+
 - **String bodies and the TOML line are searched sixteen bytes at a time** — the JSON and TOML
   readers asked "closing quote, escape, or a byte this dialect refuses?" one byte at a time, and on
   a document whose strings are long that question is between a quarter and two fifths of the whole
