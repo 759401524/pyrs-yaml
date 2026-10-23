@@ -15,11 +15,15 @@
 //! a harness edit is not a neutral act for the numbers the same harness already produces, so a
 //! re-baseline after one separates method from code by being written down, not by being
 //! ignored. `serialize_*` and `parse_*` in that same binary stayed inside 0.042%.
-use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
+use pyrs_json::{
+    StreamEventType, from_json, from_json5, from_jsonc, parse_documents, to_json_text,
+    to_json5_text, to_jsonc_text,
+};
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
-    LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
-    long_string_json, long_string_json5, long_string_jsonc, long_string_toml, long_string_yaml,
+    LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
+    long_string_json, long_string_json5, long_string_jsonc, long_string_ndjson, long_string_toml,
+    long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -280,5 +284,79 @@ fn the_long_string_dialect_fixtures_carry_comments_at_their_own_width() {
     assert_eq!(
         single, LONG_VALUE,
         "json5: the longest single-quoted run is {single}, not the {LONG_VALUE} the scenario names"
+    );
+}
+
+/// The two line-delimited fixtures, pinned to the record list the strict JSON fixture already
+/// carries. This is the route where a fixture can stop being what its scenario name claims without
+/// anything above noticing: the line surface re-enters the scanner once per record, so a record
+/// that spilled onto a second line, or a pair whose values stopped differing only in width, would
+/// leave the pair's difference measuring something other than the bulk scan. The reassembly
+/// assertion is the one that cannot be satisfied by accident.
+#[test]
+fn the_ndjson_fixtures_are_the_same_records_cut_into_lines_at_two_widths() {
+    const SHORT_VALUE: usize = "localhost".len();
+    let long = long_string_ndjson();
+    let short = short_string_ndjson();
+
+    let inner = long
+        .lines()
+        .map(|line| {
+            line.strip_prefix('{')
+                .and_then(|body| body.strip_suffix('}'))
+        })
+        .collect::<Option<Vec<_>>>()
+        .expect("every line of the fixture is one braced record");
+    assert_eq!(
+        format!("{{{}}}", inner.join(",")),
+        long_string_json(),
+        "the line-delimited fixture no longer carries the record list the AST scenario reads"
+    );
+
+    for (label, doc) in [("long", &long), ("short", &short)] {
+        assert_eq!(
+            doc.lines().count(),
+            LONG_RECORDS,
+            "{label}: a record no longer fits one line, so the per-record restart the scenario \
+             prices is not its own"
+        );
+        let events = parse_documents(doc).expect("the line-delimited fixture parses");
+        let documents = events
+            .iter()
+            .filter(|event| matches!(event.event_type, StreamEventType::DocumentEnd))
+            .count();
+        assert_eq!(
+            documents, LONG_RECORDS,
+            "{label}: the route reported {documents} documents, not one per line for the \
+             {LONG_RECORDS} lines the fixture has"
+        );
+        assert!(
+            !doc.contains('\\'),
+            "{label}: an escape sequence entered the fixture, so its bytes are no longer all bulk-scanned"
+        );
+        assert!(
+            doc.bytes().all(|b| b >= 0x20 || b == b'\n'),
+            "{label}: a control byte other than a line break entered the fixture"
+        );
+    }
+
+    let widest = |doc: &str| doc.split('"').map(str::len).max().unwrap_or(0);
+    assert_eq!(
+        widest(&long),
+        LONG_VALUE,
+        "long: the widest value is {}, not the {LONG_VALUE} the scenario names",
+        widest(&long)
+    );
+    assert_eq!(
+        widest(&short),
+        SHORT_VALUE,
+        "short: the widest value is {}, so the pair no longer contrasts a short body with a long one",
+        widest(&short)
+    );
+    assert_eq!(
+        long.len() - short.len(),
+        LONG_RECORDS * (LONG_VALUE - SHORT_VALUE),
+        "the two line-delimited fixtures differ by more than value width, so the gap between their \
+         scenario numbers is not the price of a long body"
     );
 }

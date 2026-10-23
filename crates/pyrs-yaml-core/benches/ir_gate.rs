@@ -36,12 +36,14 @@
 //!
 //! Run through `scripts/ir_gate.py`, which does the subtraction, compares against
 //! `.ci/ir-baseline.json` and prints the table CI gates on.
-use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
+use pyrs_json::{
+    from_json, from_json5, from_jsonc, parse_documents, to_json_text, to_json5_text, to_jsonc_text,
+};
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
     MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML, long_string_json, long_string_json5,
-    long_string_jsonc, long_string_toml, long_string_yaml,
+    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::parser::{parse, parse_stream};
@@ -58,6 +60,8 @@ static LONG_TOML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_st
 static LONG_YAML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_yaml);
 static LONG_JSONC: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_jsonc);
 static LONG_JSON5: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_json5);
+static LONG_NDJSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_ndjson);
+static SHORT_NDJSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(short_string_ndjson);
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum Work {
@@ -96,6 +100,12 @@ enum Work {
     /// nodes, the bridges build nodes too - so the ruling needed a number of its own before and
     /// after, not an argument. Nothing measured `parse_stream` until now.
     Stream,
+    /// The line-delimited surface: one document per line, read into `Vec<StreamEvent>` by
+    /// `parse_documents`. It divides the text at its own line table and restarts the scanner per
+    /// record, so neither the AST scenarios (which build nodes from one document) nor `Stream`
+    /// (which hands one document to granit) enters this route. The fixture pair prices the
+    /// record's body length here, which is what a string scan is asked about.
+    Documents,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -186,6 +196,21 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // stream's dialect is chosen by the caller, and the path being priced is granit's scalar
         // handoff, which the YAML fixture already enters.
         ("stream_long_strings", LONG_YAML.as_str(), Work::Stream),
+        // The line-delimited pair, one scenario per side. A short value keeps the record inside the
+        // first vector of the string scan, so the only difference between these two numbers is what
+        // a long body costs the scanner per record - and the per-record restart is the part neither
+        // `from_json_long_strings` (one document, one scan) nor `stream_*` (granit's scalar handoff)
+        // measures. The pair is what makes each one readable on its own.
+        (
+            "documents_short_strings",
+            SHORT_NDJSON.as_str(),
+            Work::Documents,
+        ),
+        (
+            "documents_long_strings",
+            LONG_NDJSON.as_str(),
+            Work::Documents,
+        ),
     ]
 }
 
@@ -305,6 +330,28 @@ fn main() {
                         });
                     // Structural count, not text length: it is what keeps every event alive to
                     // this point, so the receiver cannot be optimised out of existing.
+                    acc += std::hint::black_box(&events).len();
+                }
+                acc
+            }
+        }
+        Work::Documents => {
+            if setup_only {
+                std::hint::black_box(src);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let events = std::hint::black_box(parse_documents(std::hint::black_box(src)))
+                        .unwrap_or_else(|error| {
+                            // Same one-sided-gate rule as `Work::Stream` above: a stream that began
+                            // failing would loop anyway and report a smaller number.
+                            eprintln!(
+                                "{name} iteration {index}: {error} - the fixture no longer reaches \
+                                 the path being measured"
+                            );
+                            std::process::exit(3);
+                        });
                     acc += std::hint::black_box(&events).len();
                 }
                 acc

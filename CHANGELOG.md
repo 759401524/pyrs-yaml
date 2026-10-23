@@ -99,6 +99,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The line route has a floor, and a long body costs more there than on the event path** —
+  the record that added the event stream's long-value floor named the clause it left standing: the
+  NDJSON path had no number of its own. `Work::Documents` now reads eight one-line records into
+  events through `pyrs_json::parse_documents`, and the pair differs only in the width of the value -
+  9 characters against 256. On the image that enforces these numbers that is 95,815,186 against
+  328,951,144 counted instructions, **+243.3%**, where the same single-dimension pair on the event
+  path reads +8.16%. All thirty-three floors come from one run, which needed exactly one
+  `accept_drift` name: growing the harness moved `from_json5_long_strings` from 100,340,744 to
+  101,160,437 (+0.82%), a scenario this change does not enter, while `from_json5_medium` (+0.479%)
+  and `from_json_medium` (-0.905%) stayed inside the line on their own. Re-measuring also moved a
+  published ratio: the event pair the previous record wrote down at 8.33% reads 8.16% on this run,
+  and `QUALITY_MATRIX.md` §2 now carries the newer number - which
+  `tests/test_ir_baseline_workflow.py` checks against the file rather than against memory.
 - **The event stream now has a floor at the long-value shape** — the record that added the four
   long-value reader floors named the gap it left in one clause: "`stream_medium` and the NDJSON path
   still carry short values, and the event path has no long-string scenario of its own". One scenario

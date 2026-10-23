@@ -7939,6 +7939,55 @@ serial path needs no feature to measure, so the gap is a missing scenario, not a
 the ranking channel has no stream bench of any kind, so this floor has no divan twin; inventing one
 is a separate decision about what the leaderboard should rank, recorded rather than smoothed over.
 
+### (fn) The line route got a floor, and its long body costs more there than on the event path (2026-10-23)
+
+**Premise.** (fi) closed with the gap it left; (fm) closed the event half and wrote the other half
+down rather than smoothing it: "the gate's stream scenarios are YAML's `parse_stream`, so
+`pyrs_json::parse_stream` and `parse_documents` still have no floor at all". This entry closes the
+`parse_documents` clause. It is a missing scenario, not a build setting - the serial line path needs
+no feature to compile - and it is a different route from the one (fm) priced: the harness reaches
+YAML's `parse_stream` and the JSON line walker, and reaches neither of the other two.
+
+**What changed.** `Work::Documents` and a pair of fixtures, `long_string_ndjson` and
+`short_string_ndjson`: the same eight records, the same keys, the same numbers, one line each, with
+the value 256 characters wide on one side and 9 on the other. Both numbers come from the same run
+that wrote all thirty-three floors: 95,815,186 against 328,951,144, so the value's width alone is
+**+243.3%** on this route. The same single-dimension pair on the event path is +8.16%. That contrast
+is a measurement of two routes, not a claim that one scanner is cheaper than the other - the line
+route runs this crate's own JSON scanner over eight separate documents, the event route runs
+granit's scalar handoff over one - and the ledger records the ratio rather than an explanation for
+it, because nothing here measures the split between the two.
+
+**A published ratio moved.** (fm) reported its pair at 8.33% from its own run. Growing the harness
+moved both halves of that pair by different amounts - `stream_medium` +0.270%,
+`stream_long_strings` +0.112% - so on this run the same pair reads 8.16%, and §2 now carries 8.16%.
+The number a previous entry published is not exempt from the next refresh; what is exempt is the
+method, which is why the sentence is checked against the file by
+`tests/test_ir_baseline_workflow.py` instead of by memory.
+
+**What the guard refused, and what it excused.** The first dispatch ran with an empty `accept_drift`
+and wrote nothing: `from_json5_long_strings` moved from 100,340,744 to 101,160,437 (+0.82%), a
+scenario this change does not enter. The second dispatch named that one and no other, so every
+remaining move had to stay inside the line on its own - `from_json5_medium` came up +0.479% and
+`from_json_medium` went down 0.905%, both within the 0.50%/2% edges rather than pardoned by a flag.
+
+**What pins the fixtures.** `the_ndjson_fixtures_are_the_same_records_cut_into_lines_at_two_widths`
+reassembles the long fixture's lines into the single-document JSON fixture the AST scenario already
+reads, requires one `DocumentEnd` per line and a `LONG_RECORDS`-line document, and asserts the two
+fixtures differ by exactly `LONG_RECORDS * (LONG_VALUE - 9)` bytes - so the pair's difference stays
+the price of a long body and nothing else. Two mutations were run as controls, not imagined: joining
+the records onto fewer lines reddens the reassembly, and giving the short fixture a long value
+reddens the width assertion (`short: the widest value is 256`); the file was then restored
+byte-for-byte and the test went green again.
+
+**Not covered.** `pyrs_json::parse_stream` - the single-document JSON event producer - still has no
+floor: the harness's `Work::Stream` calls YAML's `parse_stream`, and adding the JSON one is a
+scenario of its own rather than a side effect of this pair. The sharded route
+(`parse_documents_with_options_to_parallel`) is behind the `parallel` feature, which the gate's
+binary does not turn on, so CI executes its agreement tests with `cargo test -p pyrs-json --features
+parallel` while its instruction count stays unmeasured. And the ranking channel still carries no
+stream bench of any kind, so neither this floor nor (fm)'s has a divan twin.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
