@@ -7553,6 +7553,57 @@ text still costs a mark per character while that token is being reported. And th
 bytes, not the decoded value - a consumer that wants the decoded scalar still reads `value`, which
 is the split the stream already made.
 
+### (ff) The position index was quadratic on a document without newlines (2026-10-23)
+
+`LineTable` answered each event's position by binary-searching the line starts and then counting
+characters from that line's start. The comment above it called this "a binary search plus one char
+count", which is right per event and wrong per stream: a producer reporting `k` events over a line
+of `n` bytes pays `k * n`, and a minified document is one line. Both the JSON and the TOML producers
+report positions in source order, and the incremental path asks for one on every event, so the cost
+is real work in the shipped surface rather than a theoretical worst case.
+
+**Found by a measurement, not by a test.** Decision C's feasibility probe timed the serial event
+stream over jsonl-style input and over the same records in one array. At n = 16,000 records
+(1.52 MB) the newline-per-record document streamed in 22 ms while the single-line one took 4,890 ms,
+and each doubling of the single-line input quadrupled the time while the other series stayed linear.
+The diff between them is the newlines: same records, same events, same walk.
+
+**The fix is a cursor.** The table now remembers the last answered `(pos, line, column)` and walks
+only the bytes between one query and the next, stepping whole UTF-8 characters and stopping short of
+a position that falls inside one. A query before the cursor - out-of-order reporting is allowed by
+the type even though no producer does it today - falls back to counting from that line's start,
+which costs one line and moves the cursor there. A position that repeats answers from the cursor
+without walking, which matters because producers emit several events at one byte.
+
+**The mechanism is asserted, not timed.** `visited()` reports the characters the cursor has stepped
+over, counted in every build (`cfg(test)`-only accounting would have measured a different program).
+`a_forward_sweep_advances_the_cursor_once_per_character` queries a 200 KB single-line document every
+7 bytes and requires the count to land between `len - 7` and `len + 64`: the upper bound catches a
+sweep that re-walks, the lower bound catches an implementation that answers from the line start and
+never advances at all. A falsification run forced the always-recompute path and the lower bound
+printed `advanced only 0 characters across 200000 bytes`. The old implementation cannot be put
+through this assertion (it had no counter), so its evidence is the paired probe above.
+`a_cursor_answers_every_position_the_way_a_rescan_does` drives a forward sweep, a backward sweep and
+a jump-around pass over a document with two-, three- and four-byte characters, comparing every
+answer - including offsets inside a code point and one past the end - with an independent rescan.
+
+**Measured.** On the development host, with the probe compiled in release and run three times, the
+1.52 MB single-line document now streams in 18.8-19.7 ms and the newline-per-record twin in
+17.7-18.3 ms; the 260x gap and the quadratic shape are gone. Rust: `cargo nextest run --all`, 766
+tests pass (12 in `pyrs-event`, 186 across `pyrs-json` and `pyrs-toml`). `cargo clippy --all
+--all-targets -D warnings` is clean.
+
+**What it costs.** One `usize` compare per event and one add per character on the walk the cursor
+already performs, plus the `starts` index, which was already built. The Ir gate's `stream_medium`
+scenario is the authority on whether that moves the hot path; its reading is reported in the PR that
+carries this entry rather than guessed here.
+
+**Not covered.** The cursor is per table and per stream, so a producer that reports events in
+arbitrary order pays one line-length rescan per backward query; none of the three producers does.
+YAML computes its own positions from granit's char indices and never used this type. The probe that
+found the defect is a throwaway crate under `target/`, not a committed benchmark: the permanent
+evidence is the mechanism test above.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

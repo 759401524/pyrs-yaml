@@ -297,8 +297,9 @@ impl StreamEventType<'_> {
 /// A tokenizer moves through byte offsets; the vocabulary reports the granit convention the YAML
 /// engine already hands out - a 0-indexed line and a column counted in characters from the start of
 /// that line. So each producer converts, and the conversion is the same arithmetic. One pass over
-/// the source builds the table, which makes an event's position a binary search plus one char count
-/// instead of a rescan from byte zero per event.
+/// the source indexes its line starts, and a cursor makes the producer's own stream - which arrives
+/// in source order - cost one pass over the text for the whole stream, no matter how many events it
+/// reports. Counting from the line start per event instead was quadratic on a one-line document.
 ///
 /// Lines break at `\n`, because that is what both engines' own diagnostics count: `err` in
 /// `pyrs-json` and `err_at` in `pyrs-toml`, so an event and the error for the same byte never
@@ -306,6 +307,20 @@ impl StreamEventType<'_> {
 pub struct LineTable<'a> {
     text: &'a str,
     starts: Vec<usize>,
+    /// The last answered position and its `(line, column)`: events arrive in source order, so a
+    /// producer's whole stream costs one pass over the text instead of one pass per event.
+    cursor: Cursor,
+    /// Characters stepped over by the cursor, so a test can prove the sweep is linear. Counted in
+    /// every build - the increment is one add on the path the cursor is already walking.
+    visited: usize,
+}
+
+/// Where the last [`LineTable::line_col`] answer left off.
+#[derive(Clone, Copy)]
+struct Cursor {
+    pos: usize,
+    line: usize,
+    column: usize,
 }
 
 impl<'a> LineTable<'a> {
@@ -318,7 +333,16 @@ impl<'a> LineTable<'a> {
                 starts.push(index + 1);
             }
         }
-        Self { text, starts }
+        Self {
+            text,
+            starts,
+            cursor: Cursor {
+                pos: 0,
+                line: 0,
+                column: 0,
+            },
+            visited: 0,
+        }
     }
 
     /// The 0-indexed `(line, column)` pair of a byte offset, the column counted in characters.
@@ -326,14 +350,73 @@ impl<'a> LineTable<'a> {
     /// An offset at or past the end of the source is clamped, and one that falls inside a
     /// multi-byte character is snapped down to that character's start: a producer that stopped
     /// mid-code point reports a position rather than panicking.
-    pub fn line_col(&self, pos: usize) -> (usize, usize) {
+    ///
+    /// A position at or after the last answer advances the cursor across the bytes in between. A
+    /// position *before* it re-derives the answer from the line start, which costs that line's
+    /// length and leaves the cursor there; no producer reports out of order today, and the fallback
+    /// is what keeps the answers right if one starts to.
+    pub fn line_col(&mut self, pos: usize) -> (usize, usize) {
+        let pos = pos.min(self.text.len());
+        if pos < self.cursor.pos {
+            return self.recompute(pos);
+        }
+        let bytes = self.text.as_bytes();
+        let (mut at, mut line, mut column) =
+            (self.cursor.pos, self.cursor.line, self.cursor.column);
+        let mut visited = 0usize;
+        while at < pos {
+            let step = utf8_len(bytes[at]);
+            if at + step > pos {
+                break;
+            }
+            if bytes[at] == b'\n' {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
+            at += step;
+            visited += 1;
+        }
+        self.cursor = Cursor {
+            pos: at,
+            line,
+            column,
+        };
+        self.visited += visited;
+        (line, column)
+    }
+
+    /// Characters the cursor has stepped over since construction.
+    pub fn visited(&self) -> usize {
+        self.visited
+    }
+
+    /// The slow path: a position behind the cursor, answered by counting from its line's start.
+    fn recompute(&mut self, pos: usize) -> (usize, usize) {
         let line = self
             .starts
             .partition_point(|&start| start <= pos)
             .saturating_sub(1);
         let start = self.starts[line];
         let cut = floor_char_boundary(self.text, pos.max(start));
-        (line, self.text[start..cut].chars().count())
+        let column = self.text[start..cut].chars().count();
+        self.cursor = Cursor {
+            pos: cut,
+            line,
+            column,
+        };
+        (line, column)
+    }
+}
+
+/// The byte length a UTF-8 character starting with `first` occupies.
+fn utf8_len(first: u8) -> usize {
+    match first {
+        0x00..=0x7F => 1,
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        _ => 4,
     }
 }
 
@@ -359,7 +442,7 @@ mod tests {
     fn a_line_table_reports_the_granit_convention_for_both_engine_dialects() {
         // Two lines, one of them multi-byte, and a trailing line with no break of its own.
         let text = "a = 1\nkéy = 2";
-        let table = LineTable::new(text);
+        let mut table = LineTable::new(text);
         assert_eq!(table.line_col(0), (0, 0));
         assert_eq!(table.line_col(2), (0, 2));
         // The second line starts just after the `\n`; `é` is one character, so a column counted
@@ -373,13 +456,84 @@ mod tests {
     #[test]
     fn an_offset_at_or_past_the_end_is_a_position_not_a_panic() {
         let text = "a\né";
-        let table = LineTable::new(text);
+        let mut table = LineTable::new(text);
         let len = text.len();
         assert_eq!(table.line_col(len), table.line_col(len + 40));
         // Mid-code-point: `é` occupies two bytes, and the producer may stop at either.
         let accent = text.find('é').unwrap();
         assert_eq!(table.line_col(accent), (1, 0));
         assert_eq!(table.line_col(accent + 1), (1, 0));
+    }
+
+    /// The answer a rescan from the line start gives, computed independently of the table's index.
+    fn rescan(text: &str, pos: usize) -> (usize, usize) {
+        let cut = floor_char_boundary(text, pos.min(text.len()));
+        let before = &text[..cut];
+        let line = before.bytes().filter(|&byte| byte == b'\n').count();
+        let column = match before.rfind('\n') {
+            Some(index) => text[index + 1..cut].chars().count(),
+            None => before.chars().count(),
+        };
+        (line, column)
+    }
+
+    /// A stream of events over a one-line document must not cost a rescan per event.
+    ///
+    /// This asserts the mechanism, not a wall-clock time: the cursor's own count of characters
+    /// stepped over cannot exceed the text length on a forward sweep. The implementation this
+    /// replaced counted from the line start per query, which on this input would step over
+    /// roughly `len² / 7` characters.
+    #[test]
+    fn a_forward_sweep_advances_the_cursor_once_per_character() {
+        let text = "x".repeat(200_000);
+        let mut table = LineTable::new(&text);
+        for pos in (0..=text.len()).step_by(7) {
+            assert_eq!(table.line_col(pos), (0, pos));
+        }
+        assert!(
+            table.visited() <= text.len() + 64,
+            "a forward sweep walked {} characters across {} bytes",
+            table.visited(),
+            text.len()
+        );
+        // And it did walk: an implementation that answered every query from the line start would
+        // report zero here while still being quadratic.
+        assert!(
+            table.visited() >= text.len() - 7,
+            "a forward sweep advanced only {} characters across {} bytes",
+            table.visited(),
+            text.len()
+        );
+        // Re-asking an answered position must not walk anything: a producer may report several
+        // events at one byte (an empty close marker beside the delimiter that closed it).
+        let settled = table.visited();
+        for _ in 0..1_000 {
+            assert_eq!(
+                table.line_col(text.len() / 2),
+                rescan(&text, text.len() / 2)
+            );
+        }
+        assert_eq!(table.visited(), settled);
+    }
+
+    /// Forward, backward and mid-character queries all agree with a rescan.
+    ///
+    /// The cursor answers a position behind it through `recompute`, so this drives both paths and
+    /// compares each answer with the one the table's index never sees.
+    #[test]
+    fn a_cursor_answers_every_position_the_way_a_rescan_does() {
+        let text = "αβγ\nx\nyz\n\néé\nlast\n";
+        let mut table = LineTable::new(text);
+        let forward: Vec<usize> = (0..=text.len()).collect();
+        let mut queries = forward.clone();
+        queries.extend(forward.iter().rev());
+        // A third pass that jumps around, so the cursor meets both directions in one stream.
+        queries.extend((0..=text.len()).rev().step_by(3));
+        // Past the end is clamped, not a panic.
+        queries.push(text.len() + 17);
+        for pos in queries {
+            assert_eq!(table.line_col(pos), rescan(text, pos), "at byte {pos}");
+        }
     }
 
     /// The vocabulary has no constructor of its own, so a test builds the record directly.
@@ -635,7 +789,7 @@ mod tests {
         ) {
             let lines: Vec<String> = lines.into_iter().map(|l| l.into_iter().collect()).collect();
             let text = lines.join("\u{a}");
-            let table = LineTable::new(&text);
+            let mut table = LineTable::new(&text);
 
             let mut offset = 0usize;
             let mut previous: Option<(usize, usize)> = None;
