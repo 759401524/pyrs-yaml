@@ -52,6 +52,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A one-line document streams in linear time again** — `LineTable::line_col` counted characters
+  from the line's start for every event, so a producer whose source has no newlines paid O(n) per
+  event and the stream was quadratic: a 1.5 MB minified JSON array spent 4.9 s reporting its
+  224,006 events, four times longer for each doubling of the input. The table now keeps a cursor at
+  the last answered position and walks only the bytes between one event and the next; a position
+  behind the cursor - a producer reporting a note it held back - still counts from its line's
+  start. The same document now streams in 19 ms, against 18 ms for its newline-per-record twin
+  (development host). `visited()` reports the characters the cursor stepped over, so
+  `a_forward_sweep_advances_the_cursor_once_per_character` asserts the sweep is one pass over a
+  200 KB single line without a clock, and a second test compares both directions and mid-code-point
+  offsets with a rescan. JSON and TOML share the table; YAML computes its own positions and never
+  had this cost.
+
 - **The deployed site's table of contents lists each section beside its version** — the four
   localized changelog pages carried the `[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` sections at the
   version heading's own level, so the site rendered each section as a sibling of its version rather
