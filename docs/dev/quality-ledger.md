@@ -7794,6 +7794,56 @@ across a host boundary: a comparison is made inside one run. The JSON5 and JSONC
 measured reading and writing, not streaming: `stream_medium` and the NDJSON path still carry short
 values, and the event path has no long-string scenario of its own.
 
+### (fj) The outbound escape scan is vectorized, and the writer floors pay for it (2026-10-23)
+
+**Premise.** (fi) priced the write side at the long-value shape and stopped there on purpose: the
+scan inside `write_json_string` is 75.12% of `to_json_long_strings` and the one inside `push_quoted`
+is 69.01% of `to_toml_long_strings`, 84.5-97.9% of that work being the classification itself. The
+pillar's remaining half was the same question the readers had already answered, asked on the way
+out.
+
+**What changed.** `write_json_string` and `write_single_quoted` now take the first byte needing a
+decision from one SSE2 pass over {delimiter, `\`, `b < 0x20`} and bulk-copy the clean prefix before
+the char loop resumes; `QUOTE` is const-generic, so strict JSON, JSONC and JSON5 each monomorphize
+their own delimiter, and the JSON5 writer - which had no bulk path at all, re-encoding every
+character of every value - got one. `write_basic_body` asked `any(forbidden_single_line)`, a yes/no
+question whose "yes" threw the walk away by re-running it over the whole value; it now asks for a
+position over {`"`, `\`, C0, DEL`} and copies the prefix. DEL needs its own equality mask because
+the saturating subtract that catches the C0 range cannot see 0x7f, which is the kind of stop-set
+gap the old `any()` happened to cover by asking per byte. Measured on the enforcing image by the
+refresh artifact this change carries, largest of three samples: `to_json_long_strings` 58,550,735 →
+22,038,711 (−62.36%), `to_toml_long_strings` 72,438,675 → 28,254,711 (−60.99%),
+`to_jsonc_long_strings` 60,056,647 → 23,544,666 (−60.80%), `to_json5_long_strings` 60,480,707 →
+23,968,721 (−60.37%).
+
+**Controls, both directions.** Each crate's differential test asks every byte value at every offset
+of a corpus crossing the vector boundary against an inline restatement of the stop set, and the
+output test compares the bulk-copied writer against the whole-string char loop at lengths 0, 1, 15,
+16, 17, 31, 33 and 256 (DEL for TOML, a newline run straddling the boundary, a multi-byte
+character the scan must never stop on). Bending TOML's DEL mask from `0x7f` to `0x7e` reddens both
+of its tests, so the pair can fail. Compiling the vector out leaves all 187 unit tests green on the
+scalar path - the path the aarch64 wheels take, and the reason the scalar function is a tail of the
+vector rather than its replacement.
+
+**The two hosts disagreed about which scenarios moved.** The development host put `to_json_medium`
+at +0.53%, `to_jsonc_medium` at +0.48%, `to_json5_medium` at +0.47% and `parse_inline_merge` - a
+YAML scenario this change does not touch - at +0.55%. The enforcing image kept three of those four
+inside the line: it reported `to_json_medium` 21,380,603 → 21,492,584 (+0.52%) as the only move
+past the tolerance, `to_jsonc_medium` at +0.48% and `to_json5_medium` at +0.47%, `to_toml_medium`
+0.84% *down*, and `parse_inline_merge` at +0.00%. So the dispatch was named for one scenario, the
+way the channel intends, and a host reading that had demanded two names would have widened the
+exception without a cause. Four writer floors fell past the `FLOOR_STALE` line on the way down,
+which is the other verdict the same guard makes: the committed baseline described the old tree, and
+the artifact is what lets it describe this one. `to_json`'s paired wall clock (931 ns with the
+vector, 931 ns without, 1.099 µs when re-run alone) does not separate at the timer's 100 ns
+precision, so its claim is the instruction floor and the clock is quoted only where it resolves.
+
+**Not covered.** The YAML writer is untouched: its quoting answer is already one byte pass (the
+change that closed #22), and the only lead measured there is `serialize_block_scalars`'s 22.03%
+inside `std`'s pattern machinery, whose break vocabulary must equal granit's - a different change,
+no win claimed here. No scenario was added, so no new floor: these four already existed, which is
+the point of pricing a target before moving it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

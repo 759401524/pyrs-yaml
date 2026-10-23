@@ -523,6 +523,68 @@ const fn forbidden_multi_line(b: u8) -> bool {
     matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | b'"' | b'\\')
 }
 
+/// Index of the first byte at or after `pos` that `forbidden_single_line` rejects, or
+/// `bytes.len()` when the run is all literal. The set is all ASCII - a multi-byte sequence has every
+/// byte >= 0x80 and can never match - so the answer is an ASCII byte index and therefore a `char`
+/// boundary, and the readers' sixteen-byte scan applies here too. SSE2 is part of the x86_64
+/// baseline: no dependency, no runtime detection, no `std`.
+#[inline]
+fn forbidden_start(bytes: &[u8], pos: usize) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        forbidden_start_sse2(bytes, pos)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        forbidden_start_scalar(bytes, pos)
+    }
+}
+
+fn forbidden_start_scalar(bytes: &[u8], mut pos: usize) -> usize {
+    while pos < bytes.len() {
+        if forbidden_single_line(bytes[pos]) {
+            break;
+        }
+        pos += 1;
+    }
+    pos
+}
+
+/// Sixteen bytes per iteration; the last partial vector falls back to the scalar loop, so a value
+/// that ends near a vector boundary keeps the old answer exactly.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn forbidden_start_sse2(bytes: &[u8], mut pos: usize) -> usize {
+    use core::arch::x86_64::*;
+    let len = bytes.len();
+    // SAFETY: SSE2 is in the x86_64 baseline, and the loop only loads when `pos + 16 <= len`, so
+    // every 16-byte vector lies inside the slice.
+    unsafe {
+        let quote = _mm_set1_epi8(b'"' as i8);
+        let slash = _mm_set1_epi8(b'\\' as i8);
+        // DEL is the one stop byte outside the C0 range, so it gets its own equality mask rather
+        // than a wider comparison that would also catch the bytes of a multi-byte sequence.
+        let del = _mm_set1_epi8(0x7f);
+        let ctl = _mm_set1_epi8(0x1f);
+        let zero = _mm_setzero_si128();
+        while pos + 16 <= len {
+            let v = _mm_loadu_si128(bytes.as_ptr().add(pos) as *const __m128i);
+            // Saturating subtract makes `v <= 0x1f` the only zero, i.e. `v < 0x20` unsigned.
+            let mut m = _mm_or_si128(
+                _mm_or_si128(_mm_cmpeq_epi8(v, quote), _mm_cmpeq_epi8(v, slash)),
+                _mm_cmpeq_epi8(_mm_subs_epu8(v, ctl), zero),
+            );
+            m = _mm_or_si128(m, _mm_cmpeq_epi8(v, del));
+            let mask = _mm_movemask_epi8(m) as u32;
+            if mask != 0 {
+                return pos + mask.trailing_zeros() as usize;
+            }
+            pos += 16;
+        }
+    }
+    forbidden_start_scalar(bytes, pos)
+}
+
 /// Append `"s"` as a single-line basic string to `out`.
 fn push_quoted(out: &mut String, s: &str) {
     out.push('"');
@@ -535,13 +597,18 @@ fn push_quoted(out: &mut String, s: &str) {
 /// The bulk branch exists because most values need no escaping at all, and one scan plus one copy
 /// beats a loop that encodes a code point at a time. It allocates nothing: an earlier attempt returned
 /// `format!("\"{s}\"")` from here, which allocated and copied the whole string again and measured
-/// worse than the loop it replaced - the mistake was the allocation, not the scan.
+/// worse than the loop it replaced - the mistake was the allocation, not the scan. The scan itself is
+/// the cost on a long value (69.01% of `to_toml_long_strings`, `docs/dev/quality-ledger.md` (fi)), so
+/// it runs sixteen bytes at a time and the clean prefix is copied; the char loop below starts at the
+/// first forbidden byte and is the answer the scalar scan would have given.
 fn write_basic_body(s: &str, out: &mut String) {
-    if !s.bytes().any(forbidden_single_line) {
+    let cut = forbidden_start(s.as_bytes(), 0);
+    if cut == s.len() {
         out.push_str(s);
         return;
     }
-    let mut it = s.chars().peekable();
+    out.push_str(&s[..cut]);
+    let mut it = s[cut..].chars().peekable();
     while let Some(c) = it.next() {
         match c {
             '"' => out.push_str("\\\""),
@@ -1653,5 +1720,73 @@ mod tests {
         assert!(out.contains("# top\nkey = 1 # same line"), "{out}");
         assert!(out.contains("# before section\n[sec] # note"), "{out}");
         assert!(out.contains("inner = 2 # tail"), "{out}");
+    }
+
+    /// The vector scan decides where the escaping loop starts, so a stop set differing by one byte
+    /// would change the emitted text rather than crash. Every byte value is asked for at every
+    /// offset of a tail that crosses the sixteen-byte boundary, against an inline restatement of
+    /// `forbidden_single_line`.
+    #[test]
+    fn the_body_scan_stops_where_the_predicate_stops_at_every_offset() {
+        let mut corpus: Vec<u8> = (0..=255u8).collect();
+        corpus.extend([0xE2, 0x82, 0xAC]);
+        for start in 0..corpus.len() {
+            let tail = &corpus[start..];
+            let expected = tail
+                .iter()
+                .position(|b| forbidden_single_line(*b))
+                .unwrap_or(tail.len());
+            assert_eq!(forbidden_start(tail, 0), expected, "offset {start}");
+        }
+    }
+
+    /// The bulk prefix copy must write exactly what the whole-string char loop wrote before it, at
+    /// the lengths where a vector boundary falls inside the value - including DEL, which the C0
+    /// range alone would have missed, and a run of newlines, which the loop collapses.
+    #[test]
+    fn a_bulk_copied_basic_body_writes_what_the_char_loop_would_have_written() {
+        fn body_as_loop_would(s: &str) -> String {
+            let mut out = String::new();
+            let mut it = s.chars().peekable();
+            while let Some(c) = it.next() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '\u{8}' => out.push_str("\\b"),
+                    '\t' => out.push_str("\\t"),
+                    '\n' => {
+                        out.push_str("\\n");
+                        while it.peek() == Some(&'\n') {
+                            it.next();
+                            out.push_str("\\n");
+                        }
+                    }
+                    '\r' => out.push_str("\\r"),
+                    '\u{c}' => out.push_str("\\f"),
+                    c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                        out.push_str(&format!("\\u{:04X}", c as u32));
+                    }
+                    c => out.push(c),
+                }
+            }
+            out
+        }
+        for length in [0usize, 1, 15, 16, 17, 31, 33, 256] {
+            for stop in ['"', '\\', '\n', '\r', '\t', '\u{0}', '\u{7f}', 'é'] {
+                for at in 0..=length {
+                    let text = format!("{}{}{}", "a".repeat(at), stop, "a".repeat(length - at));
+                    let mut got = String::new();
+                    write_basic_body(&text, &mut got);
+                    assert_eq!(got, body_as_loop_would(&text), "length {length} at {at}");
+                }
+            }
+            // A newline run straddling the boundary exercises the collapsing arm.
+            for at in 14..18 {
+                let text = format!("{}{}", "a".repeat(at), "\n\n\n");
+                let mut got = String::new();
+                write_basic_body(&text, &mut got);
+                assert_eq!(got, body_as_loop_would(&text), "run at {at}");
+            }
+        }
     }
 }
