@@ -7595,8 +7595,10 @@ tests pass (12 in `pyrs-event`, 186 across `pyrs-json` and `pyrs-toml`). `cargo 
 
 **What it costs.** One `usize` compare per event and one add per character on the walk the cursor
 already performs, plus the `starts` index, which was already built. The Ir gate's `stream_medium`
-scenario is the authority on whether that moves the hot path; its reading is reported in the PR that
-carries this entry rather than guessed here.
+scenario is the authority on whether that moves the hot path, and on CI it reads 253,988,248 →
+253,988,296: +48 instructions, +0.00%, under the 0.50% line for all 22 scenarios. The fixture is
+newline-per-record, so that number bounds the compare on the already-linear path; the single-line
+document this entry is about has no Ir scenario, and its evidence stays the wall clock above.
 
 **Not covered.** The cursor is per table and per stream, so a producer that reports events in
 arbitrary order pays one line-length rescan per backward query; none of the three producers does.
