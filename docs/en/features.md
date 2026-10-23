@@ -29,17 +29,18 @@ Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 
 !!! note "Benchmark environment"
     CodSpeed CI runs in simulation mode (instruction counts, not wall-clock time). The figures
-    below are batch-timed wall-clock readings recorded on 2026-10-20 by
+    below are batch-timed wall-clock readings recorded on 2026-10-23 by
     `scripts/bench_snapshot.py`; relative speedups are indicative and vary with interpreter,
     hardware, and document.
 
-Rust backend delivers **29–34× faster parsing and 223–368× faster serialization** over PyYAML:
+Rust backend delivers **29–36× faster parsing and 199–340× faster serialization** over PyYAML:
 
+<!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 67 µs | 2.0 ms |
-| Serialize (large) | 4.5 µs | 1.2 ms |
-| Round-trip | 70 µs | 3.5 ms |
+| Parse (large) | 61 µs | 2.0 ms |
+| Serialize (large) | 4.5 µs | 1.1 ms |
+| Round-trip | 67 µs | 3.2 ms |
 
 ### Custom AST
 

@@ -100,6 +100,18 @@ status: new
   각 섹션을 버전 옆에 나열했습니다. 루트는 처음부터 올바른 상태였고 결함은 번역 페이지에만
   나타났습니다. `scripts/check_changelog_mirrors.py` 는 이제 계층 관계를 검사하며(`level_errors`),
   `tests/test_changelog_placement_gate.py` 는 정상 트리와 주입된 잘못된 형태를 모두 고정합니다.
+- **공개 벤치마크 표는 이제 네 개 서식을 다룹니다** — 측정 면은 오래 전에 다섯 서식이었습니다
+  (`tests/test_benchmark_crosslib.py`가 `json`, `orjson`, `tomllib`, `tomlkit`, `pyjson5`와 겨루고,
+  divan 쪽에도 YAML이 아닌 벤치마크가 열둘). 빠진 건 공개 면이었습니다. `.ci/perf-snapshot.json`은
+  PyYAML과 ruamel.yaml만 적었고, 표의 모든 제목은 YAML 문서를 이름 붙였습니다.
+  `scripts/bench_snapshot.py`는 서식 축으로 재고(YAML은 해석·출력·왕복, JSON·TOML·JSON5는 해석),
+  생성되는 각 표는 `<!-- bench: ... -->` 표식이 서식·조작·고정문서·배율 기준을 선언해 측정과 묶이며
+  열을 세어 알아맞히지 않습니다. `tests/test_perf_docs.py`는 양쪽으로 물어, 재고도 싣지 않은 사례도,
+  재지 않은 것을 가리키는 표식도 붉게 합니다. 새 두 줄은 져서는 것이고, 그대로 싣습니다. 1.9 KB에서
+  `orjson`이 1.5배 빠르고 JSON5 설정 문서에서 `pyjson5`가 2.4배 빠릅니다. TOML은 `tomllib`보다
+  5.5–5.9배 빠릅니다. JSON/TOML/JSON5의 쓰는 반은 공개하지 않은 채 두며 그 이유를 스냅숏이 적어
+  둡니다: 그쪽은 Python 객체가 아니라 엔진의 AST에서 내보내므로 `json.dumps`/`tomli_w.dumps`와 같은
+  일이 아니고, 그 반은 명령어 바닥이 값을 매깁니다.
 
 #### 변경
 

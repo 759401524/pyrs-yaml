@@ -1,11 +1,28 @@
 #!/usr/bin/env python3
-"""Measure the YAML cross-library benchmarks and record them in .ci/perf-snapshot.json.
+"""Measure the cross-library benchmarks and record them in .ci/perf-snapshot.json.
 
 Batch timing is used because a single call to the Rust-backed reader/writer can be
 faster than the clock resolution: each case is measured as several whole batches of
 many calls, and the reported value is the fastest per-call time across batches.
+
+The snapshot has a format axis. YAML is measured on parse, serialize and round-trip
+against PyYAML and ruamel.yaml; JSON on parse against `json` and `orjson`; TOML on parse
+against `tomllib`; JSON5 on parse against `pyjson5`. A write column is published only
+where a counterparty does the same job from the same starting object: pyrs emits
+JSON/TOML/JSON5 from its own AST rather than from a Python object, so `json.dumps` and
+`tomli_w.dumps` are a different operation, and those writer halves stay priced by the
+committed instruction floors in `.ci/ir-baseline.json`. The snapshot names them in
+`unpublished_writers` so the absence is a record, not a silence.
+
+Every case also records whether the columns decode to the same object (`same_object`).
+Where they do not - the three YAML readers type some scalars differently on the large
+fixture - the row still times the same bytes through three readers, and the disagreement
+is the fidelity fact the round-trip suite already owns rather than a reason to drop it.
+
 `--docs` rewrites the wall-clock tables on the four locales' performance and feature
-pages from the snapshot, so no table is ever transcribed by hand.
+pages from the snapshot. Each generated table carries a `<!-- bench: ... -->` marker that
+names its format, operation, fixtures and speedup baseline, so a table is bound to a
+measurement by its own declaration instead of by counting columns.
 """
 
 from __future__ import annotations
@@ -27,17 +44,26 @@ sys.path.insert(0, str(ROOT))
 import yaml  # noqa: E402
 from ruamel.yaml import YAML  # noqa: E402
 
+try:  # Counterparty readers, needed only by --update; a missing one stops a re-measure.
+    import orjson
+    import pyjson5
+    import tomllib
+except ImportError:  # pragma: no cover - the writer of the snapshot installs the test extra
+    orjson = pyjson5 = tomllib = None
+
 import pyrs_yaml  # noqa: E402
 from tests.data.yaml_samples import (  # noqa: E402
+    BENCHMARK_CONFIG_JSON,
+    BENCHMARK_CONFIG_JSON5,
+    BENCHMARK_CONFIG_JSON_LARGE,
+    BENCHMARK_CONFIG_TOML,
     BENCHMARK_LARGE,
     BENCHMARK_MEDIUM,
     BENCHMARK_SMALL,
+    BENCHMARK_TOML_HOT,
 )
 
 SNAPSHOT = ROOT / ".ci" / "perf-snapshot.json"
-FIXTURES = {"small": BENCHMARK_SMALL, "medium": BENCHMARK_MEDIUM, "large": BENCHMARK_LARGE}
-SIZES = tuple(FIXTURES)
-OPERATIONS = ("parse", "serialize", "roundtrip")
 LOCALES = ("en", "zh", "ja", "ko")
 PAGES = tuple(
     ROOT / "docs" / locale / name
@@ -47,7 +73,66 @@ PAGES = tuple(
 ROUNDS = 9
 TARGET_SECONDS = 0.1
 MAX_BATCH = 500_000
+SELF = "pyrs-yaml"
 RUAMEL = YAML()
+
+
+def ruamel_dump(data):
+    stream = io.StringIO()
+    RUAMEL.dump(data, stream)
+    return stream.getvalue()
+
+
+#: One entry per published format. A library names the reader that turns the fixture text
+#: into the object it starts from, and the writer that turns it back - `write` is present
+#: only where that library can do the outbound half, which is what keeps a published
+#: serialize column a like-for-like race.
+FORMATS = {
+    "yaml": {
+        "fixtures": {"small": BENCHMARK_SMALL, "medium": BENCHMARK_MEDIUM, "large": BENCHMARK_LARGE},
+        "columns": {
+            SELF: {"read": pyrs_yaml.parse, "write": lambda doc: doc.to_yaml()},
+            "PyYAML": {"read": yaml.safe_load, "write": yaml.safe_dump},
+            "ruamel.yaml": {"read": RUAMEL.load, "write": ruamel_dump},
+        },
+        "operations": ("parse", "serialize", "roundtrip"),
+    },
+    "json": {
+        "fixtures": {"config": BENCHMARK_CONFIG_JSON, "large": BENCHMARK_CONFIG_JSON_LARGE},
+        "columns": {
+            SELF: {"read": pyrs_yaml.load_json},
+            "json": {"read": json.loads},
+            "orjson": {"read": lambda text: orjson.loads(text)},
+        },
+        "operations": ("parse",),
+    },
+    "toml": {
+        "fixtures": {"hot": BENCHMARK_TOML_HOT, "config": BENCHMARK_CONFIG_TOML},
+        "columns": {
+            SELF: {"read": pyrs_yaml.load_toml},
+            "tomllib": {"read": lambda text: tomllib.loads(text)},
+        },
+        "operations": ("parse",),
+    },
+    "json5": {
+        "fixtures": {"config": BENCHMARK_CONFIG_JSON5},
+        "columns": {
+            SELF: {"read": pyrs_yaml.load_json5},
+            "pyjson5": {"read": lambda text: pyjson5.loads(text)},
+        },
+        "operations": ("parse",),
+    },
+}
+
+STDLIB = ("json", "tomllib")
+
+VERSIONS = {
+    SELF: lambda: pyrs_yaml.__version__,
+    "PyYAML": lambda: package_version("PyYAML"),
+    "ruamel.yaml": lambda: package_version("ruamel.yaml"),
+    "orjson": lambda: package_version("orjson"),
+    "pyjson5": lambda: package_version("pyjson5"),
+}
 
 
 def _time_calls(fn, calls):
@@ -72,12 +157,6 @@ def measure(fn):
     return round(min(samples) / 1000, 3)
 
 
-def ruamel_dump(data):
-    stream = io.StringIO()
-    RUAMEL.dump(data, stream)
-    return stream.getvalue()
-
-
 def warm_up(seconds=1.5):
     end = time.perf_counter() + seconds
     value = 0
@@ -86,35 +165,65 @@ def warm_up(seconds=1.5):
     return value
 
 
+def _work(column, operation, text):
+    """The callable a column is timed on for one operation, with its setup already applied."""
+    read, write = column["read"], column.get("write")
+    if operation == "parse":
+        return lambda: read(text)
+    if operation == "serialize":
+        if write is None:
+            raise SystemExit(f"{operation} needs a write column; {column!r} has none")
+        document = read(text)
+        return lambda: write(document)
+    if operation == "roundtrip":
+        if write is None:
+            raise SystemExit(f"{operation} needs a write column; {column!r} has none")
+        return lambda: write(read(text))
+    raise SystemExit(f"unknown operation {operation!r}")
+
+
+def _decoded(column, text):
+    return column["read"](text)
+
+
+def _same_object(columns, text):
+    """Whether every column decodes the fixture to an equal object, compared as plain data."""
+    values = [_plain(_decoded(column, text)) for column in columns.values()]
+    return all(value == values[0] for value in values[1:])
+
+
+def _plain(value):
+    to_plain = getattr(value, "to_dict", None)
+    if to_plain is not None:
+        value = to_plain()
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    return value
+
+
 def collect():
     warm_up()
-    operations = {"parse": {}, "serialize": {}, "roundtrip": {}}
-    fixtures = {}
-    for size, text in FIXTURES.items():
-        fixtures[size] = {"bytes": len(text.encode("utf-8"))}
-        pyrs_doc = pyrs_yaml.parse(text)
-        pyyaml_data = yaml.safe_load(text)
-        ruamel_data = RUAMEL.load(text)
-        cases = {
-            "parse": {
-                "pyrs-yaml": lambda t=text: pyrs_yaml.parse(t),
-                "PyYAML": lambda t=text: yaml.safe_load(t),
-                "ruamel.yaml": lambda t=text: RUAMEL.load(t),
-            },
-            "serialize": {
-                "pyrs-yaml": lambda doc=pyrs_doc: doc.to_yaml(),
-                "PyYAML": lambda data=pyyaml_data: yaml.safe_dump(data),
-                "ruamel.yaml": lambda data=ruamel_data: ruamel_dump(data),
-            },
-            "roundtrip": {
-                "pyrs-yaml": lambda t=text: pyrs_yaml.parse(t).to_yaml(),
-                "PyYAML": lambda t=text: yaml.safe_dump(yaml.safe_load(t)),
-                "ruamel.yaml": lambda t=text: ruamel_dump(RUAMEL.load(t)),
-            },
-        }
-        for operation, libraries in cases.items():
-            operations[operation][size] = {name: measure(fn) for name, fn in libraries.items()}
-
+    formats = {}
+    libraries = {}
+    for format_name, spec in FORMATS.items():
+        columns = spec["columns"]
+        operations = {operation: {} for operation in spec["operations"]}
+        fixtures = {}
+        same = {}
+        for size, text in spec["fixtures"].items():
+            fixtures[size] = {"bytes": len(text.encode("utf-8"))}
+            for operation in spec["operations"]:
+                work = {name: _work(column, operation, text) for name, column in columns.items()}
+                operations[operation][size] = {name: measure(fn) for name, fn in work.items()}
+            same[size] = _same_object(columns, text)
+        formats[format_name] = {"fixtures": fixtures, "same_object": same, "operations": operations}
+        for name in columns:
+            if name in STDLIB:
+                libraries[name] = f"stdlib (Python {platform.python_version()})"
+            else:
+                libraries[name] = VERSIONS[name]()
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "environment": {
@@ -123,14 +232,12 @@ def collect():
             "machine": platform.machine(),
             "processor": platform.processor(),
         },
-        "libraries": {
-            "pyrs-yaml": pyrs_yaml.__version__,
-            "PyYAML": package_version("PyYAML"),
-            "ruamel.yaml": package_version("ruamel.yaml"),
-        },
+        "libraries": libraries,
         "parameters": {"rounds": ROUNDS, "target_seconds": TARGET_SECONDS},
-        "fixtures": fixtures,
-        "operations": operations,
+        "formats": formats,
+        "unpublished_writers": sorted(
+            name for name, spec in FORMATS.items() if not any("write" in c for c in spec["columns"].values())
+        ),
     }
 
 
@@ -145,36 +252,26 @@ def _format_time(microseconds):
     return f"{microseconds:.2f} µs"
 
 
-def _speedup(snapshot, operation, size, library):
-    times = snapshot["operations"][operation][size]
-    return round(times[library] / times["pyrs-yaml"])
+def _speedup(times, library):
+    """Whole multiples above ten, one decimal below it.
+
+    Rounding to an integer is what the YAML tables always did, and at 20x to 70x it reads true.
+    On the JSON and JSON5 rows the same rounding would print a 1.5x win as 1x and a 0.65x loss
+    as 0x, which is not a measurement, so the small end keeps its first decimal.
+    """
+    value = times[library] / times[SELF]
+    return f"{round(value)}\u00d7" if value >= 10 else f"{value:.1f}\u00d7"
 
 
-def _size(label):
-    """The fixture a localized row label names, e.g. "Small (~100 B)"."""
-    match = re.search(r"([\d.]+)\s*(KB|B)", label)
-    if match is None:
-        raise ValueError(f"no fixture size in table row: {label!r}")
-    value = float(match.group(1)) * (1024 if match.group(2) == "KB" else 1)
-    return min(SIZES, key=lambda size: abs(len(FIXTURES[size].encode("utf-8")) - value))
+MARKER = re.compile(r"<!--\s*bench:\s*(?P<body>[^>]*?)\s*-->")
 
 
-def _tables(path):
-    text = path.read_text(encoding="utf-8")
-    lines = text.split("\n")
-    blocks = []
-    index = 0
-    while index < len(lines) - 1:
-        rule = lines[index + 1]
-        if lines[index].startswith("|") and "-" in rule and set(rule) <= set("|-: "):
-            start = index
-            index += 2
-            while index < len(lines) and lines[index].startswith("|"):
-                index += 1
-            blocks.append((start, index))
-        else:
-            index += 1
-    return lines, blocks
+def _attrs(body):
+    pairs = dict(item.split("=", 1) for item in body.split() if "=" in item)
+    for required in ("layout", "format", "operation"):
+        if required not in pairs:
+            raise ValueError(f"bench marker needs {required}=: {body!r}")
+    return pairs
 
 
 def _split(line):
@@ -185,84 +282,114 @@ def _join(cells):
     return "| " + " | ".join(cells) + " |"
 
 
-def _write(path, lines):
-    path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+def _table_at(lines, start):
+    """The table starting at `start`, as (header cells, indexes of its row lines)."""
+    if start + 1 >= len(lines) or not set(lines[start + 1]) <= set("|-: ") or "-" not in lines[start + 1]:
+        raise ValueError(f"no table under a bench marker: {lines[start]!r}")
+    index = start + 2
+    rows = []
+    while index < len(lines) and lines[index].startswith("|"):
+        rows.append(index)
+        index += 1
+    return _split(lines[start]), rows
 
 
-def _rewrite_benchmarks(snapshot, path):
-    lines, blocks = _tables(path)
-    tables = [block for block in blocks if len(_split(lines[block[0]])) == 5]
-    if len(tables) != len(OPERATIONS):
-        raise ValueError(f"{path}: expected {len(OPERATIONS)} five-column tables, found {len(tables)}")
-    for operation, (start, end) in zip(OPERATIONS, tables):
-        rows = range(start + 2, end)
-        if len(rows) != len(SIZES):
-            raise ValueError(f"{path}: expected {len(SIZES)} rows in the {operation} table, found {len(rows)}")
-        for offset, size in zip(rows, SIZES):
-            cells = _split(lines[offset])
-            found = _size(cells[0])
-            if found != size:
-                raise ValueError(f"{path}: row {cells[0]!r} is {found}, expected {size}")
-            times = snapshot["operations"][operation][size]
-            cells[1] = _format_time(times["pyrs-yaml"])
-            cells[2] = _format_time(times["PyYAML"])
-            cells[3] = _format_time(times["ruamel.yaml"])
-            cells[4] = f"**{_speedup(snapshot, operation, size, 'PyYAML')}\u00d7**"
-            lines[offset] = _join(cells)
-    _write(path, lines)
+def _times(snapshot, attrs):
+    format_name = attrs["format"]
+    if format_name not in snapshot["formats"]:
+        raise ValueError(f"the snapshot records no format {format_name!r}")
+    operations = snapshot["formats"][format_name]["operations"]
+    operation = attrs["operation"]
+    if operation not in operations:
+        raise ValueError(f"{format_name} records no {operation!r} operation")
+    return operations[operation]
 
 
-def _rewrite_comparison(snapshot, path):
-    lines, blocks = _tables(path)
-    tables = [block for block in blocks if len(_split(lines[block[0]])) == 3 and block[1] - block[0] == 5]
-    if len(tables) != len(OPERATIONS):
-        raise ValueError(f"{path}: expected {len(OPERATIONS)} performance tables, found {len(tables)}")
-    for operation, (start, end) in zip(OPERATIONS, tables):
-        for offset in range(start + 2, end):
-            cells = _split(lines[offset])
-            library = cells[0].replace("*", "")
-            if library not in ("pyrs-yaml", "PyYAML", "ruamel.yaml"):
-                raise ValueError(f"{path}: unexpected library row {cells[0]!r}")
-            cells[1] = _format_time(snapshot["operations"][operation]["large"][library])
-            cells[2] = (
-                "—" if library == "pyrs-yaml" else f"{_speedup(snapshot, operation, 'large', library)}\u00d7 slower"
+def _rewrite_sizes(snapshot, attrs, lines, start):
+    operation = _times(snapshot, attrs)
+    sizes = attrs["sizes"].split(",")
+    baseline = attrs["baseline"]
+    speedup = attrs.get("speedup", "yes") == "yes"
+    header, rows = _table_at(lines, start)
+    if len(rows) != len(sizes):
+        raise ValueError(
+            f"{attrs['format']}/{attrs['operation']}: marker names {len(sizes)} fixtures, table has {len(rows)}"
+        )
+    libraries = header[1:-1] if speedup else header[1:]
+    if speedup and baseline not in libraries:
+        raise ValueError(f"{attrs['format']}/{attrs['operation']}: baseline {baseline} is not a time column")
+    for index, size in zip(rows, sizes):
+        if size not in operation:
+            raise ValueError(f"{attrs['format']}/{attrs['operation']}: no measurement for {size!r}")
+        cells = _split(lines[index])
+        if len(cells) != len(header):
+            raise ValueError(
+                f"{attrs['format']}/{attrs['operation']}/{size}: {len(cells)} cells, header has {len(header)}"
             )
-            lines[offset] = _join(cells)
-    _write(path, lines)
+        for column, library in enumerate(libraries, start=1):
+            cells[column] = _format_time(operation[size][library])
+        if speedup:
+            cells[-1] = f"**{_speedup(operation[size], baseline)}**"
+        lines[index] = _join(cells)
 
 
-def _rewrite_features(snapshot, path):
-    lines, blocks = _tables(path)
-    tables = [
-        block
-        for block in blocks
-        if len(_split(lines[block[0]])) == 3
-        and "pyrs-yaml" in _split(lines[block[0]])
-        and "PyYAML" in _split(lines[block[0]])
-        and "ruamel.yaml" not in _split(lines[block[0]])
-    ]
-    if len(tables) != 1:
-        raise ValueError(f"{path}: expected one pyrs-yaml/PyYAML table, found {len(tables)}")
-    start, end = tables[0]
-    rows = range(start + 2, end)
-    if len(rows) != len(OPERATIONS):
-        raise ValueError(f"{path}: expected {len(OPERATIONS)} rows, found {len(rows)}")
-    for offset, operation in zip(rows, OPERATIONS):
-        cells = _split(lines[offset])
-        cells[1] = _format_time(snapshot["operations"][operation]["large"]["pyrs-yaml"])
-        cells[2] = _format_time(snapshot["operations"][operation]["large"]["PyYAML"])
-        lines[offset] = _join(cells)
-    _write(path, lines)
+def _rewrite_libraries(snapshot, attrs, lines, start):
+    operation = _times(snapshot, attrs)
+    size = attrs["size"]
+    times = operation[size]
+    # The header names the value columns; the rows are the libraries themselves.
+    _, rows = _table_at(lines, start)
+    if len(rows) != len(times):
+        raise ValueError(
+            f"{attrs['format']}/{attrs['operation']}/{size}: table has {len(rows)} rows, snapshot {len(times)}"
+        )
+    for index in rows:
+        cells = _split(lines[index])
+        library = cells[0].replace("*", "")
+        if library not in times:
+            raise ValueError(f"{attrs['format']}/{attrs['operation']}: table row {library!r} is not measured")
+        cells[1] = _format_time(times[library])
+        cells[2] = "—" if library == SELF else f"{_speedup(times, library)} slower"
+        lines[index] = _join(cells)
+
+
+def _rewrite_operations(snapshot, attrs, lines, start):
+    operations = {name: _times(snapshot, {**attrs, "operation": name}) for name in attrs["operation"].split(",")}
+    size = attrs["size"]
+    header, rows = _table_at(lines, start)
+    names = attrs["operation"].split(",")
+    if len(rows) != len(names):
+        raise ValueError(f"{attrs['format']}: marker names {len(names)} operations, table has {len(rows)}")
+    for index, name in zip(rows, names):
+        cells = _split(lines[index])
+        for column, library in enumerate(header[1:], start=1):
+            cells[column] = _format_time(operations[name][size][library])
+        lines[index] = _join(cells)
+    return names
 
 
 def rewrite_docs(snapshot):
+    writers = {"sizes": _rewrite_sizes, "libraries": _rewrite_libraries, "operations": _rewrite_operations}
     for path in PAGES:
-        if path.name == "benchmarks.md":
-            _rewrite_benchmarks(snapshot, path)
-        elif path.name == "comparison.md":
-            _rewrite_comparison(snapshot, path)
-        else:
-            _rewrite_features(snapshot, path)
+        lines = path.read_text(encoding="utf-8").split("\n")
+        found = 0
+        for index, line in enumerate(lines):
+            match = MARKER.search(line)
+            if not match:
+                continue
+            cursor = index + 1
+            while cursor < len(lines) and not lines[cursor].strip():
+                cursor += 1
+            attrs = _attrs(match.group("body"))
+            writer = writers.get(attrs["layout"])
+            if writer is None:
+                raise ValueError(f"unknown layout {attrs['layout']!r} in {path.name}")
+            writer(snapshot, attrs, lines, cursor)
+            found += 1
+        if not found:
+            raise ValueError(f"{path}: no bench markers, so its tables are no longer generated")
+        path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        print(f"{path.relative_to(ROOT)}: {found} table(s)")
 
 
 def main():
@@ -273,11 +400,17 @@ def main():
         action="store_true",
         help=f"rewrite the wall-clock tables in {len(PAGES)} pages from {SNAPSHOT.relative_to(ROOT)}",
     )
+    parser.add_argument("--matrix", action="store_true", help="print the measured format/operation matrix")
+    parser.add_argument("--check", action="store_true", help="import the counterparty readers, then exit")
     args = parser.parse_args()
 
     if args.docs:
         rewrite_docs(json.loads(SNAPSHOT.read_text(encoding="utf-8")))
-        print(f"rewrote tables in {len(PAGES)} pages")
+        return
+
+    if args.check:
+        for format_name, spec in FORMATS.items():
+            print(f"{format_name:6s} {len(spec['fixtures'])} fixture(s), operations: {', '.join(spec['operations'])}")
         return
 
     snapshot = collect()
@@ -286,10 +419,19 @@ def main():
         print(f"wrote {SNAPSHOT.relative_to(ROOT)}")
         return
 
-    for operation, sizes in snapshot["operations"].items():
-        for size, libraries in sizes.items():
-            cells = "  ".join(f"{name} {value:.3f} us" for name, value in libraries.items())
-            print(f"{operation:9s} {size:6s} {cells}")
+    if args.matrix:
+        for format_name, data in snapshot["formats"].items():
+            for operation, sizes in data["operations"].items():
+                columns = ", ".join(sorted(next(iter(sizes.values()))))
+                print(f"{format_name:6s} {operation:10s} {len(sizes)} fixture(s): {columns}")
+        print("writer halves not published for:", ", ".join(snapshot["unpublished_writers"]))
+        return
+
+    for format_name, data in snapshot["formats"].items():
+        for operation, sizes in data["operations"].items():
+            for size, libraries in sizes.items():
+                cells = "  ".join(f"{name} {value:.3f} us" for name, value in libraries.items())
+                print(f"{format_name:6s} {operation:9s} {size:7s} {cells}")
 
 
 if __name__ == "__main__":

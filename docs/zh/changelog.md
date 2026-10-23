@@ -86,6 +86,16 @@ status: new
   下；根文件一直正确，缺陷因此只出现在本地化页面。`scripts/check_changelog_mirrors.py` 现在检查这一
   层级关系（`level_errors`），`tests/test_changelog_placement_gate.py` 同时钉住干净的代码树与被注入
   的错误形状。
+- **公开基准表现在覆盖四种格式，不再只有 YAML** — 测量面早就是五格式
+  （`tests/test_benchmark_crosslib.py` 已与 `json`、`orjson`、`tomllib`、`tomlkit`、`pyjson5` 对拍，
+  divan 侧有十二条非 YAML 基准），缺的是发布面：`.ci/perf-snapshot.json` 只记 PyYAML 与
+  ruamel.yaml，每张表的小节标题都写着 YAML 文档。`scripts/bench_snapshot.py` 现在按格式轴测量——YAML
+  测解析/序列化/往返，JSON、TOML、JSON5 测解析—— 并且每张生成的表由 `<!-- bench: ... -->` 标记绑定到
+  它的测量（写明格式、操作、夹具与加速基线），不再靠数列数来认领。`tests/test_perf_docs.py` 两头都
+  问：测了却没发布的用例要红，标记指向一个没测过的用例也要红。新增行里有两处是我们更慢，也照原样登出
+  ——1.9 KB 文档上 `orjson` 快 1.5 倍，JSON5 配置上 `pyjson5` 快 2.4 倍——而 TOML 比 `tomllib` 快 5.5
+  到 5.9 倍。JSON/TOML/JSON5 的写侧仍不发布，快照里记着原因：它们从引擎自己的 AST 出发而非 Python 对
+  象，`json.dumps` 与 `tomli_w.dumps` 不是同一件事，那一半由指令地板定价。
 
 #### 变更
 
