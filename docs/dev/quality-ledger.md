@@ -7875,6 +7875,37 @@ was not swept, and no test asserts the wording of any other refusal. `(fj)` was 
 record still under review while this one was written, so this entry keeps `(fk)` rather than
 re-lettering a head a reviewer was reading; the rebase left the two in date order.
 
+### (fl) The scalar scan the aarch64 wheels ship is tested as the whole path (2026-10-23)
+
+**Premise.** (fh) and (fj) each named the same boundary in passing: the SSE2 scans dispatch by
+`target_arch`, so the scalar loop is "the path the aarch64 wheels take". Neither closed it. On an
+x86 CI that loop only ever answers for the last partial vector - a body under sixteen bytes, or
+the tail of a longer one - so the code that ships as the *entire* answer on aarch64 had no test
+asking it a full-length question. Compiling the vector out and watching the suite stay green proves
+the rest of the suite survives on that path; it does not prove the path is right.
+
+**What was added.** Four tests, one per scan: the JSON reader's `body_end`, the JSON writer's
+`escape_start`, the TOML reader's `body_end`, the TOML writer's `forbidden_start`. Each requires
+`*_scalar` and `*_sse2` to return the same index for an 80-byte body of filler with each of the 256
+byte values placed at each of thirteen offsets, read from twelve start positions chosen so a vector
+begins, ends and straddles them, plus a three-byte character stepped across every boundary. TOML's
+reader sweep runs all four instantiations the readers actually use - basic, multi-line basic,
+literal, multi-line literal - because the multi-line arms differ exactly in what they let through.
+
+**Control, in the direction that matters.** Bending a scalar loop reddens its own test, and each
+bend was made and reverted for the record: the JSON writer's C0 bound relaxed from `< 0x20` to
+`< 0x1f`, `\r` dropped from JSON5's single-quoted stop set, TOML's multi-line arm forced to
+`forbidden_run::<false>`, and DEL masked out of the writer's predicate. All four went RED, then
+`git diff --numstat` showed the files back to additive-only. The tests are
+`#[cfg(target_arch = "x86_64")]` rather than arch-neutral on purpose: on a non-x86 leg the pair
+would ask the scalar path to agree with itself, which is the self-comparison shape this repo already
+retired, so that leg's assurance stays the whole-parse differential tests.
+
+**Not covered.** The YAML engine is outside these four: granit owns the read path, and the writer's
+quoting pass is scalar by design (the change that closed #22). No instruction floor moved, because
+every addition is `#[cfg(test)]` and no release binary changes. `QUALITY_MATRIX.md`'s unit row grew
+by four through `--write-rows` rather than by hand.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

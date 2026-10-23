@@ -19,6 +19,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The scan the aarch64 wheels ship is tested as the whole path, not as a tail** — every SSE2
+  string scan dispatches by `target_arch`, so on an x86 CI the scalar loop only ever answers for the
+  last partial vector, while the aarch64 wheels ship it as the entire answer with no test asking it
+  a full-length question. Four tests - JSON reader, JSON writer, TOML reader, TOML writer - now
+  require the scalar loop and the vector loop to return the same index for an 80-byte body carrying
+  each of the 256 byte values at each of thirteen offsets, read from twelve start positions that
+  begin, end and straddle a vector, plus a three-byte character moved across every boundary.
+  Mutating one scalar loop - the C0 bound, JSON5's `\r`, TOML's multi-line arm, the writer's DEL
+  case - reddens its test, and the comparison is arch-gated rather than self-compared: on a non-x86
+  leg the test is compiled out, because asking the scalar path to agree with itself proves nothing.
 - **The JSON and TOML event streams stop where the consumer stops them** — `parse_stream(...,
   on_event=...)` collected every event before the first callback ran, for every format, so a `False`
   at the first event still paid for the whole scan and a syntax error later in the document was

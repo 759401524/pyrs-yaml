@@ -3036,4 +3036,50 @@ mod tests {
             );
         }
     }
+
+    /// The dispatch decides by `target_arch`, so on an x86 CI the scalar loop only ever sees the
+    /// last partial vector - yet that loop is the whole answer the aarch64 wheels ship. Ask both the
+    /// same questions over a body that crosses the boundary, for every instantiation the readers
+    /// use, and require the same index from each.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_scalar_body_scan_answers_what_the_vector_answers() {
+        fn agree<const QUOTE: u8, const SLASH: bool, const MULTI: bool>(bytes: &[u8], what: &str) {
+            for pos in [0usize, 1, 7, 15, 16, 17, 31, 33, 63, 64, 79, 80] {
+                let pos = pos.min(bytes.len());
+                assert_eq!(
+                    body_end_scalar::<QUOTE, SLASH, MULTI>(bytes, pos),
+                    body_end_sse2::<QUOTE, SLASH, MULTI>(bytes, pos),
+                    "{what} from {pos}: {bytes:?}"
+                );
+            }
+        }
+        fn sweep<const QUOTE: u8, const SLASH: bool, const MULTI: bool>(name: &str) {
+            // 'a' is content in every TOML string kind, so a stop is only ever caused by the byte
+            // placed - including the tab and the newline a multi-line body copies through.
+            let mut body = vec![b'a'; 80];
+            agree::<QUOTE, SLASH, MULTI>(&body, &format!("{name}: unbroken run"));
+            for offset in [0usize, 1, 7, 14, 15, 16, 17, 31, 32, 47, 63, 64, 79] {
+                for value in 0u8..=255 {
+                    body[offset] = value;
+                    agree::<QUOTE, SLASH, MULTI>(
+                        &body,
+                        &format!("{name}: byte {value:#04x} at {offset}"),
+                    );
+                    body[offset] = b'a';
+                }
+            }
+            for offset in 0..=77 {
+                body[offset] = 0xE2;
+                body[offset + 1] = 0x82;
+                body[offset + 2] = 0xAC;
+                agree::<QUOTE, SLASH, MULTI>(&body, &format!("{name}: multi-byte at {offset}"));
+                body[offset..offset + 3].fill(b'a');
+            }
+        }
+        sweep::<b'"', true, false>("basic");
+        sweep::<b'"', true, true>("multiline basic");
+        sweep::<b'\'', false, true>("literal multiline");
+        sweep::<b'\'', false, false>("literal");
+    }
 }
