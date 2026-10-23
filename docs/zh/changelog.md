@@ -54,6 +54,15 @@ status: new
 
 #### 修复
 
+- **JSON5 的键位报错说出了方言允许的写法** — 键位置的消息此前写作
+  `expected a quoted object key`，可 JSON5 的键位置也接受裸标识符，于是这条报错要求了一个语法
+  从未要求的写法。措辞现在由方言自己的旗标决定：允许无引号键时是
+  `expected an object key (a quoted string or a bare identifier)`，不允许时仍是原来那句。一个
+  `Parser` 服务三种方言，两条走法读同一组旗标，所以这层共享的措辞同时覆盖建树路径与事件流路径，
+  严格 JSON 与 JSONC 的原文一字未动。
+  `the_key_position_error_names_what_the_dialect_accepts` 把方言与走法的五种组合都问一遍，在这层
+  helper 出现之前它是红的；`test_json5_key_refusal_names_the_bare_identifier` 再透过已发布的
+  Python 模块问同一个问题。
 - **单行文档的事件流重回线性时间** — `LineTable::line_col` 过去为每个事件都从行首数一遍字符，
   源里没有换行时生产者每报一个事件就付出 O(n)，整条流退化为二次方：一个 1.5 MB 的压缩 JSON
   数组报告其 224,006 个事件要花 4.9 秒，输入每翻一倍耗时变为四倍。现在表在上次应答的位置保留
@@ -63,7 +72,6 @@ status: new
   `a_forward_sweep_advances_the_cursor_once_per_character` 不依赖计时就能断言 200 KB 单行的
   扫描只走一遍，另一条测试把前向、回退与码点中间偏移的答案与重扫结果逐一比对。JSON 与 TOML
   共用这张表；YAML 自行计算位置，从未有过这项开销。
-
 - **部署站点的目录曾把每个小节排在版本标题同级** — 四个本地化 changelog 页面把 `[Unreleased]`、
   `[v0.18.3]` 与 `[v0.18.1]` 的小节放在与版本标题相同的层级，于是文档站把这些小节列在版本旁边而非其
   下；根文件一直正确，缺陷因此只出现在本地化页面。`scripts/check_changelog_mirrors.py` 现在检查这一

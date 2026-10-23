@@ -57,6 +57,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The JSON5 key refusal names a spelling its grammar allows** — in key position the message read
+  `expected a quoted object key`, while JSON5 also takes a bare identifier, so the error asked the
+  author for a form the dialect never required. The wording now comes from the dialect's own flag:
+  `expected an object key (a quoted string or a bare identifier)` where unquoted keys are allowed,
+  and the old sentence where they are not. One `Parser` serves all three dialects and both walks
+  read the same flags, so the shared helper covers the tree route and the stream route alike, and
+  strict JSON and JSONC keep their exact wording.
+  `the_key_position_error_names_what_the_dialect_accepts` asks all five dialect-and-walk
+  combinations and was red before the helper existed;
+  `test_json5_key_refusal_names_the_bare_identifier` asks the same question through the shipped
+  Python module.
 - **A one-line document streams in linear time again** — `LineTable::line_col` counted characters
   from the line's start for every event, so a producer whose source has no newlines paid O(n) per
   event and the stream was quadratic: a 1.5 MB minified JSON array spent 4.9 s reporting its
@@ -69,7 +80,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   200 KB single line without a clock, and a second test compares both directions and mid-code-point
   offsets with a rescan. JSON and TOML share the table; YAML computes its own positions and never
   had this cost.
-
 - **The deployed site's table of contents lists each section beside its version** — the four
   localized changelog pages carried the `[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` sections at the
   version heading's own level, so the site rendered each section as a sibling of its version rather

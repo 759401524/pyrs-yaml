@@ -748,6 +748,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// What this dialect's key position accepts, as the wording of a refusal. The flags decide it,
+    /// because one `Parser` serves all three dialects and both walks read the same ones: a message
+    /// that demands quotes describes a grammar JSON5 does not have.
+    fn key_expectation(&self) -> &'static str {
+        if self.allow_unquoted_keys {
+            "expected an object key (a quoted string or a bare identifier)"
+        } else {
+            "expected a quoted object key"
+        }
+    }
+
     /// True when the code point at `self.pos` can start a JSON5 identifier
     /// name: an ASCII `A-Z a-z _ $`, any Unicode `ID_Start` (PR #129), or the
     /// backslash that opens an escape in the identifier position. Used only as
@@ -972,7 +983,7 @@ impl<'a> Parser<'a> {
             } else if self.allow_unquoted_keys && self.at_identifier_start() {
                 self.identifier_key()?
             } else {
-                return Err(self.err("expected a quoted object key"));
+                return Err(self.err(self.key_expectation()));
             };
             let mut key_node = quoted_or_plain(key_str);
             // A key's notes arrive through `key_pending` and nowhere else, so an empty list already
@@ -2350,7 +2361,7 @@ impl<'a> Parser<'a> {
             } else if self.allow_unquoted_keys && self.at_identifier_start() {
                 (self.identifier_key()?, ScalarStyle::Plain)
             } else {
-                return Err(self.err("expected a quoted object key"));
+                return Err(self.err(self.key_expectation()));
             };
             out.group(key_group, NoteSide::Following, GroupSlot::ByRule);
             out.decoded(token, self.pos, key, style);
@@ -3199,6 +3210,37 @@ mod tests {
         // STRICT / JSONC still require quoting for a non-ASCII key.
         assert!(from_json("{é: 1}").is_err());
         assert!(from_jsonc("{\"é\": 1, é: 2}").is_err());
+    }
+
+    #[test]
+    fn the_key_position_error_names_what_the_dialect_accepts() {
+        let syntax = |e: ParseError| match e {
+            ParseError::Syntax { message, .. } => message,
+            other => panic!("expected a syntax error, got {other:?}"),
+        };
+        // A leading digit is not `ID_Start`, so every dialect refuses `{1: 2}` - but only the
+        // narrow ones may say a quote was required, because JSON5's key position also takes a
+        // bare identifier. Both walks read the same flags, so both must answer per dialect.
+        let json5: Vec<String> = vec![
+            syntax(from_json5("{1: 2}").unwrap_err()),
+            syntax(parse_stream_with_options("{1: 2}", JsonParseOptions::JSON5).unwrap_err()),
+        ];
+        for message in &json5 {
+            assert!(
+                message.contains("bare identifier") && !message.contains("expected a quoted"),
+                "JSON5 accepts an unquoted key, so its refusal must not demand quotes: {message}"
+            );
+        }
+        for message in [
+            syntax(from_json("{1: 2}").unwrap_err()),
+            syntax(from_jsonc("{1: 2}").unwrap_err()),
+            syntax(parse_stream_with_options("{1: 2}", JsonParseOptions::STRICT).unwrap_err()),
+        ] {
+            assert!(
+                message.contains("expected a quoted object key"),
+                "strict JSON and JSONC do require quoting: {message}"
+            );
+        }
     }
 
     #[test]
