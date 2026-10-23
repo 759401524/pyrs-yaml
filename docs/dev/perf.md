@@ -1203,3 +1203,91 @@ zero-regression verdict stays with `.ci/ir-baseline.json` and `scripts/ir_gate.p
 wall-clock number on shared runners is not reproducible below ~10% (the record is
 `docs/dev/perf.md`'s own history and `AGENTS.md`). A new bench is a new thing the ranking channel
 can see moving; it is not a new gate, and none of these six has a floor.
+
+## The byte searches the readers own, moved sixteen at a time (2026-10-23)
+
+"Use SIMD for character classification" is an objective line, not a measurement, and the line does
+not say which scanner pays for it. The probe asked that first: for each format, the time of the
+shipped byte loop over the very bytes it scans, next to the time of the whole parse of the same
+document, on three shapes of input. The stop sets were copied from the readers, the scalar loop and
+the vector were asserted equal before either was timed, and the numbers below are that program's
+output (development host, release, median of eleven interleaved runs). The shares come from one run
+before either change landed, and they move a few points between runs; the before/after times quoted
+later are each from the run immediately before that crate's change.
+
+| corpus | scan share of the parse | vector scan | shape |
+| --- | --- | --- | --- |
+| JSON `"…"` 5000 B × 400 | 25.7% | 10.5x faster | one long string per record |
+| JSON CJK 5000 B × 400 | 33.6% | 11.1x faster | three-byte code points |
+| JSON `"…"` 100 B × 4000 | 3.3% | 10.6x faster | a realistic log value |
+| JSON5 `'…'` 5000 B × 400 | 34.6% | 8.7x faster | single-quoted dialect |
+| TOML basic `"…"` 5000 B | 31.7% | 9.2x faster | one long string per key |
+| TOML literal `'…'` 5000 B | 25.5% | 8.2x faster | no escape arm to stop on |
+| TOML multiline `"""…"""` | 11.8% | 8.9x faster | the delimiter is a quote *run* |
+| TOML bare-CR pre-scan, 2 MB | 20.3% | 12.8x faster | every input, any string length |
+
+Three things in that table are decisions rather than results. **The share is a function of string
+length, not of format**: the same JSON records scanned at 25.7% when each holds one 5000-byte string
+and at 3.3% when each holds a 100-byte one, because the short-value parse is node construction and a
+faster scan of the same bytes cannot touch it. So the win is real for the log and event-sourcing
+shape the objective names and near-zero for a config file, which is exactly what the after-numbers
+show: 2 MB of JSON 2.47 → 1.97 ms, 6 MB of CJK 6.17 → 5.27, JSON5 single-quoted 1.53 → 1.11, and
+2 MB of TOML basic strings 2.36 → 0.99, literal 2.41 → 0.96, multiline 3.37 → 1.01 ms.
+
+**The TOML bare-CR walk was the surprise, and it re-scopes the item.** `parse_ir` reads the whole
+source once per call looking for a carriage return that must be part of a CRLF pair - a loop whose
+comment argued it is cheap because CR is rare. Rarity of the answer is not cheapness of the search:
+on 2 MB it was 20.3% of the parse and on a 0.45 MB config of short values still 3.6%, on every
+input, whatever it contains. Vectorizing the search while leaving the pairing question in the caller
+takes it to 1.6% and 0.3%, and it is the only part of this change that helps a short-value document
+(2.98 → 2.54 ms).
+
+**YAML was refuted before it was attempted.** granit owns the tokenizer, so the only question is
+what is ours, and the probe answers it with the discriminator that separates the two readings: full
+parse minus a receiver that only counts events. Over 2 MB of long plain scalars that is 0.78 ms of
+1.72 ms, but a single `to_vec()` of the whole source costs 0.52 ms - two thirds of our share is the
+`Arc<str>` copy running at memcpy speed. Over 50,000 nodes of 40 bytes the same subtraction is
+24 ms of 39 ms against a 0.66 ms copy floor, which is per-node work that no byte count drives.
+Neither is a scan, so there is nothing to vectorize on our side of the YAML read path, and
+`crates/pyrs-yaml-core` is not in this change.
+
+What enforces is unchanged: the wall clock above is the shape of the win, and the verdict on whether
+a change made a hot path do more work stays with `.ci/ir-baseline.json`. Measured there on the
+baseline's pinned compiler it moves down, not sideways - and this time on the image that enforces
+it, because the change carries the refresh artifact: `from_toml_medium` 125,580,997 → 120,534,055
+(−4.02%), `from_jsonc_medium` −3.69%, `from_json_medium` −3.55%, `from_json5_medium` −1.09%, each
+the largest of three samples at 0.000% spread. No floor sits above the tree it now describes, so the
+`FLOOR_STALE` warnings the engine change left are gone.
+
+The shares above came from a throwaway probe, and that is why the probe's shape is now a committed
+input: `bench_inputs::long_string_json` / `long_string_toml` / `long_string_yaml` generate one
+record list with 256-character values, and `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins that
+they stay letters-only, that all three mean the same list, and that the medium fixtures stay short.
+Both channels read them at both ends of the two bridges. The ranking channel takes four benches -
+2.599 µs and 3.499 µs a call to read, 950 ns and 1.174 µs to write, one run on this box - and the
+enforcing channel takes four floors: 112,664,928 and 109,254,466 read, 58,550,997 and 72,438,982
+written. The writer halves exist because the gate asked for them: `scripts/quality_matrix.py`
+reports a bridge numbered on one side only as `ir-bridge-unidirectional`, and the reader-only first
+version was caught by exactly that. Per source byte of that one image run the long documents cost a
+fifth of `from_json_medium` and an eighth of `from_toml_medium`, and their writers two fifths of the
+medium twins: there the scan, not the node, is the cost centre.
+
+**Growing the harness moves scenarios the harness never enters - measured twice.** The head before
+this one carried the same engine code and the 22 committed scenarios; on the enforcing image its
+`stream_medium` read 254,022,296 against a floor of 253,988,248, `+0.01%`. This head adds four
+scenarios to that harness - none of them the event path - and the same job read `stream_medium` at
+255,598,118, `+0.63%`, past the 0.50% line. One variable, one image, a leg that fails on a scenario
+the change never touches. This is the effect `tests/ir_fixtures.rs` opens with, now with a pair of
+readings instead of a single surprise, and the answer is the documented one rather than a wider
+line: the refresh dispatch, run with `accept_drift stream_medium` so that every other upward move
+still refuses to be written.
+
+**What a local reading costs against these floors.** Both builds pinned the baseline's
+`rustc 1.97.1` over identical sources, and the digests still differ (`9618e51ff9bde8a0` on this WSL
+host, `dcf0cf4a439c5288` on the image), with readings 0.95% apart on `from_json_medium` and 0.76% on
+`from_json_long_strings`. A digest difference is therefore a *build* difference, not proof that the
+code moved, and a local run that reports a marginal failure against these floors is an environment
+question - the enforcing reading is the image job's. The permanent guards are the four new numbers
+plus the two differential tests in each crate, which ask every offset of a corpus holding every byte
+value, and the run that passes the same 200 tests with the vector path compiled out - the path the
+aarch64 wheels take.

@@ -15,6 +15,8 @@
 //! rotting into documents the engines no longer emit.
 #![doc(hidden)]
 
+use alloc::string::String;
+
 /// Two plain pairs, no comments, no anchors: the smallest realistic mapping.
 pub const SMALL_YAML: &str = "key: value\nname: test\n";
 
@@ -165,3 +167,84 @@ auth = true
 cache = true
 rate_limit = false
 "#;
+
+// ---------------------------------------------------------------------------
+// The long-string pair
+//
+// Every other document here has short values: `MEDIUM_JSON`'s longest is
+// `file:/var/log/app.log`, so a reader of it asks the string-body question about
+// sixteen bytes at a time and gets an answer either way. That is the shape the
+// leaderboard documents have too, which is why the bulk scan's cost was only ever
+// visible from a throwaway probe (`docs/dev/quality-ledger.md` (fh)). These two
+// documents make it a measured thing with a floor of its own.
+//
+// They are generated, not literal, because the property that matters is the value's
+// length and the absence of bytes the scanner stops on - a 2 KB run of letters
+// committed as bytes would sit in every diff of this file and prove nothing the
+// generator does not. `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins what the
+// output must keep being.
+// ---------------------------------------------------------------------------
+
+/// How many records each long-string document carries.
+pub const LONG_RECORDS: usize = 8;
+
+/// The character length of each record's string value: sixteen 16-byte vectors, so a reader of
+/// these documents spends most of its bytes inside the bulk scan and not in the tail a short
+/// value falls to.
+pub const LONG_VALUE: usize = 256;
+
+/// One value: letters only, so neither quote of a pair, no backslash, no control byte and no
+/// multi-byte character ends the run before its closing quote.
+fn long_value() -> String {
+    let mut run = String::with_capacity(LONG_VALUE);
+    for index in 0..LONG_VALUE {
+        run.push((b'a' + ((index * 7 + 11) % 26) as u8) as char);
+    }
+    run
+}
+
+/// `LONG_RECORDS` JSON pairs of a long string and a number - the same record list
+/// [`long_string_toml`] renders, and the same shape as [`MEDIUM_JSON`] apart from the length of
+/// its values. The pair is the point: read against `from_json_medium`, the only variable left is
+/// how many bytes sit between one quote and the next.
+pub fn long_string_json() -> String {
+    let value = long_value();
+    let mut doc = String::from("{");
+    for index in 0..LONG_RECORDS {
+        if index > 0 {
+            doc.push(',');
+        }
+        doc.push_str(&format!(
+            "\"k{index}\":\"{value}\",\"n{index}\":{}",
+            index * 10
+        ));
+    }
+    doc.push('}');
+    doc
+}
+
+/// The same records in TOML, one pair per line.
+pub fn long_string_toml() -> String {
+    let value = long_value();
+    let mut doc = String::new();
+    for index in 0..LONG_RECORDS {
+        doc.push_str(&format!(
+            "k{index} = \"{value}\"\nn{index} = {}\n",
+            index * 10
+        ));
+    }
+    doc
+}
+
+/// The same record list in YAML, so the writer halves of the two bridges can be measured over the
+/// long-value shape too: every `to_*` scenario reads a YAML document, and a bridge whose reader half
+/// has a floor while its writer half does not is the shape
+/// `scripts/quality_matrix.py` reports as `ir-bridge-unidirectional`.
+pub fn long_string_yaml() -> String {
+    let value = long_value();
+    let mut doc = String::new();
+    for index in 0..LONG_RECORDS {
+        doc.push_str(&format!("k{index}: {value}\nn{index}: {}\n", index * 10));
+    }
+    doc
+}

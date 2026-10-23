@@ -18,7 +18,8 @@
 use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
-    MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
+    LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
+    long_string_json, long_string_toml, long_string_yaml,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -144,5 +145,88 @@ fn the_dialect_writers_emit_text_their_own_readers_accept() {
             .expect("the re-read JSON5 document writes as JSON"),
         reference,
         "to_json5_text emitted something that does not read back to the same document"
+    );
+}
+
+/// The long-string pair, pinned to the one property its scenarios exist to measure: values of
+/// `LONG_VALUE` characters, with no byte the bulk string scan stops on inside one. A stray escape,
+/// quote or control byte would hand those bytes back to the per-decision path, and the floor would
+/// then silently stop describing the vector - which is the failure mode this file exists to catch.
+#[test]
+fn the_long_string_fixtures_differ_from_the_medium_ones_in_value_length_only() {
+    let json = long_string_json();
+    let toml = long_string_toml();
+
+    let json_doc = from_json(&json).expect("the long-string JSON fixture parses");
+    let toml_doc = from_toml(&toml).expect("the long-string TOML fixture parses");
+    assert_eq!(
+        to_json_text(&json_doc).expect("json writes what it read"),
+        to_json_text(&toml_doc).expect("toml writes what it read"),
+        "the two long-string fixtures no longer mean the same record list",
+    );
+
+    for (label, doc) in [("json", &json), ("toml", &toml)] {
+        let longest = doc.split('"').map(str::len).max().unwrap_or(0);
+        assert_eq!(
+            longest, LONG_VALUE,
+            "{label}: the longest quoted run is {longest}, not the {LONG_VALUE} the scenario names"
+        );
+        assert!(
+            !doc.contains('\\'),
+            "{label}: an escape sequence entered the fixture, so its bytes are no longer all bulk-scanned"
+        );
+        assert!(
+            doc.bytes().all(|b| b >= 0x20 || b == b'\n'),
+            "{label}: a control byte other than a line break entered the fixture"
+        );
+    }
+
+    // The contrast the pair is measured against: the medium fixtures stay short, so a movement
+    // between the two pairs of scenarios is a movement in value length and nothing else.
+    let medium_longest = MEDIUM_JSON.split('"').map(str::len).max().unwrap_or(0);
+    assert!(
+        medium_longest * 8 < LONG_VALUE,
+        "MEDIUM_JSON's longest value grew to {medium_longest}; from_json_medium now measures the bulk scan too"
+    );
+}
+
+/// The document the writer halves of the two long-string bridges read. It carries the same record
+/// list as the two reader fixtures, and its plain scalars are `LONG_VALUE` characters wide, so
+/// `to_json_long_strings` and `to_toml_long_strings` spend their bytes inside the same shape the
+/// readers are measured on. Plain YAML scalars carry no quotes, so the width question has a
+/// different spelling here: the run after `": "` on each key line is the value.
+#[test]
+fn the_long_string_yaml_fixture_carries_the_same_records_at_the_same_width() {
+    let yaml = long_string_yaml();
+    let ast = parse(&yaml, Schema::Core).expect("the long-string YAML fixture parses");
+    assert_eq!(
+        to_json_text(&ast).expect("yaml writes the hub AST"),
+        to_json_text(&from_json(&long_string_json()).expect("the JSON fixture parses"))
+            .expect("json writes what it read"),
+        "the YAML fixture no longer means the record list the two reader fixtures carry"
+    );
+
+    let widest = yaml
+        .lines()
+        .map(|line| line.len() - line.find(": ").map_or(0, |i| i + 2))
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        widest, LONG_VALUE,
+        "the longest scalar run is {widest}, not the {LONG_VALUE} the scenario names"
+    );
+    assert!(
+        yaml.bytes().all(|b| b >= 0x20 || b == b'\n'),
+        "a control byte other than a line break entered the YAML fixture"
+    );
+
+    let medium_widest = MEDIUM_YAML
+        .lines()
+        .map(|line| line.len() - line.find(": ").map_or(0, |i| i + 2))
+        .max()
+        .unwrap_or(0);
+    assert!(
+        medium_widest * 8 < LONG_VALUE,
+        "MEDIUM_YAML's longest value grew to {medium_widest}; to_json_medium now measures the long-value shape too"
     );
 }

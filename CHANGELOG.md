@@ -77,6 +77,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pages. `scripts/check_changelog_mirrors.py` now checks the level relationship (`level_errors`),
   and `tests/test_changelog_placement_gate.py` pins both the clean tree and the injected shape.
 
+### Changed
+
+- **The long-string shape now has a committed measurement on both channels** — every benchmark in
+  this tree reads short values (`MEDIUM_JSON`'s longest is 21 characters, and both leaderboard
+  documents build `item_N` names), so the bulk scan this release vectorized could only be measured
+  from a throwaway probe. `bench_inputs::long_string_json` / `long_string_toml` / `long_string_yaml`
+  generate the same record list with 256-character values - letters only, no byte a scanner stops
+  on, pinned by `crates/pyrs-yaml-core/tests/ir_fixtures.rs` - and both harnesses read them at both
+  ends of the two cross-format bridges: four benches for the ranking channel (2.599 µs and 3.499 µs
+  a call to read, 950 ns and 1.174 µs to write, one run on this box) and four floors for the channel
+  that enforces - 112,664,928 and 109,254,466 read, 58,550,997 and 72,438,982 written. Per source
+  byte of that one image run the long documents cost a fifth of `from_json_medium` and an eighth of
+  `from_toml_medium`, their writers two fifths of the medium twins: the scan, not the node, is the
+  cost centre there. The writer halves are not decoration - `scripts/quality_matrix.py` reports a
+  bridge numbered on one side only as `ir-bridge-unidirectional`, which is what the reader-only
+  first version was. Growing the harness also moved a scenario it never enters: the head before this
+  one read `stream_medium` at +0.01% on the enforcing image and this one reads it at +0.63%, one
+  variable apart, which failed the leg until the refresh dispatch recorded all 26 numbers on that
+  image with `accept_drift stream_medium` - so every other move still refuses itself.
+
+### Performance
+
+- **String bodies and the TOML line are searched sixteen bytes at a time** — the JSON and TOML
+  readers asked "closing quote, escape, or a byte this dialect refuses?" one byte at a time, and on
+  a document whose strings are long that question is between a quarter and two fifths of the whole
+  parse. TOML also walked the entire source once per call to reject a bare carriage return, which
+  every input over a megabyte paid a fifth of its time for and which has nothing to do with string
+  length. Both searches now run on SSE2 - part of the x86_64 baseline, so this added no dependency,
+  no runtime detection and no `std` - with the byte loop kept as the vector's tail and as the whole
+  path on other architectures. Measured on the development host (release build, median of eleven
+  interleaved runs): 2 MB of JSON with 5000-byte strings 2.47 → 1.97 ms, the same records as 6 MB of
+  CJK 6.17 → 5.27, JSON5 single-quoted 1.53 → 1.11, 2 MB of TOML basic strings 2.36 → 0.99, TOML
+  literal 2.41 → 0.96, a TOML multiline 3.37 → 1.01, and a 0.45 MB config of 100-byte values 2.98 →
+  2.54. Each stop set is pinned by a differential test that asks every offset of a corpus holding
+  every byte value against an inline restatement of the rule, and the same 200 tests pass with the
+  vector path compiled out, which is the path the aarch64 wheels take. The instruction-count gate
+  prices the same change on the committed fixtures, on the image that enforces them, and it moves
+  down rather than holding: `from_toml_medium` −4.02% (125,580,997 → 120,534,055),
+  `from_jsonc_medium` −3.69%, `from_json_medium` −3.55%, `from_json5_medium` −1.09%. No floor sits
+  above the tree it now describes - the refresh dispatch recorded all 26 numbers there, which is its
+  job and not a local `--update`. YAML has no
+  search of its own to move: granit owns its tokenizer, and our side of a long-scalar parse is the
+  scalar copy (two thirds of the share, with a whole-source memcpy as its floor) and of a
+  small-scalar one the per-node build (24 ms of 39 ms for 50,000 nodes).
+
 ## [v0.18.3] — 2026-10-22
 
 <details markdown="1">
