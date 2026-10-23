@@ -122,6 +122,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   published ratio: the event pair the previous record wrote down at 8.33% reads 8.16% on this run,
   and `QUALITY_MATRIX.md` §2 now carries the newer number - which
   `tests/test_ir_baseline_workflow.py` checks against the file rather than against memory.
+- **Each Rust benchmark runs in its own process** — `codspeed-divan-compat` 5.0 → 6.0. Upstream's
+  6.0.0 forks every Divan benchmark, so allocator state left behind by one benchmark no longer
+  colours the next, and it reports roughly 70% fewer benchmarks varying by more than 1 percent;
+  `CODSPEED_PROCESS_ISOLATION=false` reverts it. Nothing that decides a merge moves: the verdict is
+  `Test matrix (all legs)`, the instruction floor is the committed `.ci/ir-baseline.json`, and
+  documented wall-clock numbers still come from `.ci/perf-snapshot.json`. What does move is the
+  CodSpeed dashboard, because 6.0 declares that some values shift on the way up - so a trend read
+  across this bump is not one measurement, and the run-to-run spread is being measured on an
+  identical head before anything is claimed about it. `cargo codspeed build --workspace --exclude
+  pyrs-yaml` built both suites with CLI 5.0.3 against the 6.0 runtime; CI installs the CLI unpinned
+  and 6.0.0 was released the same day as the runtime.
 - **The event stream now has a floor at the long-value shape** — the record that added the four
   long-value reader floors named the gap it left in one clause: "`stream_medium` and the NDJSON path
   still carry short values, and the event path has no long-string scenario of its own". One scenario
