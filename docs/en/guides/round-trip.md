@@ -83,7 +83,7 @@ Round-trip performance vs competitors:
 | PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
 | ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
-**pyrs-yaml is 45–59× faster than PyYAML and 102–125× faster than ruamel.yaml** while preserving everything.
+**pyrs-yaml is 46–54× faster than PyYAML and 105–122× faster than ruamel.yaml** while preserving everything.
 
 ---
 

@@ -33,14 +33,14 @@ status: new
 大多数 Python YAML 库都在性能和保真度之间做出权衡。pyrs-yaml 同时提供两者：
 
 - **PyYAML** (Python) — 慢，往返时**丢失注释/锚点/标签**
-- **ruamel.yaml** (Python) — 保留格式，但比 pyrs-yaml **解析慢 68–81 倍、序列化慢 541–876 倍**
-- **pyrs-yaml** (Rust) — 比 PyYAML **解析快 29–34 倍、序列化快 223–368 倍**，同时保留所有内容
+- **ruamel.yaml** (Python) — 保留格式，但比 pyrs-yaml **解析慢 69–82 倍、序列化慢 473–809 倍**
+- **pyrs-yaml** (Rust) — 比 PyYAML **解析快 29–36 倍、序列化快 199–340 倍**，同时保留所有内容
 
 ### 核心特性
 
 <div class="grid cards" markdown>
 
-- :material-lightning-bolt: **极速** — 解析比 PyYAML 快 29–34 倍、序列化快 223–368 倍，Rust 零拷贝后端驱动
+- :material-lightning-bolt: **极速** — 解析比 PyYAML 快 29–36 倍、序列化快 199–340 倍，Rust 零拷贝后端驱动
 - :material-sync: **完美往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
 - :material-pencil: **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
 - :material-check-decagram: **YAML 1.2 合规** — 由 granit-parser 驱动（YAML 测试套件通过率 99.75%，405/406）

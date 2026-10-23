@@ -7988,6 +7988,48 @@ binary does not turn on, so CI executes its agreement tests with `cargo test -p 
 parallel` while its instruction count stays unmeasured. And the ranking channel still carries no
 stream bench of any kind, so neither this floor nor (fm)'s has a divan twin.
 
+### (fo) The published benchmark tables stopped being YAML-only, and two losses shipped as losses (2026-10-24)
+
+**Premise.** README pointed at "the full cross-library comparison against PyYAML and ruamel.yaml",
+and `.ci/perf-snapshot.json` agreed: one format, two counterparties, three operations. The
+measurement surface was never that narrow - the crosslib suite races `json`, `orjson`, `tomllib`,
+`tomlkit` and `pyjson5`, and the divan set carries twelve non-YAML benchmarks - so a reader of the
+public page set could not see the four formats the engine actually serves. Nothing gated against
+that: the tables were matched to the snapshot by counting columns, which is a shape test, not an
+identity test.
+
+**What changed.** `scripts/bench_snapshot.py` measures a format axis and rewrites the twelve locale
+pages through `<!-- bench: ... -->` markers that name a table's format, operation, fixtures and
+speedup baseline; a table is now bound to a measurement by declaring it. `tests/test_perf_docs.py`
+asks the coverage question in both directions, so a case measured and never published is a red run,
+and so is a marker that names nothing measured. The speedup cells keep one decimal below ten,
+because integer rounding printed a 1.5x win as 1x and a 0.4x loss as 0x.
+
+**What it found.** On the same host, same protocol: TOML parses 5.5x and 5.9x faster than
+`tomllib`; JSON parses 1.5-2.2x faster than `json` but **1.5x slower than `orjson`** on the 1.9 KB
+document; JSON5 parses **2.4x slower than `pyjson5`** on the small config document. Both losses are
+published as losses, in all four locales - a table that only prints wins is not a measurement.
+The JSON5 gap is the one to act on: our reader and `pyjson5` agree on the object, so the row is a
+like-for-like race we are losing.
+
+**The date was the field no gate read.** Re-measuring moved the snapshot's `generated_at` to
+2026-10-23 while eight provenance lines - the four `features.md` notes and the four `benchmarks.md`
+footers - still printed 2026-10-20 directly above the new numbers, found while re-reading those
+pages for the wrap gate. `--docs` rewrites cells and nothing else, so the date is a hand-typed
+claim about a run, and the page was lying about which run it published. `test_perf_docs.py` now asks
+any page that names `scripts/bench_snapshot.py` to name the date that script recorded. Injecting the
+older date back into `docs/zh/features.md` reddens it by page name; the clean tree is green.
+
+**Why the write halves are absent.** The snapshot records them in `unpublished_writers`
+(`json`, `toml`, `json5`) rather than leaving the silence to be explained later: pyrs emits those
+formats from its own AST, not from a Python object, so `json.dumps` and `tomli_w.dumps` do not do
+the same job, and the instruction floors in `.ci/ir-baseline.json` price the outbound path.
+
+**Not covered.** JSONC publishes nothing: there is no independent JSONC reader to race, and its
+scan is the strict-JSON bulk scan the `from_jsonc_*` floors already price. The new tables are
+single-host wall-clock readings, so they inherit the snapshot's standing caveat that a different
+CPU or interpreter moves the absolute numbers; the ratios are what the page claims.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -14,27 +14,30 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 
 #### Parse Speed (Large YAML, ~2 KB)
 
+<!-- bench: layout=libraries format=yaml operation=parse size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | 67 µs | — |
-| PyYAML | 2.0 ms | 30× slower |
-| ruamel.yaml | 5.0 ms | 75× slower |
+| **pyrs-yaml** | 61 µs | — |
+| PyYAML | 2.0 ms | 32× slower |
+| ruamel.yaml | 4.6 ms | 75× slower |
 
 #### Serialize Speed (Large YAML, ~2 KB)
 
+<!-- bench: layout=libraries format=yaml operation=serialize size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
 | **pyrs-yaml** | 4.5 µs | — |
-| PyYAML | 1.2 ms | 265× slower |
-| ruamel.yaml | 2.6 ms | 583× slower |
+| PyYAML | 1.1 ms | 240× slower |
+| ruamel.yaml | 2.4 ms | 544× slower |
 
 #### Round-Trip Speed (Large YAML, ~2 KB)
 
+<!-- bench: layout=libraries format=yaml operation=roundtrip size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | 70 µs | — |
-| PyYAML | 3.5 ms | 50× slower |
-| ruamel.yaml | 7.8 ms | 111× slower |
+| **pyrs-yaml** | 67 µs | — |
+| PyYAML | 3.2 ms | 47× slower |
+| ruamel.yaml | 7.1 ms | 105× slower |
 
 ### Trade-off vs. native-object Rust parsers
 
@@ -53,8 +56,8 @@ cross-library benchmark — the picture is split:
 Choose a native-only parser like `yaml-rs` when you only ever *read* YAML,
 need the last microsecond on parse, and never need to write changes back
 preserving the original formatting. Choose pyrs-yaml when round-trip
-fidelity matters — and note that even then it parses 29–34× faster than
-PyYAML and serializes 223–368× faster.
+fidelity matters — and note that even then it parses 29–36× faster than
+PyYAML and serializes 199–340× faster.
 
 ### Feature Comparison
 
@@ -82,7 +85,7 @@ PyYAML and serializes 223–368× faster.
 #### Choose pyrs-yaml when
 
 !!! success "Recommended for most use cases"
-    - **Performance matters** — 29–34× faster parsing and 223–368× faster serialization than PyYAML
+    - **Performance matters** — 29–36× faster parsing and 199–340× faster serialization than PyYAML
     - **Round-trip preservation is critical** — preserves comments, anchors, tags
     - **You want PyYAML compatibility** — drop-in replacement API
     - **You need type hints** — full `.pyi` stubs

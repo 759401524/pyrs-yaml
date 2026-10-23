@@ -106,6 +106,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   than under it; root was correct all along, which is why the defect showed only on the localized
   pages. `scripts/check_changelog_mirrors.py` now checks the level relationship (`level_errors`),
   and `tests/test_changelog_placement_gate.py` pins both the clean tree and the injected shape.
+- **The published benchmark tables cover four formats, not only YAML** — the measurement surface
+  already covered five (`tests/test_benchmark_crosslib.py` races `json`, `orjson`, `tomllib`,
+  `tomlkit` and `pyjson5`, and the divan set carries twelve non-YAML benchmarks), but
+  `.ci/perf-snapshot.json` recorded only PyYAML and ruamel.yaml and every table heading named a YAML
+  document. `scripts/bench_snapshot.py` now measures a format axis - YAML on parse, serialize and
+  round-trip, JSON, TOML and JSON5 on parse - and each generated table is bound to its measurement
+  by a `<!-- bench: ... -->` marker naming format, operation, fixtures and speedup baseline rather
+  than by counting columns. `tests/test_perf_docs.py` asks both directions: a case measured and
+  never published fails, and so does a marker naming nothing measured. Two of the new rows are
+  losses and are printed as losses - `orjson` reads the 1.9 KB document 1.5x faster, `pyjson5` reads
+  the JSON5 config 2.4x faster - and TOML is 5.5x to 5.9x faster than `tomllib`. The write halves of
+  JSON, TOML and JSON5 stay unpublished for a reason the snapshot records: those are emitted from
+  the engine's own AST rather than from a Python object, so `json.dumps` and `tomli_w.dumps` are a
+  different job, and the instruction floors price them instead.
 
 #### Changed
 

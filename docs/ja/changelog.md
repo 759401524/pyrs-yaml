@@ -102,6 +102,18 @@ status: new
   イズページにだけ現れていた。`scripts/check_changelog_mirrors.py` は階層関係を検査し
   （`level_errors`）、`tests/test_changelog_placement_gate.py` は正常なツリーと注入した誤った形状の
   両方を固定する。
+- **公開するベンチマーク表は YAML だけでなく四つの書式をカバーします** — 測定面はとっくに五書式でし
+  た（`tests/test_benchmark_crosslib.py` は `json`、`orjson`、`tomllib`、`tomlkit`、`pyjson5` と組み
+  合い、divan 側にも非 YAML が十二本ある）。欠けていたのは公開面で、`.ci/perf-snapshot.json` は
+  PyYAML と ruamel.yaml しか記録せず、表の見出しはすべて YAML の文書を名乗っていました。
+  `scripts/bench_snapshot.py` は書式軸で測ります（YAML はパース・出力・往復、JSON・TOML・JSON5 はパ
+  ース）。生成される各表は `<!-- bench: ... -->` マーカーで書式・操作・夹具・倍率の基準を宣言して計
+  測と結び付き、列を数えて取り違えることはしません。`tests/test_perf_docs.py` は双方向に問い、測った
+  のに未公開の用例も、計測外のマーカーも赤になります。新しい行のうち 2 本は劣勢で、そのまま載せま
+  す。1.9 KB では `orjson` が 1.5 倍速く、JSON5 の設定文書では `pyjson5` が 2.4 倍速い。TOML は
+  `tomllib` より 5.5〜5.9 倍速い。JSON/TOML/JSON5 の書き側は公開しないままにし、その理由をスナップシ
+  ョットが記録します。それらは Python オブジェクトではなくエンジン自身の AST から出力するので、
+  `json.dumps` や `tomli_w.dumps` とは同じ仕事ではなく、その半分は命令数の床が価格づけます。
 
 #### 変更
 
