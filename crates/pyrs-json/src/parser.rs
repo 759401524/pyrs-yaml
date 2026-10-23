@@ -404,6 +404,88 @@ struct PendingComment {
     end: usize,
 }
 
+// ---------------------------------------------------------------------------
+// String-body scanning
+//
+// A string body runs until its closing quote, an escape, or - for the double-quoted scanner - a
+// control byte. Asked one byte at a time that is a third of the whole parse on a document whose
+// strings are long (measured: `docs/dev/quality-ledger.md` (fh)), and all three stop bytes are
+// ASCII, so the question can be asked sixteen bytes at a time without decoding UTF-8: every byte
+// of a multi-byte sequence is >= 0x80 and can never match. SSE2 is part of the x86_64 baseline,
+// so this needs no dependency, no runtime detection and no `std`.
+// ---------------------------------------------------------------------------
+
+/// Index of the first byte at or after `pos` that needs a decision - the closing quote, an
+/// escape, or the scanner's terminator - or `bytes.len()` when the run reaches the end.
+///
+/// `SINGLE` selects the JSON5 single-quoted stop set: there a raw control byte other than a line
+/// terminator is legal content, so the run must copy through it.
+#[inline]
+fn body_end<const SINGLE: bool>(bytes: &[u8], pos: usize) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        body_end_sse2::<SINGLE>(bytes, pos)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        body_end_scalar::<SINGLE>(bytes, pos)
+    }
+}
+
+fn body_end_scalar<const SINGLE: bool>(bytes: &[u8], mut pos: usize) -> usize {
+    while pos < bytes.len() {
+        let b = bytes[pos];
+        let stop = if SINGLE {
+            b == b'\'' || b == b'\\' || b == b'\n' || b == b'\r'
+        } else {
+            b == b'"' || b == b'\\' || b < 0x20
+        };
+        if stop {
+            break;
+        }
+        pos += 1;
+    }
+    pos
+}
+
+/// Sixteen bytes per iteration; the last partial vector falls back to the scalar loop, so a body
+/// near the end of the document keeps the old answer exactly.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn body_end_sse2<const SINGLE: bool>(bytes: &[u8], mut pos: usize) -> usize {
+    use core::arch::x86_64::*;
+    let len = bytes.len();
+    // SAFETY: SSE2 is in the x86_64 baseline, and the loop only loads when `pos + 16 <= len`, so
+    // every 16-byte vector lies inside the slice.
+    unsafe {
+        let quote = _mm_set1_epi8(if SINGLE { b'\'' as i8 } else { b'"' as i8 });
+        let slash = _mm_set1_epi8(b'\\' as i8);
+        let lf = _mm_set1_epi8(b'\n' as i8);
+        let cr = _mm_set1_epi8(b'\r' as i8);
+        let ctl = _mm_set1_epi8(0x1f);
+        let zero = _mm_setzero_si128();
+        while pos + 16 <= len {
+            let v = _mm_loadu_si128(bytes.as_ptr().add(pos) as *const __m128i);
+            let mut m = _mm_or_si128(_mm_cmpeq_epi8(v, quote), _mm_cmpeq_epi8(v, slash));
+            m = if SINGLE {
+                _mm_or_si128(
+                    m,
+                    _mm_or_si128(_mm_cmpeq_epi8(v, lf), _mm_cmpeq_epi8(v, cr)),
+                )
+            } else {
+                // Saturating subtract makes `v <= 0x1f` the only zero, i.e. `v < 0x20` unsigned.
+                _mm_or_si128(m, _mm_cmpeq_epi8(_mm_subs_epu8(v, ctl), zero))
+            };
+            let mask = _mm_movemask_epi8(m) as u32;
+            if mask != 0 {
+                return pos + mask.trailing_zeros() as usize;
+            }
+            pos += 16;
+        }
+    }
+    body_end_scalar::<SINGLE>(bytes, pos)
+}
+
 impl<'a> Parser<'a> {
     fn peek(&self) -> Option<u8> {
         self.s.get(self.pos).copied()
@@ -602,19 +684,11 @@ impl<'a> Parser<'a> {
         loop {
             // Bulk-copy the source run up to the next byte that needs a decision: the closing
             // quote, an escape, or a line terminator (which this dialect forbids inside a
-            // single-line string). Each is ASCII, and UTF-8 keeps an ASCII byte out of a multi-byte
-            // sequence, so the run is whole code points at both ends and `self.pos` stays on a
-            // char boundary - the property the per-character loop below used to guarantee by
-            // decoding. Other control characters are legal content here, so they are not in the
-            // stop set and the run copies through them.
+            // single-line string). `body_end` asks that question sixteen bytes at a time; other
+            // control characters are legal content here, so they are not in the stop set and the
+            // run copies through them.
             let start = self.pos;
-            while self.pos < self.s.len() {
-                let b = self.s[self.pos];
-                if b == b'\'' || b == b'\\' || b == b'\n' || b == b'\r' {
-                    break;
-                }
-                self.pos += 1;
-            }
+            self.pos = body_end::<true>(self.s, self.pos);
             if self.pos > start
                 && let Some(out) = &mut out
             {
@@ -1128,15 +1202,10 @@ impl<'a> Parser<'a> {
         loop {
             // Bulk-scan literal characters until we hit a special byte.
             let start = self.pos;
-            while self.pos < self.s.len() {
-                let b = self.s[self.pos];
-                if b == b'"' || b == b'\\' || b < 0x20 {
-                    break;
-                }
-                self.pos += 1;
-            }
-            // SAFETY: we only advanced over bytes that are not ASCII < 0x20,
-            // not " or \ — so UTF-8 sequences are preserved intact.
+            self.pos = body_end::<false>(self.s, self.pos);
+            // The scan stops only on ASCII bytes, and UTF-8 keeps an ASCII byte out of a
+            // multi-byte sequence, so every run it advanced over is whole code points at both
+            // ends and the slice below is a valid one.
             if self.pos > start
                 && let Some(out) = &mut out
             {
@@ -4348,5 +4417,90 @@ mod tests {
             replayed >= 25,
             "the corpus only replayed {replayed} documents; it used to carry at least 25"
         );
+    }
+
+    /// The bulk scan replaced a byte-at-a-time loop, so the two must not diverge at any offset: a
+    /// stop byte the vector misses would silently widen what a string body accepts, and one it
+    /// invents would refuse legal content.
+    ///
+    /// The oracle restates each dialect's rule inline instead of calling the scan's own fallback,
+    /// so a change that breaks both halves of one scanner still fails here. The corpus is every
+    /// byte value followed by multi-byte code points, asked from every start position, so each stop
+    /// byte lands in a different slot of a 16-byte vector and the tail is walked from both sides.
+    #[test]
+    fn the_bulk_scan_answers_where_the_byte_scan_would() {
+        let mut source: Vec<u8> = (0..=0xffu8).collect();
+        source.extend_from_slice("一二三😀".as_bytes());
+        source.extend_from_slice(&[b'x'; 40]);
+
+        let double = |bytes: &[u8], pos: usize| {
+            let mut i = pos;
+            while i < bytes.len() {
+                if bytes[i] == b'"' || bytes[i] == b'\\' || bytes[i] < 0x20 {
+                    return i;
+                }
+                i += 1;
+            }
+            bytes.len()
+        };
+        let single = |bytes: &[u8], pos: usize| {
+            let mut i = pos;
+            while i < bytes.len() {
+                if bytes[i] == b'\'' || bytes[i] == b'\\' || bytes[i] == b'\n' || bytes[i] == b'\r'
+                {
+                    return i;
+                }
+                i += 1;
+            }
+            bytes.len()
+        };
+
+        for pos in 0..=source.len() {
+            assert_eq!(
+                body_end::<false>(&source, pos),
+                double(&source, pos),
+                "the double-quoted scan differs at offset {pos}"
+            );
+            assert_eq!(
+                body_end::<true>(&source, pos),
+                single(&source, pos),
+                "the single-quoted scan differs at offset {pos}"
+            );
+        }
+    }
+
+    /// The scanner is only a means to a decoded string, so the reader's own answers are pinned on
+    /// bodies longer than one vector: an escaped quote that ends and then resumes a run, a raw
+    /// control byte that must still be refused at its own position, and the tab that JSON5 keeps as
+    /// content while strict JSON refuses.
+    #[test]
+    fn a_long_body_ending_or_refusing_at_every_vector_slot_decodes_as_before() {
+        for pad in 0..40usize {
+            let filler = "y".repeat(pad);
+
+            let doc = format!("\"{filler}a\\\"b{filler}\"");
+            assert_eq!(
+                scalar_text(&from_json(&doc).unwrap()),
+                format!("{filler}a\"b{filler}"),
+                "pad {pad}: an escaped quote inside a long body moved the text"
+            );
+
+            let raw = format!("\"{filler}\u{1}{filler}\"");
+            let err = from_json(&raw).unwrap_err().to_string();
+            // The refusal points at the control byte itself - one past the opening quote and the
+            // filler - not at the boundary of the vector that happened to contain it.
+            let expected = format!(
+                "unescaped control character U+0001 in string at line 1 column {}",
+                pad + 2
+            );
+            assert!(err.contains(&expected), "pad {pad}: {err}");
+
+            let json5 = format!("'{filler}\t{filler}'");
+            assert_eq!(
+                scalar_text(&from_json5(&json5).unwrap()),
+                format!("{filler}\t{filler}"),
+                "pad {pad}: JSON5 lost a tab the single-quoted scan must copy through"
+            );
+        }
     }
 }

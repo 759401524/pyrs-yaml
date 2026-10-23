@@ -112,24 +112,20 @@ pub(crate) fn parse_ir(
     // escaped `\r` is the two bytes 5C 72, never a 0x0D). The per-path scanners
     // handled CR inconsistently, so toml-test's invalid/control corpus
     // (bare-cr / comment-cr / multi-cr / rawmulti-cr) leaked lone CRs. One tight
-    // central scan catches all of them; CR is rare so this is a cheap byte walk.
+    // central scan catches all of them; `next_cr` finds the candidate sixteen
+    // bytes at a time and this loop still asks the pairing question byte for byte.
     {
         let s = p.s;
         let mut i = 0usize;
-        let mut bad: Option<usize> = None;
         while i < s.len() {
-            if s[i] == b'\r' {
-                if i + 1 >= s.len() || s[i + 1] != b'\n' {
-                    bad = Some(i);
-                    break;
-                }
-                i += 2;
-            } else {
-                i += 1;
+            i = next_cr(s, i);
+            if i == s.len() {
+                break;
             }
-        }
-        if let Some(off) = bad {
-            return Err(p.err_at("bare carriage return (must be part of a CRLF pair)", off));
+            if i + 1 >= s.len() || s[i + 1] != b'\n' {
+                return Err(p.err_at("bare carriage return (must be part of a CRLF pair)", i));
+            }
+            i += 2;
         }
     }
     p.parse_document()?;
@@ -140,6 +136,144 @@ pub(crate) fn parse_ir(
         return Err(e);
     }
     Ok((p.root, core::mem::take(&mut p.pending_leading)))
+}
+
+// ---------------------------------------------------------------------------
+// Byte searches the reader owns
+//
+// A string body ends at its closing quote, at an escape, or at a byte the dialect refuses
+// unescaped. Asked one byte at a time that is a third of the parse on a document whose strings are
+// long, and the unconditional bare-CR walk above costs another fifth of it on any input over a
+// megabyte - both measured, `docs/dev/quality-ledger.md` (fh). Every stop byte is ASCII, and UTF-8
+// keeps an ASCII byte out of a multi-byte sequence, so a match is always a char boundary and the
+// search can run sixteen bytes at a time without decoding. SSE2 is part of the x86_64 baseline: no
+// dependency, no runtime detection, no `std`.
+//
+// The stop set is a sound superset of each scanner's decision set: every byte it can stop on
+// already has an arm in the loop that calls it, and the bytes it steps over are the ones no arm
+// asks about.
+// ---------------------------------------------------------------------------
+
+/// Whether a byte needs a decision inside a string body. A tab is content in every scanner; a
+/// line feed is content only in a multiline one; DEL is refused everywhere, and the rest of the C0
+/// range - which carries the newlines a single-line scanner rejects - stops the run.
+#[inline(always)]
+fn forbidden_run<const MULTI: bool>(b: u8) -> bool {
+    b == 0x7f || (b <= 0x1f && b != b'\t' && !(MULTI && b == b'\n'))
+}
+
+/// Index of the first byte at or after `pos` a string scanner must decide about, or
+/// `bytes.len()` when the body runs to the end of the input.
+#[inline]
+fn body_end<const QUOTE: u8, const SLASH: bool, const MULTI: bool>(
+    bytes: &[u8],
+    pos: usize,
+) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        body_end_sse2::<QUOTE, SLASH, MULTI>(bytes, pos)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        body_end_scalar::<QUOTE, SLASH, MULTI>(bytes, pos)
+    }
+}
+
+fn body_end_scalar<const QUOTE: u8, const SLASH: bool, const MULTI: bool>(
+    bytes: &[u8],
+    mut pos: usize,
+) -> usize {
+    while pos < bytes.len() {
+        let b = bytes[pos];
+        if b == QUOTE || forbidden_run::<MULTI>(b) || (SLASH && b == b'\\') {
+            break;
+        }
+        pos += 1;
+    }
+    pos
+}
+
+/// Sixteen bytes per iteration; the last partial vector falls back to the scalar loop, so a body
+/// near the end of the document keeps the old answer exactly.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn body_end_sse2<const QUOTE: u8, const SLASH: bool, const MULTI: bool>(
+    bytes: &[u8],
+    mut pos: usize,
+) -> usize {
+    use core::arch::x86_64::*;
+    let len = bytes.len();
+    // SAFETY: SSE2 is in the x86_64 baseline, and the loop only loads when `pos + 16 <= len`, so
+    // every 16-byte vector lies inside the slice.
+    unsafe {
+        let quote = _mm_set1_epi8(QUOTE as i8);
+        let slash = _mm_set1_epi8(b'\\' as i8);
+        let tab = _mm_set1_epi8(b'\t' as i8);
+        let lf = _mm_set1_epi8(b'\n' as i8);
+        let del = _mm_set1_epi8(0x7f);
+        let ctl = _mm_set1_epi8(0x1f);
+        let zero = _mm_setzero_si128();
+        while pos + 16 <= len {
+            let v = _mm_loadu_si128(bytes.as_ptr().add(pos) as *const __m128i);
+            let mut m = _mm_cmpeq_epi8(v, quote);
+            if SLASH {
+                m = _mm_or_si128(m, _mm_cmpeq_epi8(v, slash));
+            }
+            // Saturating subtract makes `v <= 0x1f` the only zero; the whitespace a scanner lets
+            // through is then masked out of that class rather than compared for inside it.
+            let below = _mm_cmpeq_epi8(_mm_subs_epu8(v, ctl), zero);
+            let exempt = _mm_or_si128(
+                _mm_cmpeq_epi8(v, tab),
+                if MULTI { _mm_cmpeq_epi8(v, lf) } else { zero },
+            );
+            m = _mm_or_si128(
+                m,
+                _mm_or_si128(_mm_cmpeq_epi8(v, del), _mm_andnot_si128(exempt, below)),
+            );
+            let mask = _mm_movemask_epi8(m) as u32;
+            if mask != 0 {
+                return pos + mask.trailing_zeros() as usize;
+            }
+            pos += 16;
+        }
+    }
+    body_end_scalar::<QUOTE, SLASH, MULTI>(bytes, pos)
+}
+
+/// Index of the first `0x0D` at or after `pos`, or `bytes.len()`. Whether that byte is paired with
+/// a line feed stays the caller's question - only the search for it moved into the vector.
+#[inline]
+fn next_cr(bytes: &[u8], pos: usize) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: as above - SSE2 is the x86_64 baseline and every load is 16 bytes inside the
+        // slice.
+        unsafe {
+            use core::arch::x86_64::*;
+            let cr = _mm_set1_epi8(b'\r' as i8);
+            let mut i = pos;
+            while i + 16 <= bytes.len() {
+                let v = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
+                let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(v, cr)) as u32;
+                if mask != 0 {
+                    return i + mask.trailing_zeros() as usize;
+                }
+                i += 16;
+            }
+            while i < bytes.len() && bytes[i] != b'\r' {
+                i += 1;
+            }
+            i
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let mut i = pos;
+        while i < bytes.len() && bytes[i] != b'\r' {
+            i += 1;
+        }
+        i
+    }
 }
 
 struct Parser<'a> {
@@ -885,21 +1019,13 @@ impl<'a> Parser<'a> {
         // later run is appended to it.
         let mut out: Option<String> = None;
         loop {
-            // Bulk-copy the source run up to the next byte that needs a decision. Every byte in
-            // that set is ASCII, and UTF-8 never hides an ASCII byte inside a multi-byte sequence,
-            // so the run begins and ends on a char boundary and `push_str` of a slice replaces a
-            // loop that decoded and pushed one code point at a time. Stepping by whole bytes, or
-            // stopping on a non-ASCII one, would put `self.pos` inside a character and make the
-            // next slice panic.
+            // Bulk-copy the source run up to the next byte that needs a decision - the closing
+            // quote, an escape, a line terminator, or a control byte this dialect refuses. `body_end`
+            // asks that question sixteen bytes at a time; the run still begins and ends on a char
+            // boundary because every stop byte is ASCII and UTF-8 never hides an ASCII byte inside
+            // a multi-byte sequence.
             let run = self.pos;
-            while self.pos < self.s.len() {
-                let b = self.s[self.pos];
-                if b == b'"' || b == b'\\' || b == b'\n' || b == b'\r' || Self::forbidden_control(b)
-                {
-                    break;
-                }
-                self.pos += 1;
-            }
+            self.pos = body_end::<b'"', true, false>(self.s, self.pos);
             if let Some(s) = out.as_mut() {
                 s.push_str(&text[run..self.pos]);
             }
@@ -1001,6 +1127,12 @@ impl<'a> Parser<'a> {
         let mut run = start;
         let mut out: Option<String> = None;
         loop {
+            // The next byte this loop asks about: a quote, which may open the closing delimiter or
+            // may be content, an escape, or a byte the dialect refuses. A lone quote falls through
+            // to the content arm below and steps one character, so stopping at every quote cannot
+            // mistake content for the delimiter - and a line feed is content here, so it never
+            // stops the run.
+            self.pos = body_end::<b'"', true, true>(self.s, self.pos);
             if self.starts_with(b"\"\"\"") {
                 self.pos += 3;
                 // Up to two more `"` may sit before the closing delimiter as content:
@@ -1105,6 +1237,10 @@ impl<'a> Parser<'a> {
             }
             let start = self.pos;
             loop {
+                // A literal string holds a backslash as itself, so the run stops only at a quote or
+                // at a byte the dialect refuses; a lone quote steps on and the closing-delimiter
+                // rule below is unchanged.
+                self.pos = body_end::<b'\'', false, true>(self.s, self.pos);
                 if self.starts_with(b"'''") {
                     // The closing delimiter is the LAST three quotes of the run. A literal
                     // multi-line string whose content ends in `'` is written with one or two
@@ -1145,23 +1281,27 @@ impl<'a> Parser<'a> {
         } else {
             self.pos += 1;
             let start = self.pos;
-            loop {
-                let b = self
-                    .peek()
-                    .ok_or_else(|| self.err("unterminated literal string"))?;
-                if b == b'\n' || b == b'\r' {
-                    return Err(self.err("newline in single-line literal string"));
-                }
-                if Self::forbidden_control(b) {
-                    return Err(self.err("control character in literal string"));
-                }
-                if b == b'\'' {
-                    let content = &text[start..self.pos];
-                    self.pos += 1;
-                    return Ok((Cow::Borrowed(content), false));
-                }
+            // One run, not a loop: a literal string holds a backslash as itself, so the scan
+            // reaches either the closing quote or a byte this dialect refuses and nothing can
+            // resume the body afterwards.
+            self.pos = body_end::<b'\'', false, false>(self.s, self.pos);
+            let b = self
+                .peek()
+                .ok_or_else(|| self.err("unterminated literal string"))?;
+            if b == b'\'' {
+                let content = &text[start..self.pos];
                 self.pos += 1;
+                return Ok((Cow::Borrowed(content), false));
             }
+            if b == b'\n' || b == b'\r' {
+                return Err(self.err("newline in single-line literal string"));
+            }
+            if Self::forbidden_control(b) {
+                return Err(self.err("control character in literal string"));
+            }
+            // The scan stops on exactly these cases, so a byte that is none of them cannot be what
+            // `peek` just returned.
+            unreachable!()
         }
     }
 
@@ -2775,6 +2915,124 @@ mod tests {
             assert!(
                 matches!(&err, ParseError::Syntax { .. }),
                 "expected Syntax, got {err:?}"
+            );
+        }
+    }
+
+    /// All four string scanners ask one question through `body_end`, so the vector's answer is
+    /// pinned against an inline restatement of each stop set at every offset of a corpus holding
+    /// every byte value. A stop byte the vector misses widens what a body accepts; one it invents
+    /// refuses content the dialect allows.
+    #[test]
+    fn every_string_scanner_answers_where_the_byte_scan_would() {
+        let mut source: Vec<u8> = (0..=0xffu8).collect();
+        source.extend_from_slice("一二三😀".as_bytes());
+        source.extend_from_slice(&[b'x'; 40]);
+
+        let oracle = |bytes: &[u8], pos: usize, quote: u8, slash: bool, multi: bool| {
+            let refused = |b: u8| b == 0x7f || (b <= 0x1f && b != b'\t' && !(multi && b == b'\n'));
+            let mut i = pos;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if b == quote || refused(b) || (slash && b == b'\\') {
+                    return i;
+                }
+                i += 1;
+            }
+            bytes.len()
+        };
+
+        for pos in 0..=source.len() {
+            for (label, got, want) in [
+                (
+                    "single-line basic",
+                    body_end::<b'"', true, false>(&source, pos),
+                    oracle(&source, pos, b'"', true, false),
+                ),
+                (
+                    "single-line literal",
+                    body_end::<b'\'', false, false>(&source, pos),
+                    oracle(&source, pos, b'\'', false, false),
+                ),
+                (
+                    "multiline basic",
+                    body_end::<b'"', true, true>(&source, pos),
+                    oracle(&source, pos, b'"', true, true),
+                ),
+                (
+                    "multiline literal",
+                    body_end::<b'\'', false, true>(&source, pos),
+                    oracle(&source, pos, b'\'', false, true),
+                ),
+            ] {
+                assert_eq!(got, want, "the {label} scan differs at offset {pos}");
+            }
+        }
+    }
+
+    /// `next_cr` replaced only the search inside the whole-document carriage-return walk, so it has
+    /// to name the same candidate byte the walk would have inspected - including a CR that is the
+    /// last byte of the input, where the pairing question has no next byte to read.
+    #[test]
+    fn the_cr_search_names_the_byte_the_walk_would_reach() {
+        let mut source: Vec<u8> = Vec::new();
+        for i in 0..70usize {
+            source.push(if i % 7 == 0 {
+                b'\r'
+            } else if i % 3 == 0 {
+                b'\n'
+            } else {
+                b'a'
+            });
+        }
+        let scalar = |pos: usize| {
+            let mut i = pos;
+            while i < source.len() && source[i] != b'\r' {
+                i += 1;
+            }
+            i
+        };
+        for pos in 0..=source.len() {
+            assert_eq!(
+                next_cr(&source, pos),
+                scalar(pos),
+                "CR search differs at {pos}"
+            );
+        }
+        assert_eq!(next_cr(b"ab\r", 0), 2);
+        assert_eq!(next_cr(b"abcd", 0), 4);
+        assert!(
+            from_toml("a = 1\r").is_err(),
+            "a trailing bare CR was accepted"
+        );
+    }
+
+    /// A quote run is where a first-match scan could part from the shipped rule, so the closing
+    /// delimiters are placed at every offset across a vector boundary: the last three quotes still
+    /// close, the one before them still comes back as content, and a run of six is still refused.
+    #[test]
+    fn a_quote_run_closes_the_same_way_at_every_offset_across_a_vector() {
+        for pad in 0..40usize {
+            let filler = "y".repeat(pad);
+
+            let basic = format!("a = \"\"\"{filler}\"\"\"\"\n");
+            assert_eq!(
+                scalar(child(&from_toml(&basic).unwrap(), "a")),
+                format!("{filler}\""),
+                "pad {pad}: a basic multiline run of four lost its content quote"
+            );
+
+            let lit = format!("a = '''{filler}''''\n");
+            assert_eq!(
+                scalar(child(&from_toml(&lit).unwrap(), "a")),
+                format!("{filler}'"),
+                "pad {pad}: a literal multiline run of four lost its content quote"
+            );
+
+            let too_many = format!("a = \"\"\"{filler}\"\"\"\"\"\"\n");
+            assert!(
+                matches!(from_toml(&too_many), Err(ParseError::Syntax { .. })),
+                "pad {pad}: accepted a run of six raw quotes"
             );
         }
     }

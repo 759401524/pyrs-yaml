@@ -7664,6 +7664,86 @@ target sets. `python scripts/quality_matrix.py --check-rows` reads 788 Rust `#[t
 from the input, so 24 shards over 24 lines is slower than serial. And this divides documents, not
 one document: a single 20 MiB JSON value still goes down the serial walk.
 
+### (fh) Character classification moved to sixteen bytes at a time, and YAML was refuted first (2026-10-23)
+
+**The premise was measured before the code was written.** The objective names SIMD for character
+classification, which is the kind of item that gets implemented because it is on the list. The probe
+asked the price of the question first, per format, on three shapes of input, and the answer is not
+one number: the byte-at-a-time string-body scan was **25.7% of a JSON parse** over 2 MB of
+5000-byte strings, **33.6%** over the same records as 6 MB of CJK text, **34.6%** for JSON5
+single-quoted, **31.7%/25.5%** for TOML basic/literal strings at the same size - and only **3.3%**
+for 4000 records of 100-byte values, where the parse is node construction, not scanning. A 16-byte
+SSE2 search of the identical bytes ran **8-14x** faster than the scalar loop.
+
+**A second finding changed the scope.** TOML's `parse_ir` walks the entire source on every call to
+reject a bare carriage return - a loop that has nothing to do with string length and that measured
+**20.3% of the parse on 2 MB** and 3.6% on a 0.45 MB config. Vectorizing it is a win on every TOML
+input rather than only on long-string ones, which is why it is in this change and why the shipped
+comment no longer says "CR is rare so this is a cheap byte walk": rarity of the *stop* byte is not
+cheapness of the *search*.
+
+**YAML was refuted, with the measurement that separates the two readings.** granit owns the
+tokenizer, so the question is only what is ours. Full parse minus a receiver that merely counts
+events leaves 0.78 ms of 1.72 ms for 2 MB of long plain scalars - and one whole-source `to_vec()`
+costs 0.52 ms of that, so two thirds of "ours" is the `Arc<str>` copy at memcpy speed and the
+residue is per-node. The shape that decides it is the opposite corpus: 50,000 nodes of 40 bytes
+cost 24 ms of a 39 ms parse against a 0.66 ms copy floor. Byte count does not drive that number, so
+no byte search does, and there is no vectorizable scan on our side of YAML. `crates/pyrs-yaml-core`
+was not touched.
+
+**The mechanism is two private helpers, one per crate.** `pyrs-json`'s `body_end::<SINGLE>` and
+`pyrs-toml`'s `body_end::<QUOTE, SLASH, MULTI>` plus `next_cr` are const-generic over the stop set,
+so each dialect compiles its own monomorphization and the vector loop carries no runtime branch on
+the dialect. The stop set is a sound superset of each loop's decision set: every byte it can stop on
+already has an arm there, which is what lets the multiline scanners keep their "the last three
+quotes of the run close the string" rule untouched. The last partial vector and every non-x86_64
+architecture use the byte loop; SSE2 is in the x86_64 baseline, so no dependency was added - a
+`memchr` edge would have needed the approval this repo requires for a new dependency - no
+`is_x86_feature_detected!`, and no `std` - both crates stay `no_std`.
+
+**The mechanism is pinned by differential tests, and the pin was shown to bite.** Each crate
+compares its scanner against an inline restatement of the dialect's rule at *every* offset of a
+corpus containing every byte value followed by two-, three- and four-byte code points, which puts
+each stop byte in a different slot of a vector and walks the tail from both sides. Two mutations
+were run against them. Dropping the control-byte arm from the vector made exactly the two new JSON
+tests fail and left the other 96 green - the shipped suite cannot see that bug. Collapsing the
+JSON5 stop set onto the strict one failed a dozen existing tests, including
+`a_json5_quoted_string_keeps_every_c0_byte_that_is_not_a_line_break`. Then the whole vector path was
+compiled out and the same 200 JSON and TOML tests passed on the scalar path, which is the path the
+aarch64 wheels take; a cfg the suite has never run is not a tested path.
+
+**Measured.** Same host, release, medians of eleven interleaved runs, before → after: JSON 2 MB long
+strings 2.47 → 1.97 ms, 6 MB CJK 6.17 → 5.27, JSON5 single-quoted 1.53 → 1.11; TOML basic 2 MB 2.36
+→ 0.99, literal 2.41 → 0.96, multiline 3.37 → 1.01, and the 0.45 MB short-value config 2.98 → 2.54.
+The gate that enforces is the instruction count, and it moved down rather than holding - first on
+this host (`from_toml_medium` 125,580,997 → 120,143,971, `from_json_medium` −3.43%,
+`from_jsonc_medium` −3.03%, `from_json5_medium` −1.28%, each with 0.000% spread over three samples
+on the baseline's pinned compiler), then on the image that enforces it, whose readings are the
+floors committed here: **`from_toml_medium` −4.02%** (125,580,997 → 120,534,055),
+`from_jsonc_medium` −3.69%, `from_json_medium` −3.55%, `from_json5_medium` −1.09%. The refresh
+dispatch's artifact is in this change, so those four readings are the floors the gate now enforces,
+the `FLOOR_STALE` warnings are gone, and no floor sits above the tree it describes. One move had to
+be named for the refresh to write it - `stream_medium`, which this change's harness edits never
+enter, read `+0.01%` on the previous head and `+0.63%` here, so growing the scenario set alone
+pushed an unrelated scenario past the 0.50% line (the pair is in `docs/dev/perf.md`). Rust:
+`cargo nextest run --all` 782 pass; clippy clean on `--all --all-targets -D warnings`; both crates
+still build `--no-default-features`.
+
+**Not covered.** The engine reading above came from this WSL host while the committed floors come
+from the enforcing image, and the two hosts' builds of identical `rustc 1.97.1` sources still differ
+by 0.95% (`from_json_medium`) and 0.76% (`from_json_long_strings`). A digest mismatch is therefore a
+*build* difference, not proof that code moved, and a marginal local failure against these floors is
+an environment question. The four long-string floors are the probe's shape made permanent:
+`bench_inputs::long_string_json` / `long_string_toml` / `long_string_yaml`,
+read and written at both ends of the two cross-format bridges, the writer halves there because
+`scripts/quality_matrix.py` counts a bridge numbered on one side only as
+`ir-bridge-unidirectional`. The TOML event producer parses through the same `parse_ir` and NDJSON's
+per-line values go through the same string scanner, so both inherit the win; neither has a scenario
+of its own. `stream_medium` and the YAML scenarios never enter the code this change touched - and
+`stream_medium` still moved 0.63%, through the harness rather than the engine.
+aarch64 and other non-x86 targets keep the scalar loop: tested here by compiling the vector out, but
+not measured there.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
