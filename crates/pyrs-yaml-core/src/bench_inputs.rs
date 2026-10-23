@@ -223,6 +223,33 @@ pub fn long_string_json() -> String {
     doc
 }
 
+/// The same `LONG_RECORDS` pairs, one JSON object per line - the shape the line-delimited surface
+/// reads, and the long-value twin of [`short_string_ndjson`]. The two differ only in how many bytes
+/// sit between one quote and the next, so the pair prices a long body on a route no other scenario
+/// enters: the AST scenarios build nodes, the stream scenarios report events, and this one walks
+/// lines.
+pub fn long_string_ndjson() -> String {
+    ndjson(&long_value())
+}
+
+/// The line-delimited pair to [`long_string_ndjson`] with a short value: `localhost` is nine
+/// characters, so a scanner never leaves its first vector, which is what makes the other fixture's
+/// length the only variable.
+pub fn short_string_ndjson() -> String {
+    ndjson("localhost")
+}
+
+fn ndjson(value: &str) -> String {
+    let mut doc = String::new();
+    for index in 0..LONG_RECORDS {
+        doc.push_str(&format!(
+            "{{\"k{index}\":\"{value}\",\"n{index}\":{}}}\n",
+            index * 10
+        ));
+    }
+    doc
+}
+
 /// The same records in TOML, one pair per line.
 pub fn long_string_toml() -> String {
     let value = long_value();
