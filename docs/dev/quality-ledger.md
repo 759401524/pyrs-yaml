@@ -7906,6 +7906,39 @@ quoting pass is scalar by design (the change that closed #22). No instruction fl
 every addition is `#[cfg(test)]` and no release binary changes. `QUALITY_MATRIX.md`'s unit row grew
 by four through `--write-rows` rather than by hand.
 
+### (fm) The event stream got its long-value floor, and the harness growth cost one name (2026-10-23)
+
+**Premise.** (fi) closed its own record with a sentence about what it left behind: "stream_medium
+and the NDJSON path still carry short values, and the event path has no long-string scenario of its
+own". The event half is closed here; the NDJSON half is not, and says so below.
+
+**What changed.** One scenario, `stream_long_strings`, running the same `Work::Stream` over
+`LONG_YAML` - the eight 256-character records the four writer floors already use - so the stream
+pair differs from `stream_medium` in string length and in nothing else. Both numbers come from one
+run on the enforcing image: 276,633,813 against 255,359,778, so the long body costs **+8.33%** on
+the event path. That run wrote all thirty-one floors, `QUALITY_MATRIX.md` §2 counts them in words,
+and `tests/test_ir_baseline_workflow.py` is the reason the sentence cannot drift from the file.
+
+**What the guard refused, and what it excused.** The first dispatch ran with an empty
+`accept_drift` and wrote nothing: growing the harness moved `parse_inline_merge` from 355,404,524 to
+359,069,238 (+1.03%), a scenario this change never enters. The second dispatch named that one
+scenario and no other, so every other move still had to refuse itself - `stream_medium` came up
++0.485% and `from_json_long_strings` came down 1.000%, both inside the line rather than pardoned by
+a flag. The rule `AGENTS.md` states - a scenario-adding change carries its own refresh, and the run
+decides what it justifies - repeated on the first try rather than in theory.
+
+**What the cycle also proves about the defence.** A scenario without its floor reddens three checks
+by design: the matrix reports the undeclared blind spot `ir-unbaselined:stream_long_strings`,
+`test_ir_scenario_probe_reads_a_wrapped_tuple` requires the bench's scenario set and the baseline's
+keys to agree, and §2's count sentence fails against the file. That is what makes "the floor ships
+in the same change" a check instead of a convention.
+
+**Not covered.** The NDJSON half of (fi) stands: the gate's stream scenarios are YAML's
+`parse_stream`, so `pyrs_json::parse_stream` and `parse_documents` still have no floor at all - the
+serial path needs no feature to measure, so the gap is a missing scenario, not a build setting. And
+the ranking channel has no stream bench of any kind, so this floor has no divan twin; inventing one
+is a separate decision about what the leaderboard should rank, recorded rather than smoothed over.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

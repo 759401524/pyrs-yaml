@@ -179,6 +179,13 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // `parse_medium` is 321,836,091 counted instructions building nodes here, and whatever
         // this reports is the price of the *other* shape the same text can take.
         ("stream_medium", MEDIUM_YAML, Work::Stream),
+        // The event path over the long-value shape. `stream_medium`'s longest value is 21
+        // characters, so the stream never leaves the first sixteen-byte vector and a regression
+        // that only shows up on a long body is invisible to it - the same reason the four
+        // `*_long_strings` readers exist beside `from_*_medium`. One scenario, not four: the
+        // stream's dialect is chosen by the caller, and the path being priced is granit's scalar
+        // handoff, which the YAML fixture already enters.
+        ("stream_long_strings", LONG_YAML.as_str(), Work::Stream),
     ]
 }
 
