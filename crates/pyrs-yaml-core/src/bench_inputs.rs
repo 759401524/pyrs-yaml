@@ -236,7 +236,7 @@ pub fn long_string_toml() -> String {
     doc
 }
 
-/// The same record list in YAML, so the writer halves of the two bridges can be measured over the
+/// The same record list in YAML, so the writer halves of the bridges can be measured over the
 /// long-value shape too: every `to_*` scenario reads a YAML document, and a bridge whose reader half
 /// has a floor while its writer half does not is the shape
 /// `scripts/quality_matrix.py` reports as `ir-bridge-unidirectional`.
@@ -246,5 +246,41 @@ pub fn long_string_yaml() -> String {
     for index in 0..LONG_RECORDS {
         doc.push_str(&format!("k{index}: {value}\nn{index}: {}\n", index * 10));
     }
+    doc
+}
+
+/// The long JSON document with comments interleaved. The JSONC reader takes the same bulk string scan
+/// as strict JSON, and the comment path is the part that differs, so this is the fixture that prices
+/// both at once. The comments are printable text and line breaks: no byte the string scan stops on
+/// enters one, and the values stay exactly [`LONG_VALUE`] characters wide.
+pub fn long_string_jsonc() -> String {
+    let value = long_value();
+    let mut doc = String::from("{\n  // boot coordinates, read first\n");
+    for index in 0..LONG_RECORDS {
+        if index > 0 {
+            doc.push_str(",\n  /* pool settings, spelled from the image */\n");
+        }
+        doc.push_str(&format!(
+            "  \"k{index}\":\"{value}\",\"n{index}\":{}",
+            index * 10
+        ));
+    }
+    doc.push_str("\n}");
+    doc
+}
+
+/// The same records in JSON5, whose values are single-quoted: the one dialect whose string body is
+/// scanned by the single-quote instantiation of the vector rather than the double-quote one. Keys are
+/// bare, and every member keeps the trailing comma the dialect allows.
+pub fn long_string_json5() -> String {
+    let value = long_value();
+    let mut doc = String::from("{\n  // the boot sequence reads these in order\n");
+    for index in 0..LONG_RECORDS {
+        if index > 0 {
+            doc.push_str("  /* and these are checked against the image */\n");
+        }
+        doc.push_str(&format!("  k{index}:'{value}',n{index}:{},\n", index * 10));
+    }
+    doc.push('}');
     doc
 }

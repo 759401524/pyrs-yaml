@@ -1265,8 +1265,10 @@ record list with 256-character values, and `crates/pyrs-yaml-core/tests/ir_fixtu
 they stay letters-only, that all three mean the same list, and that the medium fixtures stay short.
 Both channels read them at both ends of the two bridges. The ranking channel takes four benches -
 2.599 µs and 3.499 µs a call to read, 950 ns and 1.174 µs to write, one run on this box - and the
-enforcing channel takes four floors: 112,664,928 and 109,254,466 read, 58,550,997 and 72,438,982
-written. The writer halves exist because the gate asked for them: `scripts/quality_matrix.py`
+enforcing channel takes four floors, which the next change's own refresh re-measured on the same
+image: `from_json_long_strings` 112,664,928 → 112,987,111, `from_toml_long_strings` 109,254,466 →
+109,535,451, `to_json_long_strings` 58,550,997 → 58,550,735, `to_toml_long_strings` 72,438,982 →
+72,438,675. The writer halves exist because the gate asked for them: `scripts/quality_matrix.py`
 reports a bridge numbered on one side only as `ir-bridge-unidirectional`, and the reader-only first
 version was caught by exactly that. Per source byte of that one image run the long documents cost a
 fifth of `from_json_medium` and an eighth of `from_toml_medium`, and their writers two fifths of the
@@ -1274,13 +1276,18 @@ medium twins: there the scan, not the node, is the cost centre.
 
 **Growing the harness moves scenarios the harness never enters - measured twice.** The head before
 this one carried the same engine code and the 22 committed scenarios; on the enforcing image its
-`stream_medium` read 254,022,296 against a floor of 253,988,248, `+0.01%`. This head adds four
-scenarios to that harness - none of them the event path - and the same job read `stream_medium` at
-255,598,118, `+0.63%`, past the 0.50% line. One variable, one image, a leg that fails on a scenario
+`stream_medium` read 254,022,296 against a floor of 253,988,248, `+0.01%`. The head that landed
+as PR #599 then added four scenarios - none of them the event path - and the same job read
+`stream_medium` at 255,598,118, `+0.63%`, past the 0.50% line. One variable, one image, a leg that
+fails on a scenario
 the change never touches. This is the effect `tests/ir_fixtures.rs` opens with, now with a pair of
 readings instead of a single surprise, and the answer is the documented one rather than a wider
 line: the refresh dispatch, run with `accept_drift stream_medium` so that every other upward move
-still refuses to be written.
+still refuses to be written. The second measurement adds the other half of the lesson - the effect
+is not a law. Growing the same harness from 26 scenarios to 30 crossed the line for nobody: the
+largest upward move was `from_toml_medium` at `+0.363%`, and `stream_medium` itself read
+`−0.575%`, so its floor came down with the rest of them. What a scenario change owes the gate is the
+run, not a prediction about it.
 
 **What a local reading costs against these floors.** Both builds pinned the baseline's
 `rustc 1.97.1` over identical sources, and the digests still differ (`9618e51ff9bde8a0` on this WSL
@@ -1291,3 +1298,17 @@ question - the enforcing reading is the image job's. The permanent guards are th
 plus the two differential tests in each crate, which ask every offset of a corpus holding every byte
 value, and the run that passes the same 200 tests with the vector path compiled out - the path the
 aarch64 wheels take.
+
+The same surface now reaches the two dialect bridges this release also moved:
+`bench_inputs::long_string_jsonc` (2,557 bytes - the same eight members with a line comment and a
+block comment between them) and `long_string_json5` (2,550 bytes - single-quoted values, which is
+the body the other instantiation of the vector scans, bare keys, a trailing comma on every member),
+priced by `from_jsonc_long_strings`, `from_json5_long_strings`, `to_jsonc_long_strings` and
+`to_json5_long_strings`. Recording the writer halves at this shape before anything proposes to
+vectorize the outbound scan is deliberate: that change will then cost a number rather than an
+argument. Both halves then say something about the host. The same head, built on this WSL box
+(binaries `787413133303e751` and `eac9031ad74758f6`) and on the enforcing image
+(`199deee5c61c85a1` and `0cf64e33e5957ca4`), put the two dialect *readers* `0.373%` and `0.525%`
+apart while its two dialect *writers* came within `0.001%`: the half a local reading moves is the
+allocation-heavy one, and a writer floor is nearly portable. Growing the scenario set is the act
+measured above, and this growth asked for no `accept_drift` name at all.

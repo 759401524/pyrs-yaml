@@ -19,7 +19,7 @@ use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, 
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
     LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
-    long_string_json, long_string_toml, long_string_yaml,
+    long_string_json, long_string_json5, long_string_jsonc, long_string_toml, long_string_yaml,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -228,5 +228,57 @@ fn the_long_string_yaml_fixture_carries_the_same_records_at_the_same_width() {
     assert!(
         medium_widest * 8 < LONG_VALUE,
         "MEDIUM_YAML's longest value grew to {medium_widest}; to_json_medium now measures the long-value shape too"
+    );
+}
+
+/// The two dialect fixtures, pinned the same way and additionally pinned to carrying comments. The
+/// point of `from_jsonc_long_strings` and `from_json5_long_strings` is that a reader does the bulk
+/// string scan *between* comment skips, and JSON5's body is scanned by the single-quote
+/// instantiation of the vector rather than the double-quote one. Strip the comments, or let a value
+/// shorten, and the scenario quietly stops measuring the path its name claims.
+#[test]
+fn the_long_string_dialect_fixtures_carry_comments_at_their_own_width() {
+    let reference = to_json_text(&from_json(&long_string_json()).expect("the JSON fixture parses"))
+        .expect("json writes what it read");
+    let jsonc = long_string_jsonc();
+    let json5 = long_string_json5();
+
+    assert_eq!(
+        to_json_text(&from_jsonc(&jsonc).expect("the long-string JSONC fixture parses"))
+            .expect("jsonc writes what it read"),
+        reference,
+        "the JSONC fixture no longer means the record list the strict JSON fixture carries"
+    );
+    assert_eq!(
+        to_json_text(&from_json5(&json5).expect("the long-string JSON5 fixture parses"))
+            .expect("json5 writes what it read"),
+        reference,
+        "the JSON5 fixture no longer means the record list the strict JSON fixture carries"
+    );
+
+    for (label, doc) in [("jsonc", &jsonc), ("json5", &json5)] {
+        assert!(
+            doc.contains("//") && doc.contains("/*"),
+            "{label}: no comment entered the fixture, so the scenario stopped reading the comment path"
+        );
+        assert!(
+            !doc.contains('\\'),
+            "{label}: an escape sequence entered the fixture, so its bytes are no longer all bulk-scanned"
+        );
+        assert!(
+            doc.bytes().all(|b| b >= 0x20 || b == b'\n'),
+            "{label}: a control byte other than a line break entered the fixture"
+        );
+    }
+
+    let double = jsonc.split('"').map(str::len).max().unwrap_or(0);
+    assert_eq!(
+        double, LONG_VALUE,
+        "jsonc: the longest double-quoted run is {double}, not the {LONG_VALUE} the scenario names"
+    );
+    let single = json5.split('\'').map(str::len).max().unwrap_or(0);
+    assert_eq!(
+        single, LONG_VALUE,
+        "json5: the longest single-quoted run is {single}, not the {LONG_VALUE} the scenario names"
     );
 }

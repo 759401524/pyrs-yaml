@@ -395,6 +395,10 @@ static LONG_TOML: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(pyrs_yaml_core::bench_inputs::long_string_toml);
 static LONG_YAML: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(pyrs_yaml_core::bench_inputs::long_string_yaml);
+static LONG_JSONC: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(pyrs_yaml_core::bench_inputs::long_string_jsonc);
+static LONG_JSON5: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(pyrs_yaml_core::bench_inputs::long_string_json5);
 
 #[divan::bench]
 fn from_json_long_strings() -> CustomNode {
@@ -416,6 +420,31 @@ fn to_json_long_strings(bencher: divan::Bencher) {
 fn to_toml_long_strings(bencher: divan::Bencher) {
     let ast = pyrs_yaml_core::parser::parse(LONG_YAML.as_str(), YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_toml::to_toml(&ast).unwrap());
+}
+
+// The same shape through the two dialect bridges, so the ranking channel tells the five-format story
+// the enforcing channel now prices.
+
+#[divan::bench]
+fn from_jsonc_long_strings() -> CustomNode {
+    pyrs_json::from_jsonc(LONG_JSONC.as_str()).unwrap()
+}
+
+#[divan::bench]
+fn from_json5_long_strings() -> CustomNode {
+    pyrs_json::from_json5(LONG_JSON5.as_str()).unwrap()
+}
+
+#[divan::bench]
+fn to_jsonc_long_strings(bencher: divan::Bencher) {
+    let ast = pyrs_yaml_core::parser::parse(LONG_YAML.as_str(), YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_json::to_jsonc_text(&ast).unwrap());
+}
+
+#[divan::bench]
+fn to_json5_long_strings(bencher: divan::Bencher) {
+    let ast = pyrs_yaml_core::parser::parse(LONG_YAML.as_str(), YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_json::to_json5_text(&ast).unwrap());
 }
 
 // ── Serialize benchmarks (setup separate from measurement) ──

@@ -276,7 +276,21 @@ def test_a_format_with_no_bridge_at_all_is_a_hole(matrix, monkeypatch):
     scenarios and requires the hole to appear by format name, not by scenario name.
     """
     real = matrix.ir_harness_channels()
-    dropped = ("to_json5_medium", "from_json5_medium")
+    # The same structural rule the production code uses to decide a scenario's format, so dropping
+    # "all of json5" cannot leave a half behind as the scenario list grows. The assertion names what
+    # is dropped: adding a JSON5 scenario has to come through here and say so.
+    dropped = {
+        name
+        for names in real.values()
+        for name in names
+        if name.split("_")[0] in ("to", "from") and name.split("_")[1:2] == ["json5"]
+    }
+    assert dropped == {
+        "to_json5_medium",
+        "from_json5_medium",
+        "to_json5_long_strings",
+        "from_json5_long_strings",
+    }, sorted(dropped)
     thin = {crate: [name for name in names if name not in dropped] for crate, names in real.items()}
     assert matrix.ir_bridges_absent(thin) == ["json5"], thin
 

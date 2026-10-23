@@ -7744,6 +7744,56 @@ of its own. `stream_medium` and the YAML scenarios never enter the code this cha
 aarch64 and other non-x86 targets keep the scalar loop: tested here by compiling the vector out, but
 not measured there.
 
+### (fi) The long-value shape reached the two dialect bridges, and the harness moved again (2026-10-23)
+
+**Premise.** The vectorized readers cover four paths - strict JSON, JSONC, JSON5 and TOML - but the
+committed long-value floors covered two of them, because the gate pairs a bridge's reader with its
+writer and the JSONC and JSON5 bridges had neither side at that shape. The scenario set could
+say "the bulk scan is measured" while two of the four vectorized loops were measured only on values
+short enough to sit inside one vector, where the scan is 3% of a parse.
+
+**What was added.** `bench_inputs::long_string_jsonc` (2,557 bytes: the same eight records, a line
+comment and a block comment between members) and `long_string_json5` (2,550 bytes: single-quoted
+values, bare keys, a trailing comma on every member - the body the single-quote instantiation of the
+vector scans). Four scenarios carry it end to end: `from_jsonc_long_strings` 141,062,599,
+`from_json5_long_strings` 99,998,599, `to_jsonc_long_strings` 60,056,647, `to_json5_long_strings`
+60,480,707 counted instructions, each the largest of three samples at 0.000% spread, written by the
+refresh dispatch on the image that enforces them; four `yaml_bench` benches rank the same shape so
+the pairing rule (`ir-bridge-unidirectional`) holds on both channels, and the two writer floors
+record what the outbound scan costs before anything proposes to vectorize it.
+`QUALITY_MATRIX.md` §2 counts thirty, which `tests/test_ir_baseline_workflow.py` compares against
+the file.
+
+**The fixture test caught its own author, which is the point.** The first JSON5 fixture emitted a
+double comma between members and the reader refused it. The new test parses every fixture, so the
+mistake was a red run rather than a floor that quietly measured an error path. The refusal also
+surfaced a wording defect that is not this change's to fix: in JSON5 key position the message reads
+`expected a quoted object key` (`crates/pyrs-json/src/parser.rs:2353`) while the dialect accepts
+bare identifiers, so the error names one spelling the grammar does not require. The strict-JSON
+message at `:975` is correct where it stands. Filed separately.
+
+**Growing the harness is the same act twice, with the opposite result.** Between 22 and 26 scenarios
+the image read `stream_medium` at `+0.01%` and then `+0.63%` on identical engine code, which failed
+the leg until `accept_drift stream_medium` named it. This change grows the set from 26 to 30 and the
+same dispatch, run with an empty `accept_drift` on purpose, wrote its artifact without refusing
+anything: the largest upward move was `from_toml_medium` at `+0.363%` and `stream_medium` came down
+`−0.575%`. So the effect is a risk the run has to check, not a certainty the change can predict -
+and a refresh rewrites its neighbours too, since the same run moved the four floors #599 recorded
+(`from_json_long_strings` 112,664,928 → 112,987,111, `from_toml_long_strings` 109,254,466 →
+109,535,451, `to_json_long_strings` 58,550,997 → 58,550,735, `to_toml_long_strings` 72,438,982 →
+72,438,675). The remedy is unchanged: measure on the image and record it, never widen the line. The
+rule now sits where a contributor meets the gate first: the instruction-count bullet of `AGENTS.md`
+names the effect and the channel, so growing the scenario set carries its own refresh step.
+
+**Not covered.** The host and the image disagree by shape, not by a fixed percentage. On this one
+head, both built from identical sources at the pinned `rustc 1.97.1`, the two dialect readers came
+out `0.373%` and `0.525%` apart while the two dialect writers were within `0.001%` of each other -
+so a reader floor is a host-specific number and a writer floor is nearly portable, and the
+0.76-0.95% pair recorded under (fh) above is the upper end rather than a rule. No claim is drawn
+across a host boundary: a comparison is made inside one run. The JSON5 and JSONC long shapes are
+measured reading and writing, not streaming: `stream_medium` and the NDJSON path still carry short
+values, and the event path has no long-string scenario of its own.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
