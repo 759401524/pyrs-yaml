@@ -428,6 +428,16 @@ jobs:
         run: >
           cargo test --locked --features mmap -p pyrs-yaml-core
 
+      # Same reasoning one crate over: `parallel` (line-delimited documents parsed on several threads)
+      # is off by default, so every other leg compiles the serial path and nothing else. The tests that
+      # make the feature worth having - parity with the serial walk at several thread counts, first
+      # error in source order, a `Break` delivering the serial prefix - are `#[cfg(feature = "parallel")]`,
+      # so a `cargo check --features parallel` here would prove the threads link, not that they agree.
+      # `std::thread` needs no interpreter, so it rides this job with the no_std and mmap steps.
+      - name: Test the opt-in parallel document path
+        run: >
+          cargo test --locked -p pyrs-json --features parallel
+
   test:
     needs: [build, changes, matrix-plan]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}

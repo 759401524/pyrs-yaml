@@ -33,9 +33,15 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+mod documents;
 mod parser;
 mod writer;
 
+#[cfg(feature = "parallel")]
+pub use documents::parse_documents_with_options_to_parallel;
+pub use documents::{
+    parse_documents, parse_documents_with_options, parse_documents_with_options_to,
+};
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_events, from_json, from_json_with_max_depth,
     from_json_with_options, from_json5, from_jsonc, parse_stream, parse_stream_with_options,
