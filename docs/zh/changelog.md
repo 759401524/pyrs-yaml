@@ -17,7 +17,7 @@ status: new
 
 ### [Unreleased]
 
-### 新增
+#### 新增
 
 - **JSON 与 TOML 事件流在消费者停下的地方停下** — 此前 `parse_stream(..., on_event=...)` 对每种格式
   都先收齐全部事件再逐条回调，因此第一个事件就返回 `False` 仍要付出整次扫描的代价，文档后段的语法错
@@ -30,12 +30,20 @@ status: new
   入口，迭代器与回调看到的流因此结构化地相同。回调抛出的异常优先于其后的解析错误，`False` 返回
   `None`。`tests/test_streaming.py` 的七条测试钉住停止前缀、各格式的拒绝事实与错误优先级。
 
+#### 修复
+
+- **部署站点的目录曾把每个小节排在版本标题同级** — 四个本地化 changelog 页面把 `[Unreleased]`、
+  `[v0.18.3]` 与 `[v0.18.1]` 的小节放在与版本标题相同的层级，于是文档站把这些小节列在版本旁边而非其
+  下；根文件一直正确，缺陷因此只出现在本地化页面。`scripts/check_changelog_mirrors.py` 现在检查这一
+  层级关系（`level_errors`），`tests/test_changelog_placement_gate.py` 同时钉住干净的代码树与被注入
+  的错误形状。
+
 ### [v0.18.3] — 2026-10-22
 
 <details markdown="1">
 <summary>会读代码树的门禁 · crate 矩阵 · 注释归属 · 更宽的 wheel 矩阵</summary>
 
-### 新增
+#### 新增
 
 - **设计文档里的已落地声明要指认代码** — `docs/dev/event-stream.md` 曾在只包含 docs-only 提交
   `0a074148` 的主干上写着 "decision 6 landed"，而没有任何检查把设计文档的现在时与代码对账。
@@ -83,7 +91,7 @@ status: new
   cargo 因此不再为扩展模块构建测试目标；`prek.toml` 里的钩子会在每次触及 manifest 或 crate 的
   改动上运行这道门禁。
 
-### 变更
+#### 变更
 
 - **事件流中的注释会说明它属于哪个节点** — `pyrs-event` 的 `StreamEventType::Comment` 原本只带一个
   标志位 `standalone`，而它同时回答了两个问题：这条注释是否独占一行（源码的事实），以及这条注释
@@ -717,7 +725,7 @@ status: new
   MSRV 腿也开始排除时，它都会报红——因为那条腿的职责是就包括出货 crate 在内的每一个 crate 证明
   声明的地板。公开行为没有变化：同样的 748 个 Rust 测试和同一套 Python 套件照旧运行。
 
-### 移除
+#### 移除
 
 - **自研规则校验退役；`Document.validate()` 成为唯一的 Schema 校验面** ——
   `validate_against_schema()` 与 `validate_against_registered_schema()` 已移除，Schema 定义中的
@@ -733,7 +741,7 @@ status: new
   语法，而非 JSON Schema 求值。四种语言的指南、快速开始、教程、特性表与 API 页面均改为记录
   `Document.validate()`，发布的桩文件中不再出现这两个被移除的函数。
 
-### 修复
+#### 修复
 
 - **最新两个发布也按老规矩折叠** - `## [v0.18.1]` 与 `## [v0.18.3]` 在五份发布说明里都缺了
   `<details markdown="1">` 折叠，而自 v0.12.x 起的每个发布都有。`scripts/check_doc_metadata.py`
@@ -873,7 +881,7 @@ status: new
 <details markdown="1">
 <summary>自由线程 3.15t wheel · Linux arm64 · 保住 merge 键的注释</summary>
 
-### 新增
+#### 新增
 
 - **面向 Python 3.15t 与 Linux arm64 的自由线程 wheel** — 发布矩阵在 Windows、macOS 与 glibc
   Linux（x86_64 与 arm64）上构建 `cp315-abi3.abi3t` wheel，3.15t 及更高版本因此可以直接安装预编译
@@ -881,7 +889,7 @@ status: new
   qemu 无法完成的目标解释器 exec 在这里是原生调用。每个 wheel 都会在它所面向的解释器上安装
   并运行完整测试套件。
 
-### 修复
+#### 修复
 
 - **以别名为值的合并键保留行内注释** — `<<: *d  # note` 过去在读取阶段丢失注释：别名没有元数据槽位，
   读取器却仍报告附挂成功。现在注释由所在键承载，块写入器正是从该槽位输出它，因此文档原样往返；

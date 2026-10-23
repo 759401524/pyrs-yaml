@@ -14,6 +14,15 @@ heading in ja and ko - invisible in the changelog body in all five files, and gr
 under every gate that existed, because "the same version headers exist" says nothing
 about where a reader looks. `placement_errors` is the rule that would have caught it.
 
+And it checks *nesting*, which placement cannot see either: a section heading has to
+sit exactly one level below the version heading it belongs to. The four mirrors carried
+`[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` with their sections (`新增`, `Added`,
+`追加`, `추가` and friends) at the version's own level, so the deployed site's table of
+contents listed every section as a sibling of the version - while "every entry sits
+under some section heading" stayed true and every gate stayed green. Root was correct
+throughout (`## [v0.18.3]` then `### Added`), which is why the defect only showed on
+the localized pages. `level_errors` is the rule that names it.
+
 Exit code 0 = structurally in sync and every entry in place; 1 = drift detected.
 
 Importing this module on Python 3.8 used to raise `TypeError: 'type' object is not
@@ -92,6 +101,46 @@ def placement_errors(text: str, name: str) -> list[str]:
     return errors
 
 
+def level_errors(text: str, name: str) -> list[str]:
+    """Every section heading the docs site's table of contents renders beside its version.
+
+    A version's sections belong exactly one level below it (`## [v0.18.3]` then `### Added` in root,
+    `### [v0.18.3]` then `#### 新增` in the mirrors). Two shapes break that: a heading at or above the
+    version heading's own level is a sibling in the TOC (the defect this rule was written for), and a
+    first section two levels down nests under a heading that does not exist. Deeper headings inside a
+    section are allowed, because a section may carry its own subsections.
+    """
+    errors = []
+    version_level = None
+    first_section = False
+    for index, line in enumerate(text.splitlines()):
+        heading = re.match(r"^(#{1,6}) ", line)
+        if not heading:
+            continue
+        level = len(heading.group(1))
+        if _VERSION_HEADING_RE.match(line):
+            version_level = level
+            first_section = False
+            continue
+        if version_level is None:
+            continue
+        if level <= version_level:
+            errors.append(
+                f"{name} line {index + 1}: heading {line!r} is level {level}, not deeper than the "
+                f"version heading above it - the table of contents renders it as that version's "
+                f"sibling"
+            )
+        elif not first_section:
+            first_section = True
+            if level != version_level + 1:
+                errors.append(
+                    f"{name} line {index + 1}: the first section under a level-{version_level} "
+                    f"version heading is level {level}, expected {version_level + 1} - it would nest "
+                    f"under a heading that does not exist"
+                )
+    return errors
+
+
 def unreleased_counts(text: str) -> dict[str, int]:
     """Entry bullets per section heading inside [Unreleased], keyed by the heading as written.
 
@@ -153,6 +202,7 @@ def main() -> int:
 
     for path, text in texts.items():
         errors.extend(placement_errors(text, path.name))
+        errors.extend(level_errors(text, path.name))
 
     for path in FILES[1:]:
         text = texts[path]
@@ -192,7 +242,10 @@ def main() -> int:
         print("changelog entry-count drift detected:")
         print("\n".join(drift))
         return 1
-    print("OK: all 5 changelogs structurally in sync, every entry filed under a section, counts equal")
+    print(
+        "OK: all 5 changelogs structurally in sync, every entry filed under a section, "
+        "every section nested under its version, counts equal"
+    )
     for path in FILES:
         print(f"  {path.relative_to(ROOT).as_posix():24} [Unreleased] sections {counts[path.name]}")
     return 0
