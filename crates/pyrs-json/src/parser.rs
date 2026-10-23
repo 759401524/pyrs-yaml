@@ -4545,4 +4545,46 @@ mod tests {
             );
         }
     }
+
+    /// The dispatch decides by `target_arch`, so on an x86 CI the scalar loop only ever sees the
+    /// last partial vector - yet that loop is the whole answer the aarch64 wheels ship. Ask both
+    /// the same questions over a body that crosses the boundary, with a stop byte at every value
+    /// and at offsets where a vector starts, ends and straddles it, and require the same index.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_scalar_body_scan_answer_what_the_vector_answers() {
+        fn agree<const SINGLE: bool>(bytes: &[u8], what: &str) {
+            for pos in [0usize, 1, 7, 15, 16, 17, 31, 33, 63, 64, 79, 80] {
+                let pos = pos.min(bytes.len());
+                assert_eq!(
+                    body_end_scalar::<SINGLE>(bytes, pos),
+                    body_end_sse2::<SINGLE>(bytes, pos),
+                    "{what} from {pos}: {bytes:?}"
+                );
+            }
+        }
+        // 'a' is content in both dialects, so a stop is only ever caused by the byte placed.
+        let mut body = vec![b'a'; 80];
+        agree::<false>(&body, "unbroken run");
+        agree::<true>(&body, "unbroken run");
+        for offset in [0usize, 1, 7, 14, 15, 16, 17, 31, 32, 47, 63, 64, 79] {
+            for value in 0u8..=255 {
+                body[offset] = value;
+                let what = format!("stop byte {value:#04x} at {offset}");
+                agree::<false>(&body, &what);
+                agree::<true>(&body, &what);
+                body[offset] = b'a';
+            }
+        }
+        // A three-byte character the scan must never stop on, straddling every boundary.
+        for offset in 0..=77 {
+            body[offset] = 0xE2;
+            body[offset + 1] = 0x82;
+            body[offset + 2] = 0xAC;
+            let what = format!("multi-byte run at {offset}");
+            agree::<false>(&body, &what);
+            agree::<true>(&body, &what);
+            body[offset..offset + 3].fill(b'a');
+        }
+    }
 }

@@ -1789,4 +1789,41 @@ mod tests {
             }
         }
     }
+
+    /// The dispatch decides by `target_arch`, so on an x86 CI the scalar loop only ever sees the
+    /// last partial vector - yet that loop is the whole answer the aarch64 wheels ship. Ask both the
+    /// same questions over a body that crosses the boundary, with every byte value at every offset
+    /// where a vector starts, ends and straddles it, and require the same index from each.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_scalar_body_scan_answers_what_the_vector_answers() {
+        fn agree(bytes: &[u8], what: &str) {
+            for pos in [0usize, 1, 7, 15, 16, 17, 31, 33, 63, 64, 79, 80] {
+                let pos = pos.min(bytes.len());
+                assert_eq!(
+                    forbidden_start_scalar(bytes, pos),
+                    forbidden_start_sse2(bytes, pos),
+                    "{what} from {pos}: {bytes:?}"
+                );
+            }
+        }
+        // 'a' is content for a single-line basic string, so a stop is only ever caused by the byte
+        // placed - the tab and the newline included, which the writer must not skip over.
+        let mut body = vec![b'a'; 80];
+        agree(&body, "unbroken run");
+        for offset in [0usize, 1, 7, 14, 15, 16, 17, 31, 32, 47, 63, 64, 79] {
+            for value in 0u8..=255 {
+                body[offset] = value;
+                agree(&body, &format!("byte {value:#04x} at {offset}"));
+                body[offset] = b'a';
+            }
+        }
+        for offset in 0..=77 {
+            body[offset] = 0xE2;
+            body[offset + 1] = 0x82;
+            body[offset + 2] = 0xAC;
+            agree(&body, &format!("multi-byte at {offset}"));
+            body[offset..offset + 3].fill(b'a');
+        }
+    }
 }
