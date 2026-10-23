@@ -857,3 +857,83 @@ and again in each `Vec` growth copy — so the floor moves through the enforcing
 are bounded by the largest token, not by a constant. And the range is source bytes, not the decoded
 value: a consumer that wants the scalar still reads `value`, which is the split the wording "token,
 not the subtree" describes.
+
+## One sink per shard (2026-10-23)
+
+<!-- landed: crates/pyrs-json/src/documents.rs::parse_documents_with_options_to_parallel -->
+<!-- landed: crates/pyrs-json/src/documents.rs::ShardSink -->
+<!-- landed: crates/pyrs-json/src/lib.rs::parse_documents -->
+<!-- landed: crates/pyrs-json/Cargo.toml -->
+<!-- landed: .github/workflows/ci.yml -->
+
+The scale pillar wanted chunked parallel parsing. The first design kept the one-sink contract and
+divided the lines across threads behind it — which forces a producer to either take a lock per event
+or buffer the events another thread will deliver. The second choice was measured before it was
+written, and it is the one that loses.
+
+**The event vocabulary is wider than the input.** `StreamEvent` is 136 bytes; a 107-byte log line
+produces about 15 of them. Buffering therefore costs roughly 19× the source before a single byte of
+progress is made, and every design that hands events to another thread pays it. Measured over
+200,000 lines (20.5 MiB) on the 24-thread development host: every variant warmed once, then
+interleaved, and each row is that run's median of seven. Run-to-run spread is wide on this host —
+serial moved between 112.3 and 113.4 ms and the bounded pipeline between 35.6 and 42.9 ms across
+runs — which is why the comparison is interleaved rather than a timing per variant.
+
+| Shape | Median |
+| --- | --- |
+| Serial, one sink | 112.3 ms |
+| One shared sink, ordered parallel delivery | 142.1 ms |
+| Bounded ordered pipeline (bounded window, `Mutex`/`Condvar`) | 35.6 ms |
+| Per-thread collection, merged afterwards | 68.6–145.2 ms |
+| Raw per-shard walk with no sink (upper bound) | 6.9 ms |
+| Shipped: one sink per shard | 18.9 ms |
+
+The shared sink is *slower* than serial: the lock is on the hot path of every event and the ordering
+work buys nothing the consumer could not do itself. The bounded pipeline is real speedup but caps at
+3.2× where the work available allows 16×, because it still copies 1900 bytes per line through a
+channel. Removing the transfer is what the last row measures.
+
+**The ruling: the sink surface gets shards, not a global order.**
+`parse_documents_with_options_to_parallel` takes `&mut [S]`, one sink per shard, and runs the same
+serial walk per shard on its own thread
+(`std::thread::scope`, so no `'static` bound and no thread pool). Nothing is buffered between a
+producer and its sink: an event is handed over on the thread that built it. Shards merge by `offset`
+because every position is global — the byte-range work above is what makes that true — so a consumer
+that wants one order sorts or merges on a field it already reads, and one that wants none pays
+nothing.
+
+The contract, and the tests that pin it (six `#[cfg(feature = "parallel")]` tests in the same
+module):
+
+- Shards are consecutive line runs, so a shard boundary is a line boundary and a document is never
+  split. Each opened sink sees a complete stream over its own shard — `StreamStart`, its documents,
+  `StreamEnd` — with positions against the whole input. Concatenating the per-shard document events
+  reproduces the serial stream's `DocumentStart…DocumentEnd` sequence exactly.
+- A sink that owns no line is never opened (more shards than lines). An empty input goes to the
+  first sink and no other. One sink is the serial walk, delegated rather than reimplemented.
+- `Break` stops only the shard that asked: the others finish, and their events still arrive. That is
+  a different question from the serial contract, where `Break` means "the rest of the input is never
+  scanned", and the API's caller is the one that decides which it wants.
+- The first refusal in *source order* is returned, not the first one met: outcomes are read in shard
+  order after every thread joins. The error's line and its embedded ` at line N column ` fragment
+  are moved from the shard's coordinates to the whole input's, the same rewrite the serial
+  line-by-line walk does.
+
+**A measurement artifact worth keeping.** The first reading of the shipped API was 46.5 ms — 2.42×,
+which looks like the shape was wrong. It was the probe: 24 `Count` sinks allocated contiguously,
+each 8 bytes, so all of them shared the cache lines their neighbouring threads wrote. Padding each
+counter to a cache line gave 18.9 ms for identical library code. The caveat is in the function's own
+doc comment, because the next caller that measures a bare counter will make the same mistake and
+blame the engine.
+
+**Cost.** The feature is opt-in (`parallel = ["std"]`), so the default build compiles none of this.
+No Ir floor governs the file: the scenarios in `crates/pyrs-yaml-core/benches/ir_gate.rs` walk
+documents through the `parse_*` entry points, and this module is on none of their paths. What is
+gated is that the code keeps compiling and passing on a leg the default build never visits:
+`ci.yml` runs `cargo test -p pyrs-json --features parallel` as its own step.
+
+**Not answered.** There is no Python surface for line-delimited streams yet — `parse_documents*` is
+Rust-only, and the binding's `parse_stream` still walks one document. The shard count is the
+caller's to choose; nothing sizes it from the input, so a caller that hands 24 shards 24 lines gets
+less than serial. And parallelism here divides *documents*, not one document: a single 20 MiB JSON
+value still goes down the serial walk.

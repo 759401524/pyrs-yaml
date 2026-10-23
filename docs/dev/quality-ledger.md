@@ -7606,6 +7606,64 @@ YAML computes its own positions from granit's char indices and never used this t
 found the defect is a throwaway crate under `target/`, not a committed benchmark: the permanent
 evidence is the mechanism test above.
 
+### (fg) The shared-sink parallel stream was refuted by its own premise, so the sink surface is per shard (2026-10-23)
+
+The scale pillar's next step was chunked parallel parsing. The shape on the table kept the one-sink
+contract and divided the line-delimited input across threads behind it, so a consumer would still
+see one ordered stream. That shape cannot be cheap, and the reason is the event vocabulary itself:
+`StreamEvent` is 136 bytes and a 107-byte log line produces about 15 of them, so handing an event to
+another thread means moving roughly 19x the source through a channel or a lock. The premise was
+measured before the code was written, on 200,000 lines (20.5 MiB) over 24 threads, every variant
+warmed once and then interleaved, each figure a median of seven: serial 112.3-113.4 ms; one shared
+sink with ordered parallel delivery 142.1 ms; a bounded ordered pipeline (`Mutex`/`Condvar`, bounded
+window, ordered release) 35.6-42.9 ms; per-thread collection merged afterwards 68.6-145.2 ms; a raw
+per-shard walk with no sink at all 6.9 ms; one sink per shard 18.9 ms.
+
+**Two of those rows are verdicts.** The shared sink is slower than serial — the lock sits on every
+event's path and the ordering work buys a consumer nothing it could not do itself. The bounded
+pipeline is a real 3x but caps there against 16x of available work, because it still copies 1900
+bytes per line between the producer and its sink. Anything delivered in one order costs the
+buffering; the measured ceiling is the shape with no transfer at all.
+
+**The ruling (Decision C, user-selected): the sink surface is per shard.**
+`parse_documents_with_options_to_parallel` takes `&mut [S]`, one sink per shard, and runs the serial
+one-line walk over each consecutive run of lines on its own thread inside `std::thread::scope` — no
+`'static` bound, no pool. An event is handed over on the thread that built it, with positions
+already global, so a consumer that wants one order merges by `offset` (which the byte-range work in
+this same milestone made present on every event) and one that does not pays nothing. The feature is
+opt-in (`parallel = ["std"]`), the default build compiles none of it.
+
+**The contract is small and pinned.** Shards are consecutive line runs, so a document is never
+split; each opened sink sees a complete stream over its shard with positions against the whole
+input, and concatenating the per-shard document events reproduces the serial
+`DocumentStart…DocumentEnd` sequence. A sink owning no line is never opened, an empty input goes to
+the first sink, and one sink is the serial walk by delegation. `Break` stops only the shard that
+asked — a different question from the serial contract, where it means the rest of the input is never
+scanned. The first refusal in source order is returned regardless of which thread met it first, with
+its line field and its embedded ` at line N column ` fragment moved to whole-input coordinates by
+the same rewrite the serial line walk already used. Six `#[cfg(feature = "parallel")]` tests in
+`crates/pyrs-json/src/documents.rs` pin those clauses; `ci.yml` runs
+`cargo test -p pyrs-json --features parallel` so a leg the default build never visits still
+executes.
+
+**A reading that blamed the engine was the probe.** The first run of the shipped API measured
+46.5 ms (2.42x) and looked like a wrong shape. The sinks were 24 eight-byte counters allocated
+contiguously, so every thread wrote to cache lines its neighbours owned; padding each counter to a
+cache line gave 18.9 ms for byte-identical library code. The caveat now sits in the function's doc
+comment, because the next caller measuring a bare counter will make the same mistake.
+
+**What it costs and what it does not.** The default path is untouched: no Ir scenario reads
+`documents.rs` — the floors in `.ci/ir-baseline.json` come from the `parse_*`/`serialize_*`
+scenarios in `crates/pyrs-yaml-core/benches/ir_gate.rs`, and this module sits on none of their
+paths, so the gate has nothing to say about it and no floor was moved. Rust: `cargo nextest run
+--all` 775 tests, `cargo nextest run -p pyrs-json --features parallel` 102, clippy clean on both
+target sets. `python scripts/quality_matrix.py --check-rows` reads 788 Rust `#[test]` functions.
+
+**Not covered.** There is no Python surface — `parse_documents*` is Rust-only and the binding's
+`parse_stream` still walks a single document. The shard count is the caller's; nothing derives it
+from the input, so 24 shards over 24 lines is slower than serial. And this divides documents, not
+one document: a single 20 MiB JSON value still goes down the serial walk.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

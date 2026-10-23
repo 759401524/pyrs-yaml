@@ -39,6 +39,15 @@ status: new
   一条 `(chars, bytes)` 标记、ASCII 一条都不留，这正是 `load_stream` 的分块内存保持平坦的原因。
   `parse_stream` 与 `load_stream` 的事件字典多出这两个键。`tests/test_streaming.py` 的十七条测试钉住
   全部五种格式与 YAML 两条路径上的区间，其中包括按单字节喂入的读取器。
+- **行分隔的 JSON：一行一文档，可选每分片一个 sink** — `pyrs_json::parse_documents*` 用与
+  `parse_stream` 相同的一行走查描述 NDJSON/JSON Lines，每个事件与每个错误的位置都对着整个输入。
+  空行、只有注释的行以及需要下一行才能完成的值会被拒绝而不是跳过，所选方言（JSONC 或 JSON5）应用到
+  每一行，流的形状与 YAML 引擎一致：一个 `StreamStart`、每行一对 `DocumentStart…DocumentEnd`、
+  一个 `StreamEnd`。可选的 `parallel` 特性把行切成连续分片，每片一个 sink、一个线程，生产者与 sink
+  之间不缓冲任何东西；因为每个位置都是全局的，分片按 `offset` 归并。在 200,000 行（20.5 MiB、
+  24 线程、交错取中位数）上实测：单 sink 112.3 毫秒，24 个分片 18.9 毫秒（5.96 倍）。单个共享 sink
+  无法并行——142.1 毫秒，有界有序流水线 35.6 毫秒——因为一个 `StreamEvent` 是 136 字节，一行 107
+  字节产生约 15 个事件，缓冲的代价约为输入的 19 倍。
 - **可选 `mmap` 读路径** — 开启后 `parse_file` 直接从内存映射解析非空常规文件，省掉
   `read_to_string` 的整文件拷贝；默认关闭（`default = ["numpy"]` 不变）。空文件、目录、
   非常规路径与非 UTF-8 输入保持原有报错；详见 `docs/dev/boundaries.md`。

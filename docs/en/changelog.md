@@ -48,6 +48,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `load_stream`'s chunked memory flat. `parse_stream` and `load_stream` event dicts gain the two
   keys. Seventeen tests in `tests/test_streaming.py` pin the ranges across all five formats and both
   YAML routes, including a reader fed one byte at a time.
+- **Line-delimited JSON: one document per line, optionally one sink per shard** —
+  `pyrs_json::parse_documents*` describes NDJSON/JSON Lines through the same one-line walk as
+  `parse_stream`, with every event and every error positioned against the whole input. A blank line,
+  a note-only line and a value that needs the next line are refused rather than skipped, the chosen
+  dialect (JSONC or JSON5) applies to every line, and the stream keeps the shape the YAML engine
+  uses: one `StreamStart`, per-line `DocumentStart…DocumentEnd`, one `StreamEnd`. The opt-in
+  `parallel` feature divides the lines into consecutive shards, one sink and one thread each, so
+  nothing is buffered between a producer and its sink; shards merge by `offset` because every
+  position is global. Measured over 200,000 lines (20.5 MiB, 24 threads, interleaved medians):
+  112.3 ms through one sink, 18.9 ms across 24 shards (5.96x). A single shared sink does not
+  parallelize — 142.1 ms, and a bounded ordered pipeline 35.6 ms — because a `StreamEvent` is 136
+  bytes and a 107-byte line produces about 15 of them, so buffering costs roughly 19x the input.
 - **Opt-in `mmap` read path** — `parse_file` parses a regular non-empty file straight from a memory
   map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
   (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
