@@ -14,6 +14,11 @@ measurement finds nothing, and the registry no longer claims it does.
 
 So the rules below are tested the way every other fix here is: each one has to fire on the injection
 that names it, and the counts probe has to stay quiet while the five pages agree.
+
+A third rule arrived with the deployed table of contents: `[Unreleased]`, `[v0.18.3]` and
+`[v0.18.1]` carried their sections (`新增`, `Added`, `追加`, `추가`) at the version's own level in all
+four mirrors, so the site listed every section beside its version. Every rule above stayed green -
+each entry still sat under *a* section - which is why the level relationship is its own rule now.
 """
 
 from __future__ import annotations
@@ -161,6 +166,42 @@ def test_an_entry_under_a_version_heading_with_no_section_is_a_finding(checker):
     errors = checker.placement_errors(text, "CHANGELOG.md")
     assert len(errors) == 1, errors
     assert "under no section heading" in errors[0], errors[0]
+
+
+# ── rule 3: a section nests under the version heading it belongs to ─────────────
+
+
+def test_every_section_in_the_tree_nests_under_its_version(checker):
+    """The rule the four mirrors broke while every other check stayed green."""
+    for path in checker.FILES:
+        text = path.read_text(encoding="utf-8")
+        errors = checker.level_errors(text, path.name)
+        assert errors == [], "\n".join(errors)
+
+
+def test_a_section_at_its_versions_level_is_a_finding(checker):
+    text = "\n".join(["## Changelog", "", "### [v0.1.0]", "", "### Fixed", ""])
+    errors = checker.level_errors(text, "changelog.md")
+    assert len(errors) == 1, errors
+    assert "renders it as that version's sibling" in errors[0], errors[0]
+
+
+def test_the_same_section_one_level_deeper_is_clean(checker):
+    """Discriminator: the finding is the level, not the heading text."""
+    text = "\n".join(["## Changelog", "", "### [v0.1.0]", "", "#### Fixed", ""])
+    assert checker.level_errors(text, "changelog.md") == []
+
+
+def test_a_first_section_two_levels_deep_is_a_finding(checker):
+    text = "\n".join(["# Changelog", "", "## [Unreleased]", "", "##### Fixed", ""])
+    errors = checker.level_errors(text, "CHANGELOG.md")
+    assert len(errors) == 1, errors
+    assert "expected 3" in errors[0], errors[0]
+
+
+def test_the_shapes_the_other_rules_use_are_level_clean(checker):
+    assert checker.level_errors(ROOT_SHAPE, "CHANGELOG.md") == []
+    assert checker.level_errors(DOC_SHAPE, "changelog.md") == []
 
 
 # ── counts: locale-independent positions ────────────────────────────────────────

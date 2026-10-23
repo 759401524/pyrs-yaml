@@ -17,7 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [Unreleased]
 
-### Added
+#### Added
 
 - **The JSON and TOML event streams stop where the consumer stops them** — `parse_stream(...,
   on_event=...)` collected every event before the first callback ran, for every format, so a `False`
@@ -35,12 +35,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
   error precedence.
 
+#### Fixed
+
+- **The deployed site's table of contents lists each section beside its version** — the four
+  localized changelog pages carried the `[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` sections at the
+  version heading's own level, so the site rendered each section as a sibling of its version rather
+  than under it; root was correct all along, which is why the defect showed only on the localized
+  pages. `scripts/check_changelog_mirrors.py` now checks the level relationship (`level_errors`),
+  and `tests/test_changelog_placement_gate.py` pins both the clean tree and the injected shape.
+
 ### [v0.18.3] — 2026-10-22
 
 <details markdown="1">
 <summary>gates that read the tree · crate matrix · note ownership · wider wheels</summary>
 
-### Added
+#### Added
 
 - **A landed claim in a live document names its code** - `docs/dev/event-stream.md` said "decision 6
   landed" against a trunk that carried only the docs-only commit `0a074148`, and nothing compared a
@@ -98,7 +107,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   test target for the extension, and the hook in `prek.toml` runs the gate on every change that
   touches a manifest or a crate.
 
-### Changed
+#### Changed
 
 - **A note in an event stream says which node it belongs to** — `pyrs-event`'s
   `StreamEventType::Comment` carried one flag, `standalone`, and it answered two questions at
@@ -934,7 +943,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because that leg's whole purpose is proving the declared floor for every crate, the shipped one
   included. No published behaviour changes: the same 748 Rust tests and the same Python suite run.
 
-### Removed
+#### Removed
 
 - **The invented rule validator is retired; `Document.validate()` is the only schema surface** —
   `validate_against_schema()` and `validate_against_registered_schema()` are removed, and a
@@ -953,7 +962,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rather than JSON Schema evaluation. The four locales' guides, quick start, tutorial, feature table
   and API pages document `Document.validate()`, and the shipped stub names neither removed function.
 
-### Fixed
+#### Fixed
 
 - **The two newest releases are folded like every older one** - `## [v0.18.1]` and `## [v0.18.3]`
   reached all five release-note pages without the `<details markdown="1">` fold that every release
@@ -1136,7 +1145,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <details markdown="1">
 <summary>free-threaded 3.15t wheels · Linux arm64 · merge-key notes kept</summary>
 
-### Added
+#### Added
 
 - **Free-threaded wheels for Python 3.15t and Linux arm64** — the release now builds a
   `cp315-abi3.abi3t` wheel for Windows, macOS and glibc Linux (x86_64 and arm64), so 3.15t and later
@@ -1145,7 +1154,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   perform is a native call. Each wheel is installed, and the suite run, on the interpreter it
   targets.
 
-### Fixed
+#### Fixed
 
 - **An alias-valued merge key keeps its inline note** — `<<: *d  # note` lost the note at ingest:
   an alias has no metadata slot, and the reader reported the note attached anyway. It now rides the

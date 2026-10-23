@@ -25,6 +25,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
   error precedence.
 
+### Fixed
+
+- **The deployed site's table of contents lists each section beside its version** — the four
+  localized changelog pages carried the `[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` sections at the
+  version heading's own level, so the site rendered each section as a sibling of its version rather
+  than under it; root was correct all along, which is why the defect showed only on the localized
+  pages. `scripts/check_changelog_mirrors.py` now checks the level relationship (`level_errors`),
+  and `tests/test_changelog_placement_gate.py` pins both the clean tree and the injected shape.
+
 ## [v0.18.3] — 2026-10-22
 
 <details markdown="1">

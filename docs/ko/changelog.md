@@ -15,7 +15,7 @@ status: new
 
 ### [Unreleased]
 
-### 추가
+#### 추가
 
 - **JSON과 TOML 이벤트 스트림은 소비자가 멈춘 곳에서 멈춥니다** — 이전의
   `parse_stream(..., on_event=...)`는 모든 형식에서 이벤트를 전부 모은 뒤에야 콜백을 호출했으므로,
@@ -32,12 +32,20 @@ status: new
   `None`을 반환합니다. `tests/test_streaming.py`의 일곱 테스트가 중단 접두사, 형식별 거부 사실, 오류
   우선순위를 고정합니다.
 
+#### 수정
+
+- **배포된 사이트의 목차가 각 섹션을 버전 옆에 나열했다** — 네 개의 번역 changelog 페이지는
+  `[Unreleased]`, `[v0.18.3]`, `[v0.18.1]` 의 섹션을 버전 제목과 같은 계층에 두었고, 그래서 사이트는
+  각 섹션을 버전 옆에 나열했습니다. 루트는 처음부터 올바른 상태였고 결함은 번역 페이지에만
+  나타났습니다. `scripts/check_changelog_mirrors.py` 는 이제 계층 관계를 검사하며(`level_errors`),
+  `tests/test_changelog_placement_gate.py` 는 정상 트리와 주입된 잘못된 형태를 모두 고정합니다.
+
 ### [v0.18.3] — 2026-10-22
 
 <details markdown="1">
 <summary>트리를 읽는 관문 · crate 행렬 · 주석 귀속 · 넓은 wheel 행렬</summary>
 
-### 추가
+#### 추가
 
 - **라이브 문서의 landed 주장이 코드를 지목합니다** — `docs/dev/event-stream.md`는 docs-only 커밋
   `0a074148`만 담긴 트렁크에 "decision 6 landed"라고 적고 있었고, 설계 문서의 현재 시제 서술을
@@ -92,7 +100,7 @@ status: new
   더 이상 만들지 않습니다. `prek.toml`의 훅이 manifest나 crate를 건드리는 변경마다 이 게이트를
   실행합니다.
 
-### 변경
+#### 변경
 
 - **이벤트 스트림의 주석은 어느 노드의 것인지 말해 준다** — `pyrs-event` 의
   `StreamEventType::Comment` 는 플래그 하나(`standalone`)만 들고 있었고, 그 플래그는 두
@@ -865,7 +873,7 @@ status: new
   포함해 모든 crate에 대해 선언된 하한을 증명하는 자리이기 때문입니다. 공개된 동작은 변하지
   않습니다. 같은 748개 Rust 테스트와 같은 Python 스위트가 그대로 실행됩니다.
 
-### 제거
+#### 제거
 
 - **자체 제작 규칙 검증기를 은퇴시키고 `Document.validate()`를 유일한 스키마 표면으로 삼습니다** ——
   `validate_against_schema()`와 `validate_against_registered_schema()`가 제거되었고, 스키마 정의의
@@ -885,7 +893,7 @@ status: new
   페이지는 `Document.validate()`를 문서화하며, 배포되는 스텁에는 삭제된 두 함수 이름이 나타나지
   않습니다.
 
-### 수정
+#### 수정
 
 - **가장 최근 두 릴리스도 이전처럼 접힙니다** - `## [v0.18.1]`과 `## [v0.18.3]`는 다섯 릴리스 노트
   모두에서 `<details markdown="1">` 접기를 빼먹었습니다. v0.12.x 이후 모든 릴리스가 그 접기를
@@ -1052,7 +1060,7 @@ status: new
 <details markdown="1">
 <summary>프리 스레드 3.15t wheel · Linux arm64 · merge 키 주석 보존</summary>
 
-### 추가
+#### 추가
 
 - **Python 3.15t 및 Linux arm64용 프리-스레디드 휠** — 릴리스 매트릭스가 Windows, macOS, glibc
   Linux(x86_64 및 arm64)에서 `cp315-abi3.abi3t` 휠을 빌드하므로 3.15t 이상은 소스에서 컴파일하지
@@ -1060,7 +1068,7 @@ status: new
   러너에서 빌드되어, qemu에서 실패하던 대상 인터프리터 exec가 네이티브 호출이 됩니다. 각 휠은 대상
   인터프리터에서 설치되고 전체 스위트를 실행합니다.
 
-### 수정
+#### 수정
 
 - **별칭을 값으로 갖는 병합 키가 인라인 노트를 유지** — `<<: *d  # note`는 읽기 단계에서
   노트를 잃었습니다. 별칭에는 메타데이터 슬롯이 없는데도 리더는 첨부에 성공했다고 보고했습니다.
