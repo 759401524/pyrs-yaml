@@ -191,6 +191,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **`load_json5` takes the AST-free route its two siblings already had** — the family's fast path
+  (`json_fast::try_load`, one pass straight into `dict` / `list` / scalars) was wired into
+  `load_json` and `load_jsonc` only, so the loader advertising the same family paid the whole
+  `CustomNode` round-trip on every document: 2.063 µs against 0.473 µs for `load_json` over the
+  same 123 B of bytes. JSON5 is a superset of strict JSON, so what the fast path accepts is a legal
+  JSON5 document with the same resolved value, and everything the dialect adds - single quotes,
+  unquoted keys, `.5`, `0x…`, `+7`, `Infinity`, comments, trailing commas - bails the whole
+  document onto the AST path that owns those semantics. Values are unchanged, judged against
+  `json.loads` and `pyjson5` by 712 tests across `test_json.py`, `test_json5_spec_table.py`,
+  `test_json_crosslib.py`, `test_key_resolution_parity.py` and `test_property_dialects.py`.
+  Measured in one process against the same loader's own dialect route - the only way Python can
+  see both - the fast path wins 6.25x on a 300-item document and 9.34x on 1,200 items, 5/5 pairs
+  each, and `tests/test_json_leaderboard.py` now gates that ratio because the binding layer has no
+  instruction floor (`perf-coverage:binding-layer`): with the probe disabled by hand both sides sit
+  at 187.8 µs and the gate reddens naming every pair. The published JSON5 row is a dialect-shaped
+  fixture, so it still takes the AST route and stays behind `pyjson5`; that gap needs a
+  JSON5-aware direct builder, not this change.
 - **The outbound escape scan runs sixteen bytes at a time in the JSON and TOML writers** — the
   readers were vectorized first because their share was bigger; the writers' turn came once the
   long-value shape had committed floors (#600), and the question "does this value need escaping?"
@@ -218,7 +235,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   development host - read +0.00% on the image, which is why the move is decided there. The YAML
   writer is untouched, its quoting answer is already one byte pass, and the only lead left there is
   `serialize_block_scalars`' line-break search inside `std`'s pattern machinery.
-
 - **String bodies and the TOML line are searched sixteen bytes at a time** — the JSON and TOML
   readers asked "closing quote, escape, or a byte this dialect refuses?" one byte at a time, and on
   a document whose strings are long that question is between a quarter and two fifths of the whole
