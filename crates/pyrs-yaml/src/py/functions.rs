@@ -591,8 +591,20 @@ pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
 #[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
 /// Parse a JSON5 document directly into Python values (dict / list /
 /// scalar). Accepts the full JSON5 grammar without a pre-processing
-/// step, mirroring `load_jsonc` on the wider dialect.
+/// step, mirroring `load_jsonc` on the wider dialect. Canonical strict
+/// JSON takes the same AST-free fast path `load_json` and `load_jsonc`
+/// use; every JSON5-only form falls through to the AST parser that owns
+/// the dialect's number and string semantics.
 pub(crate) fn load_json5(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
+    // The fast path accepts only the canonical strict-JSON subset, which is a
+    // legal JSON5 document with the same resolved value, so routing through it
+    // cannot widen or shift the grammar: single-quoted strings, unquoted keys,
+    // `.5`, `0x…`, `+1`, `Infinity`/`NaN`, comments and trailing commas are all
+    // outside what it accepts, and it bails on the whole document — never
+    // partway — leaving the path below to resolve them.
+    if let Some(value) = crate::py::json_fast::try_load(py, json_str) {
+        return Ok(value);
+    }
     let mut ast = pyrs_json::from_json5(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",

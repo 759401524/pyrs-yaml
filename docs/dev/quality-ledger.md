@@ -8061,6 +8061,48 @@ is the question `.ci/ir-baseline.json` answers, and that gate is the one a merge
 branch that never merges has no release to describe. Writing an invented bullet to silence it would
 train the gate instead of obeying it - the shape is worth remembering for the next throwaway.
 
+### (fq) The third JSON loader stopped paying for the AST its siblings skip (2026-10-24)
+
+**Premise.** (fo) published a JSON5 row we lose to `pyjson5` and called it the one to act on. The
+first measurement disagreed with the shape of that claim: the dialect's scanning is not what the
+loader spends its time on. `json_fast::try_load` - one pass straight into `dict` / `list` /
+scalars - is wired into `load_json` and `load_jsonc`, and `load_json5` had never been connected to
+it, so the loader whose own docstring says it mirrors `load_jsonc` paid the whole `CustomNode`
+round-trip on *every* document. Same 123 B, same value: 0.473 µs against 2.063 µs - 4.4x, of the
+loader, not of the grammar.
+
+**What changed.** `load_json5` asks the fast path first. The soundness argument is set inclusion:
+JSON5 is a superset of strict JSON, so whatever the fast path accepts is a legal JSON5 document
+whose value it resolves the same way; everything the dialect adds - single quotes, unquoted keys,
+`.5`, `0x…`, `+7`, `Infinity`, comments, trailing commas - sits outside what it accepts, and a
+decline moves the whole document to the AST parser that owns those semantics, never partway. 712
+tests across `test_json.py`, `test_json5_spec_table.py`, `test_json_crosslib.py`,
+`test_key_resolution_parity.py` and `test_property_dialects.py` judge the loaders against
+`json.loads` and `pyjson5` and stayed green; `test_json.py` gained a class pinning the accepted
+subset (`1.0` stays a float, duplicate keys keep last-wins-first-position, >i64 still yields the
+documented source-text string) and the forms that must still fall through.
+
+**How a route becomes observable in Python.** The two paths of one loader cannot be told apart from
+the outside, and the binding layer is a registered hole for instruction counting
+(`perf-coverage:binding-layer`) - `cargo codspeed build` excludes `pyrs-yaml`, so no floor prices
+it. So the gate compares the loader against *itself*: `_dialect_twin` adds one trailing comma, legal
+in JSON5 and outside the fast path, which moves the identical content to the AST route. Paired in
+one process, the fast path is 6.25x at 300 items and 9.34x at 1,200, 5/5 pairs each, and
+`tests/test_json_leaderboard.py` requires both the pair majority and a 1.5x floor.
+
+**The control, run not imagined.** Replacing the probe with a discarded call - `let _probe =
+try_load(...)` - leaves both sides at 187.8 µs and reddens the new gate as
+`candidate 190.3us vs reference 187.8us (0.99x), won 1/5 pairs`, naming every pair. Restoring it and
+rebuilding returns 6 passed. This is what makes the gate a route assertion rather than a comment
+about speed.
+
+**What is not closed.** (fo)'s published row stays a loss: its fixture is dialect-shaped, so it
+takes the AST route by design, and beating `pyjson5` there needs a direct builder that knows JSON5
+tokens - a different, larger change, scoped by this one rather than attempted. The table is also not
+re-measured for this: three readings of that row on this host after the change are 1.696, 1.858 and
+1.974 µs against the committed 1.578 µs, with `json.loads` moving by the same proportion in the same
+runs - which is the machine, not the code, and `--update` would rewrite twelve pages to record it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
