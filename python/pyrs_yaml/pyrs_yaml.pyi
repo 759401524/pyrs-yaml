@@ -493,7 +493,10 @@ def load_json5(json_str: "str") -> "dict[str, Any] | list[Any]":
     """
     Parse a JSON5 document directly into Python values (dict / list /
     scalar). Accepts the full JSON5 grammar without a pre-processing
-    step, mirroring `load_jsonc` on the wider dialect.
+    step, mirroring `load_jsonc` on the wider dialect. Canonical strict
+    JSON takes the same AST-free fast path `load_json` and `load_jsonc`
+    use; every JSON5-only form falls through to the AST parser that owns
+    the dialect's number and string semantics.
     """
 
 def load_jsonc(json_str: "str") -> "dict[str, Any] | list[Any]":

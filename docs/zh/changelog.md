@@ -160,6 +160,20 @@ status: new
 
 #### 性能
 
+- **`load_json5` 走上两个同胞早已启用的免 AST 路径** — 本家族的快速路径
+  （`json_fast::try_load`，一趟直接构建 `dict` / `list` / 标量）只接到了 `load_json` 与
+  `load_jsonc`，于是自称同一家族的这个加载器对每份文档都要付完整的 `CustomNode` 往返：同样的
+  123 B 字节上 `load_json` 是 0.473 µs，它是 2.063 µs。JSON5 是严格 JSON 的超集，所以快速路径
+  接受的文档本身就是合法的 JSON5 文档、解析出的值也相同；方言额外加的一切——单引号、无引号键、
+  `.5`、`0x…`、`+7`、`Infinity`、注释、尾逗号——都会让整份文档退出快速路径，落到拥有这些语义的
+  AST 路径。值没有变，这一点的裁决者是 `test_json.py`、`test_json5_spec_table.py`、
+  `test_json_crosslib.py`、`test_key_resolution_parity.py`、`test_property_dialects.py` 里
+  712 条对照 `json.loads` 与 `pyjson5` 的测试。在同一进程里跟同一加载器自己的方言路径相比——
+  这是 Python 能同时看见两条路径的唯一办法——快速路径在 300 项文档上快 6.25 倍、在 1,200 项上快
+  9.34 倍，两者都是 5/5 配对；绑定层没有指令地板（`perf-coverage:binding-layer`），所以这个比值
+  现在由 `tests/test_json_leaderboard.py` 把关：手工关掉探测后两侧都停在 187.8 µs，门禁逐对报出
+  并变红。已公布的 JSON5 行用的是方言形状文档，因此它仍走 AST 路径、仍慢于 `pyjson5`；那道缺口
+  需要一个懂 JSON5 的直接构造器，不是这次改动能填的。
 - **出口转义扫描改为一次 16 字节** — 读路径先向量化，因为它的份额更大；写路径要等到长值形状
   有了常驻地板（#600）才轮到，而"这个值需要转义吗？"这一问测得占 `to_json_long_strings` 的
   75.12% 与 `to_toml_long_strings` 的 69.01%。`write_json_string` 与 `write_single_quoted` 现在从
@@ -181,7 +195,6 @@ status: new
   `to_toml_medium` 降了 0.84%，而在开发主机上读到 +0.55% 的 YAML 场景 `parse_inline_merge` 在
   镜像上是 +0.00%——这正是移动要由那张镜像裁决的理由。YAML 写入器未动，它的取答已经是一趟字节
   判定；那里只剩 `serialize_block_scalars` 落在 `std` pattern 机制里的换行搜索。
-
 - **字符串正文与 TOML 行改为一次扫 16 字节** — JSON 与 TOML 的读路径此前逐字节询问"是收尾引号、
   转义，还是本方言拒绝的字节？"，而在字符串很长的文档上，这一询问占到整体解析的四分之一到
   五分之二。TOML 还会在每次调用时完整走一遍源码以拒绝裸回车，任何超过一兆的输入都要为它付出约

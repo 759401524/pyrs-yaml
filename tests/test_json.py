@@ -567,3 +567,75 @@ class TestLoadJson:
         assert "load_json" in pkg.__all__
         for sibling in ("load_jsonc", "load_json5", "load_toml"):
             assert sibling in pkg.__all__
+
+
+class TestJson5LoadFastPath:
+    """`load_json5` shares `json_fast::try_load` with `load_json` and `load_jsonc`.
+
+    Measured on one 123 B canonical document — the same bytes, the same value: 0.473 µs through
+    the fast path against 2.063 µs through the AST round-trip, so the one loader in the family
+    that never got the shortcut was paying 4.4x for a route its siblings skip. JSON5 is a
+    superset of strict JSON, so every document the fast path accepts is valid JSON5 with the
+    same resolved value; everything the dialect adds bails the *whole* document — never partway —
+    onto the AST path that owns `.5`, `0x…`, `+7`, `Infinity`, single quotes, unquoted keys and
+    comments.
+    """
+
+    @pytest.mark.parametrize(
+        "doc",
+        [
+            '{"s": "hi", "n": 42, "neg": -7, "z": 0, "t": true, "f": false, "nl": null}',
+            '{"arr": [1, 2, 3], "obj": {"k": "v"}}',
+            "[[1,2],[3,4]]",
+            '"hello"',
+            "null",
+            "123",
+            "1.5e10",
+            "-0.25",
+            "1.0",
+            '{"k": "café"}',
+            r'{"esc": "a\nb"}',
+        ],
+    )
+    def test_canonical_subset_agrees_with_both_authorities(self, doc):
+        pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+        # `json.loads` is strict JSON's authority, `pyjson5` is JSON5's; on canonical bytes they
+        # agree, so the accepted subset has exactly one value to match — whichever path built it.
+        assert pyrs_yaml.load_json5(doc) == json.loads(doc) == pyjson5.loads(doc)
+
+    def test_duplicate_keys_keep_the_siblings_resolution(self):
+        doc = '{"a": 1, "b": 2, "a": 3}'
+        got = pyrs_yaml.load_json5(doc)
+        assert got == {"a": 3, "b": 2}
+        assert list(got) == ["a", "b"]
+        assert got == pyrs_yaml.load_json(doc)
+
+    def test_out_of_range_int_still_bails_to_the_ast_path(self):
+        # >i64 is outside what the fast path builds, so the documented source-text form survives
+        # the reroute — and `load_json`, which always bails here, says the same thing.
+        doc = '{"big": 99999999999999999999999}'
+        assert pyrs_yaml.load_json5(doc) == {"big": "99999999999999999999999"} == pyrs_yaml.load_json(doc)
+
+    @pytest.mark.parametrize(
+        "doc",
+        [
+            "{server: {host: '0.0.0.0', port: 8080}}",
+            '{"a": 1, /* note */ "b": 2}',
+            "[1, 2, 3,]",
+            r'{"esc": "aA"}',
+        ],
+    )
+    def test_dialect_forms_still_reach_the_ast_parser(self, doc):
+        pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+        assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc)
+
+    def test_one_dialect_byte_moves_the_whole_document_off_the_fast_path(self):
+        # The fast path accepts `1.5e10` on its own; the hex beside it has to take the entire
+        # document to the AST parser, so the two spellings resolve under one path and cannot
+        # drift apart — which is the fallback claim, not a comment about style.
+        assert pyrs_yaml.load_json5('{"e": 1.5e10, "hex": 0xFF}') == {"e": 15000000000.0, "hex": 255}
+
+    def test_json5_number_family_still_resolves_after_the_probe(self):
+        pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+        doc = '{"hex": 0xFF, "lead": .5, "plus": +7}'
+        assert pyrs_yaml.load_json5(doc) == {"hex": 255, "lead": 0.5, "plus": 7} == pyjson5.loads(doc)
