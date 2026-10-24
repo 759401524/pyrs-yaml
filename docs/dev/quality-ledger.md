@@ -8030,6 +8030,37 @@ scan is the strict-JSON bulk scan the `from_jsonc_*` floors already price. The n
 single-host wall-clock readings, so they inherit the snapshot's standing caveat that a different
 CPU or interpreter moves the absolute numbers; the ratios are what the page claims.
 
+### (fp) The 6.0 run-to-run spread, measured on one commit: median 1.0%, one of 72 above 5% (2026-10-24)
+
+**Premise.** The release note that took `codspeed-divan-compat` to 6.0 promised the measurement
+before the claim: 6.0 forks every Divan benchmark, declares that some values shift on the way up, so
+a dashboard trend crossing the bump is not one measurement. That sentence landed on trunk with the
+experiment still owed, and nothing in the repository can read the numbers CodSpeed stores - the leg
+uploads them and its log prints only `Measured: <file>::<name>`.
+
+**What was measured.** A throwaway branch whose head is trunk plus one comment line in
+`tests/test_perf_docs.py`, opened as a draft pull request so `codspeed.yml` would run at all; the
+Rust leg collected once, then that single job was re-run. Same commit, same runner image
+(`ubuntu-24.04-X64-6.17.0-1022-azure`), so every difference between the two logs is the leg's own
+movement. 72 benchmarks paired. The branch is deleted and its pull request closed.
+
+**The reading.** Per-benchmark elapsed - the gap between consecutive `Measured:` stamps, which
+under 6.0 includes that benchmark's forked startup - moved by a median 1.0%; one benchmark of 72
+exceeded 5% (`from_json5_long_strings`, 0.587 s against 0.619 s, 5.5%), none exceeded 10%. The leg
+repeats.
+
+**What this does not license.** The quantity is elapsed time, not the instruction count the
+dashboard stores, because those need a CodSpeed token this repository does not hold - CI
+authenticates through GitHub OIDC. The claim under test was about per-benchmark process isolation
+and its startup cost, which is an elapsed-time property, so this channel answers that claim. It is
+not permission to read a 3% dashboard delta as noise; whether instruction counts drift across jobs
+is the question `.ci/ir-baseline.json` answers, and that gate is the one a merge decision consumes.
+
+**One red check kept on purpose.** Hygiene failed on the probe:
+`scripts/check_changelog_coupling.py` treats any `tests/**` change as release-note-bearing, and a
+branch that never merges has no release to describe. Writing an invented bullet to silence it would
+train the gate instead of obeying it - the shape is worth remembering for the next throwaway.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
