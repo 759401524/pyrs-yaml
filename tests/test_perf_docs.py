@@ -12,6 +12,10 @@ benchmark, comparison and feature pages - has its ranges derived here too, becau
 otherwise survive beside the table that contradicts it.
 """
 
+# Probe commit, never merged: one line outside `*.md` and `docs/**` so ci.yml's `changes` job
+# calls this branch code and the CodSpeed leg runs - twice against the same commit, to measure
+# its own run-to-run spread. Nothing here is measured by a benchmark, so nothing moves.
+
 from __future__ import annotations
 
 import json
