@@ -8,13 +8,16 @@
 # need to go green at all. All three agree on one boundary: a **lockfile** move is a resolution and
 # merges itself, a **manifest** move changes what is supported and waits for a human.
 #
-# Every key below is one the hosted schema documents. That is deliberate rather than timid: a value
-# the schema rejects does not fail loudly, it stops updates for the ecosystem, which is the same
-# silent-failure shape this repository spends its gates on - a check that never reports is not a pass,
-# and a bot that never opens a pull request is not up to date. So the boundary that a
-# `versioning-strategy` key would express is enforced where it can be seen and tested instead: the
-# merge gate refuses any pull request whose changed files are not in its allowlist, and a manifest
-# edit is not in that list.
+# Every key below is one the hosted schema documents, and two vocabularies share this file: `ignore`
+# and `allow` take `version-update:semver-patch`-style values, while `groups.*.update-types` takes the
+# short `patch` / `minor` / `major`. Mixing them is not a style question. The schema rejects the wrong
+# form quietly - it stops the updates that entry exists to schedule, and the other ecosystems keep
+# working, so nothing looks broken - which is the same silent-failure shape this repository spends its
+# gates on: a check that never reports is not a pass, and a bot that never opens a pull request is not
+# up to date. `tests/test_dependabot_config.py` pins both vocabularies, one per key, so neither side
+# can be "unified" into a config the bot refuses to read. So the boundary that a `versioning-strategy`
+# key would express is enforced where it can be seen and tested instead: the merge gate refuses any
+# pull request whose changed files are not in its allowlist, and a manifest edit is not in that list.
 version: 2
 
 updates:
@@ -61,15 +64,15 @@ updates:
         patterns:
           - "*"
         update-types:
-          - version-update:semver-patch
-          - version-update:semver-minor
+          - patch
+          - minor
       # Major bumps stay one-per-pull-request so the refusal that follows (`Cargo.toml` is on the
       # auto-merge refuse list) names exactly which dependency is asking for a decision.
       cargo-major:
         patterns:
           - "*"
         update-types:
-          - version-update:semver-major
+          - major
 
   # ── the binding layer's own version decision ───────────────────────────────────────
   - package-ecosystem: cargo
@@ -126,8 +129,8 @@ updates:
         patterns:
           - "*"
         update-types:
-          - version-update:semver-patch
-          - version-update:semver-minor
+          - patch
+          - minor
 
   # ── the CI itself ──────────────────────────────────────────────────────────────────
   - package-ecosystem: github-actions

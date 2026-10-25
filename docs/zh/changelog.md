@@ -212,6 +212,13 @@ status: new
   `load_toml_medium` 的 8.10 %、占 `from_toml_medium` 的 9.68 %，而该剖析里更大的行是无树解析器
   同样要做的扫描工作。于是重写并未排期，这句话改为描述真实的构建。纯文档改动 — 行为、输出与
   计数都不动。
+- **依赖机器人终于能读懂自己的配置** — `.github/dependabot.yml` 里三个 `groups` 条目写的是
+  `version-update:semver-patch` / `-minor` / `-major`，那是 `ignore` 与 `allow` 的词汇表：
+  `groups.*.update-types` 只接受 `major` / `minor` / `patch`。于是 Dependabot 拒收这份文件——在它落地
+  九天之后，以一条没有任何合并门禁会读的 check-run 的形式，而所有 workflow 依旧全绿。这五个值现在改
+  用短形式，唯一声明了类型的那条 `ignore` 规则继续在它该在的地方用前缀形式；
+  `tests/test_dependabot_config.py` 分开钉住两套词汇表，并且任一侧被管的条目消失时直接判红，所以再有
+  人把两边"统一"，会先撞红一条测试，而不是安静地停止升级。
 
 #### 性能
 

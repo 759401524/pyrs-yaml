@@ -271,6 +271,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `from_toml_medium`, and the larger rows in that profile are scanning work a tree-free parser
   still performs. The rewrite is therefore not scheduled and the sentence now describes the build
   it ships. Documentation only - no behaviour, output or counted number moves.
+- **The bump bot can read its own config again** - three `groups` entries in
+  `.github/dependabot.yml` carried `version-update:semver-patch` / `-minor` / `-major`, which is the
+  `ignore` and `allow` vocabulary: `groups.*.update-types` accepts only `major` / `minor` / `patch`,
+  so Dependabot rejected the file - nine days after it landed, as a check-run no merge gate reads,
+  with every workflow still passing. The five values now use the short forms, the one `ignore` rule
+  that declares types keeps the prefixed form where it belongs, and
+  `tests/test_dependabot_config.py` pins the two vocabularies separately - and fails if the sites
+  either one polices disappear - so an edit that harmonises them reddens a test instead of quietly
+  stopping the bumps.
 
 #### Performance
 
