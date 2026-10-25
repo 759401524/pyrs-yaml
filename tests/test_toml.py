@@ -844,3 +844,46 @@ class TestTableIdentity:
         ):
             with pytest.raises(pyrs_yaml.YamlParseError):
                 pyrs_yaml.load_toml(src)
+
+
+class TestValueReader:
+    """`load_toml` reads the scanner's IR into Python with no `CustomNode` in between.
+
+    The oracle is the hub's own export and import of the same scan: `from_toml` writes the IR out as
+    YAML text and `parse` reads that text back through the YAML engine, so a reader that quietly
+    re-typed a value is a red run rather than a difference someone has to notice by eye. (A `nan`
+    sample is left out because two separate float nan objects never compare equal, which says
+    nothing about either reader.)
+
+    The second test pins the one shape that still needs the node model: a registered tag handler
+    rewrites a tagged scalar on the node it is filed under, so a document read while any handler is
+    installed goes the way that can make the edit.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "bin = 0b1101\nhex = 0xFF\noct = 0o755\nunder = 1_000\nplus = +9\n",
+            "when = 1979-05-27T07:32:00Z\nlocal = 1979-05-27T07:32:00\nday = 1979-05-27\nsecond = 07:32:00\n",
+            "lit = \"tab\\there\"\nsingle = 'raw'\nmulti = \"\"\"l1\nl2\"\"\"\nblock = '''r1\nr2'''\n",
+            "empty = {}\nnothing = []\ninline = { a = 1, b = { c = 2 } }\nnested = [1, [2, [3]]]\n",
+            '"quoted key" = 1\n"true" = 2\nn = 3\ny = 4\n[tbl]\ninner = 5\n[[aot]]\nx = 1\n[[aot]]\nx = 2\n',
+            "ratio = 5e3\nneg = -0.5\ninf1 = inf\nflag = true\nzero = 0\n",
+            "# note\n[server]  # header\nport = 8080  # trailing\n",
+            BENCHMARK_CONFIG_TOML,
+        ],
+    )
+    def test_both_readers_of_one_scan_carry_the_same_values(self, src):
+        assert pyrs_yaml.load_toml(src) == pyrs_yaml.parse(pyrs_yaml.from_toml(src)).to_dict()
+
+    def test_a_registered_tag_handler_still_edits_the_loaded_value(self):
+        src = "when = 1979-05-27T07:32:00Z\n"
+        plain = datetime.datetime(1979, 5, 27, 7, 32, tzinfo=datetime.timezone.utc)
+        edited = datetime.datetime(1979, 5, 27, 8, 32, tzinfo=datetime.timezone.utc)
+        assert pyrs_yaml.load_toml(src)["when"] == plain
+        pyrs_yaml.register_tag("!!timestamp", lambda text: "1979-05-27T08:32:00Z")
+        try:
+            assert pyrs_yaml.load_toml(src)["when"] == edited
+        finally:
+            pyrs_yaml.remove_tag("!!timestamp")
+        assert pyrs_yaml.load_toml(src)["when"] == plain

@@ -659,6 +659,21 @@ pub(crate) fn to_toml(py: Python, yaml: &str, schema: &str) -> PyResult<String> 
 /// Parse TOML directly into a Python dict (values, not a document).
 /// Anchors cannot occur in TOML, so no alias resolution pass is needed.
 pub(crate) fn load_toml(py: Python, toml_str: &str) -> PyResult<Py<PyAny>> {
+    let schema = parse_schema("core")?;
+    // A registered tag handler rewrites a tagged scalar's text on the node it is filed under, and
+    // only the AST route has that node, so a reader with handlers installed takes that route.
+    if crate::py::tag_registry::is_empty() {
+        match crate::py::toml_direct::read_values(py, toml_str, &schema) {
+            Ok(values) => return Ok(values),
+            Err(pyrs_toml::TomlReadError::Parse(e)) => {
+                return Err(YamlParseError::new_err(format_i18n_error(
+                    "toml-parse-error",
+                    &[("detail", &e.to_string())],
+                )));
+            }
+            Err(pyrs_toml::TomlReadError::Sink(e)) => return Err(e),
+        }
+    }
     let mut ast = pyrs_toml::from_toml(toml_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "toml-parse-error",
@@ -666,7 +681,7 @@ pub(crate) fn load_toml(py: Python, toml_str: &str) -> PyResult<Py<PyAny>> {
         ))
     })?;
     crate::py::document::resolve_tags(&mut ast, py)?;
-    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("core")?, false)
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &schema, false)
 }
 
 #[pyfunction]

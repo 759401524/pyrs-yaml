@@ -19,7 +19,7 @@ pub(crate) fn format_i18n_error(key: &str, args: &[(&str, &str)]) -> String {
 /// Try to convert a tagged value via a registered CustomType.
 /// Returns `Some(PyObject)` if a handler matched and `can_parse` returned true;
 /// returns `None` to fall through to default schema resolution.
-fn try_custom_type(
+pub(crate) fn try_custom_type(
     py: Python<'_>,
     tag: &str,
     value: &Bound<'_, PyAny>,
@@ -188,7 +188,7 @@ pub(crate) fn node_to_pyobject_with_anchors<'a>(
     }
 }
 
-fn scalar_to_pyobject(
+pub(crate) fn scalar_to_pyobject(
     py: Python,
     value: &str,
     style: &ScalarStyle,

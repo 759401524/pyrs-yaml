@@ -8169,6 +8169,67 @@ than fixed: `same_object` for the large YAML fixture is `false` on main as well 
 published YAML rows compare readers that do not agree with each other on that document -
 pre-existing, and nobody should read this change as the cause.
 
+### (fs) The TOML read path stopped paying for the node model, and the event stream lost the trial (2026-10-25)
+
+**Premise.** `(fr)` left an asymmetry with a number attached to it: `load_json`, `load_jsonc` and
+`load_json5` all ask `json_fast::try_load` before building anything, `load_toml` did not, and the
+published row said `rtoml` read about 1.9× faster. The question on the record was which of two
+levers to pay for - the intermediate table tree (9.7% of `from_toml_medium`, plus the 6.5% that
+projects it), or a direct text-to-Python route - and the ruling was to build one throwaway
+prototype of each and choose on the measurement, not on the reasoning.
+
+**What the prototypes said.** Both were built in a separate clone, on one host and one release
+build, in the snapshot's own batch protocol, with two measurement-only seams (`proto_toml_tree`,
+`proto_toml_node`). The result is in `docs/dev/perf.md`; the two sentences that decided it are
+these. Scan plus intermediate tree costs what `rtoml`'s entire parse costs - ratio 0.93 to 1.01 in
+nine of nine cells across three re-runs - so everything the row paid was after the tree. And the
+event stream, which was the cheap candidate for "skip the AST", measured slower where the document
+has notes (39.2 µs against 30.9) and a wash once its reporting was stripped (13% faster on one
+fixture, 8-15% slower on another): a reporting layer charges for reporting, and the fee is about
+what the node model costs. Neither named lever was the fix. What the numbers pointed at is a third
+reader of the same verdict, going from the IR to Python through no vocabulary at all.
+
+**What changed.** `pyrs_toml::read_toml` walks the scanner's IR into a caller's `TomlSink`: open
+and close for a mapping and a sequence, a name, and a scalar carrying the projection
+`from_toml` and `parse_stream` already share, so `0b1101` still arrives `!!int` and a multi-line
+string still arrives `Literal` because one function states it for all three readers. The binding's
+sink builds `dict` / `list` / scalars with the same three steps the node walk applies (stated tag,
+schema resolution, registered type). One guard: with any tag handler registered the document takes
+the AST route, because `resolve_tags` edits a tagged scalar on its node and only the node model has
+nodes. `tests/test_toml_leaderboard.py`'s existing premise - `load_toml` against the route it
+bypasses - became literally true.
+
+**The published row moved, judged against a control in the same run.** Absolute readings are not the
+evidence here: the host drifted about 20% between the two snapshot runs (`rtoml` itself read 16.511
+then 19.798). `load_toml` against `rtoml` in the same run went 1.92 → 1.47 and 1.91 → 1.46 on the
+two TOML fixtures, about 1.31× on both; a paired A/B in one process, where the AST route is reached
+through the guard, measured 1.15-1.34× and 1.31-1.35×. All twelve tables re-rendered from the new
+snapshot, and the prose ranges on the 24 pages that quote them moved with it - a re-measure is not
+a TOML-only edit, and the gate that derives every published number refuses the difference.
+
+**The controls.** `crates/pyrs-toml/tests/value_reader.rs` flattens the tree and the new reader to
+the token list the stream comparison already uses and requires them equal over the seed corpus
+(17 seeds, both dialects, with a named floor of 16 documents so a corpus that fails to load cannot
+read as a pass), requires a refused document to reach no value, and pins the shapes a round-trip
+corpus does not guarantee - including that a key named `n` or `y` arrives `DoubleQuoted`, because
+the hub quotes any name a YAML 1.1 reader would type. `tests/test_toml.py::TestValueReader` compares
+`load_toml` against the hub's own export and reimport over eight documents and proves the guard by
+value: a registered `!!timestamp` handler changes what comes back, so the AST route demonstrably
+served. No timing gate was added for the guard, because reaching the AST route per call means
+mutating the registry inside the timed reference, which inflates it by about 0.7% - enough for a
+silent fallback to pass a floor set against it, so the guard is judged by a value it changes rather
+than by a clock it could fool.
+
+**What is not closed.** The tree stays, and `crates/pyrs-toml/src/lib.rs` still opens by claiming
+the parser builds the AST with "no intermediate value tree" - a sentence `(fr)` recorded as owed to
+the change that makes it true, which is not this one. What is left of the row is that tree: after
+this change `load_toml` pays scan, tree and the Python objects it must build either way, so the
+remaining distance to `rtoml` is the tree itself and closing it means the lever `(fr)` priced at
+9.7% plus 6.5% of instructions - rewriting 2,941 lines of table policy to construct the output
+directly, which is a bigger decision than a read-path win and is not scheduled. The binding layer
+still has no instruction floor (`perf-coverage:binding-layer`), so this row's number lives in the
+wall-clock snapshot and in `test_toml_leaderboard.py`, not in `.ci/ir-baseline.json`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

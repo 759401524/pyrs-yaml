@@ -28,14 +28,14 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 
 ## 性能
 
-Rust 后端比 PyYAML 解析快 **28–35 倍**、序列化快 **198–339 倍**：
+Rust 后端比 PyYAML 解析快 **32–37 倍**、序列化快 **204–347 倍**：
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 63 µs | 2.0 ms |
-| Serialize (large) | 4.6 µs | 1.1 ms |
-| Round-trip | 70 µs | 3.2 ms |
+| Parse (large) | 72 µs | 2.3 ms |
+| Serialize (large) | 5.4 µs | 1.4 ms |
+| Round-trip | 82 µs | 3.9 ms |
 
 ## 自定义 AST
 

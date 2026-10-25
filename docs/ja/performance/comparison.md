@@ -15,42 +15,42 @@ pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと、Rust 
 <!-- bench: layout=libraries format=yaml operation=parse size=large -->
 | ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
-| **pyrs-yaml** | 63 µs | — |
-| PyYAML | 2.0 ms | 32× slower |
-| ruamel.yaml | 4.8 ms | 76× slower |
-| yaml-rs | 24 µs | 2.6× faster |
-| ryaml | 74 µs | 1.2× slower |
+| **pyrs-yaml** | 72 µs | — |
+| PyYAML | 2.3 ms | 32× slower |
+| ruamel.yaml | 5.4 ms | 75× slower |
+| yaml-rs | 27 µs | 2.7× faster |
+| ryaml | 86 µs | 1.2× slower |
 
 ### シリアライズ速度（大規模YAML、約2 KB）
 
 <!-- bench: layout=libraries format=yaml operation=serialize size=large -->
 | ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
-| **pyrs-yaml** | 4.6 µs | — |
-| PyYAML | 1.1 ms | 245× slower |
-| ruamel.yaml | 2.4 ms | 527× slower |
-| yaml-rs | 14 µs | 3.1× slower |
-| ryaml | 37 µs | 8.0× slower |
+| **pyrs-yaml** | 5.4 µs | — |
+| PyYAML | 1.4 ms | 261× slower |
+| ruamel.yaml | 3.3 ms | 603× slower |
+| yaml-rs | 17 µs | 3.1× slower |
+| ryaml | 42 µs | 7.8× slower |
 
 ### ラウンドトリップ速度（大規模YAML、約2 KB）
 
 <!-- bench: layout=libraries format=yaml operation=roundtrip size=large -->
 | ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
-| **pyrs-yaml** | 70 µs | — |
-| PyYAML | 3.2 ms | 46× slower |
-| ruamel.yaml | 7.5 ms | 107× slower |
-| yaml-rs | 41 µs | 1.7× faster |
-| ryaml | 117 µs | 1.7× slower |
+| **pyrs-yaml** | 82 µs | — |
+| PyYAML | 3.9 ms | 48× slower |
+| ruamel.yaml | 9.1 ms | 111× slower |
+| yaml-rs | 48 µs | 1.7× faster |
+| ryaml | 135 µs | 1.6× slower |
 
 ## プレーンなオブジェクトを返す Rust パーサとのトレードオフ
 
 pyrs-yaml は**ラウンドトリップ用 AST を保つ**（コメント・アンカー・タグ・ソース span が load→edit→dump を生き延びる）YAML ライブラリ中最速です。プレーンな Python オブジェクトへ逆シリアル化するだけでラウンドトリップ編集を**提供しない** Rust パーサ（上の表の `yaml-rs`）と比べると、結果は分かれます。
 
-- **シリアライズ：** pyrs-yaml が同じフィクスチャで約 2.2〜4.1 倍速（上の表を参照）。
+- **シリアライズ：** pyrs-yaml が同じフィクスチャで約 2.3〜3.7 倍速（上の表を参照）。
 - **`YamlDocument` へのパース：** `yaml-rs` が作らない、より豊かなラウンドトリップ構造を構築するため、pyrs-yaml は `yaml-rs` より約 2.5 倍遅い。これは意図した設計上のトレードです——余剰の作業がコメント/アンカー/順序の保持を生むものなので、排除すべき退行ではありません。
 
-YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を保ったまま書き戻す必要が一切ない場合は `yaml-rs` のようなピュア・ネイティブ パーサを、ラウンドトリップの忠実性が重要なら pyrs-yaml を選んでください——その場合でも PyYAML より解析で 28〜35 倍、シリアライズで 198〜339 倍高速です。
+YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を保ったまま書き戻す必要が一切ない場合は `yaml-rs` のようなピュア・ネイティブ パーサを、ラウンドトリップの忠実性が重要なら pyrs-yaml を選んでください——その場合でも PyYAML より解析で 32〜37 倍、シリアライズで 204〜347 倍高速です。
 
 ## 機能比較
 
@@ -77,7 +77,7 @@ YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を�
 
 ### pyrs-yamlを選ぶべき場合
 
-- **パフォーマンスが重要** — PyYAMLより解析で28〜35倍、シリアライズで198〜339倍高速
+- **パフォーマンスが重要** — PyYAMLより解析で32〜37倍、シリアライズで204〜347倍高速
 - **ラウンドトリップ保持が重要** — コメント、アンカー、タグを保持
 - **PyYAML互換性が欲しい** — 差し替え可能なAPI
 - **型ヒントが必要** — 完全な`.pyi`スタブ

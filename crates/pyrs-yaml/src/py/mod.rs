@@ -13,6 +13,7 @@ pub mod stream_iterator;
 pub mod streaming;
 pub mod tag_registry;
 pub mod tags;
+pub mod toml_direct;
 pub mod type_registry;
 pub mod walk_helpers;
 pub mod writing;
