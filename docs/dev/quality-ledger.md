@@ -8715,6 +8715,53 @@ too, and the fix for that is a predicate with exceptions, which is not a gate. W
 ten named assertions now refuse to report green over an empty measurement - verified by mutating
 each source and reading the red, 7/7 controls biting, every file restored and checked by digest.
 
+### (gf) The third hot computation had no price (2026-10-25)
+
+**What was missing.** `AGENTS.md` names the three expensive pure-Rust computations that must release
+the GIL - parse, edit, AST serialize - and `.ci/ir-baseline.json` priced two of them: `parse_*`,
+`serialize_*`, `to_python_*` and the cross-format bridges. Nothing entered the edit layer, so a
+change that made `set_path` navigate more, `insert_path` place its line slower, or the anchor
+carry-forward do extra work moved no committed number at all. The edit layer is not untested - it
+has a fuzz tier, a `settles_in_one_round` suite and the round-trip matrix - it was *unpriced*, which
+is the other hole.
+
+**What landed.** `Work::{EditSet,EditInsert,EditDelete}`, one scenario each over `MEDIUM_YAML`:
+`server.port` ← 9090, `logging.outputs` index 1 ← stderr, `features.rate_limit` removed. One
+scenario per verb rather than one script, because the gate's question is which verb got more
+expensive, and `move_path` needs no floor of its own: its two halves are a `set_path` and a
+`delete_path`. The tree is cloned inside the measured span - an edit applied twice to the same tree
+is not the same edit - and `--setup-only` subtracts that clone along with the parse, so what is left
+is the verb.
+
+**Named gate-only, after reading the twin.** `yaml_bench.rs` already carries an `edit_set_medium`,
+and reading it (line 532) shows it replaces the whole `database` section with a scalar - not the
+nested key priced here - while its insert and delete twins run on `LARGE_YAML`. Borrowing those
+names would have made two reports that measure different work read as one measurement, which is the
+only thing the harnesses' shared naming rule exists to prevent.
+
+**Two guards, and both seen to bite.** `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins before any
+measurement that each path resolves and that each verb changes the emitted text; the harness exits 3
+mid-run on the same premise, because a script that stopped resolving would still loop, still return
+a number, and be read as a speedup. Both were observed against one misspelling (`rate_limit` →
+`rate_limits`): the binary printed
+`edit_delete_key iteration 0: missing-path - the script no longer reaches the path being measured`
+and exited 3, and the pin failed on the same scenario for the same reason.
+
+**The price of growing the harness, paid where it was measured.** The first refresh dispatch on the
+branch head refused to write and named six: `from_jsonc_medium` 91,191,029 → 92,934,274
+(**+1.91%**), `from_json_medium` +1.64%, `from_json5_long_strings` +1.18%, `from_jsonc_long_strings`
++1.03%, `from_json5_medium` +0.86%, `from_json_long_strings` +0.73% - with three files in the diff
+(the bench, its pin, `QUALITY_MATRIX.md`) and no engine code among them, and with each scenario's
+three-sample spread at ~0.000%. That is the effect `AGENTS.md` says not to predict: the harness
+binary changes shape, so a scenario it never enters can move. The second dispatch named those six in
+`accept_drift` and wrote the file; `tolerance_hint` stayed at 0.5%.
+
+**Not claimed.** A floor does not make the edit layer fast; it makes a regression there visible,
+which is a different claim and the only one this record makes. Three verbs do not cover the edit
+surface either: the large-document shapes divan measures, and edits inside anchored or commented
+regions, are still outside the gate - they are in the fuzz tier, which can say a shape is wrong but
+not that it got slower.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

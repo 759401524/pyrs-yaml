@@ -1,4 +1,4 @@
-//! The instruction gate's reader fixtures, pinned to what the writers emit.
+//! The instruction gate's fixtures, pinned to what the tree still does with them.
 //!
 //! `from_json_medium` and `from_toml_medium` measure the reading half of each cross-format
 //! bridge from committed bytes instead of bytes rendered at run time, so that a change in how
@@ -20,13 +20,18 @@ use pyrs_json::{
     to_json5_text, to_jsonc_text,
 };
 use pyrs_toml::{from_toml, to_toml};
+use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
     long_string_json, long_string_json5, long_string_jsonc, long_string_ndjson, long_string_toml,
     long_string_yaml, short_string_ndjson,
 };
+use pyrs_yaml_core::editing::navigate::Segment;
+use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
+use pyrs_yaml_core::serializer::to_yaml;
+use std::borrow::Cow;
 
 #[test]
 fn the_json_reader_fixture_is_what_the_writer_emits() {
@@ -358,5 +363,77 @@ fn the_ndjson_fixtures_are_the_same_records_cut_into_lines_at_two_widths() {
         LONG_RECORDS * (LONG_VALUE - SHORT_VALUE),
         "the two line-delimited fixtures differ by more than value width, so the gap between their \
          scenario numbers is not the price of a long body"
+    );
+}
+
+/// The three edit scenarios in `benches/ir_gate.rs` price one verb each. A verb whose path stopped
+/// resolving would still loop, still return a number, and report it as a speedup - the same
+/// one-sided gate the readers above are pinned against. The harness exits 3 if that happens during a
+/// run; this asks the question before the run, so the failure names the script instead of a machine.
+#[test]
+fn the_edit_scripts_reach_their_paths_and_change_the_text() {
+    let base = parse(MEDIUM_YAML, Schema::Core).expect("the YAML fixture parses");
+    let untouched = to_yaml(&base);
+
+    let mut set = base.clone();
+    set_path(
+        &mut set,
+        &[
+            Segment::Key(Cow::Borrowed("server")),
+            Segment::Key(Cow::Borrowed("port")),
+        ],
+        CustomNode::plain_scalar("9090"),
+        true,
+        MEDIUM_YAML,
+        None,
+        false,
+    )
+    .expect("edit_set_nested: `server.port` has to resolve, or the scenario prices a refusal");
+    assert_ne!(
+        to_yaml(&set),
+        untouched,
+        "edit_set_nested no longer changes the document, so it measures a no-op"
+    );
+
+    let mut inserted = base.clone();
+    insert_path(
+        &mut inserted,
+        &[
+            Segment::Key(Cow::Borrowed("logging")),
+            Segment::Key(Cow::Borrowed("outputs")),
+        ],
+        1,
+        CustomNode::plain_scalar("stderr"),
+        MEDIUM_YAML,
+        None,
+    )
+    .expect(
+        "edit_insert_sequence: `logging.outputs` has to be a sequence, or the scenario prices a \
+             refusal",
+    );
+    assert_ne!(
+        to_yaml(&inserted),
+        untouched,
+        "edit_insert_sequence no longer changes the document, so it measures a no-op"
+    );
+
+    let mut deleted = base.clone();
+    delete_path(
+        &mut deleted,
+        &[
+            Segment::Key(Cow::Borrowed("features")),
+            Segment::Key(Cow::Borrowed("rate_limit")),
+        ],
+        MEDIUM_YAML,
+        None,
+    )
+    .expect(
+        "edit_delete_key: `features.rate_limit` has to resolve, or the scenario prices a \
+             refusal",
+    );
+    assert_ne!(
+        to_yaml(&deleted),
+        untouched,
+        "edit_delete_key no longer changes the document, so it measures a no-op"
     );
 }

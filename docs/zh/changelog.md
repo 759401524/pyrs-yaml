@@ -341,6 +341,16 @@ status: new
   径；把该 guard 强制为 `false` 后 `load_json_medium` 返回 4，而 `load_toml_medium` 仍然通过。场
   景集合变大也会牵动兄弟项，于是刷新就在本 head 上跑：`to_python_anchors` 读到 +0.1343%，
   `load_toml_long_strings` 读到 -0.2175%，都在 0.5% 线内，因此这次刷新没有点名任何场景。
+- **编辑层现在有指令地板了** —— `AGENTS.md` 把 parse、edit、AST serialize 列为三类昂贵的纯 Rust 计
+  算，而门禁此前只给其中两类定价：没有任何场景进入 `set_path`、`insert_path` 或 `delete_path`，于是
+  一次编辑多做的工作不会挪动任何提交的数字。三条场景加入，每个动词一条，跑在读路径已在用的
+  `MEDIUM_YAML` 上；同一棵树改两次不是同一次编辑，所以克隆放在计量区间之内，`--setup-only` 把那次克
+  隆连同解析一起减掉，剩下的就是动词本身；`move_path` 不必单列，它的两半已被定价。命名走 gate-only，
+  没有借用 divan 的 `edit_set_medium`：它替换的是整个 `database` 小节，与这里定价的嵌套键不是同一次
+  编辑，同名会让两份不同工作的报告读成同一个度量。前置守卫有两道，且都观察到会咬：harness 在
+  `missing-path` 上以 3 退出，测试期的钉住让同一场景以同一理由失败。扩场景集的代价由刷新量出而非预测
+  ——diff 里没有一行引擎代码，六条 JSON 读路径却在执法镜像上移动 +0.73%…+1.91%；把它们写进
+  `accept_drift` 点名，`tolerance_hint` 保持 0.5%。记为 `(gf)`。
 
 ### [v0.18.3] — 2026-10-22
 

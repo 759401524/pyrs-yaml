@@ -40,14 +40,18 @@ use pyrs_json::{
     from_json, from_json5, from_jsonc, parse_documents, to_json_text, to_json5_text, to_jsonc_text,
 };
 use pyrs_toml::{from_toml, to_toml};
+use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
     MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML, long_string_json, long_string_json5,
     long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
+use pyrs_yaml_core::editing::navigate::Segment;
+use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::parser::{parse, parse_stream};
 use pyrs_yaml_core::serializer::to_yaml;
+use std::borrow::Cow;
 
 /// Fixed for every run and every machine.
 const ITERATIONS: u32 = 2_000;
@@ -106,6 +110,19 @@ enum Work {
     /// (which hands one document to granit) enters this route. The fixture pair prices the
     /// record's body length here, which is what a string scan is asked about.
     Documents,
+    /// The edit layer: the third of the three expensive pure-Rust computations `AGENTS.md` names
+    /// beside `parse` and AST serialize, and the only one of the three with no number here. A
+    /// regression in path navigation, in the dirty-plan build, or in the way a note or anchor is
+    /// carried across a moved node was free to land while every floor above stayed green. One
+    /// scenario per verb, so a red reading says which verb got more expensive - `move_path` is a
+    /// `set_path` plus a `delete_path` and needs no floor of its own.
+    EditSet,
+    /// `insert_path` into a block sequence: the verb that writes a new position into the text
+    /// instead of replacing a node that already had one.
+    EditInsert,
+    /// `delete_path` of a mapping key: the verb that must not strand an alias on an anchor defined
+    /// inside the subtree it removes, which is the invariant `plan.rs` checks at the drop site.
+    EditDelete,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -211,6 +228,18 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
             LONG_NDJSON.as_str(),
             Work::Documents,
         ),
+        // The three edit verbs over `MEDIUM_YAML`, one scenario each, so a red reading names the verb
+        // that got more expensive. The arm explains what is inside and outside the measured span;
+        // `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins that each path below still resolves and
+        // that each verb still changes the emitted text.
+        //
+        // Named as gate-only, beside `parse_*`, rather than as mirrors of the divan twins: divan's
+        // `edit_set_medium` replaces the whole `database` section with a scalar, which is a different
+        // edit from the nested key this prices, and its insert/delete twins run on `LARGE_YAML`. A
+        // shared name over different work would make the two reports read as one measurement.
+        ("edit_set_nested", MEDIUM_YAML, Work::EditSet),
+        ("edit_insert_sequence", MEDIUM_YAML, Work::EditInsert),
+        ("edit_delete_key", MEDIUM_YAML, Work::EditDelete),
     ]
 }
 
@@ -353,6 +382,75 @@ fn main() {
                             std::process::exit(3);
                         });
                     acc += std::hint::black_box(&events).len();
+                }
+                acc
+            }
+        }
+        Work::EditSet | Work::EditInsert | Work::EditDelete => {
+            // Setup outside the loop on both modes, as for the writers: the document is parsed once,
+            // and only the verb is priced. The tree is cloned per iteration because an edit applied
+            // twice to the same tree is not the same edit, and `--setup-only` subtracts that clone
+            // exactly as it subtracts the parse, so what is left is the verb.
+            let ast = parse(src, Schema::Core).expect("setup parse");
+            if setup_only {
+                std::hint::black_box(&ast);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let mut tree = std::hint::black_box(ast.clone());
+                    let unit = match work {
+                        // `server.port` -> 9090: the replacement a user asks for most often, and the
+                        // branch that carries the old node's metadata and anchor forward.
+                        Work::EditSet => set_path(
+                            &mut tree,
+                            &[
+                                Segment::Key(Cow::Borrowed("server")),
+                                Segment::Key(Cow::Borrowed("port")),
+                            ],
+                            CustomNode::plain_scalar("9090"),
+                            true,
+                            src,
+                            None,
+                            false,
+                        ),
+                        // `logging.outputs` index 1 <- stderr: a block sequence, so the line has to be
+                        // placed rather than substituted.
+                        Work::EditInsert => insert_path(
+                            &mut tree,
+                            &[
+                                Segment::Key(Cow::Borrowed("logging")),
+                                Segment::Key(Cow::Borrowed("outputs")),
+                            ],
+                            1,
+                            CustomNode::plain_scalar("stderr"),
+                            src,
+                            None,
+                        ),
+                        // `features.rate_limit` removed: a key of the last section, so the emit also
+                        // decides what the document's trailing break becomes.
+                        Work::EditDelete => delete_path(
+                            &mut tree,
+                            &[
+                                Segment::Key(Cow::Borrowed("features")),
+                                Segment::Key(Cow::Borrowed("rate_limit")),
+                            ],
+                            src,
+                            None,
+                        ),
+                        _ => unreachable!("handled by the other arms"),
+                    };
+                    let unit = unit.unwrap_or_else(|error| {
+                        // A script that stopped resolving would loop anyway and report a smaller
+                        // number, which reads as a speedup: the same one-sided rule the readers apply.
+                        eprintln!(
+                            "{name} iteration {index}: {error} - the script no longer reaches the \
+                             path being measured"
+                        );
+                        std::process::exit(3);
+                    });
+                    acc += usize::from(std::hint::black_box(&unit).eligible)
+                        + usize::from(std::hint::black_box(&tree).comment().is_none());
                 }
                 acc
             }
