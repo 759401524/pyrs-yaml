@@ -271,6 +271,11 @@ def main(argv: list[str]) -> int:
     if not table:
         print("cannot measure: the library declares no callables", file=sys.stderr)
         return 2
+    if not pages:
+        # The inventory side above already refuses; this is the page side, whose glob goes quiet
+        # when a locale's `api/` directory is renamed or emptied. Zero pages compared nothing.
+        print("cannot measure: no API page was found to read", file=sys.stderr)
+        return 2
     findings = check(pages, table)
     checked = sum(len(typed_blocks(p)) for p in pages)
     if not findings:

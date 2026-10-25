@@ -489,6 +489,19 @@ def drift_report(before: dict[str, int], final: dict[str, int], line: float) -> 
     return report
 
 
+def select_scenarios(exes: dict[str, object], only: list[str]) -> list[str]:
+    """The scenarios this run measures, or a refusal naming what `--only` could not match.
+
+    `--only` appends, so `--only a,b` arrives as one name matching nothing and the compare loop
+    walked an empty measurement while reporting the floor as held. `--profile` already refuses that
+    shape; the gate must not be quieter than the tool it feeds.
+    """
+    chosen = [s for s in exes if not only or s in only]
+    if only and not chosen:
+        sys.exit(f"--only names no scenario of this tree: {', '.join(only)}. Known: {', '.join(sorted(exes))}")
+    return chosen
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--update", action="store_true", help="rewrite the baseline")
@@ -568,7 +581,7 @@ def main() -> int:
             if name in exes:
                 sys.exit(f"scenario {name!r} is listed by two harnesses; the measurement would be ambiguous")
             exes[name] = exe
-    scenarios = [s for s in exes if not args.only or s in args.only]
+    scenarios = select_scenarios(exes, args.only)
     toolchain = rustc_banner()
     env_note = ", ".join(f"{key}={value}" for key, value in sorted(MEASUREMENT_ENV.items()))
     print(f"measurement env: {env_note}")

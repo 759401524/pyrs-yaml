@@ -206,3 +206,19 @@ def test_the_hook_is_wired(checker):
     prek = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
     assert 'id = "doc-heading-integrity"' in prek, prek
     assert "python scripts/check_doc_headings.py" in prek, prek
+
+
+def test_a_run_that_opened_no_file_refuses(checker, capsys):
+    """Zero files read is not a tree free of split headings - a finding needs a file to be in."""
+    assert checker.main(["no/such/page.md"]) == 2
+    err = capsys.readouterr().err
+    assert "cannot measure" in err and "OK" not in err, err
+
+
+def test_the_ok_line_counts_files_read_not_files_named(checker, tmp_path, monkeypatch, capsys):
+    """`177 Markdown files` has to mean 177 opened, or the denominator flatters the run."""
+    page = tmp_path / "guide.md"
+    page.write_text("# One\n\ntext\n", encoding="utf-8")
+    monkeypatch.setattr(checker, "REPO", tmp_path)
+    assert checker.main(["guide.md", "missing.md"]) == 0
+    assert "among 1 Markdown files" in capsys.readouterr().out

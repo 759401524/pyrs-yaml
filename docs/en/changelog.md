@@ -176,6 +176,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (+1.25 %) - and no other scenario of the 37 moves by more than 0.32 %, so the refresh that raises
   them names both. The inline-table spelling settles in one round; an array expands and carries the
   note onto its last element, settling there - relocation, never loss.
+- **Six gates could answer "held" over a measurement that read nothing** - the class `(fz)` met
+  once is now swept. `check_changelog_coupling.py` exited 0 with `OK: … listed no files` on an
+  empty path list; `check_doc_headings.py` counted the paths handed in, not the files opened, so
+  one missing path read as a clean tree; `check_line_endings.py` never checked `git ls-files`'s
+  exit code; `check_doc_signatures.py` and `check_i18n.py` printed their OK lines over an empty
+  glob; and `ir_gate.py --only a,b` - `--only` appends, so that is one name matching nothing -
+  compared no scenario and reported the floor as held. All six exit 2 now, the verdict the
+  landed-claim and stub-type gates already state, each forced by a test. A prose-only changeset and
+  a page of untyped examples stay green, and that boundary is pinned too - a first draft of the
+  refusal reddened the signature gate's own suite. `check_i18n.py` had no self-test of any kind, so
+  `tests/test_i18n_gate.py` is new. Recorded as `(gc)`.
 
 #### Changed
 

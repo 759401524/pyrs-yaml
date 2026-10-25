@@ -143,10 +143,12 @@ def tracked_markdown():
 def main(argv=()) -> int:
     paths = list(argv) or sorted(set(tracked_markdown()))
     findings: list[str] = []
+    read = 0
     for rel in paths:
         path = REPO / rel
         if not path.is_file():
             continue
+        read += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         findings.extend(heading_damage(text.splitlines(), rel))
         findings.extend(setext_damage(text.splitlines(), rel))
@@ -155,7 +157,15 @@ def main(argv=()) -> int:
         for finding in findings:
             print(f"  {finding}")
         return 1
-    print(f"OK: no split-sentence heading among {len(paths)} Markdown files")
+    if not read:
+        # A finding needs a file, so a run that opened none is not a clean tree: `git ls-files`
+        # failing, an index that lists nothing, or an argv of paths that do not exist all land here.
+        print(
+            f"cannot measure: {len(paths)} path(s) named, 0 of them readable (exit 2 is not a pass)",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"OK: no split-sentence heading among {read} Markdown files")
     return 0
 
 

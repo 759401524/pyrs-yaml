@@ -169,6 +169,11 @@ def main() -> int:
     # 1. File completeness check
     print("\n[1/5] File completeness check...")
     source_files = list((DOCS_DIR / SOURCE_LOCALE).rglob("*.md"))
+    if not source_files:
+        # Sections 1 and 2 iterate this list, so an empty one is five printed OKs that read no
+        # page - the same shape as a locale directory renamed out from under the glob.
+        print(f"  cannot measure: {DOCS_DIR / SOURCE_LOCALE} holds no Markdown page (exit 2 is not a pass)")
+        return 2
 
     for source_file in source_files:
         rel_path = source_file.relative_to(DOCS_DIR / SOURCE_LOCALE)

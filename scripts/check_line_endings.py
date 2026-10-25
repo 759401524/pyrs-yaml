@@ -75,16 +75,18 @@ def tracked_text_files() -> list[Path]:
     # `--others --exclude-standard` matters: the point of this gate is the moment a file
     # is created, and a fresh file is exactly when a Windows-side writer gets CRLF into
     # the tree. Listing only `git ls-files` would check the damage after it is committed.
-    out = subprocess.run(
+    proc = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
         cwd=REPO,
-    ).stdout.split("\n")
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git ls-files exited {proc.returncode}: {proc.stderr.strip()[-200:]}")
     files: list[Path] = []
-    for rel in out:
+    for rel in proc.stdout.split("\n"):
         rel = rel.strip().replace("\\", "/")
         if not rel or not rel.endswith(CHECKED_IN):
             continue
@@ -98,11 +100,20 @@ def tracked_text_files() -> list[Path]:
 
 def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else "list"
-    scanned = [(str(path.relative_to(REPO)), path.read_bytes()) for path in tracked_text_files()]
+    try:
+        scanned = [(str(path.relative_to(REPO)), path.read_bytes()) for path in tracked_text_files()]
+    except RuntimeError as exc:
+        print(f"cannot measure: {exc} (exit 2 is not a pass)", file=sys.stderr)
+        return 2
+    if not scanned:
+        # Zero bytes read is not the same verdict as zero offenders: a broken index, an empty
+        # checkout or a git that cannot run all answer with the empty list this line refuses.
+        print("cannot measure: git listed no text file to read (exit 2 is not a pass)", file=sys.stderr)
+        return 2
     found = offenders(scanned)
     for rel, crlf, lone in found:
         print(f"{rel:56s} CRLF={crlf:5d} loneCR={lone}")
-    print(f"{len(found)} tracked text file(s) with non-LF line endings")
+    print(f"{len(found)} of {len(scanned)} tracked text file(s) have non-LF line endings")
     if mode != "fix":
         # Non-zero on findings: this is the CI step that reports the audit, and a checker
         # that only prints is a report, not a gate. `fix` mode is the repair path a human
