@@ -244,6 +244,15 @@ status: new
   +0.01% で読んでいて、このヘッドは +0.63%、違うのはその 1 つだけで、leg が落ちました。26 の数
   をあのイメージに記録し直すのはリフレッシュジョブの仕事で、`accept_drift stream_medium` を名指し
   したので、他の上方向の移動はそのまま拒否されます。
+- **テスト床を定義するコンパイラを bump ボットが提案できなくなりました** — 週次 `github-actions`
+  グループが PR #620 を開いて action 二つを上げ、`ci.yml` 内の `dtolnay/rust-toolchain@1.96` を
+  `@1.120` に書き換えていました。`msrv-check` ではこの ref はバージョンではなく、実際にインストール
+  されるコンパイラです。防御線はこれを捕えました — その head で `tests/test_msrv_gate.py` と
+  `tests/test_ci_rust_leg_exclusion.py` の五テストが赤くなりました — が、毎週赤になる PR は急いで
+  閉じられて再び提案されるだけで、設定がその再提案を保証していました（`actions` グループは
+  `patterns: ["*"]` で `ignore` が無かった）。名前は `.github/dependabot.yml` で除外し、理由の隣に
+  測定値を書き、除外が消えると `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` が
+  赤くなります。床を動かすのは引き続き人間の仕事です。
 
 #### パフォーマンス
 

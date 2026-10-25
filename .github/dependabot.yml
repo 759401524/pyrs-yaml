@@ -145,6 +145,20 @@ updates:
     commit-message:
       prefix: "chore(ci)"
       include: scope
+    ignore:
+      # `dtolnay/rust-toolchain@<ref>` is not an action version. For `msrv-check` the ref **is** the
+      # compiler - `ci.yml` pins `@1.96`, which must keep equaling the `rust-version` the crates
+      # declare - so a "bump" of it moves the tested floor while still installing a real toolchain.
+      # Measured on PR #620, where the weekly actions group rewrote `@1.96` to `@1.120`: five tests
+      # went red (`test_msrv_gate.py::test_the_msrv_job_installs_the_declared_floor` plus four in
+      # `test_ci_rust_leg_exclusion.py`), which is the defence biting rather than a false alarm. But
+      # a red bot pull request is not a policy, so the name is excluded here and
+      # `tests/test_msrv_gate.py` checks that the exclusion stays written. Moving the floor is the
+      # deliberate act `AGENTS.md` describes - eight crates declare 1.96 and the gate reads them -
+      # so it arrives as a human edit of `ci.yml`. The `@stable` and `@master` refs are not
+      # version-shaped and were never offered; only this name is excluded, so the rest of the group
+      # keeps flowing.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions:
         patterns:

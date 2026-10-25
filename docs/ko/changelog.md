@@ -238,6 +238,16 @@ status: new
   하나는 강제 이미지에서 `stream_medium`을 +0.01%로 읽었고 이 헤드는 +0.63%로 읽는데, 다른 변수는
   그것 하나뿐이어서 leg이 떨어졌습니다. 26개 숫자를 그 이미지에 다시 기록하는 것은 갱신 작업의 일
   이고, `accept_drift stream_medium`으로 이름을 짚었으니 다른 올림은 그대로 스스로 거부됩니다.
+- **시험 바닥을 정의하는 컴파일러를 자동 올림 봇이 제안할 수 없게 됐습니다** — 주간
+  `github-actions` 그룹이 PR #620을 열어 action 두 개를 올리면서 `ci.yml` 안의
+  `dtolnay/rust-toolchain@1.96`을 `@1.120`으로 고쳤습니다. `msrv-check`에서는 그 ref가 버전이 아니라
+  실제로 설치되는 컴파일러입니다. 방어선이 그것을 붙잡았습니다 — 그 head에서
+  `tests/test_msrv_gate.py`와 `tests/test_ci_rust_leg_exclusion.py`의 다섯 테스트가 빨개졌습니다 —
+  하지만 매주 빨간 PR은 급히 닫히고 다시 제안될 뿐이고, 설정이 그 재제안을 보장하고 있었습니다
+  (`actions` 그룹은 `patterns: ["*"]`이고 `ignore`가 없었습니다). 이제 그 이름은
+  `.github/dependabot.yml`에서 제외되고 이유 옆에 측정값을 적었으며, 제외가 사라지면
+  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector`가 빨개집니다. 바닥을 옮기기는 계속
+  사람의 일입니다.
 
 #### 성능
 
