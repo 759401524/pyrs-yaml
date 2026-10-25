@@ -155,6 +155,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pinned. Pinned by
   `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` and
   `tests/test_toml.py::TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header`; reading only the mapping's slot again reproduces the drop verbatim, `"[sec]\nx = 1\n"` against `"[sec] # note\nx = 1\n"`.
+- **A key-line note on an entry inside a section body no longer vanishes** — the slot the previous
+  release closed for header lines was still unread by the line that writes `key = value`:
+  `to_toml("a:\n  b: # note\n    x: 1\n")` emitted `[a]\nb = {x = 1}` and the array shape emitted
+  `b = [{x = 1}]`, both without the note, while the YAML route re-emits it and a TOML-origin
+  `b = {x = 1} # note` survives two rounds. `emit_pair` now falls back to the key node's inline
+  slot. A header is rare; every pair pays. On the enforcing image, with the compiler the baseline
+  pins and three repeats keeping the largest, both TOML writer floors move - `to_toml_medium`
+  26,604,776 to 27,024,692 (+1.58 %) and `to_toml_long_strings` 28,255,071 to 28,607,004
+  (+1.25 %) - and no other scenario of the 37 moves by more than 0.32 %, so the refresh that raises
+  them names both. The inline-table spelling settles in one round; an array expands and carries the
+  note onto its last element, settling there - relocation, never loss.
 
 ### Changed
 

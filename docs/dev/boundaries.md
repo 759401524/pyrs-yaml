@@ -34,7 +34,11 @@ forms are not reproducible.
   the container-note placement rule the `api:set-comment-container-owner` residual records, whose
   blast radius is every comment the YAML writer emits — so changing it stays explicitly declined
   rather than silently shipped. Standalone/leading comments above a header and trailing comments on
-  a leaf `key = value` line *are* preserved in place.
+  a leaf `key = value` line *are* preserved in place. The same key-node slot is also read now for an
+  entry *inside* a section body whose value is a table or an array
+  (`test_a_note_on_a_key_line_inside_a_section_body_survives`): the inline-table spelling settles in
+  one round, the array spelling expands and moves the note onto the last element's line, settling
+  there — a relocation, never a loss.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful

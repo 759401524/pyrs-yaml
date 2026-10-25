@@ -8391,6 +8391,73 @@ weaker, honest thing: one TOML round still relocates a TOML-origin header note o
 body line, and that is the residual's pinned behaviour, asserted in the same class so the two claims
 cannot be confused.
 
+### (fy) The entry line inside a section body had the same blind slot, and it was not free (2026-10-25)
+
+**The premise `(fx)` left half-closed.** `(fx)` read the key node's inline slot for a *header* line.
+`emit_pair` - the function that writes every `key = value` line inside a body - still read only the
+value's slot, so the hub's YAML shape kept losing notes:
+`to_toml("a:\n  b: # note\n    x: 1\n")` returned `[a]\nb = {x = 1}\n` and
+`to_toml("a:\n  b: # note\n    - x: 1\n")` returned `[a]\nb = [{x = 1}]`, both without the note. The
+YAML side proves the note reaches the writer (`to_yaml` re-emits `b:  # note`, and the TOML-origin
+spelling `b = {x = 1} # note` survives two rounds unchanged), so this was the same drop, not a
+placement argument.
+
+**The fix costs instructions, and the cost is on the record.** A header is rare; every pair pays.
+The first reading of that price was wrong twice over, and both halves of the mistake are worth
+keeping. Measured on the baseline's pinned `rustc 1.97.1` in WSL with the ISA mask, three repeats,
+largest kept: `to_toml_medium` reads 27,024,711 against the committed 26,604,776 - **+1.58 %**, past
+the 0.5 % tolerance - while `to_toml_long_strings` reads -0.00 % (28,255,012 against 28,255,071),
+and the reason given was that the fixture has no section bodies to walk. It has no headers -
+`long_string_toml` renders sixteen key/value line pairs, `bench_inputs.rs:254` - but that reason
+never applied, because the fallback lives in `emit_pair`, which writes every one of those sixteen
+lines; and the -0.00 % was a WSL reading compared against a floor recorded on the image, which is
+the mixed comparison `AGENTS.md` says is not the gate's question.
+
+**What the enforcing image says.** The first dispatch, naming `to_toml_medium` alone, measured all
+37 scenarios and then refused to write: `to_toml_long_strings: 28,255,071 -> 28,607,019 (+1.25%)`.
+The refresh re-dispatched with both names writes them: `to_toml_medium` 26,604,776 → 27,024,692
+**(+1.58 %)** and `to_toml_long_strings` 28,255,071 → 28,607,004 **(+1.25 %)**. Two dispatches, on
+different runner instances, over the same writer code, put long_strings at 28,607,019 and 28,607,004
+
+- 15 instructions apart - and medium at 27,024,747 and 27,024,692, so the move is not host noise. No
+other scenario of the 37 moves by more than 0.32 %: `to_json_long_strings`, `to_jsonc_long_strings`
+and `to_json5_long_strings` all read -0.00 %, as do both TOML readers. The floors were recorded at
+`040da6b2`, before #618 landed, so what the artifact prices is the header fallback and this one
+together. A variant that consults the key node only when the value is a container was measured in
+WSL at +1.43 % - it buys 0.15 of a point and leaves the slot unread for every other value shape, so
+the ruling was to pay the full price: one `or_else` per pair, the drop closed for every entry line,
+both floors named.
+
+**What is not claimed.** 352,000 instructions over sixteen pairs is 22,000 a pair, which reading one
+`Option` field does not spend; the long-string move is priced by the gate and not attributed to a
+function - `scripts/ir_gate.py --profile` was not run on this shape, and a codegen effect (the
+emitter growing, an inline decision changing) explains it as plainly as per-pair work explains the
+medium fixture. The verdict does not depend on which.
+
+**Seen to bite.** `writer::tests::a_note_on_the_key_line_of_a_section_body_entry_is_written` asserts
+`[a]\nb = {x = 1} # n` and the node-level fixed point;
+`TestSectionHeaderCommentBoundary::test_a_note_on_a_key_line_inside_a_section_body_survives` states
+what the Python route really does - the inline-table spelling is stable after one round, an array
+expands and moves the note onto its last element and is stable from there, and a key note plus a
+value note keep their own lines (`b = {\n  x = 1 # vn\n} # kn`) rather than shadowing each other.
+Reverting only the `or_else` reproduces the drop at both tiers, measured: the Rust panic reads
+`left: "[a]\nb = {x = 1}\n"` against `right: "[a]\nb = {x = 1} # n\n"`, and the Python assertion
+reads `assert '[a]\nb = {x = 1}\n' == '[a]\nb = {x = 1} # note\n'`. Nothing here changes a
+TOML-origin document's output: `from_toml` reports that note on the value, which keeps priority.
+
+**The family, asked as a table.** Two closed slots is a pattern, not a coverage claim, so
+`tests/test_cross_format_note_slots.py` now asks all of it: eleven note slots (leading above a key,
+inline on a leaf, key line of a root section, of a second section, above a sequence, above a table
+array, above a block scalar, two levels deep, inside a map in a sequence, on a sequence item, on a
+map leaf) exported four ways - `to_yaml`, `to_toml`, `to_jsonc`, `to_json5` - forty-four cases that
+pass when the token reaches the output or the export refuses with a reason true about the format.
+The refusal sets are empty: every row here is representable everywhere, so a refusal on this table
+is the bug. Falsified the same way as the two defects - reverting only `emit_pair`'s fallback
+reddens four rows and only on `to_toml` (`key line of a second section`, `above a sequence`,
+`above a table array`, `above a block scalar`), leaving the other forty green, which is what makes
+the table worth keeping: it names the slots no writer reads today instead of the one it was written
+for.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

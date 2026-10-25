@@ -337,6 +337,27 @@ class TestSectionHeaderCommentBoundary:
         # YAML-origin note on a key line is no longer dropped on its way to TOML.
         assert pyrs_yaml.to_toml(pyrs_yaml.from_toml("[sec] # note\nx = 1\n")) == "[sec]\nx = 1 # note\n"
 
+    def test_a_note_on_a_key_line_inside_a_section_body_survives(self):
+        # The header line got its second slot in the same release; the entry line inside the body read
+        # the same node shape and had the same blind slot, so `b: # note` over a table or array value
+        # emitted `b = {x = 1}` / `b = [{x = 1}]` and dropped the note outright.
+        assert pyrs_yaml.to_toml("a:\n  b: # note\n    x: 1\n") == "[a]\nb = {x = 1} # note\n"
+        assert pyrs_yaml.to_toml("a:\n  b: # note\n    x: 1\n    z: 2\n") == "[a]\nb = {x = 1, z = 2} # note\n"
+        # The inline-table spelling is a fixed point after one TOML round, because the note comes back
+        # on the value node and the value's slot keeps priority over the key node's.
+        out = pyrs_yaml.to_toml("a:\n  b: # note\n    x: 1\n")
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out
+        # An array value does move it: the compact `= [{x = 1}] # note` expands and the note rides the
+        # last element's line. Nothing is lost and the second round is a fixed point - the same
+        # relocate-then-settle shape this class already pins for a header note.
+        arr = pyrs_yaml.to_toml("a:\n  b: # note\n    - x: 1\n")
+        assert arr == "[a]\nb = [{x = 1}] # note\n", arr
+        again = pyrs_yaml.to_toml(pyrs_yaml.from_toml(arr))
+        assert again == "[a]\nb = [\n  {x = 1} # note\n]\n", again
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(again)) == again, again
+        # Both slots filled at once keeps each note on its own line - the fallback does not shadow.
+        assert pyrs_yaml.to_toml("a:\n  b: # kn\n    x: 1 # vn\n") == "[a]\nb = {\n  x = 1 # vn\n} # kn\n"
+
     @pytest.mark.known_residual("engine:container-inline-note-position")
     def test_header_inline_comment_is_relocated_not_dropped(self):
         src = "a = 1\n\n[sec] # note\nx = 1\n"

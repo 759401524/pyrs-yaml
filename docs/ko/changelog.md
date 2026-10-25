@@ -152,6 +152,17 @@ status: new
   `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header`와
   `TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header`가 못을
   박고, 매핑만 읽게 되돌리면 손실은 `"[sec]\nx = 1\n"`로 그대로 되살아납니다.
+- **섹션 본문 안 항목의 키 줄에 둔 주석이 TOML로 가는 길에 사라지지 않습니다** — 앞 항목이 헤더
+  줄용으로 열어 둔 슬롯을 `key = value`를 쓰는 줄이 여전히 읽지 않았습니다:
+  `to_toml("a:\n  b: # note\n    x: 1\n")`은 `[a]\nb = {x = 1}`을, 배열 모양은 `b = [{x = 1}]`을
+  돌려주고 주석은 두 곳에서 다 버렸습니다. 반면 YAML 경로는 그 주석을 다시 쓰고, TOML 기원의
+  `b = {x = 1} # note`는 두 라운드 그대로입니다. `emit_pair`는 이제 키 노드의 인라인 슬롯으로 물러나
+  읽습니다. 헤더는 드물지만 모든 쌍이 대가를 냅니다. 강제 이미지에서, 기준선이 고정하는 컴파일러로
+  세 번 재어 최댓값을 남기면 TOML 작성자 쪽 마루금은 둘 다 함께 움직입니다: `to_toml_medium`은
+  26,604,776 → 27,024,692(+1.58 %), `to_toml_long_strings`는 28,255,071 → 28,607,004(+1.25 %). 37개
+  시나리오 가운데 나머지 이동은 아무것도 0.32 %를 넘지 않으니, 이 변경이 들고 가는 갱신은
+  `accept_drift`로 둘 다 이름 붙입니다. 인라인 표 모양은 한 라운드에 자리잡고, 배열은 펼쳐져 주석을
+  마지막 요소로 옮긴 뒤 거기서 자리잡습니다 — 위치 이동이지 내용 손실이 아닙니다.
 
 #### 변경
 

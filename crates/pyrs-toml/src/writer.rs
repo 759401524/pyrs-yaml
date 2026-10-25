@@ -198,9 +198,14 @@ fn emit_pair(
     push_scalar_key(out, key_node)?;
     out.push_str(" = ");
     write_value(out, value_node)?;
-    if let Some(c) = value_node.comment()
-        && !c.standalone
-    {
+    // A TOML-origin note on this line is reported on the VALUE node, which is what this used to read.
+    // A YAML key-line note (`key: # note`) arrives on the KEY node's inline slot - the same blind slot
+    // the section header had, one level into the body.
+    let inline = value_node
+        .comment()
+        .filter(|c| !c.standalone)
+        .or_else(|| key_node.comment().filter(|c| !c.standalone));
+    if let Some(c) = inline {
         out.push_str(" # ");
         out.push_str(c.text.trim());
     }
@@ -1555,6 +1560,37 @@ mod tests {
         let out = to_toml(&root).unwrap();
         assert_eq!(out, "[sec] # n\nx = 1\n", "the note was dropped: {out}");
         // One TOML round lands where the reader reports the note from, so the emission settles.
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_on_the_key_line_of_a_section_body_entry_is_written() {
+        // The header line got its second slot; the entry line inside the body reads the same node
+        // shape and had the same blind read. The hub hands `a:\n  b: # n\n    x: 1` over with `n` on
+        // b's KEY node, while `emit_pair` looked only at the value's slot - so to_toml returned
+        // "[a]\nb = {x = 1}\n" and the note was dropped. A TOML-origin note on that line is reported
+        // on the value (`b = {x = 1} # n`), which is also where the written text comes back from, so
+        // the value's slot keeps priority and the key node is the fallback.
+        let mut bkey = CustomNode::plain_scalar("b");
+        bkey.set_comment(Comment {
+            text: "n".into(),
+            standalone: false,
+        });
+        let inner = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("x"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        let section = CustomNode::plain_mapping([(bkey, inner)].into_iter().collect());
+        let root = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("a"), section)]
+                .into_iter()
+                .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(out, "[a]\nb = {x = 1} # n\n", "the note was dropped: {out}");
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }
