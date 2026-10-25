@@ -15,6 +15,12 @@ Both directions are checked, because both are silent: a workflow pin that moves 
 manifests, and a manifest that moves away from the pin. The install command may name the version in
 the action ref or in `with.toolchain` - `publish.yml` uses the second spelling - but the effective
 toolchain is what the job runs, so that is what is compared.
+
+A third path is guarded at the source. The floor leg spells its compiler in the action ref
+(`dtolnay/rust-toolchain@1.96`), which reads to a bump bot as an updatable version: PR #620, the
+2026-10-25 weekly actions group, rewrote it to `@1.120`. Five tests reddened that pull request, so
+the defence held - but a red bot pull request is not a policy, so `.github/dependabot.yml` excludes
+the name and the last test here checks that the exclusion is still written.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 ROOT_MANIFEST = REPO_ROOT / "Cargo.toml"
 INSTALLER = "dtolnay/rust-toolchain@"
 
@@ -87,3 +94,16 @@ def test_the_msrv_job_builds_and_tests_the_workspace():
     runs = "\n".join(str(step.get("run", "")) for step in msrv_job_steps())
     assert re.search(r"^cargo check --workspace --locked$", runs, re.M), runs
     assert re.search(r"^cargo test --workspace --locked$", runs, re.M), runs
+
+
+def test_the_bump_bot_is_told_never_to_offer_the_floor_selector():
+    """`@1.96` in an action ref reads as a version to bump; here it is the compiler itself."""
+    document = yaml.safe_load(DEPENDABOT.read_text(encoding="utf-8"))
+    actions = [entry for entry in document["updates"] if entry.get("package-ecosystem") == "github-actions"]
+    assert len(actions) == 1, actions
+    ignored = {rule.get("dependency-name") for rule in actions[0].get("ignore", [])}
+    floor_selector = INSTALLER.rstrip("@")
+    assert floor_selector in ignored, (
+        f"the actions group is still offered {floor_selector!r}, whose ref is the tested floor; "
+        f"ignored: {sorted(x for x in ignored if x)}"
+    )

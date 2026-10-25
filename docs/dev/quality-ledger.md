@@ -8458,6 +8458,36 @@ reddens four rows and only on `to_toml` (`key line of a second section`, `above 
 the table worth keeping: it names the slots no writer reads today instead of the one it was written
 for.
 
+### (fz) The bump bot may no longer offer the compiler that defines the tested floor (2026-10-25)
+
+**What arrived.** The weekly `github-actions` group opened PR #620 to bump two actions, and inside
+`ci.yml` it rewrote `dtolnay/rust-toolchain@1.96` to `@1.120`. That ref is not an action version:
+for the `msrv-check` job it *is* the compiler, and the whole point of that job is to build the
+workspace on the floor the eight crates declare.
+
+**The defence held, measured.** `Test matrix (all legs)` reported failure on that head with five red
+tests, read out of the job log:
+`tests/test_msrv_gate.py::test_the_msrv_job_installs_the_declared_floor` and four in
+`tests/test_ci_rust_leg_exclusion.py`, which identify the floor leg by the toolchain it installs
+rather than by the job's name. Nobody had to notice by eye - the pin is compared with the manifests,
+not with a comment.
+
+**Why a red bot pull request is not yet a policy.** A pull request that is red every Monday gets
+merged in a hurry or closed and re-offered, and the config guarantees the re-offer:
+`.github/dependabot.yml` grouped every action with `patterns: ["*"]` and carried no `ignore`, so the
+selector stays on the offer list. The name is excluded there now, with the measurement written
+beside the reason, and `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` reddens if the
+exclusion is edited away. Falsified by pointing the rule at a different action, which reads
+`the actions group is still offered 'dtolnay/rust-toolchain', whose ref is the tested floor; ignored: ['actions/checkout']`.
+
+**Why this pull request also owes a release note.** Its first version touched no changelog, and CI's
+`Hygiene` job said so:
+`changelog coupling violated ... 1 trigger path(s) (first: tests/test_msrv_gate.py), and none of 5 changelogs`. The local run had reported OK, and the reason is worth keeping: `check_changelog_coupling.py --base <sha>` asks Git what is *committed* above the base (`git diff --name-only <base>...HEAD`), and in a colocated `jj` workspace the change under edit is not what Git's `HEAD` names, so the list came back empty and the gate printed `listed no files, nothing to couple` - a success that measured nothing. `--paths`, fed from `jj diff --summary`, is the route that judges the change here, and it is what the entry was written against: dropping the five changelogs from that list reproduces CI's refusal, exit 1.
+
+**Left open on purpose.** Moving the floor stays a human act: eight manifests declare `1.96`, the Ir
+baseline pins its own compiler (`rustc 1.97.1`) separately, and both are already guarded from their
+own direction. This entry changes no workflow step and no dependency version.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

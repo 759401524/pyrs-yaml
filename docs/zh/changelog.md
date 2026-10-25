@@ -199,6 +199,13 @@ status: new
   介入的那条场景：上一条头在执法镜像上把 `stream_medium` 读成 +0.01%，这一条读成 +0.63%，变量
   只多这一个，那条 leg 因此变红。把 26 个数字重新记到那张镜像上是刷新作业的活，派发时点名
   `accept_drift stream_medium`，其余任何上移照旧自我拒绝。
+- **定义被测地板的编译器不再出现在依赖机器人的报价里** — 每周的 `github-actions` 分组开了 PR #620 去
+  升两个 action，顺手在 `ci.yml` 里把 `dtolnay/rust-toolchain@1.96` 改写成 `@1.120`；对 `msrv-check`
+  这道工序而言，那个 ref 不是版本号，而就是要装的那个编译器。防线抓住了它 — 那条 head 上
+  `tests/test_msrv_gate.py` 与 `tests/test_ci_rust_leg_exclusion.py` 里五条测试转红 — 但每周一都红的
+  PR 只会被急急忙忙关掉再重发，而配置本身就保证重发：`actions` 分组带着 `patterns: ["*"]`，没有
+  `ignore`。现在这个名字在 `.github/dependabot.yml` 里被排除，理由旁边写着测量，排除被改掉时
+  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` 会转红；抬地板仍然是一件人做的事。
 
 #### 性能
 

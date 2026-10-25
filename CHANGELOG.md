@@ -244,6 +244,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one read `stream_medium` at +0.01% on the enforcing image and this one reads it at +0.63%, one
   variable apart, which failed the leg until the refresh dispatch recorded all 26 numbers on that
   image with `accept_drift stream_medium` - so every other move still refuses itself.
+- **The bump bot may no longer offer the compiler that defines the tested floor** - the weekly
+  `github-actions` group opened #620 to raise two actions and rewrote
+  `dtolnay/rust-toolchain@1.96` to `@1.120` inside `ci.yml`, where for the `msrv-check` leg that ref
+  is not a version but the compiler it installs. The defence caught it - five tests in
+  `tests/test_msrv_gate.py` and `tests/test_ci_rust_leg_exclusion.py` went red on that head - but a
+  pull request that is red every Monday gets closed and re-offered, and the config guaranteed the
+  re-offer: the `actions` group carried `patterns: ["*"]` and no `ignore`. The name is excluded in
+  `.github/dependabot.yml` now, with the measurement written beside the reason, and
+  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` reddens if the exclusion is edited
+  away. Moving the floor stays a human act.
 
 ### Performance
 
