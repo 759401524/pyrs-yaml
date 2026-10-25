@@ -199,7 +199,8 @@ pub(crate) fn safe_load(
 /// Why a seam at all: the AST-to-Python conversion is the layer every user actually reaches
 /// (`safe_load`, `to_dict`) and the layer PR #292 changed, yet the reproducible instruction-count gate
 /// could not see it - the harness lived entirely inside `pyrs-yaml-core` and never linked this crate.
-/// That gap is the registered hole `perf-coverage:binding-layer`.
+/// That gap was the registered hole `perf-coverage:binding-layer`, and this seam is the artefact that
+/// closed it on 2026-10-08; what stays unfloored is the per-format loaders' own Python construction.
 ///
 /// It mirrors `safe_load`'s AST path *without* the P3 direct-load fast path on purpose: measuring the
 /// shortcut would report a different quantity than the one anchor- and tag-bearing data actually pays
