@@ -1241,3 +1241,63 @@ def test_the_retired_validator_is_gone_and_the_rule_language_is_not():
         assert alive in sources, f"{alive} is the surviving rule language"
     binding = (REPO_ROOT / "crates" / "pyrs-yaml" / "src" / "py" / "functions.rs").read_text(encoding="utf-8")
     assert "parse_schema_yaml" in binding, "the binding still reads a `rules:` block"
+
+
+def test_the_blind_spot_count_names_the_entries_the_list_carries():
+    """A count typed into prose is a floor typed into prose: it goes stale the day the list grows.
+
+    Found while writing the hook-set record: the sentence said "Seven blind spots" while the list it
+    introduces already carried eight entries. Nothing could see the difference, because the derived row
+    counts tests and scenarios, not paragraphs - and the sentence reads as a measurement long after the
+    measurement stopped being true. So the number is re-derived here from the list under it: adding a
+    blind spot and forgetting its count is a red run, in either direction.
+    """
+    lines = DOC_PATH.read_text(encoding="utf-8").splitlines()
+    said = next((line for line in lines if "blind spots were found by measuring" in line), None)
+    assert said is not None, "the sentence this test counts is gone; retire this test with it"
+    found = re.search(r"(?i)\b(\w+)\s+blind spots were found by measuring\b", said)
+    assert found, f"no count in: {said!r}"
+    spelled = {
+        "zero": 0,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
+        "thirteen": 13,
+        "fourteen": 14,
+        "fifteen": 15,
+        "sixteen": 16,
+        "seventeen": 17,
+        "eighteen": 18,
+        "nineteen": 19,
+        "twenty": 20,
+    }
+    token = found.group(1).lower()
+    assert token in spelled or token.isdigit(), f"{found.group(1)!r} is neither a spelled number nor a digit"
+    claimed = int(token) if token.isdigit() else spelled[token]
+
+    first = next(
+        (i for i in range(lines.index(said) + 1, len(lines)) if lines[i].startswith("- ")),
+        None,
+    )
+    assert first is not None, "the sentence introduces no bullet list, so its count measures nothing"
+    counted = 0
+    for line in lines[first:]:
+        if line.startswith("- "):
+            counted += 1
+        elif not line.strip() or line[:1] in (" ", "\t", ">", "|", "`"):
+            continue
+        else:
+            break
+    assert counted == claimed, (
+        f"the prose says {claimed} blind spot(s); the list under it carries {counted} - "
+        f"the sentence is a reading that stopped being taken"
+    )

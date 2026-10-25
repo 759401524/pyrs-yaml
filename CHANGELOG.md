@@ -262,6 +262,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The assessment's blind-spot count is derived from the list, not trusted** — the sentence in
+  `QUALITY_MATRIX.md` said `Seven blind spots were found by measuring` while the list under it
+  already carried eight entries, and no gate could see the difference: the derived tier row counts
+  tests and scenarios, never paragraphs. One test now re-derives the number from the list that
+  sentence introduces, and both ways of breaking it were proven - the digit moved to `Ten` reddened
+  it, an injected extra entry reddened it - so a hole recorded without its count is a red run
+  rather than a sentence that used to be true. The count reads nine now because the hook-set leg
+  joined the list. No measured floor and no shipped behaviour moved.
 - **The instruction gate's prose now says what was measured** — three sentences of
   `docs/dev/perf.md` credited `AGENTS.md` with calling the binding channel noisy, a claim that file
   does not contain (`grep -c noisy AGENTS.md` is 0), and the attribution they carried was wrong: the
