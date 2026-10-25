@@ -28,14 +28,14 @@ PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデ�
 
 ## パフォーマンス
 
-Rust バックエンドは PyYAML より解析で **28–35 倍**、シリアライズで **198–339 倍高速**：
+Rust バックエンドは PyYAML より解析で **32–37 倍**、シリアライズで **204–347 倍高速**：
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 63 µs | 2.0 ms |
-| Serialize (large) | 4.6 µs | 1.1 ms |
-| Round-trip | 70 µs | 3.2 ms |
+| Parse (large) | 72 µs | 2.3 ms |
+| Serialize (large) | 5.4 µs | 1.4 ms |
+| Round-trip | 82 µs | 3.9 ms |
 
 ## カスタム AST
 

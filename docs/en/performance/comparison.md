@@ -18,33 +18,33 @@ pyrs-yaml compared against the two most popular Python YAML libraries, and again
 <!-- bench: layout=libraries format=yaml operation=parse size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | 63 µs | — |
-| PyYAML | 2.0 ms | 32× slower |
-| ruamel.yaml | 4.8 ms | 76× slower |
-| yaml-rs | 24 µs | 2.6× faster |
-| ryaml | 74 µs | 1.2× slower |
+| **pyrs-yaml** | 72 µs | — |
+| PyYAML | 2.3 ms | 32× slower |
+| ruamel.yaml | 5.4 ms | 75× slower |
+| yaml-rs | 27 µs | 2.7× faster |
+| ryaml | 86 µs | 1.2× slower |
 
 #### Serialize Speed (Large YAML, ~2 KB)
 
 <!-- bench: layout=libraries format=yaml operation=serialize size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | 4.6 µs | — |
-| PyYAML | 1.1 ms | 245× slower |
-| ruamel.yaml | 2.4 ms | 527× slower |
-| yaml-rs | 14 µs | 3.1× slower |
-| ryaml | 37 µs | 8.0× slower |
+| **pyrs-yaml** | 5.4 µs | — |
+| PyYAML | 1.4 ms | 261× slower |
+| ruamel.yaml | 3.3 ms | 603× slower |
+| yaml-rs | 17 µs | 3.1× slower |
+| ryaml | 42 µs | 7.8× slower |
 
 #### Round-Trip Speed (Large YAML, ~2 KB)
 
 <!-- bench: layout=libraries format=yaml operation=roundtrip size=large -->
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | 70 µs | — |
-| PyYAML | 3.2 ms | 46× slower |
-| ruamel.yaml | 7.5 ms | 107× slower |
-| yaml-rs | 41 µs | 1.7× faster |
-| ryaml | 117 µs | 1.7× slower |
+| **pyrs-yaml** | 82 µs | — |
+| PyYAML | 3.9 ms | 48× slower |
+| ruamel.yaml | 9.1 ms | 111× slower |
+| yaml-rs | 48 µs | 1.7× faster |
+| ryaml | 135 µs | 1.6× slower |
 
 ### Trade-off vs. native-object Rust parsers
 
@@ -54,7 +54,7 @@ compared against Rust parsers that deserialize straight to plain Python
 objects and do **not** offer round-trip editing — `yaml-rs` in the tables
 above — the picture is split:
 
-- **Serialize:** pyrs-yaml wins by about 2.2–4.1× on the same fixtures (see the tables above).
+- **Serialize:** pyrs-yaml wins by about 2.3–3.7× on the same fixtures (see the tables above).
 - **Eager parse into a `YamlDocument`:** pyrs-yaml is about 2.5× slower than
   `yaml-rs`, because it builds the richer round-trip structure `yaml-rs`
   never produces. This is a deliberate design trade — the extra work is what
@@ -63,8 +63,8 @@ above — the picture is split:
 Choose a native-only parser like `yaml-rs` when you only ever *read* YAML,
 need the last microsecond on parse, and never need to write changes back
 preserving the original formatting. Choose pyrs-yaml when round-trip
-fidelity matters — and note that even then it parses 28–35× faster than
-PyYAML and serializes 198–339× faster.
+fidelity matters — and note that even then it parses 32–37× faster than
+PyYAML and serializes 204–347× faster.
 
 ### Feature Comparison
 
@@ -92,7 +92,7 @@ PyYAML and serializes 198–339× faster.
 #### Choose pyrs-yaml when
 
 !!! success "Recommended for most use cases"
-    - **Performance matters** — 28–35× faster parsing and 198–339× faster serialization than PyYAML
+    - **Performance matters** — 32–37× faster parsing and 204–347× faster serialization than PyYAML
     - **Round-trip preservation is critical** — preserves comments, anchors, tags
     - **You want PyYAML compatibility** — drop-in replacement API
     - **You need type hints** — full `.pyi` stubs

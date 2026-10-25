@@ -42,7 +42,7 @@ yaml_str = yaml.safe_dump(data)
 | 特性 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
 | 往返 | :material-close: 丢失注释/锚点 | :material-check: 保留所有内容 |
-| 性能 | 基准 | **解析快 28–35 倍、序列化快 198–339 倍** |
+| 性能 | 基准 | **解析快 32–37 倍、序列化快 204–347 倍** |
 | 类型提示 | 部分支持 | :material-check: 完整 `.pyi` 桩文件 |
 | ABI3 wheel | 无 | :material-check: 单个 wheel 支持所有 Python 版本 |
 | i18n 错误 | :material-close: 仅英文 | :material-check: 英文 + 中文 |

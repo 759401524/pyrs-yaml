@@ -1378,3 +1378,69 @@ What the arithmetic says: parity with `rtoml` needs about half of the present co
 lever is worth doing on its own merits and is not the fix for the published row. Nothing is
 implemented here; the point of writing the number down is that the next attempt at this row starts
 from 16% and 9.6% instead of from a guess.
+
+## The tree floor, the reporting layer, and the reader that skipped both (2026-10-25)
+<!-- landed: crates/pyrs-toml/src/read.rs::read_toml -->
+<!-- landed: crates/pyrs-yaml/src/py/toml_direct.rs -->
+
+`(fs)` decided to price both TOML levers in a throwaway clone before writing the real one, on this
+host, Python 3.12.15, one release build, the `bench_snapshot.py` batch protocol (nine batches of at
+least 0.1 s, fastest reported). Seams added for the measurement only: `proto_toml_tree` (scan plus
+the intermediate tree, no output object) and `proto_toml_node` (scan, tree, `CustomNode`, no Python
+walk), plus a sink that built a `dict` from the event stream.
+
+| us | hot 1816 B (27 notes) | hot without notes | config 2165 B (no notes) |
+|---|---:|---:|---:|
+| scan + tree (floor) | 18.4 | 17.2 | 29.5 |
+| `rtoml`, whole parse | 18.9 | 18.4 | 29.6 |
+| + `CustomNode` | 27.6 | 24.4 | 45.9 |
+| `load_toml` as it was | 30.9 | 31.9 | 55.9 |
+| event stream to `dict`, reporting kept | 39.2 | 35.7 | 53.2 |
+| event stream to `dict`, notes and positions stripped | 33.5 | 31.7 | 48.4 |
+
+Three readings, in the order they decided things.
+
+**The floor is the counterparty.** Scan plus intermediate tree costs 18.4 / 29.5 us against
+`rtoml`'s whole parse at 18.9 / 29.6, and the ratio holds in nine of nine cells across three
+re-runs (0.93 to 1.01). Everything the published row paid was therefore *after* the tree, so
+neither "drop the tree" (which moves the scan's output shape) nor a faster encoder of the same
+verdict was the target: the target was the node model and the walk off the node model.
+
+**Reporting is not a fast path.** The event stream reached the same `dict` for every document, and
+slower: 39.2 us against 30.9 on the note-heavy fixture, because the producer converts a byte offset
+to line and column for every event and allocates an `Arc<str>` for every note a reader of values
+discards. Removing both (the fourth and fifth rows) took the note penalty out and left a wash:
+13 to 15 per cent faster on the container-heavy document with no notes at all, 8 to 15 per cent
+slower on `hot`. A reporting layer reports at its own price, and that price is about what the AST
+costs, so `(fs)` rejected the event route for `load_toml` and kept the shape it implied: read the IR
+straight into Python, through no vocabulary.
+
+**What landed, and what it is worth.** `pyrs_toml::read_toml` walks the IR into a caller's sink and
+the binding's sink builds `dict` / `list` / scalars with the same three-step reading the node walk
+applies (stated tag, then schema, then a registered type), so the scalar answer is shared rather
+than restated. Paired in one process - the AST route kept alive by registering a handler for a tag
+TOML never emits - the direct route measured 1.15 to 1.34x on `hot` and 1.31 to 1.35x on `config`.
+The published snapshot reads 31.753 -> 29.115 us and 50.603 -> 44.654 us, with `rtoml` measured in
+the same run at 16.511 -> 19.798 and 26.471 -> 30.527: the host drifted about 20 per cent between
+the two runs, so the honest figure is the ratio to the in-run control, 1.92 -> 1.47 and
+1.91 -> 1.46, about 1.31x on both fixtures.
+
+The controls, because a fast path that never serves is the failure this family has been bitten by
+twice. `crates/pyrs-toml/tests/value_reader.rs` flattens the tree and the new reader to the same
+token list the stream comparison already uses and requires them equal over the seed corpus (17
+seeds, both dialects, floor of 16 documents named in the assert), requires a refused document to
+reach no value, and pins the shapes a corpus of round-trip text does not guarantee: `!!int` for
+`0b1101`, `!!timestamp` and `!time` for the temporals, `Literal` for a multi-line string, and a key
+named `n` or `y` arriving `DoubleQuoted` because the hub quotes any name a 1.1 reader would type.
+`tests/test_toml.py::TestValueReader` then compares `load_toml` against the hub's own export and
+reimport over eight documents, and proves by *value* that a registered tag handler still reaches the
+load path - the guard routes to the AST model, and the rewrite is visible. No timing gate was added
+for the guard: selecting the route per call means registering and unregistering a handler inside the
+timed reference, which inflates that reference by about 0.7 per cent and would let a silent fallback
+pass a floor set against it.
+
+What is still open. The intermediate tree stays, and `crates/pyrs-toml/src/lib.rs` still opens with
+"no intermediate value tree" - a sentence this change does not make true either, so it remains owed
+to whichever one removes the tree. After this reader, `load_toml` pays scan plus tree plus Python
+objects and nothing else, which leaves the row at about 1.5x behind `rtoml` and puts the rest behind
+the same lever `(fs)` declined to price: not building the tree at all.

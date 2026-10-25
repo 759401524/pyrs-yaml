@@ -33,14 +33,14 @@ Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
     `scripts/bench_snapshot.py`; relative speedups are indicative and vary with interpreter,
     hardware, and document.
 
-Rust backend delivers **28–35× faster parsing and 198–339× faster serialization** over PyYAML:
+Rust backend delivers **32–37× faster parsing and 204–347× faster serialization** over PyYAML:
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 63 µs | 2.0 ms |
-| Serialize (large) | 4.6 µs | 1.1 ms |
-| Round-trip | 70 µs | 3.2 ms |
+| Parse (large) | 72 µs | 2.3 ms |
+| Serialize (large) | 5.4 µs | 1.4 ms |
+| Round-trip | 82 µs | 3.9 ms |
 
 ### Custom AST
 

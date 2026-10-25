@@ -277,6 +277,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   search of its own to move: granit owns its tokenizer, and our side of a long-scalar parse is the
   scalar copy (two thirds of the share, with a whole-source memcpy as its floor) and of a
   small-scalar one the per-node build (24 ms of 39 ms for 50,000 nodes).
+- **`load_toml` stopped building the tree it cannot keep** — the loader advertises the same AST-free
+  route its JSON siblings take and did not take it: TOML text went scan, intermediate table tree,
+  `CustomNode`, Python, so a plain dict paid for a node model that exists for format-preserving
+  edits. `pyrs_toml::read_toml` now walks the IR into a caller's `TomlSink`, and the binding's sink
+  builds `dict` / `list` / scalars through the same `scalar_projection` the AST and event routes
+  already share - one function states what `0b1101`, a multi-line string and a date mean, so a
+  third reader cannot restate them differently. The guard is the tag registry: a registered handler
+  rewrites a tagged scalar on its node, and only the node model has nodes, so a document read while
+  any handler is installed takes the AST route. Measured against `rtoml` in the same run - the host
+  drifted about 20% between the two snapshots, so absolute readings are not the evidence - the
+  published row went from 1.92× and 1.91× behind to 1.47× and 1.46×, about 1.31× faster on both
+  fixtures; a paired in-process comparison against the route the guard selects reads 1.15-1.34× and
+  1.31-1.35×. The alternative that was measured and rejected: the event stream reaches the same dict
+  and costs the same (slower where the document has notes, a wash once its positions and notes are
+  stripped), which is why this reader carries no notes, no offsets and no anchors.
+  `crates/pyrs-toml/tests/value_reader.rs` flattens the tree and the new reader to the token list
+  the stream comparison uses and requires them equal over the seed corpus in both dialects, with a
+  named floor of 16 documents and a refused document reaching no value; `tests/test_toml.py`'s
+  `TestValueReader` compares eight documents against the hub's own export and reimport, and proves
+  the guard by a value only the AST route can change. What is left of the row is the intermediate
+  tree, which stays.
 
 ## [v0.18.3] — 2026-10-22
 

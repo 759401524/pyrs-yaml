@@ -55,12 +55,14 @@ extern crate std;
 
 mod events;
 pub(crate) mod parser;
+mod read;
 mod writer;
 
 pub use events::{
     parse_stream, parse_stream_to, parse_stream_with_dialect, parse_stream_with_dialect_to,
 };
 pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options};
+pub use read::{TomlReadError, TomlSink, read_into, read_toml};
 // The event vocabulary lives in its own crate so a reader can name it without pulling an engine; the
 // producer reports it, and re-exports it here the way the YAML and JSON engines do.
 pub use pyrs_event::{NoteOwner, StreamEvent, StreamEventType};
@@ -327,11 +329,11 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
 /// `2024-01-01` means. It is the TOML shape of the same rule `pyrs-json` writes once as
 /// `hub_scalar`.
 #[derive(Debug, Clone)]
-pub(crate) struct ScalarProjection {
-    pub(crate) text: ScalarText,
-    pub(crate) style: ScalarStyle,
-    pub(crate) chomping: Chomping,
-    pub(crate) tag: Option<Tag>,
+pub struct ScalarProjection {
+    pub text: ScalarText,
+    pub style: ScalarStyle,
+    pub chomping: Chomping,
+    pub tag: Option<Tag>,
 }
 
 /// Where a projected scalar's text lives, so neither reader pays for the other's shape.
@@ -341,13 +343,22 @@ pub(crate) struct ScalarProjection {
 /// must return a `Cow<'_, str>` tied to the document, so it asks the same value for an owned
 /// string; only the `Static` arm can stay a borrow, and only because it is `'static`.
 #[derive(Debug, Clone)]
-pub(crate) enum ScalarText {
+pub enum ScalarText {
     Shared(Arc<str>),
     Static(&'static str),
     Fresh(String),
 }
 
 impl ScalarText {
+    /// The scalar's text, without moving or copying it.
+    pub fn as_str(&self) -> &str {
+        match self {
+            ScalarText::Shared(text) => text,
+            ScalarText::Static(text) => text,
+            ScalarText::Fresh(text) => text,
+        }
+    }
+
     pub(crate) fn into_arc(self) -> Arc<str> {
         match self {
             ScalarText::Shared(text) => text,
