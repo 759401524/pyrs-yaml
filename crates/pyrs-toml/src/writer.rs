@@ -132,7 +132,14 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 write_note(&mut out, &c.text);
             }
         }
-        let header_inline = tbl.comment();
+        // A TOML-origin node keeps the header's inline note on the section mapping; a YAML-origin one
+        // hands it over on the KEY node's inline slot, because in `sec: # note` the note ends the
+        // key's line. Reading only the mapping's slot dropped the note outright - the same defect
+        // #146 fixed for an inline member, one level up.
+        let header_inline = tbl
+            .comment()
+            .filter(|c| !c.standalone)
+            .or_else(|| key_node.comment().filter(|c| !c.standalone));
         match header_inline {
             Some(c) if !c.standalone => {
                 out.push('[');
@@ -1522,6 +1529,32 @@ mod tests {
             out, "t = [{\n  # n\n  a = 1\n}]\n",
             "the note did not survive: {out}"
         );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_on_the_key_line_of_a_section_header_is_written_on_the_header() {
+        // The same slot #146 made the writer read for an inline member, one level up: the hub hands
+        // over `sec: # note` with `n` on the KEY node's inline comment, and the section pass looked
+        // only at the mapping's own slot - so `to_toml` returned `[sec]\nx = 1\n` and the note was
+        // gone, not moved. A TOML-origin document keeps the note on the mapping instead (the shape
+        // `cow_table_to_node` builds), which is why the header line already had a writer for it.
+        let mut key = CustomNode::plain_scalar("sec");
+        key.set_comment(Comment {
+            text: "n".into(),
+            standalone: false,
+        });
+        let section = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("x"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        let root = CustomNode::plain_mapping([(key, section)].into_iter().collect());
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(out, "[sec] # n\nx = 1\n", "the note was dropped: {out}");
+        // One TOML round lands where the reader reports the note from, so the emission settles.
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }

@@ -304,22 +304,38 @@ class TestStackedComments:
 
 
 class TestSectionHeaderCommentBoundary:
-    """Characterization test for a KNOWN hub boundary.
+    """Characterization test for a KNOWN hub boundary, plus the drop that was not the boundary.
 
-    A comment placed on a TOML table-header line (`[sec] # note`) has no faithful
-    representation in the YAML hub: the shared YAML engine cannot attach a comment
-    to a container's key line and keep it there (verified: pure YAML `sec: # note`
-    loses the position too). It does not LOSE the note -- that was fixed with the
-    leading-comment list -- and it no longer even leaves the table: the note rides
-    the header's own mapping and the YAML writer puts a container's inline note on
-    the last line of that container's body, which the TOML writer renders as a
-    trailing comment on the table's last `key = value` line. One round of
-    TOML -> hub -> TOML is already stable there. These cases PIN exactly that:
-    values lossless, the note surviving inside the table it annotates, its position
-    not faithful. Root-fixing the position means changing the locked granit
-    comment-capture model, a high-blast-radius core-engine change explicitly
-    declined. See ROADMAP.md "Known engine boundaries".
+    A comment placed on a TOML table-header line (`[sec] # note`) has no faithful representation in
+    the YAML hub: the note rides the header's own mapping, and the YAML writer puts a container's
+    inline note on the last line of that container's body, which the TOML writer then renders as a
+    trailing comment on the table's last `key = value` line. One round of TOML -> hub -> TOML is
+    already stable there. These cases PIN exactly that: values lossless, the note surviving inside
+    the table it annotates, its position not faithful.
+
+    The attribution recorded here for months - "the locked granit comment-capture model cannot keep
+    it", "pure YAML `sec: # note` loses the position too" - measured false on 2026-10-25. granit is
+    not in this path at all (`pyrs_toml`'s own scanner captures the header note, and the hub keeps it
+    on the key's line: `to_toml` re-reads `sec: # note` and re-emits it, and `parse_stream` reports it
+    as `style: inline`). The relocation is the YAML serializer's container rule - the one the
+    `api:set-comment-container-owner` residual pins from the API side - and what was left in the
+    TOML writer was a plain drop of the key's inline slot, which
+    `test_a_note_on_a_yaml_key_line_reaches_the_toml_header` now closes. Root-fixing the *position*
+    still means changing where a container's inline note is written, which is the declined core
+    change; the loss is not part of that decision. See ROADMAP.md "Known engine boundaries".
     """
+
+    def test_a_note_on_a_yaml_key_line_reaches_the_toml_header(self):
+        # The hub hands a YAML document's key-line note to the writer on the KEY node's inline slot.
+        # Reading only the mapping's slot dropped it outright - `[sec]\nx = 1` - the same defect #146
+        # fixed one level down for an inline member.
+        assert pyrs_yaml.to_toml("sec: # note\n  x: 1\n") == "[sec] # note\nx = 1\n"
+        # A body of several members keeps the note on the header, where the source put it.
+        assert pyrs_yaml.to_toml("sec: # note\n  x: 1\n  y: 2\n") == "[sec] # note\nx = 1\ny = 2\n"
+        # One TOML round does move it - `[sec] # note` comes back on the table's last body line, which
+        # is the residual this class pins below, not a new loss. The claim here is only that a
+        # YAML-origin note on a key line is no longer dropped on its way to TOML.
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml("[sec] # note\nx = 1\n")) == "[sec]\nx = 1 # note\n"
 
     @pytest.mark.known_residual("engine:container-inline-note-position")
     def test_header_inline_comment_is_relocated_not_dropped(self):

@@ -18,22 +18,23 @@ Both stem from the shared YAML text hub (`from_toml` → YAML → `to_toml`), wh
 interchange format. **Values always round-trip losslessly**; only certain TOML-only *stylistic*
 forms are not reproducible.
 
-- **Table-header inline comment (`[sec] # note`).** The shared YAML engine cannot keep a comment on
-  a container's key line (verified independently: pure YAML `sec: # note` loses that position too),
-  so the note cannot stay where it was written. It is no longer *dropped* — the leading-comment list
-  keeps the text — and since the container-inline-note fix it no longer leaves the table either: the
-  note rides the header's own mapping, and a container's inline note is written on the last line of
-  that container's body, which `to_toml` renders as a trailing comment on the table's last
+- **Table-header inline comment (`[sec] # note`).** A TOML header's inline note rides the header's
+  own mapping through the hub, and the YAML writer places a container's inline note on the last line
+  of that container's body, which `to_toml` then renders as a trailing comment on the table's last
   `key = value` line (`a = 1` + `[sec] # note` + `x = 1` → `a = 1` + `[sec]` + `x = 1 # note`),
   already stable after one round. What remains unfaithful is the position — not the existence of the
   comment, and not which table it belongs to; pinned by
   `TestSectionHeaderCommentBoundary.test_header_inline_comment_is_relocated_not_dropped` and
   `test_relocated_note_lands_on_the_tables_last_entry`, which assert survival, the in-table slot,
-  and the one-round fixed point. Root-fixing the position needs a change to the locked granit
-  comment-capture model — high blast radius across all YAML comment output and the 99.75 %
-  compliance guarantee — so it is explicitly declined rather than silently shipped.
-  Standalone/leading comments above a header and trailing comments on a leaf `key = value` line
-  *are* preserved in place.
+  and the one-round fixed point. This bullet used to blame "the locked granit comment-capture model"
+  and to claim pure YAML loses the position too; both measured false on 2026-10-25. granit is not in
+  this path — `pyrs_toml`'s own scanner captures the header note — and a YAML document's
+  `sec: # note` does keep its position through the hub, reaching the TOML header line from the key
+  node's own inline slot (`test_a_note_on_a_yaml_key_line_reaches_the_toml_header`). What is left is
+  the container-note placement rule the `api:set-comment-container-owner` residual records, whose
+  blast radius is every comment the YAML writer emits — so changing it stays explicitly declined
+  rather than silently shipped. Standalone/leading comments above a header and trailing comments on
+  a leaf `key = value` line *are* preserved in place.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful

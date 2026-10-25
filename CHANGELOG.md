@@ -142,6 +142,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the same id under a released heading passes, the same id passes while the matrix measures it, and
   a default scope that drops any mirror is red. The predicate ran on the real tree too — injecting
   the id at `CHANGELOG.md:9` returned 1, restoring it returned 0.
+- **A note on a YAML key line no longer vanishes on the way to TOML** —
+  `to_toml("sec: # note\n  x: 1\n")` returned `[sec]\nx = 1\n`: the comment was neither kept on the
+  header nor moved anywhere, it was dropped. The section pass of the TOML writer read only the
+  mapping's own inline slot, while the hub hands over a YAML document's key-line note on the **key
+  node** — the same slot #146 taught the writer to read one level down, for an inline member. The
+  measurement also retires two explanations this repository had been giving for a related gap:
+  `pyrs_toml`'s own scanner does capture a `[sec] # note` inline note, granit is not in that path at
+  all, and a YAML-origin `sec: # note` does keep its position through the hub. What is left open is
+  the placement rule the `api:set-comment-container-owner` residual records — a TOML-origin header
+  note still comes back on its table's last body line — and that behaviour is unchanged and still
+  pinned. Pinned by
+  `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` and
+  `tests/test_toml.py::TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header`; reading only the mapping's slot again reproduces the drop verbatim, `"[sec]\nx = 1\n"` against `"[sec] # note\nx = 1\n"`.
 
 ### Changed
 

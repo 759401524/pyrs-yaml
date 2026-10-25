@@ -119,6 +119,16 @@ status: new
   `tests/test_hole_claims_gate.py` 里有四条反证：`[Unreleased]` 内的洞 id 会失败并报出路径与行号，同
   一个 id 放在已发布标题下通过，矩阵仍在测量它时同一个 id 也通过，默认范围丢掉任一镜像即为红。谓词也
   在真实树上跑过：把该 id 插到 `CHANGELOG.md:9` 返回 1，还原后返回 0。
+- **键行上的注释不再在通往 TOML 的路上消失** — `to_toml("sec: # note\n  x: 1\n")` 原先返回
+  `[sec]\nx = 1\n`：那条注释既没留在表头也没挪到别处，是被丢掉了。TOML 写出器的段落通道只读映射自己
+  的行内槽，而 hub 把 YAML 文档键行的注释交给的是**键节点**——正是 #146 在下一层（内联成员）教写出器
+  去读的那个槽。这次测量同时撤掉了本仓库用来解释另一处缺口的两个说法：`pyrs_toml` 自己的扫描器确实捕
+  获了 `[sec] # note` 的行内注释，granit 根本不在该路径上，而 YAML 来源的 `sec: # note` 确实带着位置
+  穿过 hub。仍未关闭的是 `api:set-comment-container-owner` 残差记录的那条摆放规则——TOML 来源的表头注
+  释依旧回到该表最后一个成员行——该行为未变且仍被钉住。由
+  `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` 与
+  `TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header` 钉住；
+  只读映射槽的反证会逐字重现丢失：`"[sec]\nx = 1\n"` 对上 `"[sec] # note\nx = 1\n"`。
 
 #### 变更
 

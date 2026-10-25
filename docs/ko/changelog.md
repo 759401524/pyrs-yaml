@@ -140,6 +140,18 @@ status: new
   id는 실패하면서 경로와 줄을 밝히고, 같은 id를 릴리스된 제목 아래에 두면 통과하고, 매트릭스가 아직
   그것을 측정하는 동안에도 통과하며, 기본 범위가 미러를 하나라도 놓치면 빨갛습니다. 실제 트리에서도
   확인했습니다 — id를 `CHANGELOG.md:9`에 집어넣으니 1, 되돌리니 0입니다.
+- **키 줄에 둔 주석이 TOML로 가는 길에 사라지지 않습니다** — `to_toml("sec: # note\n  x: 1\n")`이
+  `[sec]\nx = 1\n`을 돌려줬습니다. 주석이 헤더에 남지도 다른 곳으로 옮겨지지도 않고 그냥 버려진
+  겁니다. TOML 내보내기의 마디 구간이 대응 매핑의 제자리 슬롯만 읽었는데, 허브는 YAML 문서의 키 줄
+  주석을 **키 마디**에 실어 건넵니다. #146이 한 단계 아래(인라인 member)에서 읽히도록 고친 것과
+  똑같은 결함입니다. 이번 측정으로 이 저장소가 관련 구멍을 설명하던 두 이유도 내려갑니다.
+  `pyrs_toml` 자기 스캐너는 `[sec] # note`의 제자리 주석을 실제로 잡는데, granit은 그 경로에 전혀
+  없고, YAML 출처의 `sec: # note`는 위치를 잃지 않고 허브를 통과합니다. 남아 있는 것은
+  `api:set-comment-container-owner` 잔여 사항이 적어 둔 배치 규칙입니다. TOML 출처의 마디 머리
+  주석은 여전히 그 표의 마지막 줄로 돌아옵니다. 그 동작은 그대로 두고 계속 고정합니다.
+  `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header`와
+  `TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header`가 못을
+  박고, 매핑만 읽게 되돌리면 손실은 `"[sec]\nx = 1\n"`로 그대로 되살아납니다.
 
 #### 변경
 
