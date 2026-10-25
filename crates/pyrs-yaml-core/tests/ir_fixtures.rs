@@ -437,3 +437,42 @@ fn the_edit_scripts_reach_their_paths_and_change_the_text() {
         "edit_delete_key no longer changes the document, so it measures a no-op"
     );
 }
+
+#[test]
+fn the_json_stream_stop_leaves_a_tail_to_skip_and_skips_it() {
+    // `stream_json_stop` asks the sink to stop at a quarter of the events this document emits, so
+    // the scenario prices a prefix and a refusal to read the rest. Both halves are premises: a
+    // fixture that shrank to four events would make the quarter zero, and one whose tail the
+    // producer ignores would report the full walk under a name that says otherwise.
+    let total = pyrs_json::parse_stream(MEDIUM_JSON)
+        .expect("stream_json_medium: MEDIUM_JSON has to stream, or the scenario prices an error")
+        .len();
+    let limit = total / 4;
+    assert!(
+        limit >= 1 && limit < total,
+        "MEDIUM_JSON emits {total} events, so stopping at a quarter prices \
+         {limit} of them - either nothing or everything"
+    );
+
+    let mut delivered = 0usize;
+    let mut sink = |event: pyrs_json::StreamEvent<'_>| {
+        let _ = event;
+        delivered += 1;
+        if delivered == limit {
+            std::ops::ControlFlow::Break(())
+        } else {
+            std::ops::ControlFlow::Continue(())
+        }
+    };
+    pyrs_json::parse_stream_with_options_to(
+        MEDIUM_JSON,
+        pyrs_json::JsonParseOptions::STRICT,
+        &mut sink,
+    )
+    .expect("stream_json_stop: the stopping sink must not turn the document into an error");
+    assert_eq!(
+        delivered, limit,
+        "the sink saw {delivered} events where the stop asks for {limit} of {total}, so \
+         `ControlFlow::Break` no longer ends the walk"
+    );
+}

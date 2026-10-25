@@ -110,6 +110,17 @@ enum Work {
     /// (which hands one document to granit) enters this route. The fixture pair prices the
     /// record's body length here, which is what a string scan is asked about.
     Documents,
+    /// The JSON event producer - the tree-free walk `pyrs_json::parse_stream` runs, which is a
+    /// different route through the same bytes the `from_json_*` scenarios take (those build the node
+    /// model the producer never allocates) and had no number of its own. `Stream` above is YAML's
+    /// path over granit; nothing here entered the producer that ruling B made sink-driven.
+    StreamJson,
+    /// The cancellation half of that producer: a sink that answers `ControlFlow::Break` a quarter of
+    /// the way in. `StreamJson` cannot see a regression that only shows up on the stop - the check
+    /// that ends the walk, the state dropped on the way out, an event built that nobody asked for -
+    /// and the stop is what `parse_stream(..., on_event=...)` sells. Paired with `StreamJson` so a
+    /// red reading can be told apart: prefix-only, or everything.
+    StreamJsonStop,
     /// The edit layer: the third of the three expensive pure-Rust computations `AGENTS.md` names
     /// beside `parse` and AST serialize, and the only one of the three with no number here. A
     /// regression in path navigation, in the dirty-plan build, or in the way a note or anchor is
@@ -203,8 +214,9 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         ("to_jsonc_medium", MEDIUM_YAML, Work::ToJsonc),
         ("to_json5_medium", MEDIUM_YAML, Work::ToJson5),
         // The event path over the same fixture the AST scenarios read, so the two are comparable:
-        // `parse_medium` is 321,836,091 counted instructions building nodes here, and whatever
-        // this reports is the price of the *other* shape the same text can take.
+        // `parse_medium` builds nodes here, and whatever this reports is the price of the *other*
+        // shape the same text can take. The ratio is the claim; the instruction counts behind it move
+        // with every refresh, so none is quoted in a comment nothing reads.
         ("stream_medium", MEDIUM_YAML, Work::Stream),
         // The event path over the long-value shape. `stream_medium`'s longest value is 21
         // characters, so the stream never leaves the first sixteen-byte vector and a regression
@@ -228,6 +240,15 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
             LONG_NDJSON.as_str(),
             Work::Documents,
         ),
+        // The JSON producer, whole and stopped, over the fixture the AST scenarios already read, so
+        // the difference between `stream_json_medium` and `from_json_medium` is the price of the node
+        // model the producer never builds. No number is quoted here: a floor written into a comment
+        // goes stale at the next refresh and nothing reads it, which is the defect `(gh)` records.
+        // The stop is a quarter of the 49 events this document emits - twelve delivered, thirty-seven
+        // never scanned - measured rather than assumed, and pinned by
+        // `crates/pyrs-yaml-core/tests/ir_fixtures.rs::the_json_stream_stop_leaves_a_tail_to_skip_and_skips_it`.
+        ("stream_json_medium", MEDIUM_JSON, Work::StreamJson),
+        ("stream_json_stop", MEDIUM_JSON, Work::StreamJsonStop),
         // The three edit verbs over `MEDIUM_YAML`, one scenario each, so a red reading names the verb
         // that got more expensive. The arm explains what is inside and outside the measured span;
         // `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins that each path below still resolves and
@@ -382,6 +403,95 @@ fn main() {
                             std::process::exit(3);
                         });
                     acc += std::hint::black_box(&events).len();
+                }
+                acc
+            }
+        }
+        Work::StreamJson => {
+            if setup_only {
+                std::hint::black_box(src);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let events =
+                        std::hint::black_box(pyrs_json::parse_stream(std::hint::black_box(src)))
+                            .unwrap_or_else(|error| {
+                                eprintln!(
+                                    "{name} iteration {index}: {error} - the fixture no longer \
+                                     reaches the path being measured"
+                                );
+                                std::process::exit(3);
+                            });
+                    // Structural count, as for `Work::Stream`: it is what keeps every event alive to
+                    // this point, so the producer cannot be optimised out of existing.
+                    acc += std::hint::black_box(&events).len();
+                }
+                acc
+            }
+        }
+        Work::StreamJsonStop => {
+            // The quarter is derived here rather than written down, and in setup on both modes, so
+            // `--setup-only` subtracts the derivation and the loop prices only the walk to the stop
+            // and the refusal to read on. A limit of zero would price the producer's two opening
+            // events; a limit equal to the total would price the whole stream under a name that says
+            // otherwise. Both are refusals, not readings, so they exit 3.
+            let total = pyrs_json::parse_stream(src).unwrap_or_else(|error| {
+                eprintln!("{name} setup: {error} - the fixture no longer streams");
+                std::process::exit(3);
+            });
+            let total = std::hint::black_box(total).len();
+            let limit = total / 4;
+            if limit == 0 || limit >= total {
+                eprintln!(
+                    "{name}: this document streams {total} events, so a quarter asks for {limit} - \
+                     either nothing or everything"
+                );
+                std::process::exit(3);
+            }
+            if setup_only {
+                std::hint::black_box(limit);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let mut delivered = 0usize;
+                    {
+                        let mut sink = |event: pyrs_json::StreamEvent<'_>| {
+                            // Every event handed out is read before the answer, so the stop cannot
+                            // be reached by a producer that stopped building them.
+                            std::hint::black_box(&event);
+                            delivered += 1;
+                            if delivered == limit {
+                                std::ops::ControlFlow::Break(())
+                            } else {
+                                std::ops::ControlFlow::Continue(())
+                            }
+                        };
+                        pyrs_json::parse_stream_with_options_to(
+                            std::hint::black_box(src),
+                            pyrs_json::JsonParseOptions::STRICT,
+                            &mut sink,
+                        )
+                        .unwrap_or_else(|error| {
+                            eprintln!(
+                                "{name} iteration {index}: {error} - the fixture no longer reaches \
+                                 the path being measured"
+                            );
+                            std::process::exit(3);
+                        });
+                    }
+                    let delivered = std::hint::black_box(delivered);
+                    if delivered != limit {
+                        // Either `ControlFlow::Break` no longer ends the walk, or the tail this
+                        // scenario exists to skip has gone. Both would report a full stream.
+                        eprintln!(
+                            "{name} iteration {index}: the sink saw {delivered} events where the \
+                             stop asks for {limit} of {total}"
+                        );
+                        std::process::exit(3);
+                    }
+                    acc += delivered;
                 }
                 acc
             }

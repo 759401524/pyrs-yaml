@@ -8797,6 +8797,89 @@ nothing, and `yaml-edit` stays uncapped in `pyproject.toml`, so the next full re
 free to move it; capping the range or listing it in the bump bot's `ignore` were the alternatives
 this change did not take.
 
+### (gh) A floor copied into prose goes stale the moment the gate refreshes (2026-10-25)
+
+**The reading.** `crates/pyrs-yaml-core/benches/ir_gate.rs` told the reader that `parse_medium` was
+"321,836,091 counted instructions building nodes here". `.ci/ir-baseline.json` carries
+`parse_medium: 321,580,801` - 0.079 % apart - and the copied figure matches neither that value nor
+the previous baseline's 321,576,334, so it was already a historical number when it was written into
+a comment.
+
+**Two sweeps, because one method cannot find its own blind spot.** Sweeping every tracked `.md`,
+`.rs` and `.py` for the *previous* baseline's rewritten floors returned 12 file:line hits and left
+zero live violations: all twelve sit in the dated records (`CHANGELOG.md`, the four mirrors, this
+file), where naming a number that was true then is the point - `AGENTS.md` exempts them in the same
+breath it binds the live pages. That sweep is blind to a figure older than the last refresh, which
+is exactly what this one is, so a second sweep read the comma-grouped numbers inside the two harness
+files' comments and compared each with the committed floor. It returned one hit: this line.
+
+**Why nothing caught it.** `ir_gate.py --update` rewrites JSON and never touches a comment.
+`tests/test_ir_baseline_workflow.py` pins the file's keys and `QUALITY_MATRIX.md`'s count phrase,
+not prose in Rust. `check_landed_claims.py` reads `docs/dev/*.md`. A counted instruction total
+copied into a `//` comment is therefore read by no gate at all.
+
+**The fix, and why it is not a gate.** Both citations in that file now state the relationship -
+which scenario builds the node model, which one skips it - and leave the numbers in the file that
+carries them. A checker was not written: telling a copied floor apart from the numbers a bench
+comment legitimately holds (event counts, byte widths, `ITERATIONS`, fixture sizes) needs a parser
+of prose with an allow-list, which is the same reason `(ge)` left its sweep a script rather than a
+rule. The live pages got the manual treatment for the same reason - `QUALITY_MATRIX.md` section 2's
+quoted readings were recomputed from the file when `ir-baseline-59` invalidated them.
+
+### (gi) The stop was the one thing the event stream had never been asked to do (2026-10-25)
+
+**What was missing.** The JSON event producer had no instruction floor in any shape -
+`stream_medium` and `stream_long_strings` are YAML's path over granit - and no scenario anywhere
+asked the question `parse_stream(..., on_event=...)` actually answers: what does it cost to stop. A
+change to the cancellation half (the check that ends the walk, the state dropped on the way out, an
+event built for a consumer that had already refused) could land with every floor green.
+
+**The pair, and what it measured.** `stream_json_medium` walks `MEDIUM_JSON` to the end and
+`stream_json_stop` stops a quarter of the way in; the pair is what makes either number readable,
+because a stop alone cannot tell "the prefix got slower" from "everything got slower". Measured here
+first: that document emits **49** events, so the quarter is twelve - local runs report `touched`
+98,000 and 24,000 for 2,000 iterations, and `--setup-only` reports 0 for both, so the subtraction
+leaves the walk and the refusal. On the enforcing image, the run that wrote the file read
+`stream_json_medium` 50,237,295 and `stream_json_stop` 12,603,257 - the stop costs **25.09 %** of
+the walk, which is the evidence that `Break` ends the scan and not merely the delivery.
+
+**Two guards, both seen to bite.** The limit is derived from the stream's own length in setup, never
+written down: a limit of 0 or of the whole stream exits 3 rather than measuring the producer's two
+opening events or a full walk under a name that says "stop". Control: setting the limit to the total
+printed "this document streams 49 events, so a quarter asks for 49" and exited 3. Every iteration
+then checks the sink saw exactly the limit; control: making the sink answer `Break` one event late
+printed "the sink saw 13 events where the stop asks for 12 of 49" and exited 3. Both files were
+restored and the run was re-taken after each control. The same premise is pinned at test time by
+`the_json_stream_stop_leaves_a_tail_to_skip_and_skips_it`.
+
+**What growing the set cost this time.** The first dispatch, naming nobody, refused to write over
+exactly one move: `load_json_long_strings` 95,092,264 -> 95,814,700 (+0.76 %). It is a *binding*
+scenario and its binary digest in that run, `7adbeac719edacd6`, is the same digest the committed
+baseline records - an identical binary whose three samples were 94,997,688 to 95,814,700 apart,
+0.853 % wide, with the committed floor inside the band. So the movement is the host, not the code.
+It was named in the second dispatch's `accept_drift` and `tolerance_hint` stayed at 0.5 %, which is
+the route `AGENTS.md` states: a move past the line is met by naming it, never by widening the line.
+
+**The line is one-sided, and this refresh showed it.** The file the second dispatch wrote moves four
+floors past 0.5 % in the *other* direction - `from_json5_long_strings` -0.65 %,
+`from_toml_long_strings` -0.642 %, `from_json5_medium` -0.549 %, `from_jsonc_medium` -0.525 %, with
+the other thirty-six inside ±0.466 % - and none of them is a finding, because the gate polices
+regressions upward and only flags a floor that has gone stale downward (a warning past 2 %,
+`FLOOR_STALE` past 5 %). Reading the same file with `abs()` would call those four "past the line"
+and say the gate missed them. It did not: they are the same harness growth moving the binary, in the
+direction nobody objects to. What the pair does prove is that a binding scenario's own three-sample
+spread (0.853 % here for `load_json_long_strings`, 0.546 % for `load_toml_long_strings`) can be
+wider than the tolerance that judges it, which is registered as an open question rather than papered
+over here.
+
+**Not claimed.** TOML's `Break` stops the emission, not the scan - its own documentation says the
+intermediate representation is complete before the first event exists - so it got no stop scenario:
+the number would price the IR build under a name that promises cancellation. JSONC and JSON5 stops
+are unpriced, on the reasoning that they enter the same producer with the options flipped and the
+difference lives in the scanner, which `from_jsonc_*` and `from_json5_*` already price. And a floor
+does not make the stop fast: it makes a regression there visible, which is the weaker claim and the
+only one this record makes.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

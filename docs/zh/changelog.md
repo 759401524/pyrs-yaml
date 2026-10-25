@@ -362,6 +362,21 @@ status: new
   `missing-path` 上以 3 退出，测试期的钉住让同一场景以同一理由失败。扩场景集的代价由刷新量出而非预测
   ——diff 里没有一行引擎代码，六条 JSON 读路径却在执法镜像上移动 +0.73%…+1.91%；把它们写进
   `accept_drift` 点名，`tolerance_hint` 保持 0.5%。记为 `(gf)`。
+- **事件流的取消半边有了数，是整趟 walk 的四分之一** — `parse_stream(..., on_event=...)` 能在文档
+  中途停下生产者，但"停"这件事从没被定过价：JSON 生产者任何形状都没有地板（`stream_medium` 与
+  `stream_long_strings` 走的是 YAML 经 granit 那条），所以改动结束遍历的那次判断、退出时丢弃的状态、
+  或为一个已经拒绝的消费者造出的事件，都能在门禁全绿下落地。在 `MEDIUM_JSON` 上成对加两条
+  `stream_json_medium` 与 `stream_json_stop`；写入文件那次运行读到 50,237,295 对 12,603,257 ——
+  停只花整趟的 **25.09 %**，这就是 `Break` 结束的是扫描、不只是投递的证据。该文档发射 49 个事件，
+  所以停在第十二个；上限在 setup 里由流长导出，不写死；两条前提守卫都对着变异看到咬下：要整条流
+  就 exit 3（"so a quarter asks for 49"），让 sink 晚一个事件才 `Break` 也 exit 3（"the sink saw 13
+  events where the stop asks for 12 of 49"）。扩充场景集的代价仍由刷新量定而非预测：第一次派发因一条
+  向上的移动拒写 —— `load_json_long_strings` +0.76 %，而那次跑的绑定层二进制摘要正是已提交文件记录的
+  同一个，所以动的是 runner 不是代码 —— 把它写进 `accept_drift`，`tolerance_hint` 保持 0.5 %。TOML
+  有意不给停止场景：它的 `Break` 结束的是发射不是扫描，那个数只会把中间表示计价在一个承诺取消的名字
+  下面。记为 `(gi)`，连同 `(gh)`：harness 曾把一个地板抄进注释（`parse_medium` 写成 "321,836,091"，
+  提交值是 321,580,801），而刷新只重写 JSON、从不碰注释，所以这些引用现在只说关系，数字留给
+  `.ci/ir-baseline.json`。
 
 ### [v0.18.3] — 2026-10-22
 
