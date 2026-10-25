@@ -110,3 +110,22 @@ def test_the_pairing_note_no_longer_quotes_a_floor_into_a_docstring():
     text = GATE.read_text(encoding="utf-8")
     assert "21,444,780" not in text and "21,444,880" not in text
     assert "within tens of instructions" in text, "the size survives, the digits that dated it do not"
+
+
+def test_perf_md_no_longer_points_at_an_agents_claim_it_does_not_contain():
+    """Three sentences credited `AGENTS.md` with calling the binding channel noisy.
+
+    Measured, not remembered: `grep -c noisy AGENTS.md` is 0, and the file carries no binding-noise
+    claim at all - its Ir bullet speaks of drift and of the compiler term. Worse, the credited claim was
+    the wrong attribution: the wide reading was CPython's per-process hash seed, now pinned, which is
+    what `docs/dev/quality-ledger.md` (gj) records. A pointer at an absent authority teaches a reader to
+    check the wrong file, so this fails if the phrasing comes back.
+    """
+    perf = (REPO_ROOT / "docs" / "dev" / "perf.md").read_text(encoding="utf-8")
+    for phrase in (
+        "`AGENTS.md` already names as the noisy",
+        "`AGENTS.md` already gives",
+        "`AGENTS.md` already calls noisy",
+    ):
+        assert phrase not in perf, f"{phrase!r} credits AGENTS.md with a sentence it does not contain"
+    assert "hash seed" in perf, "the reason the wide reading had is named, not just un-cited"

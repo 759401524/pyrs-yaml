@@ -8948,6 +8948,53 @@ default `rustc 1.99.0`, so its absolute counts are not the floors - only the spr
 representative of the distribution the gate used to sample, and a reader who wants the average case
 should say so rather than read it out of a fixed seed.
 
+### (gk) A host reading is now comparable on one channel and not on three scenarios (2026-10-25)
+
+**Why this was owed.** (gj) pinned the seed and re-drew the floors, and while writing that record
+this file said the binding channel's local-to-image residual "has not been re-measured since the
+pin". That is a sentence a reader can only trust once somebody runs the measurement, so it was run:
+this tree, WSL2 on an `Intel Core Ultra 9 285K`, valgrind 3.22.0, `RUSTUP_TOOLCHAIN` read out of the
+baseline (`rustc 1.97.1`, the compiler the floors name), `CARGO_TARGET_DIR` on the Linux filesystem,
+and `scripts/ir_gate.py` in check mode against the file (gj) just committed.
+
+**What the pin bought off-host.** Every one of the 42 scenarios repeats to +/-0.0001% of itself,
+three draws each - the binding channel included. The residual against the image's floors then reads
++0.15% worst on that channel: `load_json_medium` +0.15%, `load_json_long_strings` +0.10%,
+`load_toml_medium` -0.09%, `to_python_anchors` +0.08%, `to_python_medium` -0.03%,
+`load_toml_long_strings` -0.02%, `to_python_small` +0.01%. Before the pin the same comparison was
+quoted at +0.26% and +0.19%, so most of what this file had been calling the binding channel's host
+term was the seed after all.
+
+**What it does not buy, stated as a measurement.** Three scenarios do not come along:
+`documents_short_strings` reads 75,506,503 against a floor of 95,854,968 (**-21.23%**),
+`documents_long_strings` -6.19%, and `from_json5_medium` +1.20% - a local FAIL past the 0.5% line
+and two `FLOOR_STALE` refusals on a tree the enforcing image measures green. The other thirty-nine
+sit inside +/-0.44%. This is why the line is refreshed on the image and never by a local `--update`:
+a local run does not merely differ by a rounding term, it disagrees by a fifth of a scenario.
+
+**Two candidates tested, both refuted, not assumed.** Runtime SIMD dispatch in our own code:
+`crates/` contains no `is_x86_feature_detected` or `target_feature` at all, and `objdump` of the
+measured binary returns zero VEX encodings (`vpxor`, `vpand`, `vcmpps`), so the build is
+SSE2-baseline on both hosts. glibc's own choice: `GLIBC_TUNABLES` does bind here - `__memchr_avx2`
+and `__memset_avx2_unaligned_erms` become `__memchr_sse2` and `__memset_sse2_unaligned_erms` under
+the cap - and the same scenario counts 75,506,545 with the pin, 75,506,494 with the caps removed and
+75,506,517 with no pin at all: +/-0.0001%, so the routine swap moves nothing. A side finding worth
+keeping: `-AVX` does not displace `__memcpy_avx_unaligned_erms` on this host, so the hwcaps list is
+not a complete cap on glibc's selection even where it works.
+
+**Where the work sits, and what is still open.** Locally the scenario spends 26.78% of its loop in
+`pyrs_event::LineTable::line_col` (20,218,000) and 9.06% in `LineTable::new` (6,842,000) - the line
+index under the NDJSON route. The remaining candidates this record will not guess about are the
+stored bytes of the fixture at checkout (the class `tests/test_line_endings_gate.py` closed once for
+another fixture) and host-dependent chunking through `available_parallelism` (24 here, 4 on the
+runner). Closing it needs the same profile from the enforcing image, which is a change to the
+refresh job's output rather than another local number.
+
+**What the line does.** Nothing moves. CI's `Instruction-count baseline` job measures on the image
+the floors name, and it passes on this tree; the divergence is a property of reading the instrument
+off the image, and the honest form of that is a limitation named with numbers, not a tolerance
+widened for a host that is not the enforcing one.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

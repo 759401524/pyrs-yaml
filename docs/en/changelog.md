@@ -226,6 +226,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The instruction gate's prose now says what was measured** — three sentences of
+  `docs/dev/perf.md` credited `AGENTS.md` with calling the binding channel noisy, a claim that file
+  does not contain (`grep -c noisy AGENTS.md` is 0), and the attribution they carried was wrong: the
+  wide reading was CPython's per-process hash seed, since pinned. The pointers name the term now,
+  and `QUALITY_MATRIX.md` section 2's cross-host ceiling is marked as the dated reading it is —
+  re-measured on the pinned tree, the binding channel sits +0.15% worst against the image's floors
+  while three scanner scenarios diverge by up to -21.23%, recorded in `docs/dev/quality-ledger.md`
+  (gk) together with the two explanations that were tested and refuted. One guard test, so a pointer
+  at an absent claim reddens. No measured floor and no shipped behaviour moved.
 - **The line route has a floor, and a long body costs more there than on the event path** —
   the record that added the event stream's long-value floor named the clause it left standing: the
   NDJSON path had no number of its own. `Work::Documents` now reads eight one-line records into
