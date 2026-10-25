@@ -33,14 +33,14 @@ status: new
 Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml delivers both:
 
 - **PyYAML** (Python) — slow, **loses comments/anchors/tags** on round-trip
-- **ruamel.yaml** (Python) — preserves formatting, but **69–82× slower parsing and 473–809× slower serialization** than pyrs-yaml
-- **pyrs-yaml** (Rust) — **29–36× faster parsing and 199–340× faster serialization than PyYAML** while preserving everything
+- **ruamel.yaml** (Python) — preserves formatting, but **67–82× slower parsing and 465–832× slower serialization** than pyrs-yaml
+- **pyrs-yaml** (Rust) — **28–35× faster parsing and 198–339× faster serialization than PyYAML** while preserving everything
 
 ### Key Features
 
 <div class="grid cards" markdown>
 
-- :material-lightning-bolt: **Blazing Fast** — 29–36× faster parsing, 199–340× faster serialization than PyYAML, powered by a Rust zero-copy backend
+- :material-lightning-bolt: **Blazing Fast** — 28–35× faster parsing, 198–339× faster serialization than PyYAML, powered by a Rust zero-copy backend
 - :material-sync: **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - :material-pencil: **In-Place Editing** — edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - :material-check-decagram: **YAML 1.2 Compliant** — powered by granit-parser (99.75% YAML Test Suite pass rate, 405/406)

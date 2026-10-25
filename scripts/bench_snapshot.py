@@ -47,9 +47,15 @@ from ruamel.yaml import YAML  # noqa: E402
 try:  # Counterparty readers, needed only by --update; a missing one stops a re-measure.
     import orjson
     import pyjson5
+    import rtoml
+    import ryaml
     import tomllib
-except ImportError:  # pragma: no cover - the writer of the snapshot installs the test extra
-    orjson = pyjson5 = tomllib = None
+    import yaml_rs
+except ImportError as error:  # pragma: no cover - the writer of the snapshot installs the test extra
+    raise SystemExit(
+        f"--update measures every published column, and {error.name} is missing; "
+        "install the test dependency group (uv sync --group test) rather than publishing a partial table"
+    ) from error
 
 import pyrs_yaml  # noqa: E402
 from tests.data.yaml_samples import (  # noqa: E402
@@ -94,6 +100,11 @@ FORMATS = {
             SELF: {"read": pyrs_yaml.parse, "write": lambda doc: doc.to_yaml()},
             "PyYAML": {"read": yaml.safe_load, "write": yaml.safe_dump},
             "ruamel.yaml": {"read": RUAMEL.load, "write": ruamel_dump},
+            # The two Rust-backed Python readers. They belong in the same column group because
+            # they do the same job on the same bytes, and the headline ratio stays PyYAML's so the
+            # published rows remain comparable with the ones they replace.
+            "yaml-rs": {"read": yaml_rs.loads, "write": yaml_rs.dumps},
+            "ryaml": {"read": lambda text: ryaml.load(io.StringIO(text)), "write": ryaml.dumps},
         },
         "operations": ("parse", "serialize", "roundtrip"),
     },
@@ -111,6 +122,10 @@ FORMATS = {
         "columns": {
             SELF: {"read": pyrs_yaml.load_toml},
             "tomllib": {"read": lambda text: tomllib.loads(text)},
+            # `rtoml` is the `toml-rs` crate's binding, so it is the only TOML counterparty that is
+            # Rust against Rust; the speedup column is measured against it rather than against the
+            # standard library, because beating a pure-Python reader is not the interesting claim.
+            "rtoml": {"read": lambda text: rtoml.loads(text)},
         },
         "operations": ("parse",),
     },
@@ -130,8 +145,11 @@ VERSIONS = {
     SELF: lambda: pyrs_yaml.__version__,
     "PyYAML": lambda: package_version("PyYAML"),
     "ruamel.yaml": lambda: package_version("ruamel.yaml"),
+    "yaml-rs": lambda: package_version("yaml-rs"),
+    "ryaml": lambda: package_version("ryaml"),
     "orjson": lambda: package_version("orjson"),
     "pyjson5": lambda: package_version("pyjson5"),
+    "rtoml": lambda: package_version("rtoml"),
 }
 
 
@@ -349,8 +367,23 @@ def _rewrite_libraries(snapshot, attrs, lines, start):
         if library not in times:
             raise ValueError(f"{attrs['format']}/{attrs['operation']}: table row {library!r} is not measured")
         cells[1] = _format_time(times[library])
-        cells[2] = "—" if library == SELF else f"{_speedup(times, library)} slower"
+        cells[2] = "—" if library == SELF else _behind(times, library)
         lines[index] = _join(cells)
+
+
+def _behind(times, library):
+    """How far the peer sits from us, in the direction the number actually points.
+
+    The column always said "slower", which was true while every counterparty on this page was
+    Python. A Rust-backed reader can be the faster one, and a fraction printed beside "slower" is
+    not a measurement - so the word follows the ratio, and the magnitude is quoted from the side it
+    belongs to.
+    """
+    ratio = times[library] / times[SELF]
+    if ratio >= 1:
+        return f"{_speedup(times, library)} slower"
+    value = 1 / ratio
+    return f"{round(value)}× faster" if value >= 10 else f"{value:.1f}× faster"  # noqa: RUF001
 
 
 def _rewrite_operations(snapshot, attrs, lines, start):

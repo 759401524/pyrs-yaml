@@ -26,16 +26,16 @@ PyYAML과 달리, pyrs-yaml는 **모든 서식과 메타데이터를 유지**합
 ## 성능
 
 !!! note "벤치마크 환경"
-    CodSpeed CI는 시뮬레이션 모드(실제 시간이 아닌 명령 수)로 실행됩니다. 아래 수치는 2026-10-23에 `scripts/bench_snapshot.py`가 배치 측정으로 기록한 값입니다. 상대 속도는 참고용이며 인터프리터, 하드웨어, 문서에 따라 달라집니다.
+    CodSpeed CI는 시뮬레이션 모드(실제 시간이 아닌 명령 수)로 실행됩니다. 아래 수치는 2026-10-25에 `scripts/bench_snapshot.py`가 배치 측정으로 기록한 값입니다. 상대 속도는 참고용이며 인터프리터, 하드웨어, 문서에 따라 달라집니다.
 
-Rust 백엔드는 PyYAML보다 파싱 **29–36배**, 직렬화 **199–340배 빠릅니다**:
+Rust 백엔드는 PyYAML보다 파싱 **28–35배**, 직렬화 **198–339배 빠릅니다**:
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 61 µs | 2.0 ms |
-| Serialize (large) | 4.5 µs | 1.1 ms |
-| Round-trip | 67 µs | 3.2 ms |
+| Parse (large) | 63 µs | 2.0 ms |
+| Serialize (large) | 4.6 µs | 1.1 ms |
+| Round-trip | 70 µs | 3.2 ms |
 
 ## 커스텀 AST
 
