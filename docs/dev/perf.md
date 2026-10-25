@@ -1335,3 +1335,46 @@ argument. Both halves then say something about the host. The same head, built on
 apart while its two dialect *writers* came within `0.001%`: the half a local reading moves is the
 allocation-heavy one, and a writer floor is nearly portable. Growing the scenario set is the act
 measured above, and this growth asked for no `accept_drift` name at all.
+
+## What the TOML read path spends its instructions on (2026-10-25)
+
+`(fr)` published a loss: `rtoml` reads TOML about 1.9× faster than `load_toml` - 16.511 µs and
+26.471 µs against 31.753 µs and 50.603 µs on the two fixtures. What that 32 µs is came from the
+channel that decides such sentences, `scripts/ir_gate.py --profile from_toml_medium --top 14` on
+this WSL host with `RUSTUP_TOOLCHAIN=1.97.1`: callgrind, loop 120,990,808 instructions (full
+121,473,407 minus setup 482,599), functions printed as named.
+
+| share | frame(s) | what it is |
+|--:|:--|:--|
+| 26.20% | `_int_free` 8.60, `_int_malloc` 7.35, `malloc` 6.32, `free` 3.93 | allocator traffic, not one function |
+| 9.70% | `IndexMap<Arc<str>, pyrs_toml::TomlTable>::…` 4.88, 4.82 | the **intermediate** table tree |
+| 6.53% | `cow_table_to_node` 4.14, `toml_value_to_node` 2.39 | walking that tree into the final one |
+| 5.75% | `__memcpy_avx_unaligned_erms` | copying source runs |
+| 4.86% | `parser::Parser::parse_key_segment` | the scanner's key path |
+| 4.28% | `IndexMap<CustomNode, CustomNode>::…` | the final AST's own map |
+| 5.31% | `<CustomNode as Hash>::hash` 2.75, `drop_glue::<CustomNode>` 2.56 | key hashing and teardown of the final AST |
+
+The finding is the middle pair. `crates/pyrs-toml/src/lib.rs` opens by claiming "direct AST
+construction, no intermediate value tree", and the profile says the crate builds a
+`CowTable`/`TomlValue` tree first and converts it afterwards: about 16% of the scenario is a layer
+the module docstring denies. That docstring is owed a correction, and it should travel with the
+change that makes it true rather than being halved by itself.
+
+Two levers, in the order their prices suggest:
+
+- **Drop the intermediate tree**, parsing straight into `CustomNode`. Roughly 16% of instructions,
+  on every TOML entry point at once - `load_toml`, `from_toml`, the TOML half of a round-trip -
+  priced by the committed `from_toml_*` floors and guarded by the TOML parity, property and fuzz
+  tiers. Not free: `parser.rs` is 2,941 lines with 84 references to the three intermediate types,
+  and TOML's table-definition rules (dotted keys, arrays of tables, redefinition refusal) are
+  exactly what a value tree makes easy.
+- **Skip both trees for `load_toml`**, with a direct text-to-Python scanner behind a fall-back - the
+  `json_fast::try_load` shape `(fq)` just extended to the third JSON loader. This is the only lever
+  that can approach `rtoml`, because it also removes the final AST's 9.6% and the AST-to-Python walk
+  with it. Its price is a second implementation of the dialect's value grammar, which `(fq)` could
+  pay for a strict *subset* of a superset and this would have to pay for far more of the grammar.
+
+What the arithmetic says: parity with `rtoml` needs about half of the present cost, so the first
+lever is worth doing on its own merits and is not the fix for the published row. Nothing is
+implemented here; the point of writing the number down is that the next attempt at this row starts
+from 16% and 9.6% instead of from a guess.
