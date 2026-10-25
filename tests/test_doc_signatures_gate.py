@@ -138,3 +138,35 @@ def test_the_gate_is_invoked_by_a_job_that_can_see_the_extension():
     assert "scripts/check_doc_signatures.py" in workflow
     prek = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
     assert "check_doc_signatures" not in prek, "a hook would fail wherever the extension is not built"
+
+
+def test_no_page_found_is_a_refusal_not_a_pass(gate, monkeypatch, tmp_path, capsys):
+    """The inventory side of this rule already refused; the page side used to print `0 across 0`.
+
+    `docs/<locale>/api/*.md` going quiet - a renamed directory, a locale dropped - is invisible
+    from the summary line, because a comparison of nothing has no finding in it.
+    """
+    monkeypatch.setattr(gate, "DOCS", tmp_path)
+    assert gate.main([]) == 2
+    err = capsys.readouterr().err
+    assert "cannot measure" in err and "OK" not in err, err
+
+
+def test_a_page_without_a_typed_block_is_still_a_pass(gate, monkeypatch, tmp_path):
+    """`0 blocks compared` is not the empty measurement the refusal is for.
+
+    A page of prose or of untyped examples carries nothing to reconcile, and that is allowed - an
+    earlier draft of the refusal reddened `test_a_faithful_or_uncomparable_block_is_not_a_finding`
+    over exactly such a page. The refusal is only for the glob that found no page at all.
+    """
+    page = tmp_path / "en" / "api" / "reference.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("# Reference\n\n```python\nsee pyrs_yaml.parse for the details\n```\n", encoding="utf-8")
+    monkeypatch.setattr(gate, "DOCS", tmp_path)
+    monkeypatch.setattr(gate, "LOCALES", ("en",))
+    assert gate.main([]) == 0
+
+
+def test_the_real_tree_still_measures_comparisons(gate):
+    """The refusal must not become the normal answer: 28 pages, hundreds of blocks today."""
+    assert gate.main([]) == 0

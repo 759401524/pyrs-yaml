@@ -8584,6 +8584,66 @@ paragraph that warns a schema-rejected value "stops updates for the ecosystem" q
 both vocabularies, the test that pins them, and the fact that the rejection is invisible to the gate
 that decides merges.
 
+### (gc) Six gates answered "held" over a measurement that read nothing (2026-10-25)
+
+**What arrived.** `(fz)` recorded one false green - `check_changelog_coupling.py --base` in a
+colocated `jj` workspace - and treated it as an anecdote about that gate. It is a class: a checker
+that derives a list, finds it empty, and prints its OK line anyway. Six places in `scripts/` did
+it, all reachable from a route CI or a hook already takes, and all six now answer exit 2 - the
+verdict this repository already states for `check_landed_claims.py` and `check_stub_types.py`
+("nothing was measurable, never a pass").
+
+**Measured, per gate.** `check_changelog_coupling.py` printed `OK: --base 0c26bc0c… listed no
+files, nothing to couple` and exited 0 over an empty list; it now refuses naming the route, and
+`--paths README.md docs/en/index.md` still exits 0, because a list of prose is a real answer and an
+empty list is not. `check_doc_headings.py` counted the paths it was *handed*, not the files it
+*opened*, so one missing path produced `OK: no split-sentence heading among 1 Markdown files` from
+zero reads; the count is now reads (177 today) and zero reads is exit 2. `check_line_endings.py`
+ran `git ls-files` with no exit-code check at all, so a git that failed answered
+`0 tracked text file(s)` and a pass; it now raises, the refusal is exit 2, and the summary line
+carries its denominator (`0 of 503`). `check_doc_signatures.py` already refused an empty inventory
+but printed `across 0 page(s)` when the `docs/<locale>/api/*.md` glob found nothing - the page side
+now has the twin it lacked. `check_i18n.py` walked five printed OKs to `All checks passed!` over an
+empty `docs/en` (it is a relative glob, so any working directory but the repo root is enough), and
+it had no self-test of any kind; `tests/test_i18n_gate.py` is new. `ir_gate.py --only a,b` appends
+*one* name that matches nothing, the compare loop iterated the empty selection and reported the
+floor as held - a trap `AGENTS.md` documented in prose instead of gating; the filter is now
+`select_scenarios`, which refuses and lists the known names.
+
+**A test had pinned the wrong judgement.** `test_cli_exit_codes` asserted
+`gate.main(["--paths"]) == 0, "an empty changeset is not a violation"`. The sentence conflated two
+cases the gate cannot tell apart from here: a changeset with no files, and a reader that looked in
+the wrong place. The first is a true pass only when the list is non-empty and holds no trigger path;
+the second is what `--base` returns in a `jj` workspace. The assertion now pins exit 2, and
+`test_a_changeset_of_only_prose_is_still_a_pass` pins the distinction, so the fix cannot
+over-correct into refusing a prose-only changeset.
+
+**Over-reach caught by the suite, not by review.** A first draft also refused
+`0 typed signature block(s)`: a page of prose or of untyped examples is a legitimate zero, and
+`test_a_faithful_or_uncomparable_block_is_not_a_finding` reddened over exactly such a page. That
+branch is gone and the opposite is now pinned - the refusal is only for the glob with no page.
+
+**Falsified both ways.** Reverting the coupling refusal to `return 0` fails 4 tests; dropping the
+route name from its message failed only 2 of 3 until the assertion was tightened from
+`route in out` to `out.startswith("refused: {route} produced no paths")` - the advice sentence
+mentions `--paths` too, so the loose form could not see the difference. The six new refusal tests
+and the ten pinned passes run green together.
+
+**What the sweep found clean, so it is not silently "fixed" later.** `prek run --all-files` over
+the whole tree exits 0 with no hook reporting `(no files to check)` - no pattern in `prek.toml`
+matches zero files. `.github/workflows/*.yml` carries no `continue-on-error`, and its four
+`|| true` are diagnostics (`grep /proc/cpuinfo`), a supported empty input (`ACCEPT_DRIFT`), and one
+seed copy that cannot today be empty: the nine fuzz targets and the nine `fuzz/seeds/*` directories
+correspond 1:1 and none of them is empty. `check_cjk_localisation.py`'s
+`nothing to check` pass is deliberate for a path outside the governed locales and is pinned that
+way, with the no-args route already refused. Eleven other `check_*.py` scripts were read and
+already refuse - five plus eleven plus that one is the seventeen in `scripts/`.
+
+**Not claimed.** No new gate was added for this convention, and none is proposed: the six refusals
+each carry their own test, `AGENTS.md` now states the rule for the next checker, and
+`quality_matrix.py`'s orphan-gate probe is what tells a written rule from an executed one. The six
+touched self-test files run 125 green together.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

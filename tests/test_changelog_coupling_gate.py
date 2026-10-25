@@ -193,7 +193,30 @@ def test_base_mode_reads_a_real_diff(gate):
 def test_cli_exit_codes(gate):
     assert gate.main(["--paths", *PR_296]) == 1
     assert gate.main(["--paths", *PR_296, *FIVE]) == 0
-    assert gate.main(["--paths"]) == 0, "an empty changeset is not a violation"
+    assert gate.main(["--paths"]) == 2, "an empty list means nothing was measured, not that it passed"
+
+
+@pytest.mark.parametrize(
+    ("argv", "route"),
+    [(["--paths"], "--paths"), ([], "staged files"), (["--base", "HEAD"], "--base HEAD")],
+)
+def test_a_measurement_that_read_no_paths_refuses(gate, capsys, argv, route):
+    """Exit 2 on an empty path list: the `OK:` line this replaced was measured on PR #622's changeset.
+
+    Three routes, one shape - `--paths` with no arguments, a staged set with nothing in it, and
+    `--base`, which in a colocated `jj` workspace asks Git about a HEAD that is not the change under
+    edit and gets the empty set back. A caller cannot tell "this changeset has no files" from "this
+    run read the wrong place", so the gate must not answer either one with a pass.
+    """
+    assert gate.main(argv) == 2
+    out = capsys.readouterr().out
+    assert out.startswith(f"refused: {route} produced no paths"), "the refusal must name its route"
+    assert "OK" not in out, "a refusal may not also print a pass"
+
+
+def test_a_changeset_of_only_prose_is_still_a_pass(gate):
+    """The distinction the refusal has to keep: paths that exist and none the rule applies to."""
+    assert gate.main(["--paths", "README.md", "docs/en/index.md"]) == 0
 
 
 # ── rule 3: the dependency bot's lockfile exemption ────────────────────────────────

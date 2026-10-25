@@ -251,3 +251,23 @@ def test_the_excluded_fixtures_are_the_declared_ones(gate):
 def test_repository_is_lf_only(gate, monkeypatch):
     monkeypatch.setattr(sys, "argv", [str(GATE_PATH)])
     assert gate.main() == 0, "a tracked text file still carries CRLF or a bare CR"
+
+
+def test_a_file_list_that_comes_back_empty_refuses(gate, monkeypatch, capsys):
+    """`0 offenders` over no files is the same shape as a git that cannot run."""
+    monkeypatch.setattr(sys, "argv", [str(GATE_PATH)])
+    monkeypatch.setattr(gate, "tracked_text_files", lambda: [])
+    assert gate.main() == 2
+    err = capsys.readouterr().err
+    assert "cannot measure" in err and "OK" not in err, err
+
+
+def test_a_git_that_fails_is_a_refusal_not_a_clean_tree(gate, monkeypatch):
+    """The subprocess used to be unread: a nonzero exit was discarded with the stderr."""
+
+    def boom():
+        raise RuntimeError("git ls-files exited 128: not a git repository")
+
+    monkeypatch.setattr(sys, "argv", [str(GATE_PATH)])
+    monkeypatch.setattr(gate, "tracked_text_files", boom)
+    assert gate.main() == 2

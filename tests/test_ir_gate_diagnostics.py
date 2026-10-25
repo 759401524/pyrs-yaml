@@ -20,6 +20,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GATE = REPO_ROOT / "scripts" / "ir_gate.py"
 SUMMARY = "error: could not compile `pyrs-yaml` (lib) due to 1 previous error\n"
@@ -60,3 +62,23 @@ def test_every_rendered_error_is_reported_not_only_the_first():
     stdout = "\n".join([_compiler_message("error[E0308]: first\n"), _compiler_message("error[E0433]: second\n")])
     text = _gate().build_diagnostics(stdout, SUMMARY)
     assert "E0308" in text and "E0433" in text
+
+
+def test_only_naming_no_scenario_refuses_rather_than_passing():
+    """`--only a,b` appends to ONE name that matches nothing, and the compare loop had nothing to do.
+
+    `AGENTS.md` records the trap ("a comma list silently matches nothing"); a documented trap is a
+    gate bug, so the filter now costs a run instead of reporting the floor as held.
+    """
+    gate = _gate()
+    exes = {"parse_medium": object(), "to_yaml_medium": object()}
+    with pytest.raises(SystemExit) as caught:
+        gate.select_scenarios(exes, ["parse_medium,to_yaml_medium"])
+    assert "no scenario" in str(caught.value) and "parse_medium" in str(caught.value)
+
+
+def test_the_filter_still_selects_what_it_names():
+    gate = _gate()
+    exes = {"parse_medium": object(), "to_yaml_medium": object()}
+    assert gate.select_scenarios(exes, ["parse_medium"]) == ["parse_medium"]
+    assert sorted(gate.select_scenarios(exes, [])) == ["parse_medium", "to_yaml_medium"]

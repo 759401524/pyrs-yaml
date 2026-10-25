@@ -31,14 +31,22 @@ takes the path list as its input instead of the files' contents.
 
 Usage:
     python scripts/check_changelog_coupling.py --base <ref>        # CI: the pull request's diff
-    python scripts/check_changelog_coupling.py path1 path2 ...      # prek: the staged set
-    python scripts/check_changelog_coupling.py --paths a b c       # explicit, for tests
+    python scripts/check_changelog_coupling.py path1 path2 ...      # the staged set
+    python scripts/check_changelog_coupling.py --paths a b c       # explicit, for a `jj` change
 
 CI evaluates at **pull-request** scope, not commit scope, because the convention lives on the pull
 request: a PR may be split into commits and one of those commits legitimately carries no changelog
 (measured: `0713267a` adds the stub-drift gate; its release note arrived in a sibling commit).
 
-Exit code 0 = coupled and complete; 1 = a finding.
+Exit codes: 0 = coupled and complete; 1 = a finding; 2 = the path list came out empty, so the rule
+was never asked a question. 2 is not a pass, and the distinction is the point: an empty list means
+either a changeset with no files or a reader that looked in the wrong place, and the gate cannot
+tell them apart from here. `--base` asks Git what is committed above the base (`git diff --name-only
+<base>...HEAD`), and in a colocated `jj` workspace Git's `HEAD` is not the change under edit, so
+that route answers with the empty set while a real changeset sits in the working copy - measured on
+PR #622, where the local run printed `OK: ... listed no files, nothing to couple` over a changeset
+that carried `tests/test_msrv_gate.py`, while CI's `Hygiene` job reddened on the same content.
+Judging a `jj` change means feeding it the paths it actually has.
 """
 
 from __future__ import annotations
@@ -166,8 +174,14 @@ def main(argv: list[str]) -> int:
     paths, how = staged_or_base(argv)
     allow = "--allow-lockfile-bumps" in argv
     if not paths:
-        print(f"OK: {how} listed no files, nothing to couple")
-        return 0
+        # Nothing was handed to the rule, so "no finding" would be a claim about a changeset this
+        # run never read. Refuse instead: exit 2 keeps the refusal out of the pass column.
+        print(
+            f"refused: {how} produced no paths, so the rule measured nothing (exit 2, not a pass). "
+            "For a change in a colocated `jj` workspace, `--base` reads Git's HEAD and answers with "
+            "the empty set; pass the change's own paths with `--paths`."
+        )
+        return 2
     found = findings(paths, allow_lockfile_bumps=allow)
     if found:
         print(f"changelog coupling violated ({how}, {len(paths)} path(s)):")
