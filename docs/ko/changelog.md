@@ -84,6 +84,14 @@ status: new
 
 #### 수정
 
+- **기준 갱신 작업이 첫 번째 이후의 시나리오 이름을 버리지 않습니다** — `profile`과 `accept_drift`
+  모두 `read -ra <<< "$VAR"`로 입력을 나누는데, `read`는 한 줄만 읽습니다. 갱신 run 40221999337은 두
+  줄에 이름을 둘 적은 `profile` 입력(설명 자체가 권하는 형태)을 받고 "attributing 1 scenario(s)"를
+  기록했으므로, 산출물은 함수별 귀속이 절반뿐이었습니다. 플래그는 어느 쪽이든 스크립트에 있기 때문에
+  글자 단언으로는 볼 수 없습니다. 이제 두 단계 모두 구분자를 먼저 공백으로 만든 뒤에 나누고,
+  `tests/test_ir_baseline_workflow.py`는 `python3`을 echo로 바꿔 단계 본문을 실제로 실행해, 출력된
+  명령에 두 이름이 모두 서고 로그의 개수도 맞기를 요구합니다. 대조군은 한 줄 `read`를 되돌려 이름이
+  잘리는 상태를 반드시 재현해야 합니다.
 - **판정이 초록인데 훅 집합은 빨간 상태가 생겼습니다** — `Test matrix (all legs)` 는 `ci.yml` 의
   작업에서 계산되고, `toJSON(needs)` 는 다른 워크플로 작업을 실어 올 수 없으므로, `hygiene.yml` 에
   있던 `prek hook set on the full tree` 는 판정이 읽는 이름에 들어 있지 않았습니다. PR #632 의 첫

@@ -78,6 +78,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The refresh job stopped dropping every scenario name after the first** — `profile` and
+  `accept_drift` both split their input with `read -ra <<< "$VAR"`, and `read` consumes one line:
+  refresh run 40221999337 took a `profile` input carrying two names on two lines - the shape its own
+  description invites - and logged "attributing 1 scenario(s)", so the artefact arrived with half
+  the attribution asked for. A text assertion cannot see that, because the flag is in the script
+  either way. Both steps flatten the separators before splitting now, and
+  `tests/test_ir_baseline_workflow.py` executes each step body with `python3` replaced by an echo
+  and requires both names in the printed command and the right count in the log; the control puts
+  the one-line read back and has to reproduce the dropped name.
 - **The merge verdict could be green while the hook set was red** — `Test matrix (all legs)` is
   computed from `ci.yml`'s jobs, and `toJSON(needs)` cannot carry a job from another workflow, so
   `prek hook set on the full tree` — which lived in `hygiene.yml` — was never a name the verdict

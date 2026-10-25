@@ -13,7 +13,10 @@ output remains an artifact a human commits rather than an automatic push.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -441,3 +444,82 @@ def test_an_empty_profile_input_costs_no_extra_measurement():
     step = text[text.index("- name: Per-function attribution") :]
     assert re.search(r"if: \$\{\{ inputs\.profile != '' \}\}", step), step[:400]
     assert "${#want[@]}" in step, "the log has to name how many scenarios it will attribute"
+
+
+def _step_body(name: str) -> str:
+    """The dedented `run: |` body of one step, so a test can hand it to a shell.
+
+    A step is shell, and shell can be executed. Reading it as text is precisely what let a split that
+    consumes one line pass for a step that was told to read two names.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    start = text.index(f"- name: {name}")
+    run_at = text.index("run: |", start)
+    lines = text[run_at + len("run: |") :].splitlines()
+    body = []
+    for line in lines:
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        body.append(line[10:])
+    return "\n".join(body).strip() + "\n"
+
+
+def _run_step(tmp_path: Path, tag: str, body: str, var: str, value: str) -> str:
+    """Run one step body with its `python3` replaced by an echo, and return everything it printed."""
+    bash = shutil.which("bash")
+    assert bash, "the step is shell, so a leg without bash cannot ask this question at all"
+    script = tmp_path / f"step-{tag}.sh"
+    # `Path.open`, not `write_text`: the newline keyword on `write_text` arrived in 3.10, while the
+    # supported floor is 3.8 and `test_scripts_import_on_supported_python.py` reads this file's AST
+    # for exactly that - it names the call rather than running it.
+    with script.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(f'python3() {{ echo "$@"; }}\n{body}')
+    result = subprocess.run(
+        [bash, str(script)],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, **{var: value}),
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, (script.read_text(encoding="utf-8"), result.stdout, result.stderr)
+    return result.stdout
+
+
+def test_a_newline_separated_profile_input_reaches_every_named_scenario(tmp_path: Path):
+    """`read` consumes one line, so a two-line input meant one name and a silent half-job.
+
+    Measured, not assumed: refresh run 40221999337 took a `profile` input carrying
+    `documents_long_strings` and `documents_short_strings` on two lines - exactly what the input's own
+    description invites, "Space- or newline-separated scenario names" - and logged "attributing 1
+    scenario(s): documents_long_strings". The baseline artefact was real and the attribution was half,
+    and no text assertion could see it because the flag is present in the script either way. The
+    control below runs the same body with the flattening taken back out, which is what proves this
+    test can fail rather than only describing the fix.
+    """
+    names = "documents_long_strings\ndocuments_short_strings\n"
+    body = _step_body("Per-function attribution")
+    out = _run_step(tmp_path, "profile", body, "PROFILE", names)
+    assert re.findall(r"--profile (\S+)", out) == ["documents_long_strings", "documents_short_strings"], out
+    assert "attributing 2 scenario(s)" in out, out
+
+    control = body.replace("tr '\\n' ' '", "cat")
+    assert control != body, "the step no longer flattens separators, so this control measures nothing"
+    dropped = _run_step(tmp_path, "profile-control", control, "PROFILE", names)
+    assert re.findall(r"--profile (\S+)", dropped) == ["documents_long_strings"], (
+        f"the control is meant to reproduce the dropped name and printed: {dropped!r}"
+    )
+
+
+def test_the_drift_guard_sees_every_name_on_its_own_line(tmp_path: Path):
+    """The same split guards `accept_drift`, where a dropped name is a refusal nobody asked for.
+
+    Here the failure direction is safe - an unnamed scenario past the tolerance stops the write - and
+    that is exactly why it was never noticed: the job fails loudly for the wrong reason. The step's
+    own log line is the thing a reviewer reads to decide whether an artefact was opened on purpose, so
+    it has to carry the same two names the input did.
+    """
+    names = "serialize_medium\nstream_medium\n"
+    body = _step_body("Measure and rewrite the baseline")
+    out = _run_step(tmp_path, "drift", body, "ACCEPT_DRIFT", names)
+    assert re.findall(r"--accept-drift (\S+)", out) == ["serialize_medium", "stream_medium"], out
+    assert "accepting drift for 2 scenario(s)" in out, out
