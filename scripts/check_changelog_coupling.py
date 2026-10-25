@@ -45,7 +45,7 @@ tell them apart from here. `--base` asks Git what is committed above the base (`
 <base>...HEAD`), and in a colocated `jj` workspace Git's `HEAD` is not the change under edit, so
 that route answers with the empty set while a real changeset sits in the working copy - measured on
 PR #622, where the local run printed `OK: ... listed no files, nothing to couple` over a changeset
-that carried `tests/test_msrv_gate.py`, while CI's `Hygiene` job reddened on the same content.
+that carried `tests/test_msrv_gate.py`, while the hook-set job in CI reddened on the same content.
 Judging a `jj` change means feeding it the paths it actually has.
 """
 

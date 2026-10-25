@@ -18,6 +18,7 @@ dependency bumps, plus the pin that the two changelog checkers still agree on th
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -169,8 +170,15 @@ def test_the_mirror_list_is_one_declaration_not_two(gate):
 
 
 def test_the_gate_is_wired_where_a_merge_can_be_blocked(gate):
-    """A checker no CI step runs is prose. `quality_matrix.py`'s orphan-gate probe agrees."""
-    workflow = (REPO_ROOT / ".github" / "workflows" / "hygiene.yml").read_text(encoding="utf-8")
+    """A checker no CI step runs is prose. `quality_matrix.py`'s orphan-gate probe agrees.
+
+    Read from the `hooks` job rather than the whole file: the step has to sit in the job the merge
+    verdict waits on, and a file-wide search would still pass if it drifted into a job nobody needs.
+    """
+    text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = re.search(r"^ {2}hooks:\n(.*?)(?=^ {2}\S|\Z)", text, re.M | re.S)
+    assert job is not None, "ci.yml declares no `hooks` job, so the hook set is outside the verdict"
+    workflow = job.group(1)
     assert "scripts/check_changelog_coupling.py" in workflow, "not invoked by any job"
     assert "--base" in workflow
     assert "pull_request" in workflow

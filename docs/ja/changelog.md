@@ -86,6 +86,17 @@ status: new
 
 #### 修正
 
+- **判定が緑でもフック集は赤いことがありました** — `Test matrix (all legs)` は `ci.yml` のジョブから
+  算出され、`toJSON(needs)` は別のワークフローのジョブを運べません。そのため `hygiene.yml` にあった
+  `prek hook set on the full tree` は、判定が読む名前に入っていませんでした。PR #632 の最初の head
+  で計測した事実：あの check-run は `failure` を報告しました（`check_changelog_coupling.py` が、製品
+  を動かしながらリリースノートのない変更を拒否した）、同じ sha 上の必須名は `success` を報告していま
+  した。ジョブは今 `ci.yml` で一度だけ・条件なしに走り、`hygiene.yml` は消え、`quality_matrix.py` も
+  判定が待つそのジョブからスキップ一覧を読みます。逆向きの二本の守護：fan-in の完全集合テストは、ジ
+  ョブが増えたのに `needs` に入らないと赤になり、
+  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` は、ジョブが
+  `ci.yml` を出るか、`prek run --all-files` の二番目の写しが別の場所に出ると赤くなります — 重複こそ
+  がこの穴を静かに戻す経路です。エンジンコードも出荷済みの挙動も動きませんでした。
 - **JSON5 のキー位置の拒否が方言の許す表記を挙げます** — キー位置のメッセージは
   `expected a quoted object key` と読めていましたが、JSON5 は引用符なしの識別子キーも受け付ける
   ため、文法が要求しない形をエラーが求めていました。文言は方言自身のフラグから決まります：
