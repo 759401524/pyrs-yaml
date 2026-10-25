@@ -8234,6 +8234,47 @@ hole closed on 2026-10-08 when `crates/pyrs-yaml/benches/ir_gate.rs` landed, and
 `.ci/quality-holes.json` registers nothing today. What is unfloored is the loaders' own Python
 construction, and `(fq)` states it in those terms now that the correction is in the base.
 
+### (ft) The route `load_toml` serves now has an instruction floor of its own (2026-10-25)
+
+**Premise.** `(fs)` moved the loader onto `pyrs_toml::read_toml` and left the row priced by two
+instruments - the wall-clock snapshot and `test_toml_leaderboard.py`. Measured against the
+harnesses, neither one enters the route the loader now serves: `.ci/ir-baseline.json` carried 33
+scenarios, TOML's two `from_toml_*` measure `from_toml` (scan, tree, `CustomNode`), and the
+binding channel's three `to_python_*` measure `bench_to_python`, the YAML AST-to-Python walk. A
+per-key allocation added inside `read_toml` or inside the sink would have moved no committed
+number. That is the drift shape this gate exists to catch - the 2026-10-14 refresh found writer
+scenarios sitting 22-46% under a floor that had stopped describing the tree.
+
+**What changed.** `crates/pyrs-yaml/benches/ir_gate.rs` gained a `Channel` and two scenarios over
+the bytes the engine harness already reads - `load_toml_medium` (`MEDIUM_TOML`) and
+`load_toml_long_strings` (`long_string_toml()`) - driven by a `bench_load_toml` seam that calls
+`load_toml` itself. Unlike `bench_to_python`, this seam does not step around a shortcut on
+purpose: after `(fs)` the direct reader is the route an ordinary document takes, so one number
+prices scan, tree, projection and Python construction, and a regression cannot hide in whichever
+part the scenario does not name. The route is stated, not assumed - the harness asks
+`toml_route_is_direct()` before the counted loop and exits 4 rather than price the node model
+under this name. The baseline grows from 33 scenarios to 35.
+
+**The first reading.** On the image that enforces the floors, largest of three samples:
+`load_toml_medium` 144,803,683 against `from_toml_medium`'s 120,986,802, and
+`load_toml_long_strings` 140,182,211 against `from_toml_long_strings`' 109,012,890 - the loader
+is 1.20x and 1.29x the tree builder, which is the Python half no number described before. Two
+refresh runs of near-identical heads put the two new floors 0.075% and 0.105% apart while the
+engine pair moved 0.00002%, the CPython-linked behaviour the harness header documents rather than
+a new finding.
+
+**What the growth cost.** Adding scenarios to a harness moves its siblings - `(fi)` measured that
+twice and got opposite signs - and this growth is in the binding channel's own binary: against
+the committed baseline `to_python_medium` read +0.212%, `to_python_anchors` -0.357%,
+`to_python_small` -0.111%. All three stay inside the 0.5% line, so the refresh was written naming
+nobody.
+
+**What is not closed.** The JSON loaders keep wall-clock gates only: `load_json`, `load_jsonc`
+and `load_json5` ask `json_fast::try_load` first, and neither harness enters that route, so the
+symmetric floors are a follow-up of the same shape. The intermediate tree also stays, and the
+`(fs)` note that `crates/pyrs-toml/src/lib.rs` still claims "no intermediate value tree" is owed
+to the change that removes it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

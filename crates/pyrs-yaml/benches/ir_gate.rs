@@ -1,4 +1,4 @@
-//! Instruction-count gate, binding side: the AST-to-Python conversion.
+//! Instruction-count gate, binding side: the YAML AST-to-Python conversion and the TOML loader.
 //!
 //! # Why this target exists
 //!
@@ -28,10 +28,17 @@
 //! - name-based callgrind filtering is unavailable (`lto = true` inlines the seam away), so the
 //!   subtraction is the only way to isolate the work.
 //!
-//! The measured call deliberately skips the P3 direct-load fast path that `safe_load` prefers for
+//! The YAML family deliberately skips the P3 direct-load fast path that `safe_load` prefers for
 //! plain documents: the quantity of interest is the AST-to-Python conversion, and an anchor-free
 //! fixture would otherwise report a shortcut while a tag- or anchor-bearing one reported the slow path
 //! - two different things under one name. See `bench_to_python` in `src/py/functions.rs`.
+//!
+//! The TOML family takes the other choice because the facts are the other way: the direct
+//! IR-to-Python reader is the route an ordinary document serves, so `load_toml_medium` measures scan,
+//! intermediate tree, scalar projection and object construction as the single quantity a caller
+//! pays. Nothing is compiled away to get there: the harness asks `load_toml`'s own guard before the
+//! counted loop and exits 4 rather than price the node model under this name. See `bench_load_toml`
+//! and `toml_route_is_direct` in `src/py/functions.rs`.
 //!
 //! Each iteration must convert one document or the binary exits 3. The seam returns its error rather
 //! than defaulting it, because the gate's tolerance only punishes growth: a harness that stopped doing
@@ -56,8 +63,10 @@
 //! The gate script does not attempt to hide that - if `--list` cannot run, the failure surfaces as a
 //! build/exec error rather than an empty scenario list, which would read as "no scenarios to measure"
 //! and pass.
-use pyrs_yaml::py::functions::bench_to_python;
-use pyrs_yaml_core::bench_inputs::{ANCHOR_YAML, MEDIUM_YAML, SMALL_YAML};
+use pyrs_yaml::py::functions::{bench_load_toml, bench_to_python, toml_route_is_direct};
+use pyrs_yaml_core::bench_inputs::{
+    ANCHOR_YAML, MEDIUM_TOML, MEDIUM_YAML, SMALL_YAML, long_string_toml,
+};
 
 /// Fixed for every run and every machine, and the same 2 000 the engine harness uses - for a reason
 /// measured on the runner rather than assumed. At 500 iterations two refresh runs of this file
@@ -68,22 +77,49 @@ use pyrs_yaml_core::bench_inputs::{ANCHOR_YAML, MEDIUM_YAML, SMALL_YAML};
 /// comparable across machines at all.
 const ITERATIONS: u32 = 2_000;
 
-/// Every scenario the binding-side gate measures. Names mirror the engine harness with a `to_python_`
-/// prefix so the two channels can be read side by side in one baseline file.
-fn scenarios() -> Vec<(&'static str, &'static str)> {
+/// The long-value TOML shape, generated once for the whole harness: `scenarios()` carries
+/// `&'static str`, and these are the same bytes `from_toml_long_strings` measures one layer down -
+/// one fixture, two harnesses, the standing rule.
+static LONG_TOML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_toml);
+
+/// Which loader the measured loop calls. One enum so the scenario list states in one column what each
+/// baseline row prices, and so a name cannot silently change what it measures.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Channel {
+    /// YAML text to Python objects through the AST.
+    ToPython,
+    /// TOML text to Python objects through `load_toml`.
+    LoadToml,
+}
+
+/// Every scenario the binding-side gate measures. The `to_python_*` names mirror the engine harness so
+/// the two channels can be read side by side in one baseline file; the `load_toml_*` names say the
+/// entry point they price, because there is no engine-side twin at the same layer.
+fn scenarios() -> Vec<(&'static str, &'static str, Channel)> {
     vec![
-        ("to_python_small", SMALL_YAML),
-        ("to_python_medium", MEDIUM_YAML),
+        ("to_python_small", SMALL_YAML, Channel::ToPython),
+        ("to_python_medium", MEDIUM_YAML, Channel::ToPython),
         // The one that resolves anchors instead of skipping them: `&` in the source switches the
         // conversion to the collecting path, so this is a different code path, not more of the same.
-        ("to_python_anchors", ANCHOR_YAML),
+        ("to_python_anchors", ANCHOR_YAML, Channel::ToPython),
+        // The route an ordinary TOML document serves since the reader stopped building the node
+        // model: scan, intermediate tree, scalar projection and object construction in one number,
+        // so a regression cannot hide in whichever half this row does not name.
+        ("load_toml_medium", MEDIUM_TOML, Channel::LoadToml),
+        // The shape where a scalar costs more than its own length, which is what the reader hands to
+        // the sink rather than what it decodes.
+        (
+            "load_toml_long_strings",
+            LONG_TOML.as_str(),
+            Channel::LoadToml,
+        ),
     ]
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--list") {
-        for (name, _) in scenarios() {
+        for (name, _, _) in scenarios() {
             println!("{name}");
         }
         return;
@@ -93,10 +129,23 @@ fn main() {
         std::process::exit(2);
     };
     let setup_only = args.iter().any(|a| a == "--setup-only");
-    let Some((_, src)) = scenarios().into_iter().find(|(n, _)| n == name) else {
+    let Some((_, src, channel)) = scenarios().into_iter().find(|(n, _, _)| n == name) else {
         eprintln!("unknown scenario {name:?}");
         std::process::exit(2);
     };
+
+    // The TOML floor names a route, so ask that route's own guard before measuring it rather than
+    // trusting that nothing registered a handler: with one installed, `load_toml` answers from the
+    // node model, and the same scenario would report a different quantity - which the one-sided
+    // tolerance cannot catch, because the node model is the slower path and the difference reads as
+    // a regression. Asked here, outside the counted loop, so the premise costs nothing per call.
+    if channel == Channel::LoadToml && !std::hint::black_box(toml_route_is_direct()) {
+        eprintln!(
+            "{name}: a tag handler is registered, so load_toml would take the AST route - this \
+             scenario measures the direct reader and refuses to price the other one"
+        );
+        std::process::exit(4);
+    }
 
     // Interpreter start-up is in both modes so it cancels: without this, the first measured call
     // would pay for initialising CPython and the subtraction would leave that in the number. Only
@@ -110,13 +159,17 @@ fn main() {
         std::hint::black_box(src);
         0
     } else {
-        // Every iteration has to produce exactly one object. `bench_to_python` returns its error
-        // instead of swallowing it, and a failed or empty conversion exits here rather than being
-        // counted as a cheap iteration: the gate's tolerance is one-sided (it flags growth), so a
-        // harness that quietly stopped doing the work would read as an enormous speedup and pass.
+        // Every iteration has to produce exactly one object. Both seams return their error instead of
+        // swallowing it, and a failed or empty conversion exits here rather than being counted as a
+        // cheap iteration: the gate's tolerance is one-sided (it flags growth), so a harness that
+        // quietly stopped doing the work would read as an enormous speedup and pass.
         let mut acc = 0usize;
         for index in 0..ITERATIONS {
-            match std::hint::black_box(bench_to_python(std::hint::black_box(src))) {
+            let converted = match channel {
+                Channel::ToPython => bench_to_python(std::hint::black_box(src)),
+                Channel::LoadToml => bench_load_toml(std::hint::black_box(src)),
+            };
+            match std::hint::black_box(converted) {
                 Ok(1) => acc += 1,
                 Ok(other) => {
                     eprintln!(

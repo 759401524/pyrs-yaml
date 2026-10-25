@@ -534,14 +534,17 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — thirty-three of them, since the binding harness joined, since each cross-format
+from — thirty-five of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.16% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256, 95,815,186 against 328,951,144), and
+the same eight records at value widths of 9 and 256, 95,815,186 against 328,951,144), since
+the TOML loader's own route joined (`load_toml_medium` and `load_toml_long_strings`, driven
+through `bench_load_toml` at 144,803,683 and 140,182,211 - 1.20x and 1.29x the tree that
+`from_toml_medium` and `from_toml_long_strings` stop at), and
 `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
 them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
