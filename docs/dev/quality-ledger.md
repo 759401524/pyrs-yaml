@@ -8676,6 +8676,45 @@ this file for quality-hole ids only. A sentence in `AGENTS.md` that names a mech
 nothing checks it - which is why the correction here is prose and the durable part is the two tests
 it now names.
 
+### (ge) A test whose only assertion sits inside a loop can run zero times (2026-10-25)
+
+**The predicate swept.** `(gc)` closed the class in the checker scripts; this is the same class on
+the test side. A function whose every `ast.Assert` sits in an `ast.For`/`ast.While` body has no
+guarantee of executing, and `all(x for x in [])` is `True`. Over `tests/` the sweep named 41
+candidates.
+
+**Nine closed, by seven floor assertions, each measured before it was written.** The fixture in
+`tests/test_dependency_merge_gate.py` now refuses a `.github/dependabot.yml` with fewer than 3
+entries (measured 4: cargo `/`, cargo `/fuzz`, uv, github-actions), which closes its three per-entry
+loops and a fourth shape the sweep cannot see - `test_every_entry_targets_main` asserts `all(...)`
+over that list, and a bare `assert` is not "an assertion inside a loop".
+`tests/test_docs_config_gate.py` refuses an empty mkdocstrings `paths` (measured `['python']`): a
+handler told to read no package renders nothing and still passes the loop that checks the
+directories exist. `tests/test_api_doc_signatures.py` refuses both vacuous shapes of its glob - no
+page name at all, and a page name published in a single locale, where `union - docs` compares a page
+with itself (measured 28 pages = 7 names x 4 locales). `tests/test_load_stream.py` got the pair its
+`zip()` could not express: 13 events on each side and the lengths equal, so one producer falling
+silent is a finding rather than three matched pairs, and its per-event key check now names the 8
+events `key: value` emits. `tests/test_node_api.py` refuses a `walk()` of `a: 1` shorter than its
+measured 2 nodes.
+
+**What the falsification run surfaced.** `load_stream` returns a lazy `YamlStream` with no
+`__len__`, so the length comparison the parity test needs was not expressible until the stream was
+materialised - the mutation that proves the floor bites is what proved that.
+
+**32 candidates left alone, each with a reason.** Literals in the test body cannot go empty without
+an edit in the same function (`asyncio.gather(*(… for i in range(50)))`, the hardcoded fixture
+tuples, the `checks = [...]` lists); module constants already floored by a companion test (`TREES`
+at 1,500 and 400, `DATA_FIXTURES` by set equality, the `len(pages) >= 20` in the same file); the
+loops under `@given`, whose non-empty shape is pinned by the concrete siblings above them; and the
+two registry tests where an empty registry *is* the state being asserted.
+
+**Not claimed.** Nothing stops the next vacuous-loop test from landing. The sweep ran as a one-off
+script, not a registered checker: turned into a rule it would reject the `@given` and literal cases
+too, and the fix for that is a predicate with exceptions, which is not a gate. What changed is that
+ten named assertions now refuse to report green over an empty measurement - verified by mutating
+each source and reading the red, 7/7 controls biting, every file restored and checked by digest.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

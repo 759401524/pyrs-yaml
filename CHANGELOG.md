@@ -177,6 +177,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a page of untyped examples stay green, and that boundary is pinned too - a first draft of the
   refusal reddened the signature gate's own suite. `check_i18n.py` had no self-test of any kind, so
   `tests/test_i18n_gate.py` is new. Recorded as `(gc)`.
+- **Ten assertions that could report green without running one** - `(gc)` closed the class in the
+  checker scripts; the same shape sits in the suite. A test whose only `assert`s are inside a `for`
+  body passes on an empty iterable, and `all(x for x in [])` is `True`. Sweeping `tests/` by AST
+  named 41 candidates; the ten whose iterable arrives from outside the test now carry a floor that
+  states the measured number. `tests/test_dependency_merge_gate.py` reads `.github/dependabot.yml`
+  and refuses below 3 entries (measured 4), which closes its three per-entry loops plus
+  `test_every_entry_targets_main` - an `all(...)` the sweep's predicate cannot see. The mkdocstrings
+  `paths` list (measured `['python']`) refuses the empty case, where a handler told to read no
+  package still passes the loop that checks those directories exist. The API-page glob refuses two
+  vacuous shapes - no page at all, and a page published in one locale only, where comparing a page
+  with itself always agrees (measured 28 pages = 7 names x 4 locales). `load_stream`/`parse_stream`
+  parity now states both sides hold 13 events and that the lengths are equal, because `zip()`
+  truncates to the shorter side, and its per-event key check names the 8 events one pair emits. A
+  `walk()` of `a: 1` refuses fewer than its 2 nodes. Seven mutations - empty the source, truncate
+  the producer - each turned its floor red and every file came back byte-identical; that run is also
+  what showed `YamlStream` has no `__len__`, so the length equality was not expressible until the
+  stream was materialised. The other 32 candidates were read and left: literal iterables that cannot
+  empty without an edit in the same function, constants another test already floors, `@given` loops
+  whose concrete siblings pin the shape, and the two registry tests where an empty registry *is* the
+  assertion. Nothing yet stops a new vacuous-loop test: the sweep is a one-off script, not a
+  checker, and as a rule it would reject the literal and `@given` cases too. Recorded as `(ge)`.
 
 ### Changed
 
