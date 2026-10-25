@@ -147,7 +147,11 @@ jobs:
           # here-string yields an empty array and status 0, so the default input reaches the "no
           # scenario named" branch with or without this. It stays because a non-zero status here would
           # abort the step under `set -e` before the branch that explains itself in the log.
-          read -ra names <<< "$ACCEPT_DRIFT" || true
+          # The `tr` is load-bearing: `read` consumes one line, so a newline-separated input would
+          # name the first scenario and silently drop the rest - same split, same defect as the
+          # attribution step measured on run 40221999337. Here the failure direction is refusal
+          # rather than an under-measured artefact, and a refusal nobody asked for is still a bug.
+          read -ra names <<< "$(tr '\n' ' ' <<< "$ACCEPT_DRIFT")" || true
           args=()
           for name in "${names[@]+"${names[@]}"}"; do
             args+=(--accept-drift "$name")
@@ -188,7 +192,11 @@ jobs:
           PROFILE_TOP: ${{ inputs.profile_top }}
         run: |
           set -euo pipefail
-          read -ra want <<< "$PROFILE"
+          # `read` consumes ONE line, so a newline-separated input would attribute the first name and
+          # silently drop the rest: measured on run 40221999337, whose `profile` input carried two
+          # scenario names on two lines and logged "attributing 1 scenario(s)". Flattening the
+          # separators first is what makes the input description - space or newline separated - true.
+          read -ra want <<< "$(tr '\n' ' ' <<< "$PROFILE")"
           echo "attributing ${#want[@]} scenario(s): ${want[*]}"
           args=()
           for name in "${want[@]}"; do

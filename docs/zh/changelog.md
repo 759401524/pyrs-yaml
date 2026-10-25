@@ -72,6 +72,12 @@ status: new
 
 #### 修复
 
+- **刷新作业不再丢掉第一个之后的场景名** — `profile` 与 `accept_drift` 都用 `read -ra <<< "$VAR"` 切
+  分输入，而 `read` 只吃一行：刷新 run 40221999337 收到把两个名字写在两行的 `profile` 输入 —— 正是该
+  输入说明鼓励的写法 —— 却只记录 "attributing 1 scenario(s)"，于是产出的 artifact 只带了一半的逐函数
+  归因。文本断言看不见这件事，因为两种写法里那个旗标都在脚本中。现在两步都先把分隔符压平再切分，
+  `tests/test_ir_baseline_workflow.py` 会把 `python3` 换成 echo 后真的执行每一步的命令体，要求打印出
+  的命令带上两个名字、日志里的计数也对得上；对照组把单行 `read` 放回去，必须重现丢名字的那种行为。
 - **合并裁定可能全绿而钩子集是红的** — `Test matrix (all legs)` 由 `ci.yml` 的作业算出，而
   `toJSON(needs)` 带不动另一个 workflow 里的作业，所以住在 `hygiene.yml` 的
   `prek hook set on the full tree` 从来不在裁定读取的名字里。PR #632 首个 head 上的实测：那条
