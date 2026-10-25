@@ -96,6 +96,18 @@ status: new
   ——1.9 KB 文档上 `orjson` 快 1.5 倍，JSON5 配置上 `pyjson5` 快 2.4 倍——而 TOML 比 `tomllib` 快 5.5
   到 5.9 倍。JSON/TOML/JSON5 的写侧仍不发布，快照里记着原因：它们从引擎自己的 AST 出发而非 Python 对
   象，`json.dumps` 与 `tomli_w.dumps` 不是同一件事，那一半由指令地板定价。
+- **Rust 后端的读取器进了公开表，其中两个赢了我们** — 此前的 YAML 表只与 PyYAML、ruamel.yaml 这两个
+  纯 Python 库对拍，TOML 表只与 `tomllib` 对拍，于是真正拿来衡量 Rust 引擎的对手在发布记录里无处可
+  见。`scripts/bench_snapshot.py` 现在在 YAML 轴上带上 `yaml-rs` 与 `ryaml`，在 TOML 轴上带上
+  `rtoml`；重测的快照（2026-10-25）显示 `yaml-rs` 解析快 2.4–2.6 倍、往返快 1.6–1.9 倍，`rtoml` 比
+  `load_toml` 快 1.9 倍，而 pyrs-yaml 序列化比 `yaml-rs` 快 2.2–4.1 倍、比 PyYAML 快 198–339 倍。输
+  的行照输登出，并把理由写在旁边：那两个读取器进出都是普通 Python 对象——它们的往返是值的往返，不是文
+  档的往返——而 pyrs-yaml 那一行构建的是后续编辑赖以保格式的树，`load_toml` 返回 dict 之前也要走这棵
+  树。门禁随表一起改动，而不是继续描述旧表：`tests/test_perf_docs.py` 的库清单取自快照而非写死的五列
+  形状，把表中 `faster`/`slower` 用词与它旁边的比值对账，要求每行的尺寸标签认领它数字来自的那个夹
+  具、比值列说出它除的是哪个库，并让没有 `bench:` 标记的对比表直接变红。为此实跑了六个反证——过期的单
+  元格、颠倒的方向词、删掉的行、移除的标记、调换的标签、不再标明基线的表头——每一条都按页面与行名失
+  败。
 
 #### 变更
 

@@ -33,14 +33,14 @@ status: new
 ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。pyrs-yaml は両方を提供します：
 
 - **PyYAML** (Python) — 遅く、往復解析時に**コメント/アンカー/タグを失う**
-- **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **解析は 69–82 倍、シリアライズは 473–809 倍遅い**
-- **pyrs-yaml** (Rust) — PyYAML より **解析は 29–36 倍、シリアライズは 199–340 倍高速**、すべてを保持
+- **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **解析は 67–82 倍、シリアライズは 465–832 倍遅い**
+- **pyrs-yaml** (Rust) — PyYAML より **解析は 28–35 倍、シリアライズは 198–339 倍高速**、すべてを保持
 
 ### 主要機能
 
 <div class="grid cards" markdown>
 
-- :material-lightning-bolt: **超高速** — PyYAML より解析 29–36 倍、シリアライズ 199–340 倍高速、Rust ゼロコピーバックエンド駆動
+- :material-lightning-bolt: **超高速** — PyYAML より解析 28–35 倍、シリアライズ 198–339 倍高速、Rust ゼロコピーバックエンド駆動
 - :material-sync: **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョンピング、スカラースタイル、フロー/ブロックフォーマットを保持
 - :material-pencil: **インプレース編集** — JSONPath スタイルのパス（`doc.set("$.a.b", v)`）または `Node` ツリー API で編集、フォーマットを失わない
 - :material-check-decagram: **YAML 1.2 準拠** — granit-parser 駆動（YAML テストスイート 99.75% 合格率、405/406）

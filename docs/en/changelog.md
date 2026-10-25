@@ -120,6 +120,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   JSON, TOML and JSON5 stay unpublished for a reason the snapshot records: those are emitted from
   the engine's own AST rather than from a Python object, so `json.dumps` and `tomli_w.dumps` are a
   different job, and the instruction floors price them instead.
+- **The Rust-backed readers are in the published tables, and two of them win** — the YAML tables
+  raced PyYAML and ruamel.yaml, both pure Python, and the TOML table raced only `tomllib`, so the
+  readers a user weighing a Rust engine would compare against were measured nowhere in the published
+  record. `scripts/bench_snapshot.py` now carries `yaml-rs` and `ryaml` on the YAML axis and `rtoml`
+  on the TOML one, and the re-measured snapshot (2026-10-25) says `yaml-rs` parses 2.4–2.6x faster
+  and round-trips 1.6–1.9x faster than pyrs-yaml, and `rtoml` reads 1.9x faster than `load_toml`,
+  while pyrs-yaml serializes 2.2–4.1x faster than `yaml-rs` and 198–339x faster than PyYAML. The
+  losses print as losses with the reason beside them: those readers take and hand back plain Python
+  objects - their round-trip is a value's, not a document's - where the pyrs-yaml row builds the
+  tree a later edit format-preserves, and `load_toml` walks that tree before returning a dict. The
+  gate moved with the tables instead of describing them: `tests/test_perf_docs.py` takes its library
+  list from the snapshot rather than a hardcoded five-column shape, checks a peer's
+  `faster`/`slower` word against the ratio printed beside it, requires each row label to name the
+  fixture its numbers came from and the ratio column the library it divides by, and fails any
+  library comparison carrying no `bench:` marker. Six controls were run - a stale cell, a flipped
+  direction word, a dropped row, a removed marker, a swapped label, a header that stopped naming
+  its baseline - and each reddens by naming the page and the row.
 
 #### Changed
 

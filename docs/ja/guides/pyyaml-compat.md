@@ -42,7 +42,7 @@ yaml_str = yaml.safe_dump(data)
 | 機能 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
 | 往復保存 | :material-close: コメント/アンカーを失う | :material-check: すべて保持 |
-| パフォーマンス | ベースライン | **解析で 29–36 倍、シリアライズで 199–340 倍高速** |
+| パフォーマンス | ベースライン | **解析で 28–35 倍、シリアライズで 198–339 倍高速** |
 | 型ヒント | 部分的 | :material-check: 完全な `.pyi` スタブ |
 | ABI3 wheel | 該当なし | :material-check: すべての Python バージョンに対応 |
 | i18n エラー | :material-close: 英語のみ | :material-check: 英語 + 中国語 |

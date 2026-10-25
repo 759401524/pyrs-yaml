@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-23T17:03:16+00:00",
+  "generated_at": "2026-10-25T01:09:48+00:00",
   "environment": {
     "python": "3.12.15",
     "platform": "Windows-11-10.0.26220-SP0",
@@ -10,9 +10,12 @@
     "pyrs-yaml": "0.18.3",
     "PyYAML": "6.0.3",
     "ruamel.yaml": "0.19.1",
+    "yaml-rs": "0.1.6",
+    "ryaml": "0.5.1",
     "json": "stdlib (Python 3.12.15)",
     "orjson": "3.13.0",
     "tomllib": "stdlib (Python 3.12.15)",
+    "rtoml": "0.14.0",
     "pyjson5": "2.0.1"
   },
   "parameters": {
@@ -40,53 +43,71 @@
       "operations": {
         "parse": {
           "small": {
-            "pyrs-yaml": 4.266,
-            "PyYAML": 125.431,
-            "ruamel.yaml": 293.091
+            "pyrs-yaml": 4.503,
+            "PyYAML": 126.77,
+            "ruamel.yaml": 300.395,
+            "yaml-rs": 1.795,
+            "ryaml": 5.001
           },
           "medium": {
-            "pyrs-yaml": 22.666,
-            "PyYAML": 806.556,
-            "ruamel.yaml": 1851.202
+            "pyrs-yaml": 23.406,
+            "PyYAML": 814.286,
+            "ruamel.yaml": 1930.811,
+            "yaml-rs": 9.921,
+            "ryaml": 27.711
           },
           "large": {
-            "pyrs-yaml": 61.128,
-            "PyYAML": 1962.402,
-            "ruamel.yaml": 4593.242
+            "pyrs-yaml": 63.072,
+            "PyYAML": 2015.01,
+            "ruamel.yaml": 4774.236,
+            "yaml-rs": 24.32,
+            "ryaml": 74.096
           }
         },
         "serialize": {
           "small": {
-            "pyrs-yaml": 0.376,
-            "PyYAML": 74.987,
-            "ruamel.yaml": 178.03
+            "pyrs-yaml": 0.388,
+            "PyYAML": 76.669,
+            "ruamel.yaml": 180.323,
+            "yaml-rs": 0.849,
+            "ryaml": 2.737
           },
           "medium": {
-            "pyrs-yaml": 1.288,
-            "PyYAML": 437.575,
-            "ruamel.yaml": 1041.642
+            "pyrs-yaml": 1.337,
+            "PyYAML": 452.69,
+            "ruamel.yaml": 1112.838,
+            "yaml-rs": 5.493,
+            "ryaml": 14.591
           },
           "large": {
-            "pyrs-yaml": 4.45,
-            "PyYAML": 1069.954,
-            "ruamel.yaml": 2421.647
+            "pyrs-yaml": 4.645,
+            "PyYAML": 1140.235,
+            "ruamel.yaml": 2448.619,
+            "yaml-rs": 14.272,
+            "ryaml": 37.166
           }
         },
         "roundtrip": {
           "small": {
-            "pyrs-yaml": 4.838,
-            "PyYAML": 220.99,
-            "ruamel.yaml": 513.64
+            "pyrs-yaml": 5.138,
+            "PyYAML": 220.901,
+            "ruamel.yaml": 523.698,
+            "yaml-rs": 2.772,
+            "ryaml": 8.329
           },
           "medium": {
-            "pyrs-yaml": 24.339,
-            "PyYAML": 1308.875,
-            "ruamel.yaml": 2976.036
+            "pyrs-yaml": 25.588,
+            "PyYAML": 1338.682,
+            "ruamel.yaml": 3187.173,
+            "yaml-rs": 15.967,
+            "ryaml": 43.141
           },
           "large": {
-            "pyrs-yaml": 67.429,
-            "PyYAML": 3157.289,
-            "ruamel.yaml": 7099.143
+            "pyrs-yaml": 70.111,
+            "PyYAML": 3230.774,
+            "ruamel.yaml": 7491.7,
+            "yaml-rs": 41.42,
+            "ryaml": 116.531
           }
         }
       }
@@ -107,14 +128,14 @@
       "operations": {
         "parse": {
           "config": {
-            "pyrs-yaml": 0.49,
-            "json": 1.086,
-            "orjson": 0.328
+            "pyrs-yaml": 0.474,
+            "json": 1.092,
+            "orjson": 0.339
           },
           "large": {
-            "pyrs-yaml": 5.492,
-            "json": 8.221,
-            "orjson": 3.621
+            "pyrs-yaml": 5.97,
+            "json": 8.456,
+            "orjson": 3.828
           }
         }
       }
@@ -135,12 +156,14 @@
       "operations": {
         "parse": {
           "hot": {
-            "pyrs-yaml": 30.537,
-            "tomllib": 169.538
+            "pyrs-yaml": 31.753,
+            "tomllib": 175.003,
+            "rtoml": 16.511
           },
           "config": {
-            "pyrs-yaml": 49.221,
-            "tomllib": 292.634
+            "pyrs-yaml": 50.603,
+            "tomllib": 300.79,
+            "rtoml": 26.471
           }
         }
       }
@@ -157,8 +180,8 @@
       "operations": {
         "parse": {
           "config": {
-            "pyrs-yaml": 1.578,
-            "pyjson5": 0.653
+            "pyrs-yaml": 1.671,
+            "pyjson5": 0.674
           }
         }
       }

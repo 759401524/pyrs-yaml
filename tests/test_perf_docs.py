@@ -6,6 +6,10 @@ nothing read the pages, so nothing noticed. Every wall-clock number on the four 
 performance and feature pages now comes from `.ci/perf-snapshot.json`, written by
 `scripts/bench_snapshot.py`. This gate compares the rendered cells against that file, so a
 page can only change by re-measuring first, and a stale snapshot fails by naming the row.
+Which tables those are, and against which libraries, is the snapshot's answer rather than
+this file's: the tables are found through the `bench:` marker above them, in the three
+layouts `--docs` writes, and a comparison table that carries no marker is the same failure
+as a stale cell - a number no run produced.
 Every page that quotes a speedup as prose - the index, round-trip, PyYAML-compatibility,
 benchmark, comparison and feature pages - has its ranges derived here too, because
 `scripts/bench_snapshot.py --docs` rewrites tables only and a withdrawn figure could
@@ -16,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -37,10 +42,7 @@ CLAIM_PAGES = tuple(
 )
 OPERATIONS = ("parse", "serialize", "roundtrip")
 FIXTURES = {"small": BENCHMARK_SMALL, "medium": BENCHMARK_MEDIUM, "large": BENCHMARK_LARGE}
-
-# yaml-rs is not one of the snapshot's libraries: this range comes from the cross-library
-# benchmark in tests/test_benchmark_crosslib.py, so it is named rather than derived.
-EXTRA_CLAIMS = {"comparison.md": {"2\u20134"}}
+SELF = "pyrs-yaml"
 
 # Two significant digits in the cells allow about 2% of rounding at the 10-24 range; 5%
 # still refuses the scale of drift that motivated the gate (absolute values moved ~22x).
@@ -74,8 +76,8 @@ WITHDRAWN = (
 TIME_CELL = re.compile(r"^\**([\d.]+)\s*(ns|µs|μs|us|ms)\**$")
 SCALE = {"ns": 0.001, "µs": 1.0, "μs": 1.0, "us": 1.0, "ms": 1000.0}
 SIZE_CELL = re.compile(r"([\d.]+)\s*(B|KB)")
-SPEEDUP_CELL = re.compile(r"(\d+(?:\.\d+)?)\u00d7")
-RANGE_CLAIM = re.compile(r"(\d+)\s*[\u2013\u301c~-]\s*(\d+)\s*(?:\u00d7|\u500d|\ubc30)")
+SPEEDUP_CELL = re.compile(r"(\d+(?:\.\d+)?)\u00d7\s*(faster|slower)?")
+RANGE_CLAIM = re.compile(r"(\d+(?:\.\d+)?)\s*[\u2013\u301c~-]\s*(\d+(?:\.\d+)?)\s*(?:\u00d7|\u500d|\ubc30)")
 
 
 def snapshot() -> dict:
@@ -86,8 +88,8 @@ def cells(line: str) -> list[str]:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
 
-def tables(path: Path) -> list[tuple[list[str], list[list[str]]]]:
-    """Header cells and body rows of every Markdown table in `path`, in file order."""
+def tables(path: Path) -> list[tuple[int, list[str], list[list[str]]]]:
+    """Every Markdown table in `path`: its header line index, header cells and body rows."""
     lines = path.read_text(encoding="utf-8").splitlines()
     found = []
     index = 0
@@ -99,7 +101,7 @@ def tables(path: Path) -> list[tuple[list[str], list[list[str]]]]:
             while cursor < len(lines) and lines[cursor].startswith("|"):
                 rows.append(cells(lines[cursor]))
                 cursor += 1
-            found.append((cells(header), rows))
+            found.append((index, cells(header), rows))
             index = cursor
         else:
             index += 1
@@ -119,36 +121,65 @@ def speedup(cell: str) -> float:
     return float(match.group(1))
 
 
+def shown(value: float) -> str:
+    """Whole multiples above ten, one decimal below it - the writer's own rounding rule."""
+    return f"{round(value)}" if value >= 10 else f"{value:.1f}"
+
+
 def assert_speedup(cell: str, expected: float, message: str) -> None:
-    """Whole multiples above ten, one decimal below - the same rule the writer applies.
+    """The trailing column of a size table, which always reads baseline over us.
 
     A 1.5x win rounded to an integer prints as 1x and a 0.4x loss prints as 0x, so the small
     cells keep their decimal and this check keeps the distinction instead of forgiving it.
     """
-    shown = speedup(cell)
+    shown_value = speedup(cell)
     if expected >= 10:
-        assert abs(shown - expected) <= SPEEDUP_TOLERANCE, f"{message}: shows {cell}, snapshot implies {expected:.1f}x"
+        assert abs(shown_value - expected) <= SPEEDUP_TOLERANCE, (
+            f"{message}: shows {cell}, snapshot implies {expected:.1f}x"
+        )
     else:
-        assert abs(shown - expected) <= 0.06 * expected, f"{message}: shows {cell}, snapshot implies {expected:.2f}x"
+        assert abs(shown_value - expected) <= 0.06 * expected, (
+            f"{message}: shows {cell}, snapshot implies {expected:.2f}x"
+        )
 
 
-def size_key(label: str) -> str:
+def assert_relative(cell: str, ratio: float, message: str) -> None:
+    """The peer-vs-us column, where the word has to follow the direction the number points.
+
+    Every counterparty on this page used to be a Python reader, so the column said "slower" and
+    needed no reading. A Rust-backed peer can be the faster one, and a gate that only compared
+    magnitudes would accept "2.6x slower" for a peer that runs 2.6x faster - so the word is
+    checked against the ratio, not assumed.
+    """
+    match = SPEEDUP_CELL.search(cell)
+    assert match, f"not a relative-speed cell: {cell!r}"
+    word = match.group(2)
+    expected_word = "slower" if ratio >= 1 else "faster"
+    assert word == expected_word, f"{message}: shows {cell!r}, snapshot implies {expected_word}"
+    assert_speedup(cell, max(ratio, 1 / ratio), message)
+
+
+def label_bytes(label: str) -> int:
+    """The document size a row label prints, in bytes."""
     match = SIZE_CELL.search(label)
     assert match, f"not a size label: {label!r}"
-    value = float(match.group(1)) * (1000 if match.group(2) == "KB" else 1)
-    key = min(FIXTURES, key=lambda name: abs(len(FIXTURES[name].encode("utf-8")) - value))
-    documented = len(FIXTURES[key].encode("utf-8"))
-    assert abs(documented - value) / documented <= 0.1, f"size {label!r} names no fixture"
-    return key
+    return round(float(match.group(1)) * (1000 if match.group(2) == "KB" else 1))
 
 
 def page(path: Path) -> str:
     return str(path.relative_to(REPO_ROOT))
 
 
-def speedup_range(data: dict, operation: str, library: str) -> str:
-    values = [times[library] / times["pyrs-yaml"] for times in yaml_operations(data)[operation].values()]
-    return f"{round(min(values))}\u2013{round(max(values))}"
+def ratio_range(data: dict, format_name: str, operation: str, library: str, behind: bool = False) -> str:
+    """The range a page may quote for one peer, in the direction its sentence points.
+
+    `behind=True` is the honest-loss reading - how much faster the peer is - which is the same
+    ratio inverted, rounded by the rule the tables already use.
+    """
+    values = [times[library] / times[SELF] for times in data["formats"][format_name]["operations"][operation].values()]
+    if behind:
+        values = [1 / value for value in values]
+    return f"{shown(min(values))}\u2013{shown(max(values))}"
 
 
 @pytest.fixture(scope="module")
@@ -204,34 +235,100 @@ def test_every_measured_case_is_published(data):
 
 def test_the_format_tables_match_the_snapshot(data):
     """Each marker's table has to carry the numbers the snapshot records for it."""
+    checks = {"sizes": check_sizes, "libraries": check_libraries, "operations": check_operations}
     for path in PAGES:
-        if not markers(path):
-            continue
         lines = path.read_text(encoding="utf-8").splitlines()
         for attrs, header_line in markers(path):
-            if attrs["layout"] != "sizes":
-                continue
-            header = cells(lines[header_line])
-            times_by_size = data["formats"][attrs["format"]]["operations"][attrs["operation"]]
-            sizes = attrs["sizes"].split(",")
-            for index, size in enumerate(sizes):
-                offset = header_line + 2 + index
-                assert offset < len(lines) and lines[offset].startswith("|"), (
-                    f"{page(path)}: {attrs['format']}/{attrs['operation']} names {len(sizes)} fixtures, "
-                    f"its table has no row {index + 1}"
-                )
-                row = cells(lines[offset])
-                assert len(row) == len(header), f"{page(path)}: {attrs['format']}/{size} row shape"
-                expected = times_by_size[size]
-                for column, library in enumerate(header[1:-1], start=1):
-                    assert microseconds(row[column]) == pytest.approx(expected[library], rel=TIME_TOLERANCE), (
-                        f"{page(path)}: {attrs['format']}/{attrs['operation']}/{size}/{library}"
-                    )
-                assert_speedup(
-                    row[-1],
-                    expected[attrs["baseline"]] / expected["pyrs-yaml"],
-                    f"{page(path)}: {attrs['format']}/{attrs['operation']}/{size}",
-                )
+            check = checks.get(attrs["layout"])
+            assert check, f"{page(path)}: marker declares a layout this gate does not read: {attrs['layout']!r}"
+            check(path, lines, attrs, header_line, data)
+
+
+def table_rows(lines: list[str], header_line: int, count: int, message: str) -> list[list[str]]:
+    """The `count` body rows under a header, as cells - a short table is a finding, not a slice."""
+    rows = []
+    for index in range(header_line + 2, header_line + 2 + count):
+        assert index < len(lines) and lines[index].startswith("|"), (
+            f"{message}: its table has no row {index - header_line - 1}"
+        )
+        rows.append(cells(lines[index]))
+    return rows
+
+
+def check_sizes(path: Path, lines: list[str], attrs: dict, header_line: int, data: dict) -> None:
+    """One row per fixture size; one column per library; the marker's baseline in the ratio."""
+    format_name = attrs["format"]
+    operations = data["formats"][format_name]["operations"][attrs["operation"]]
+    fixtures = data["formats"][format_name]["fixtures"]
+    header = cells(lines[header_line])
+    sizes = attrs["sizes"].split(",")
+    with_ratio = attrs.get("speedup", "yes") == "yes"
+    libraries = header[1:-1] if with_ratio else header[1:]
+    if with_ratio:
+        # A ratio column has to say which library it is measured against. The TOML and JSON5 rows
+        # print a fraction - we are the slower reader there - and a column headed only "Speedup"
+        # over "0.5x" is the shape a reader misreads.
+        assert attrs["baseline"] in header[-1], (
+            f"{page(path)}: {format_name}/{attrs['operation']} divides by {attrs['baseline']}, "
+            f"whose name is not in the ratio column {header[-1]!r}"
+        )
+    rows = table_rows(lines, header_line, len(sizes), f"{page(path)}: {format_name}/{attrs['operation']}")
+    for size, row in zip(sizes, rows):
+        assert size in operations, f"{page(path)}: {format_name} measures no {size!r} {attrs['operation']}"
+        times = operations[size]
+        message = f"{page(path)}: {format_name}/{attrs['operation']}/{size}"
+        assert len(row) == len(header), f"{message}: {len(row)} cells, header has {len(header)}"
+        assert set(libraries) == set(times), f"{message}: table races {sorted(libraries)}, snapshot {sorted(times)}"
+        documented = fixtures[size]["bytes"]
+        assert abs(label_bytes(row[0]) - documented) <= 0.1 * documented, (
+            f"{message}: label {row[0]!r} is not the {documented} B fixture"
+        )
+        for column, library in enumerate(libraries, start=1):
+            assert microseconds(row[column]) == pytest.approx(times[library], rel=TIME_TOLERANCE), (
+                f"{message}/{library} shows {row[column]}, snapshot records {times[library]} µs"
+            )
+        if with_ratio:
+            assert_speedup(row[-1], times[attrs["baseline"]] / times[SELF], message)
+
+
+def check_libraries(path: Path, lines: list[str], attrs: dict, header_line: int, data: dict) -> None:
+    """One row per library on one fixture, with the distance from us in the direction it points."""
+    times = data["formats"][attrs["format"]]["operations"][attrs["operation"]][attrs["size"]]
+    header = cells(lines[header_line])
+    rows = table_rows(lines, header_line, len(times), f"{page(path)}: {attrs['format']}/{attrs['operation']}")
+    assert len(header) == 3, f"{page(path)}: a library table has three columns, header has {len(header)}"
+    names = [row[0].replace("*", "") for row in rows]
+    assert set(names) == set(times), (
+        f"{page(path)}: {attrs['operation']} rows {sorted(names)}, snapshot {sorted(times)}"
+    )
+    for row, library in zip(rows, names):
+        message = f"{page(path)}: {attrs['format']}/{attrs['operation']}/{library}"
+        assert microseconds(row[1]) == pytest.approx(times[library], rel=TIME_TOLERANCE), (
+            f"{message} shows {row[1]}, snapshot records {times[library]} µs"
+        )
+        if library == SELF:
+            assert row[2] == "—", f"{page(path)}: the row that is us should carry no ratio, shows {row[2]!r}"
+        else:
+            assert_relative(row[2], times[library] / times[SELF], message)
+
+
+def check_operations(path: Path, lines: list[str], attrs: dict, header_line: int, data: dict) -> None:
+    """One row per operation on one fixture - the summary a feature page carries."""
+    format_name = attrs["format"]
+    names = attrs["operation"].split(",")
+    header = cells(lines[header_line])
+    libraries = header[1:]
+    assert SELF in libraries, f"{page(path)}: the summary table does not name itself"
+    rows = table_rows(lines, header_line, len(names), f"{page(path)}: {format_name} summary")
+    for operation, row in zip(names, rows):
+        times = data["formats"][format_name]["operations"][operation][attrs["size"]]
+        message = f"{page(path)}: {format_name}/{operation}"
+        assert len(row) == len(header), f"{message}: {len(row)} cells, header has {len(header)}"
+        for column, library in enumerate(libraries, start=1):
+            assert library in times, f"{message}: {library} is not measured for {format_name}"
+            assert microseconds(row[column]) == pytest.approx(times[library], rel=TIME_TOLERANCE), (
+                f"{message}/{library} shows {row[column]}, snapshot records {times[library]} µs"
+            )
 
 
 def test_snapshot_records_the_protocol_the_pages_describe(data):
@@ -241,18 +338,23 @@ def test_snapshot_records_the_protocol_the_pages_describe(data):
         "pyrs-yaml",
         "PyYAML",
         "ruamel.yaml",
+        "yaml-rs",
+        "ryaml",
         "json",
         "orjson",
         "tomllib",
+        "rtoml",
         "pyjson5",
     }
     assert set(yaml_operations(data)) == set(OPERATIONS)
     for operation in OPERATIONS:
-        assert set(yaml_operations(data)[operation]) == set(FIXTURES)
-        for size in FIXTURES:
-            row = yaml_operations(data)[operation][size]
-            assert set(row) == {"pyrs-yaml", "PyYAML", "ruamel.yaml"}
-            assert all(value > 0 for value in row.values())
+        by_size = yaml_operations(data)[operation]
+        assert set(by_size) == set(FIXTURES)
+        # One column set across the sizes: a peer measured on two fixtures but not the third would
+        # leave the page publishing the hole as if it were a result.
+        assert len({frozenset(row) for row in by_size.values()}) == 1, f"{operation} sizes name different libraries"
+        assert set(by_size["large"]) == {"pyrs-yaml", "PyYAML", "ruamel.yaml", "yaml-rs", "ryaml"}, operation
+        assert all(value > 0 for row in by_size.values() for value in row.values())
     assert set(data["formats"]) >= {"yaml", "json", "toml", "json5"}
     # A writer half is absent because no counterparty does that job, not because nobody asked.
     assert set(data["unpublished_writers"]) == {"json", "toml", "json5"}
@@ -264,106 +366,71 @@ def test_snapshot_fixtures_match_the_benchmark_inputs(data):
     }
 
 
-def test_benchmark_tables_match_snapshot(data):
-    for path in (page_path for page_path in PAGES if page_path.name == "benchmarks.md"):
-        found = [
-            table
-            for table in tables(path)
-            if len(table[0]) == 5 and table[0][1] == "pyrs-yaml" and "PyYAML" in table[0]
-        ]
-        assert len(found) == 3, f"{page(path)}: expected three parse/serialize/round-trip tables"
-        for operation, (header, rows) in zip(OPERATIONS, found):
-            assert header[1:4] == ["pyrs-yaml", "PyYAML", "ruamel.yaml"], page(path)
-            for row in rows:
-                key = size_key(row[0])
-                expected_row = yaml_operations(data)[operation][key]
-                for column, library in enumerate(header[1:4], start=1):
-                    assert microseconds(row[column]) == pytest.approx(expected_row[library], rel=TIME_TOLERANCE), (
-                        f"{page(path)}: {operation}/{key}/{library} shows {row[column]}, snapshot records {expected_row[library]} µs"
-                    )
-                assert_speedup(
-                    row[4],
-                    expected_row["PyYAML"] / expected_row["pyrs-yaml"],
-                    f"{page(path)}: {operation}/{key}",
-                )
+def test_every_library_comparison_carries_a_marker(data):
+    """A table that races us against a measured library is generated, or it is a finding.
 
-
-def test_comparison_tables_match_snapshot(data):
-    for path in (page_path for page_path in PAGES if page_path.name == "comparison.md"):
-        found = [
-            table for table in tables(path) if len(table[0]) == 3 and table[0][1] in {"Time", "時間", "时间", "시간"}
-        ]
-        assert len(found) == 3, f"{page(path)}: expected three parse/serialize/round-trip tables"
-        for operation, (_, rows) in zip(OPERATIONS, found):
-            assert [row[0].replace("*", "") for row in rows] == ["pyrs-yaml", "PyYAML", "ruamel.yaml"], page(path)
-            expected_row = yaml_operations(data)[operation]["large"]
-            assert microseconds(rows[0][1]) == pytest.approx(expected_row["pyrs-yaml"], rel=TIME_TOLERANCE), (
-                f"{page(path)}: {operation}/pyrs-yaml shows {rows[0][1]}"
+    `--docs` rewrites the cells under a marker and nothing else, so the marked tables are the ones
+    a re-measure reaches. An unmarked comparison table is either hand-typed or left behind by the
+    last snapshot, and either way it publishes a number no run produced - the divan leg's own
+    table stays out of this, because it names no library the snapshot measures.
+    """
+    measured = set(data["libraries"]) - {SELF}
+    for path in PAGES:
+        marked = {header_line for _, header_line in markers(path)}
+        for header_line, header, rows in tables(path):
+            names = set(header) | {row[0].replace("*", "") for row in rows}
+            timed = any(TIME_CELL.match(cell) for row in rows for cell in row)
+            if not (SELF in names and names & measured and timed):
+                continue
+            peers = "/".join(sorted(names & measured))
+            assert header_line in marked, (
+                f"{page(path)}: the {peers} table on line {header_line + 1} has no bench marker"
             )
-            baseline = expected_row["pyrs-yaml"]
-            for row in rows[1:]:
-                library = row[0].replace("*", "")
-                assert microseconds(row[1]) == pytest.approx(expected_row[library], rel=TIME_TOLERANCE), (
-                    f"{page(path)}: {operation}/{library} shows {row[1]}, snapshot records {expected_row[library]} µs"
-                )
-                assert_speedup(
-                    row[2],
-                    expected_row[library] / baseline,
-                    f"{page(path)}: {operation}/{library}",
-                )
-
-
-def test_features_table_matches_snapshot(data):
-    for path in (page_path for page_path in PAGES if page_path.name == "features.md"):
-        found = [table for table in tables(path) if len(table[0]) == 3 and table[0][1] == "pyrs-yaml"]
-        assert len(found) == 1, f"{page(path)}: expected one performance table"
-        _, rows = found[0]
-        assert len(rows) == 3, page(path)
-        for operation, row in zip(OPERATIONS, rows):
-            expected_row = yaml_operations(data)[operation]["large"]
-            for column, library in ((1, "pyrs-yaml"), (2, "PyYAML")):
-                assert microseconds(row[column]) == pytest.approx(expected_row[library], rel=TIME_TOLERANCE), (
-                    f"{page(path)}: {operation}/{library} shows {row[column]}, snapshot records {expected_row[library]} µs"
-                )
 
 
 def test_prose_claims_match_the_snapshot(data):
+    ahead = partial(ratio_range, data)
+    behind = partial(ratio_range, data, behind=True)
     ranges = {
         "index.md": (
-            speedup_range(data, "parse", "PyYAML"),
-            speedup_range(data, "serialize", "PyYAML"),
-            speedup_range(data, "parse", "ruamel.yaml"),
-            speedup_range(data, "serialize", "ruamel.yaml"),
+            ahead("yaml", "parse", "PyYAML"),
+            ahead("yaml", "serialize", "PyYAML"),
+            ahead("yaml", "parse", "ruamel.yaml"),
+            ahead("yaml", "serialize", "ruamel.yaml"),
         ),
         "round-trip.md": (
-            speedup_range(data, "roundtrip", "PyYAML"),
-            speedup_range(data, "roundtrip", "ruamel.yaml"),
+            ahead("yaml", "roundtrip", "PyYAML"),
+            ahead("yaml", "roundtrip", "ruamel.yaml"),
         ),
         "pyyaml-compat.md": (
-            speedup_range(data, "parse", "PyYAML"),
-            speedup_range(data, "serialize", "PyYAML"),
+            ahead("yaml", "parse", "PyYAML"),
+            ahead("yaml", "serialize", "PyYAML"),
         ),
         "benchmarks.md": (
-            speedup_range(data, "parse", "PyYAML"),
-            speedup_range(data, "serialize", "PyYAML"),
-            speedup_range(data, "roundtrip", "PyYAML"),
-            speedup_range(data, "parse", "ruamel.yaml"),
-            speedup_range(data, "serialize", "ruamel.yaml"),
-            speedup_range(data, "roundtrip", "ruamel.yaml"),
+            ahead("yaml", "parse", "PyYAML"),
+            ahead("yaml", "serialize", "PyYAML"),
+            ahead("yaml", "roundtrip", "PyYAML"),
+            ahead("yaml", "parse", "ruamel.yaml"),
+            ahead("yaml", "serialize", "ruamel.yaml"),
+            ahead("yaml", "roundtrip", "ruamel.yaml"),
+            behind("yaml", "parse", "yaml-rs"),
+            behind("yaml", "roundtrip", "yaml-rs"),
+            ahead("yaml", "serialize", "yaml-rs"),
         ),
         "comparison.md": (
-            speedup_range(data, "parse", "PyYAML"),
-            speedup_range(data, "serialize", "PyYAML"),
+            ahead("yaml", "parse", "PyYAML"),
+            ahead("yaml", "serialize", "PyYAML"),
+            ahead("yaml", "serialize", "yaml-rs"),
         ),
         "features.md": (
-            speedup_range(data, "parse", "PyYAML"),
-            speedup_range(data, "serialize", "PyYAML"),
+            ahead("yaml", "parse", "PyYAML"),
+            ahead("yaml", "serialize", "PyYAML"),
         ),
     }
     for path in CLAIM_PAGES + PAGES:
         text = path.read_text(encoding="utf-8")
         claimed = {f"{match.group(1)}\u2013{match.group(2)}" for match in RANGE_CLAIM.finditer(text)}
-        expected = set(ranges[path.name]) | EXTRA_CLAIMS.get(path.name, set())
+        expected = set(ranges[path.name])
         assert claimed <= expected, f"{page(path)} cites ranges outside the snapshot: {sorted(claimed - expected)}"
         assert expected <= claimed, f"{page(path)} omits the snapshot ranges: {sorted(expected - claimed)}"
 

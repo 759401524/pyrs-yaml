@@ -8103,6 +8103,57 @@ re-measured for this: three readings of that row on this host after the change a
 1.974 µs against the committed 1.578 µs, with `json.loads` moving by the same proportion in the same
 runs - which is the machine, not the code, and `--update` would rewrite twelve pages to record it.
 
+### (fr) The same-language leaderboard, and the gate that stopped guessing its shape (2026-10-25)
+
+**Premise.** Every published YAML row raced PyYAML and ruamel.yaml and the TOML row raced `tomllib`:
+four pure-Python counterparts. `yaml-rs`, `ryaml` and `rtoml` were already in the test dependencies,
+and `tests/test_benchmark_crosslib.py` ranks them, so the Rust-backed readers a user comparing "a
+Rust engine" would actually weigh were measured in CI and published nowhere. The one place the repo
+said something about them, `docs/<locale>/performance/comparison.md`, quoted a range from that
+benchmark (`2–4`) as prose the docs gate could not derive, because it was not in the snapshot.
+
+**What changed.** `scripts/bench_snapshot.py` takes `yaml-rs` and `ryaml` on the YAML axis and
+`rtoml` on the TOML one, and the TOML speedup column now measures against `rtoml` rather than
+against the standard library - beating a pure-Python reader is not the interesting claim. The
+re-measured snapshot (2026-10-25, nine batches, fastest reported) says: `yaml-rs` parses 2.4-2.6x
+faster and round-trips 1.6-1.9x faster than pyrs-yaml; `ryaml` reads within 1.1-1.2x of us and
+writes 7.1-10.9x behind; `rtoml` reads 1.9x faster than `load_toml` on both fixtures; pyrs-yaml
+serializes 2.2-4.1x faster than `yaml-rs` and 198-339x faster than PyYAML. Twelve pages regenerated,
+and the published headline for TOML moved from "5.5-5.9x faster than `tomllib`" to "0.5x against
+`rtoml`" - the same measurement, the honest direction. `_behind` prints the word the ratio points
+to, because "0.4x slower" is not a measurement.
+
+**How the gate reads now.** `tests/test_perf_docs.py` had three hardcoded tests describing the old
+table shapes (five columns, three rows, one summary). They are gone: one dispatcher walks the three
+layouts the writer owns (`sizes`, `libraries`, `operations`), takes its library list from the
+snapshot rather than from a literal, checks a peer's `faster`/`slower` word against the ratio
+printed beside it, requires each row label's byte count to name the fixture its numbers came from,
+requires the ratio column to name the library it divides by, and fails any table that names
+pyrs-yaml plus a measured library with timings and carries no `bench:` marker. The last predicate is
+what keeps the divan leg's own table out (it names no library the snapshot measures) while catching
+a hand-typed comparison. Prose ranges now carry decimals, so `2.2–4.1×` is derived like every other
+claim, and the `EXTRA_CLAIMS` escape hatch retired with its only entry. Test count for this file: 10
+→ 8, and the matrix row re-derived.
+
+**The controls, run not imagined.** Six mutations, each restored, each naming the page and the row.
+A stale cell reddens as `yaml/parse/large/ryaml shows 90 µs, snapshot records 74.096 µs`; a flipped
+direction word as `yaml/parse/yaml-rs: shows '2.6× slower', snapshot implies faster`; a dropped row
+as `its table has no row 5`; a removed marker as
+`the PyYAML/ruamel.yaml/ryaml/yaml-rs table on line 32 has no bench marker`; a swapped label as
+`label 'Large (~2 KB)' is not the 95 B fixture`; a header that stopped naming its baseline as
+`toml/parse divides by rtoml, whose name is not in the ratio column '加速'`.
+
+**What is not closed.** The YAML read gap is not a scan: `docs/dev/perf.md` measures our share of
+the YAML read path as node construction plus one `Arc<str>` copy and closes the vectorization
+question there, so the difference is the round-trip tree `yaml-rs` never builds - and its own
+round-trip row is a value's, not a document's. The actionable asymmetry is TOML: `load_json`,
+`load_jsonc` and since (fq) `load_json5` ask `json_fast::try_load` before building anything, and
+`load_toml` has no equivalent, so it walks the shared tree on the way to a plain dict that cannot
+use the fidelity. That is the same shape of win (fq) took, larger in scope. Also recorded rather
+than fixed: `same_object` for the large YAML fixture is `false` on main as well as here, so the
+published YAML rows compare readers that do not agree with each other on that document -
+pre-existing, and nobody should read this change as the cause.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
