@@ -127,6 +127,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   library comparison carrying no `bench:` marker. Six controls were run - a stale cell, a flipped
   direction word, a dropped row, a removed marker, a swapped label, a header that stopped naming
   its baseline - and each reddens by naming the page and the row.
+- **A release note that calls a closed gap open is a red run now** — `scripts/check_hole_claims.py`
+  read only `AGENTS.md` and `CLAUDE.md`, which is how one claim about a measurement this tree no
+  longer reproduces survived in eight places: the five changelog mirrors,
+  `docs/dev/quality-ledger.md`, a test's own reason for existing, and the Rust doc comment on the
+  `ir-gate` code that had already closed the gap it described. It then rode across two pull requests
+  (#613, #614) with every gate green. Scope is present tense now — the two instruction files plus
+  the `[Unreleased]` block of each mirror, sliced by a new `unreleased_lines` in
+  `scripts/check_changelog_mirrors.py`, so one parser owns "what is `[Unreleased]`" for both rules.
+  Released sections and the ledger stay dated records, and there a hole that has since closed may
+  still be named. A mirror yielding no `[Unreleased]` lines exits 2 rather than passing, because a
+  heading spelled without its brackets would otherwise stop the gate in silence. Four controls in
+  `tests/test_hole_claims_gate.py`: an id inside `[Unreleased]` fails by naming the path and line,
+  the same id under a released heading passes, the same id passes while the matrix measures it, and
+  a default scope that drops any mirror is red. The predicate ran on the real tree too — injecting
+  the id at `CHANGELOG.md:9` returned 1, restoring it returned 0.
 
 ### Changed
 

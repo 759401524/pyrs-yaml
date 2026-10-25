@@ -137,3 +137,94 @@ def test_a_vocabulary_that_cannot_be_trusted_reports_loudly(gate, monkeypatch, t
 def test_an_unreadable_instruction_file_is_not_a_pass(gate, tmp_path):
     missing = tmp_path / "does-not-exist.md"
     assert gate.main([str(missing)]) == 2
+
+
+# ── the [Unreleased] block of a changelog mirror ────────────────────────────────
+
+HOLE = "perf-coverage:binding-layer"
+
+# The sentence that rotted in five mirrors at once, placed where each of the two scopes begins.
+NOTE = f"- the binding layer has no instruction floor: `{HOLE}`"
+RELEASED = """## [v0.18.3] - 2026-09-30
+
+### Performance
+
+- a note that names no hole id
+"""
+UNRELEASED_STALE = f"""## [Unreleased]
+
+### Performance
+
+{NOTE}
+
+{RELEASED}"""
+RELEASED_STALE = f"""## [Unreleased]
+
+### Performance
+
+- a note that names no hole id
+
+## [v0.18.3] - 2026-09-30
+
+### Performance
+
+{NOTE}
+"""
+
+
+def mirror(tmp_path, text):
+    """A changelog by name, so the `[Unreleased]` slice applies to the fixture exactly as to the five."""
+    page = tmp_path / "changelog.md"
+    page.write_text(text, encoding="utf-8")
+    return page
+
+
+def test_an_unreleased_note_that_names_a_closed_hole_is_caught(tmp_path):
+    """One `[Unreleased]` block is present tense, so it carries the same obligation as `AGENTS.md`.
+
+    The block is the text the next release cut turns into a dated record: a stale id inside it is the
+    defect this gate was written for, and eight places said it across two pull requests while the
+    instruction files were the only thing anyone read.
+    """
+    page = mirror(tmp_path, UNRELEASED_STALE)
+    result = run(str(page))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"changelog.md:5 names {HOLE!r}" in result.stderr
+    assert "a note that names no hole id" not in result.stderr
+
+
+def test_a_released_section_that_names_a_closed_hole_stays_exempt(gate, tmp_path):
+    """History may name a hole that has since closed, so the slice has to stop at the next version.
+
+    The fixture keeps the file, the id and the sentence and moves only the section, so a pass here is
+    evidence about the scope rather than about the id.
+    """
+    page = mirror(tmp_path, RELEASED_STALE)
+    scoped = gate.scope_lines(page)
+    assert any("no hole id" in line for _number, line in scoped), scoped
+    assert all(number < 7 for number, _line in scoped), "the [Unreleased] slice reached the released section"
+    assert run(str(page)).returncode == 0
+
+
+def test_an_unreleased_note_that_names_a_measured_hole_is_allowed(gate, monkeypatch, tmp_path):
+    """The rule must let a true release note through, or the only way to satisfy it is to say nothing."""
+    monkeypatch.setattr(gate, "measured_ids", lambda: {HOLE})
+    assert gate.main([str(mirror(tmp_path, UNRELEASED_STALE))]) == 0
+
+
+def test_a_changelog_with_no_unreleased_body_is_not_a_pass(gate, tmp_path):
+    """A heading spelled `## Unreleased` (no brackets) slices to nothing, and nothing names no stale id.
+
+    An empty slice is therefore a refusal: the gate is silent about the file rather than green for it,
+    because a scope that quietly stops covering anything is how this defect came back twice.
+    """
+    page = mirror(tmp_path, "## Unreleased\n\n" + NOTE + "\n")
+    assert gate.main([str(page)]) == 2
+
+
+def test_the_default_scope_covers_every_changelog_mirror(gate):
+    """The parity checker owns the mirror list, so a hole gate reading some other list is a second parser."""
+    mirrors = gate.load_module(gate.MIRRORS, "check_changelog_mirrors").FILES
+    scope = {path.resolve() for path in gate.default_paths()}
+    missing = [str(path) for path in mirrors if path.resolve() not in scope]
+    assert not missing, f"changelog mirrors outside the hole-claim scope: {missing}"

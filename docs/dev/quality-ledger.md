@@ -8275,6 +8275,42 @@ symmetric floors are a follow-up of the same shape. The intermediate tree also s
 `(fs)` note that `crates/pyrs-toml/src/lib.rs` still claims "no intermediate value tree" is owed
 to the change that removes it.
 
+### (fu) The `[Unreleased]` block joined the gate that reads the instruction files (2026-10-25)
+
+**The defect.** One claim - that the binding layer carries no instruction floor, with
+`perf-coverage:binding-layer` named as the open hole - stood in eight places after that hole had
+closed on 2026-10-08, when `7ea4b41c` added `crates/pyrs-yaml/benches/ir_gate.rs` and
+`.ci/quality-holes.json` measures nothing today. Five of the eight were changelog mirrors, one was
+this file, one was the justification docstring of `tests/test_json_leaderboard.py`, and one was the
+Rust doc comment on the very seam that had closed it. Both PR #613 and its follow-up #614 rode
+through CI with every gate green, because `scripts/check_hole_claims.py` read `AGENTS.md` and
+`CLAUDE.md` and nothing else.
+
+**The rule.** The gate's scope is present tense: the two instruction files, plus the `[Unreleased]`
+block of `CHANGELOG.md` and of each locale mirror. The slice is a new public `unreleased_lines` in
+`scripts/check_changelog_mirrors.py`, imported rather than restated, so the parity check and the
+hole check cannot disagree about what `[Unreleased]` is; released sections and this file stay dated
+records, where naming a hole that closed later is the point of a history.
+
+**The silent-pass shape.** A changelog from which no `[Unreleased]` line is read exits 2 rather
+than 0. A heading spelled `## Unreleased` without its brackets, or at a level the regex does not
+take, would otherwise stop the gate on that file with everything green - which is how a scope rots.
+
+**Seen to bite.** Four controls in `tests/test_hole_claims_gate.py`, and four mutations of the
+checker run against them: dropping the mirrors from `default_paths()` reddens the scope test alone;
+ignoring the slice reddens the exemption control, the empty-body control and the real-tree run, the
+last because the released sections of the mirrors do name that id today; deleting the exit-2 refusal
+reddens the empty-body control; making `is_changelog` always false reddens three. Each mutation was
+restored from a copy and the file's sha256 compared - identical. The predicate also ran end-to-end
+on the real tree: injecting the id under `[Unreleased]` returned exit 1 naming `CHANGELOG.md:9`,
+restoring it returned 0, and the same id placed under a released heading returns 0.
+
+**Not covered.** The gate judges ids, not sentences. A release note can still describe a closed gap
+in prose that carries no id, and `docs/dev/*.md` is read by `check_landed_claims.py`, which judges
+heading vocabulary rather than the registry. The scope cost was measured before the rule was
+written - zero violation tokens in today's five `[Unreleased]` blocks against fourteen in this
+file - which is why the ledger stayed outside it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
