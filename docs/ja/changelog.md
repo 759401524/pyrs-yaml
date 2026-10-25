@@ -325,6 +325,25 @@ status: new
   という下限も名前で書き、拒否された文書が値へ到達しないことも要求する。
   `tests/test_toml.py` の `TestValueReader` は八つの文書をハブ自身の書き出し・再読込と比べ、関門を
   AST ルートだけが変えられる値で証明する。この行に残るのは中間ツリーで、それはそのまま残る。
+- **JSON ローダーの高速経路に命令数の下限ができました** — `(ft)` は `load_toml` の経路に下限を決め
+  たとき、閉じ残した事実も書いていました。`load_json`、`load_jsonc`、`load_json5` はいずれも最初に
+  `json_fast::try_load` に尋ねますが、二つの harness のどれもその経路に入っていなかったのです。
+  エンジンの `from_json_*` は高速リーダーが読み飛ばすノードモデルで止まり、バインド層は
+  `bench_to_python` と `bench_load_toml` しか測っていなかったため、JSON 高速経路で一キー余分に確保
+  しても提出済みの数値は動きませんでした。いまは `bench_load_json` が `load_json` を最初から最後
+  まで走らせ、`load_json_medium` と `load_json_long_strings` がエンジンと同じバイト
+  （`MEDIUM_JSON`、`long_string_json()`）で下限を定めます。強制イメージ上の計測で 57,286,388 と
+  95,502,189 命令、`from_json_medium` と `from_json_long_strings` の 0.74 倍、0.86 倍です。TOML の
+  1.20 倍と逆向きなのは、この経路がツリーと YAML テキストの上に加えるのではなく置き換えるからです。
+  `load_jsonc` と `load_json5` は意図的に同じ行を共有します。高速リーダーが受けつけるバイトでは三つ
+  ともまったく同じコードを通り、違うのはエンジンがすでに価格付けたフォールバックだけです。前提は
+  プロセス単位ではなく文書単位です。`try_load` は正準でない表記を一つでも見ると文書全体を受けつけ
+  ないので、harness は数えるループの前でそのフィクスチャ自身のバイトに `json_route_is_fast` を
+  尋ね、その名前でフォールバックを価格する代わりに exit 4 になります。guard を `false` に強制する
+  と `load_json_medium` は 4 を返し、`load_toml_medium` は緑のままでした。シーン集合を育てると兄弟も
+  動くので、更新はこの head で走らせました。`to_python_anchors` は +0.1343%、
+  `load_toml_long_strings` は -0.2175% で、どちらも 0.5% の内側なので名前を挙げることはありません
+  でした。
 
 ### [v0.18.3] — 2026-10-22
 

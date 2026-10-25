@@ -314,6 +314,24 @@ status: new
   이름으로 적고, 거부된 문서가 값에 닿지 않음도 요구한다. `tests/test_toml.py`의 `TestValueReader`는
   여덟 문서를 허브 자신의 내보내기·재읽기와 견주고, 관문을 AST 경로만 바꿀 수 있는 값으로 증명한다.
   이 행에 남는 것은 중간 트리이고, 그 트리는 그대로 남는다.
+- **JSON 로더의 빠른 경로에 명령 수 하한이 생겼습니다** — `(ft)`는 `load_toml` 경로에 하한을
+  박으면서 닫지 않은 것도 적었습니다. `load_json`, `load_jsonc`, `load_json5`는 모두
+  `json_fast::try_load`를 먼저 묻는데 두 harness 모두 그 경로를 들어본 적이 없었습니다. 엔진의
+  `from_json_*`는 빠른 읽기가 건너뛰는 노드 모델에서 멈추고 바인딩 계층은 `bench_to_python`과
+  `bench_load_toml`만 재고 있었으니, JSON 빠른 경로에서 키마다 한 번 더 확보해도 제출된 숫자는
+  움직이지 않았습니다. 이제 `bench_load_json`이 `load_json`을 처음부터 끝까지 몰고,
+  `load_json_medium`과 `load_json_long_strings`가 엔진이 읽는 같은 바이트(`MEDIUM_JSON`,
+  `long_string_json()`)로 하한을 만듭니다. 강제 이미지에서 세면 57,286,388과 95,502,189 명령이고,
+  `from_json_medium`과 `from_json_long_strings`의 0.74배, 0.86배입니다. TOML의 1.20배와 반대 방향인
+  이유는 이 경로가 트리 와 YAML 텍스트 위에 얹는 대신 그것을 대체하기 때문입니다. `load_jsonc`와
+  `load_json5`는 의도적으로 같은 행을 공유합니다. 빠른 읽기가 받아들이는 바이트에서는 셋이 똑같은
+  코드를 지나다니고, 다른 것은 엔진이 이미 값 매긴 대체 경로뿐입니다. 전제는 프로세스가 아니라 문서
+  단위입니다. `try_load`는 표준형이 아닌 표기를 만나면 문서 전체를 포기하므로, harness는 세는 반복
+  전에 그 fixture 자신의 바이트로 `json_route_is_fast`를 묻고, 이 이름으로 대체 경로에 값을 매기는
+  대신 4로 끝납니다. 그 가드를 `false`로 강제하면 `load_json_medium`은 4를 내고 `load_toml_medium`은
+  초록으로 남았습니다. 장면 집합을 늘리면 형제도 움직이므로 갱신은 이 head에서 돌렸습니다.
+  `to_python_anchors`는 +0.1343%, `load_toml_long_strings`는 -0.2175%로 둘 다 0.5% 안에 있어서 아무
+  이름도 적지 않았습니다.
 
 ### [v0.18.3] — 2026-10-22
 

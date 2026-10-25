@@ -267,6 +267,40 @@ pub fn toml_route_is_direct() -> bool {
     crate::py::tag_registry::is_empty()
 }
 
+/// Feature-gated seam for the instruction-count harness (`crates/pyrs-yaml/benches/ir_gate.rs`):
+/// the JSON loader's whole route, source text to Python object.
+///
+/// Same reasoning as [`bench_load_toml`]: for a canonical document the AST-free `json_fast` reader
+/// *is* the route `load_json` serves, so the quantity a caller pays is the scan and the object
+/// construction together, and a floor on the engine's `from_json_*` (which stops at the node model)
+/// would let a per-key allocation inside that construction move no committed number.
+///
+/// `load_jsonc` and `load_json5` share this row on purpose: for a document the fast path accepts they
+/// call exactly the same reader, and the only difference between them lives in the fallback, which
+/// the engine-side `from_jsonc_*` / `from_json5_*` scenarios already price.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn bench_load_json(json: &str) -> Result<usize, pyo3::PyErr> {
+    pyo3::Python::attach(|py| {
+        let value = load_json(py, json)?;
+        Ok(usize::from(!value.as_ptr().is_null()))
+    })
+}
+
+/// Whether the fast reader serves this particular document.
+///
+/// Unlike the TOML guard, which is a property of the registry and therefore of the process, the JSON
+/// premise is a property of the bytes: `json_fast::try_load` bails on the whole document for any
+/// non-canonical spelling (comments, escapes, exotic float forms, out-of-range integers), and the AST
+/// path then produces the value. So the harness asks per scenario, outside the counted loop, and
+/// refuses to price the fallback under this name - the one-sided tolerance cannot catch the swap,
+/// because the fallback is the slower route.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn json_route_is_fast(json: &str) -> bool {
+    pyo3::Python::attach(|py| crate::py::json_fast::try_load(py, json).is_some())
+}
+
 #[pyfunction]
 #[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.

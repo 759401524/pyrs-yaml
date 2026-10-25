@@ -40,6 +40,16 @@
 //! counted loop and exits 4 rather than price the node model under this name. See `bench_load_toml`
 //! and `toml_route_is_direct` in `src/py/functions.rs`.
 //!
+//! The JSON family takes the same choice for a different reason. `load_json`, `load_jsonc` and
+//! `load_json5` each ask `json_fast::try_load` first, and for a canonical document that reader is
+//! the whole route - so until `load_json_*` existed, a per-key allocation inside the fast path could
+//! move no committed number at all: the engine's `from_json_*` stops at the node model, which the
+//! loaders no longer build. The premise here is per-document rather than per-process (`try_load`
+//! bails on the whole document for any non-canonical spelling), so the harness asks it of the
+//! fixture's own bytes before the counted loop and exits 4 rather than price the fallback.
+//! `load_jsonc` and `load_json5` share the row because the only thing that differs between them is
+//! that fallback. See `bench_load_json` and `json_route_is_fast` in `src/py/functions.rs`.
+//!
 //! Each iteration must convert one document or the binary exits 3. The seam returns its error rather
 //! than defaulting it, because the gate's tolerance only punishes growth: a harness that stopped doing
 //! the work would report a huge improvement and pass.
@@ -63,9 +73,12 @@
 //! The gate script does not attempt to hide that - if `--list` cannot run, the failure surfaces as a
 //! build/exec error rather than an empty scenario list, which would read as "no scenarios to measure"
 //! and pass.
-use pyrs_yaml::py::functions::{bench_load_toml, bench_to_python, toml_route_is_direct};
+use pyrs_yaml::py::functions::{
+    bench_load_json, bench_load_toml, bench_to_python, json_route_is_fast, toml_route_is_direct,
+};
 use pyrs_yaml_core::bench_inputs::{
-    ANCHOR_YAML, MEDIUM_TOML, MEDIUM_YAML, SMALL_YAML, long_string_toml,
+    ANCHOR_YAML, MEDIUM_JSON, MEDIUM_TOML, MEDIUM_YAML, SMALL_YAML, long_string_json,
+    long_string_toml,
 };
 
 /// Fixed for every run and every machine, and the same 2 000 the engine harness uses - for a reason
@@ -82,6 +95,10 @@ const ITERATIONS: u32 = 2_000;
 /// one fixture, two harnesses, the standing rule.
 static LONG_TOML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_toml);
 
+/// The long-value JSON shape, on the same rule as [`LONG_TOML`]: the same bytes
+/// `to_json_long_strings` measures one layer down.
+static LONG_JSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_json);
+
 /// Which loader the measured loop calls. One enum so the scenario list states in one column what each
 /// baseline row prices, and so a name cannot silently change what it measures.
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -90,6 +107,8 @@ enum Channel {
     ToPython,
     /// TOML text to Python objects through `load_toml`.
     LoadToml,
+    /// JSON text to Python objects through the AST-free reader `load_json` prefers.
+    LoadJson,
 }
 
 /// Every scenario the binding-side gate measures. The `to_python_*` names mirror the engine harness so
@@ -112,6 +131,14 @@ fn scenarios() -> Vec<(&'static str, &'static str, Channel)> {
             "load_toml_long_strings",
             LONG_TOML.as_str(),
             Channel::LoadToml,
+        ),
+        // The route an ordinary JSON document has taken since the family gained its fast reader:
+        // scan plus object construction, with no node model in between to price separately.
+        ("load_json_medium", MEDIUM_JSON, Channel::LoadJson),
+        (
+            "load_json_long_strings",
+            LONG_JSON.as_str(),
+            Channel::LoadJson,
         ),
     ]
 }
@@ -146,6 +173,16 @@ fn main() {
         );
         std::process::exit(4);
     }
+    if channel == Channel::LoadJson && !std::hint::black_box(json_route_is_fast(src)) {
+        eprintln!(
+            "{name}: {}",
+            concat!(
+                "json_fast::try_load bails on these bytes, so load_json would take the AST route - ",
+                "this scenario measures the direct reader and refuses to price the other one"
+            )
+        );
+        std::process::exit(4);
+    }
 
     // Interpreter start-up is in both modes so it cancels: without this, the first measured call
     // would pay for initialising CPython and the subtraction would leave that in the number. Only
@@ -168,6 +205,7 @@ fn main() {
             let converted = match channel {
                 Channel::ToPython => bench_to_python(std::hint::black_box(src)),
                 Channel::LoadToml => bench_load_toml(std::hint::black_box(src)),
+                Channel::LoadJson => bench_load_json(std::hint::black_box(src)),
             };
             match std::hint::black_box(converted) {
                 Ok(1) => acc += 1,
