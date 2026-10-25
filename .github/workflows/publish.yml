@@ -83,7 +83,7 @@ jobs:
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
       # The free-threaded wheel is exactly the artifact a normal-GIL test
       # interpreter cannot ever load, so it needs its own smoke run before it
       # can reach the Release. numpy stays excluded per the free-threaded test
@@ -165,7 +165,7 @@ jobs:
       # Both interpreters install from the same `dist`: pip on 3.14t can only
       # take the cp314t wheel, and pip on 3.15t can only take the abi3t one,
       # so these two runs also prove the tags resolve the way the docs say.
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
       - name: pytest (free-threaded 3.14t)
         shell: bash
         run: |
@@ -283,7 +283,7 @@ jobs:
       # so each free-threaded run tests the wheel its interpreter can
       # actually install - re-selecting the interpreter here matters because
       # the abi3t build above moved PATH to 3.15t.
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14t"
@@ -361,7 +361,7 @@ jobs:
       # so each free-threaded run tests the wheel its interpreter can
       # actually install - re-selecting the interpreter here matters because
       # the abi3t build above moved PATH to 3.15t.
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@v10.3.2
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14t"
@@ -575,7 +575,7 @@ jobs:
             pyq-*/*
       - name: Install uv
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.2
       - name: Publish to PyPI
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: uv publish 'wheels-*/*'
