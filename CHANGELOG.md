@@ -325,6 +325,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TestValueReader` compares eight documents against the hub's own export and reimport, and proves
   the guard by a value only the AST route can change. What is left of the row is the intermediate
   tree, which stays.
+- **The JSON loaders' fast route has an instruction floor now** — `(ft)` floored `load_toml`'s route
+  and named what it left open: `load_json`, `load_jsonc` and `load_json5` each ask
+  `json_fast::try_load` first, and neither harness entered that route. The engine's `from_json_*`
+  rows stop at the node model the fast reader skips, and the binding channel measured only
+  `bench_to_python` and `bench_load_toml`, so a per-key allocation inside the JSON fast path would
+  have moved no committed number. `bench_load_json` now drives `load_json` end to end and
+  `load_json_medium` / `load_json_long_strings` floor it over the same bytes the engine reads
+  (`MEDIUM_JSON`, `long_string_json()`) at 57,286,388 and 95,502,189 counted instructions from the
+  enforcing image - 0.74x and 0.86x what `from_json_medium` and `from_json_long_strings` pay, the
+  opposite direction to TOML's 1.20x because this route replaces the tree and the YAML text rather
+  than adding to them. `load_jsonc` and `load_json5` share the row by design: for bytes the fast
+  reader accepts all three call exactly the same code, and what differs is the fallback the engine
+  already prices. The premise is per-document rather than per-process, because `try_load` bails on
+  the whole document at any non-canonical spelling, so the harness asks `json_route_is_fast` of the
+  fixture's own bytes before the counted loop and exits 4 instead of pricing the fallback under
+  this name; forcing that guard to `false` made `load_json_medium` exit 4 while
+  `load_toml_medium` stayed green. Growing the scenario set moves its siblings, so the refresh ran
+  on this head: `to_python_anchors` read +0.1343% and `load_toml_long_strings` -0.2175%, both
+  inside the 0.5% line, so the run was written naming nobody.
 
 ## [v0.18.3] — 2026-10-22
 

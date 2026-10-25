@@ -534,7 +534,7 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — thirty-five of them, since the binding harness joined, since each cross-format
+from — thirty-seven of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
@@ -544,7 +544,15 @@ line-delimited route grew a pair of its own (`documents_short_strings` and `docu
 the same eight records at value widths of 9 and 256, 95,815,186 against 328,951,144), since
 the TOML loader's own route joined (`load_toml_medium` and `load_toml_long_strings`, driven
 through `bench_load_toml` at 144,803,683 and 140,182,211 - 1.20x and 1.29x the tree that
-`from_toml_medium` and `from_toml_long_strings` stop at), and
+`from_toml_medium` and `from_toml_long_strings` stop at), since the JSON loader's fast route
+joined the same way (`load_json_medium` and `load_json_long_strings` through `bench_load_json` at
+57,286,388 and 95,502,189 - 0.74x and 0.86x what `from_json_medium` and `from_json_long_strings`
+pay to build the node model that route skips), and this row is shared by `load_jsonc` and
+`load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
+what differs between them is the fallback the engine harness already prices. Growing the set moves
+its siblings, which is why the refresh ran on this head rather than locally: against the file it
+replaced, `to_python_anchors` read +0.1343% and `load_toml_long_strings` -0.2175%, both inside the
+line, so the run was written naming nobody.
 `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
 them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the

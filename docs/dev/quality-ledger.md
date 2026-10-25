@@ -8311,6 +8311,52 @@ heading vocabulary rather than the registry. The scope cost was measured before 
 written - zero violation tokens in today's five `[Unreleased]` blocks against fourteen in this
 file - which is why the ledger stayed outside it.
 
+### (fv) The JSON loaders' fast route got the floor `(ft)` named as missing (2026-10-25)
+
+**Premise.** `(ft)` floored `load_toml` and recorded what it did not close: `load_json`,
+`load_jsonc` and `load_json5` all ask `json_fast::try_load` first, and neither Ir harness entered
+that route. The engine's `from_json_*` scenarios stop at the node model the fast reader skips, and
+the binding channel carried only `bench_to_python` and `bench_load_toml`. A per-key allocation
+introduced inside the JSON fast path - the exact shape that `(fs)` removed from the TOML path -
+would have moved no committed number at all.
+
+**What changed.** `crates/pyrs-yaml/src/py/functions.rs` gained `bench_load_json`, which drives
+`load_json` end to end behind the `ir-gate` feature, and `crates/pyrs-yaml/benches/ir_gate.rs`
+gained `load_json_medium` and `load_json_long_strings` over `MEDIUM_JSON` and `long_string_json()` -
+the same bytes the engine harness reads, per the one-fixture-two-harnesses rule. `load_jsonc` and
+`load_json5` share the row deliberately: for any document the fast reader accepts, all three call
+exactly the same code, and their only difference is the fallback, which the engine's `from_jsonc_*`
+and `from_json5_*` rows already price.
+
+**First reading.** 57,286,388 and 95,502,189 counted instructions on the enforcing image, against
+the same file's `from_json_medium` 77,750,982 and `from_json_long_strings` 111,380,005 - 0.74x and
+0.86x. The direction is the opposite of TOML's 1.20x / 1.29x, and the reason is what each row
+replaces: `load_toml_*` adds Python object construction on top of a scan the engine row also
+performs, while `load_json_*` substitutes object construction for the node model and the YAML text
+the engine row builds. A floor on one channel alone would have been read as a speedup by whichever
+harness stayed blind to the change.
+
+**The premise is per-document, not per-process.** `toml_route_is_direct` asks a registry, so one
+call answers for every scenario; `json_fast::try_load` decides per document and bails on the whole
+input for any non-canonical spelling. So `json_route_is_fast` is asked of the fixture's own bytes
+before the counted loop, and the harness exits 4 rather than price the fallback under a name that
+says the direct reader. Measured: both new scenarios completed `objects=2000/2000` on the built
+binary (the interpreter placed on `PATH`, which is how this Windows host runs it at all), and
+forcing the guard to return `false` made `load_json_medium` exit 4 with the named refusal while
+`load_toml_medium` stayed at 0; the guard was restored from a copy and its sha256 compared -
+identical.
+
+**Sibling moves.** Growing the scenario set is not neutral (`(fi)` measured that twice and got
+opposite signs), so the refresh ran on this head. Against the file it replaced, the largest moves
+were `to_python_anchors` +0.1343% and `load_toml_long_strings` -0.2175%, every one inside the 0.5%
+line, so the run was written naming nobody and `accept_drift` stayed empty.
+
+**Not closed.** The TOML intermediate tree still exists, and the sentence in
+`crates/pyrs-toml/src/lib.rs` that claims no intermediate value tree is owed to the change that
+removes it - `(fs)` and `(ft)` both say so. What this row does not price either: the fallback
+loaders take once a document is non-canonical, which stays the engine harness's job because there
+the dialect is decided without a Python object in sight.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

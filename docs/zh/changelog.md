@@ -262,6 +262,20 @@ status: new
   两者在种子语料与两种方言上相等，并写明 16 份文档的下限，还要求被拒绝的文档到达不了任何值；
   `tests/test_toml.py` 的 `TestValueReader` 把八份文档与中枢自身的导出再导入相比，用一个只有 AST
   路线能改动的值证明那道闸门。这一行剩下的部分是中间树，它仍在。
+- **JSON 加载器的快路径如今有了自己的指令地板** — `(ft)` 给 `load_toml` 的路线钉了地板，也写下它没关
+  的那一环：`load_json`、`load_jsonc` 与 `load_json5` 都先问 `json_fast::try_load`，而两个 harness
+  都没进过这条路线。引擎的 `from_json_*` 停在快读者跳过的节点模型，绑定通道只测 `bench_to_python`
+  与 `bench_load_toml`，所以在 JSON 快路径里每键多分配一次不会动任何已提交的数字。现在
+  `bench_load_json` 端到端驱动 `load_json`，`load_json_medium` 与 `load_json_long_strings` 用引擎
+  读的同一批字节（`MEDIUM_JSON`、`long_string_json()`）钉下地板：强制镜像测得 57,286,388 与
+  95,502,189 条计数指令，是 `from_json_medium` 与 `from_json_long_strings` 的 0.74 倍与 0.86 倍，
+  方向与 TOML 的 1.20 倍相反，因为这条路线是替掉那棵树与 YAML 文本，而不是在其上叠加。`load_jsonc`
+  与 `load_json5` 有意共用这一行：快读者接受的字节上三者走完全相同的代码，差别只在引擎已经定价的
+  回退路径。前提是逐文档而非逐进程的——`try_load` 遇到任何非规范写法都会整篇放弃——所以 harness 在
+  计数循环之前用样例自己的字节问一次 `json_route_is_fast`，宁可 exit 4 也不以这个名次去量回退路
+  径；把该 guard 强制为 `false` 后 `load_json_medium` 返回 4，而 `load_toml_medium` 仍然通过。场
+  景集合变大也会牵动兄弟项，于是刷新就在本 head 上跑：`to_python_anchors` 读到 +0.1343%，
+  `load_toml_long_strings` 读到 -0.2175%，都在 0.5% 线内，因此这次刷新没有点名任何场景。
 
 ### [v0.18.3] — 2026-10-22
 
