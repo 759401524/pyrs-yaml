@@ -8143,6 +8143,19 @@ as `its table has no row 5`; a removed marker as
 `label 'Large (~2 KB)' is not the 95 B fixture`; a header that stopped naming its baseline as
 `toml/parse divides by rtoml, whose name is not in the ratio column '加速'`.
 
+**The guard's shape, corrected by the matrix.** The first version refused at import: a missing peer
+raised `SystemExit` from the module's own `try/except`, on the theory that a partial table is worse
+than no run. The matrix disagreed, because `tests/test_scripts_import_on_supported_python.py`
+imports every `scripts/*.py` on every leg that runs it and the peers are marker-bounded (`tomllib`
+wants 3.11, `orjson` stops before 3.14, `yaml-rs` before 3.15), so one test reddened five legs for a
+command those legs never invoke. The refusal now lives in `_require_counterparties()`, called by
+`collect()`, which leaves `--docs` (a reader of the committed snapshot, needing no peer at all)
+working anywhere. The two columns that bound a peer attribute eagerly, `yaml_rs.loads` and
+`ryaml.dumps`, moved inside lambdas like every other optional column, because `None.loads` at import
+is the same red run in a different place. Control: block `yaml_rs` in `sys.modules`, import the
+script (clean), ask the guard to measure (refuses, naming the group), then `--docs` (0 pages
+changed).
+
 **What is not closed.** The YAML read gap is not a scan: `docs/dev/perf.md` measures our share of
 the YAML read path as node construction plus one `Arc<str>` copy and closes the vectorization
 question there, so the difference is the round-trip tree `yaml-rs` never builds - and its own
