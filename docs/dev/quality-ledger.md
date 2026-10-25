@@ -8995,6 +8995,73 @@ the floors name, and it passes on this tree; the divergence is a property of rea
 off the image, and the honest form of that is a limitation named with numbers, not a tolerance
 widened for a host that is not the enforcing one.
 
+### (gl) The line index (gk) pointed at was one character at a time, and now it is eight bytes (2026-10-26)
+
+**Why this was owed.** (gk) ended on a number and a refusal: locally `documents_long_strings` spent
+55.21% of its loop in `pyrs_event::LineTable::line_col` (170,394,000) and 20.14% in `LineTable::new`
+(62,170,000), and the same record said the residual between this host and the image could only be
+closed by the image's own profile, not by another local guess. That left two separable questions,
+and only one of them needed the image: *what* those two functions were doing, and *why* the same
+code counted differently on two hosts. The first was fixable here.
+
+**What the change does.** `LineTable` indexed line starts one character at a time, and `line_col`
+carried the cursor between events the same way, so the NDJSON route paid a per-character walk twice.
+Both now read a `u64` at a time. `zero_lanes` marks the empty lanes of a word, and `newline_lanes`
+checks each candidate against the byte it claims - the check is not decoration: a borrow out of a
+zero lane turns the lane above it into `0xFF`, so `0x01` followed by `0x00` reads as a break the
+source never wrote. The column advances by the byte count while a word holds no byte at or above
+`0x80`, and a word that does falls back to the character walk, which is why no UTF-8 awareness
+enters the line index: `\n` cannot hide inside a multi-byte sequence. Core only - no dependency, no
+`unsafe`, so the `no_std` set is unchanged.
+
+**Measured, twice, on one host and one compiler.** The rows below are from
+`scripts/ir_gate.py --profile` with `RUSTUP_TOOLCHAIN=1.97.1` (the compiler the floors name),
+valgrind 3.22.0, `CARGO_TARGET_DIR` on the Linux filesystem, the harness binary
+`ir_gate-32fe5bfcd93ee66a` before (`a77bbab866280a80`) and after (`8bd4697974c4e351`) - the same
+target, a different build:
+
+| scenario | before (instr) | after (instr) | move | `line_col` | `LineTable::new` |
+|:---------|---------------:|--------------:|:-----|:-----------|:-----------------|
+| `documents_long_strings` | 308,642,512 | 126,840,512 | **-58.84%** | 170,394,000 → 29,618,000 (-82.6%) | 62,170,000 → 21,144,000 (-66.0%) |
+| `documents_short_strings` | 75,506,559 | 64,952,559 | **-13.98%** | 20,218,000 → 13,060,000 (-35.4%) | 6,842,000 → 3,446,000 (-49.6%) |
+
+The two functions account for the whole drop in each scenario - in the long case
+232,564,000 became 50,762,000, and the difference is exactly the 181,802,000 the loop lost. The pair
+fell from 75.35% of that scenario to 40.02%, which is why `ir_gate::main` (30,001,920, unchanged to
+the instruction) now prints as 23.65%: the harness's fixed cost did not grow, the walk under it
+shrank. The short scenario moves a third as much because the pair owns less of it - 27,060,000 of
+75,506,559 (35.84%) before - so the same cut buys 10,554,000 instructions there, not 181,802,000.
+
+**What the test caught, before it shipped.** The differential property
+`a_word_at_a_time_sweep_matches_a_rescan_byte_for_byte` compares `starts` and `line_col` with a
+byte-by-byte rescan at every position of an arbitrary document. Its first counterexample was
+`"a0a\0\n\u{b}¡"`: the index claimed a line start that the source did not have, which is the
+`haszero` over-report above, and the per-candidate byte check is what closed it. The unit companion
+puts a break in each of the eight lanes, and eight breaks in one word, because a test that only asks
+the first lane proves nothing about the other seven.
+
+**What the floors cost, measured on the image that enforces them.** Refresh run #64 took this head
+on `ubuntu24` image `20261023.334.3` with the pinned `rustc 1.97.1`, and the committed file comes
+from that run rather than from a local `--update`. Four scenarios move: `documents_long_strings`
+328,990,934 → 147,188,912 (**-55.26%**), `documents_short_strings` 95,854,968 → 85,300,932
+(**-11.01%**), and two that no local profile had named - `stream_json_medium` **-14.90%** and
+`stream_json_stop` **-27.17%** - because the same index serves the JSON stream route beside the
+NDJSON one. The other 38 move by 0.0051% or less.
+
+**Where the host term sits now.** The same run's attribution printed `line_col` at 29,618,000 and
+`LineTable::new` at 21,144,000 - exactly the local numbers - while the two loops differ by
+20,348,378 (147,188,890 on the image, 126,840,512 here), and 17,341,472 of that is one libc row,
+`__memcpy_avx_unaligned_erms`: 21,567,856 there against 4,226,384 here. So the engine is not the
+term that disagrees between the hosts, which is what (gk) asked and could not say from a local
+reading.
+
+**Not claimed.** The residual is narrowed, not closed. `from_json5_medium`, the third scenario (gk)
+listed, was not profiled on this head, so its +1.20% stays where (gk) left it; and naming the row
+that carries most of the gap is not the same as knowing why glibc picks that routine on one host and
+not the other - the tunables that would have explained it were already tested and refuted in (gk).
+What this record does settle is the "where the work sits" question: the term that dominated the long
+scenario is now the third row, behind the harness's own `main` and libc's memcpy.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

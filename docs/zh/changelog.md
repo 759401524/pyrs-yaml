@@ -285,6 +285,22 @@ status: new
 
 #### 性能
 
+- **一行 JSON 现在一次按八个字节来索引** — `pyrs_event::LineTable` 此前每步只数一个 UTF-8 字符，
+  既用来找行首，也用来把游标带到下一个事件；而在强制指令地板的那台镜像上，这段走查占
+  `documents_long_strings` 的 51.79%、`documents_short_strings` 的 21.09%
+  （`docs/dev/quality-ledger.md` (gl)）。现在一个 `u64` 一次答八个字节：`zero_lanes` 找断点，每个
+  候选 lane 再回查它声称的那个字节 —— 零 lane 的借位会把它后面的 `0x01` 也照成断点，这条是新加的
+  property 测试在上线前抓到的。只要一个 word 里没有 0x80 及以上的字节，游标的列就按字节数前进；
+  有的话交回逐字符走查。同一台机器、地板点名的那个编译器，前后各测两遍：`documents_long_strings`
+  从 308,642,512 条计数指令降到 126,840,512（**-58.84%**），`line_col` 降 82.6%、
+  `LineTable::new` 降 66.0%；`documents_short_strings` 从 75,506,559 到 64,952,559（**-13.98%**）。
+  位置一个没变：property 会在任意文档的每个字节上把 `starts` 与 `line_col` 对一次重扫，另有一张表
+  覆盖断点落在一个 word 八个位置里的每一种、以及一个 word 里八个断点。只用 core —— 无依赖、无
+  unsafe，`no_std` 集合不变。地板随代码一起下调，读数来自强制地板的那台镜像：
+  `documents_long_strings` 从 328,990,934 到 147,188,912（**-55.26%**），`documents_short_strings`
+  从 95,854,968 到 85,300,932（**-11.01%**）；另有两场本地剖析从未点名的场景也一起降了 ——
+  `stream_json_medium` **-14.90%**、`stream_json_stop` **-27.17%** —— 因为同一张索引服务于整个
+  JSON 流路径。其余 38 场最多只动 0.0051%。
 - **门禁读到的最宽离散来自解释器，如今已经钉住** - 三次基线刷新作业把绑定 harness 记在同一个
   二进制摘要（`7adbeac719edacd6`）之下，九个采样把 `load_json_long_strings` 铺开 1.121%，而
   同样字节上的引擎场景在 0.00001% 以内一致。链接 CPython 的只有一侧，那一项就是解释器每进程

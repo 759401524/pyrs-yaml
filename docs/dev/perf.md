@@ -1467,3 +1467,75 @@ exactly as named rather than grouped by a pattern over a name. Rewriting `parser
 strategy to buy a named 8% is therefore not scheduled. The sentence in `crates/pyrs-toml/src/lib.rs`
 that this paragraph used to leave owed has instead been corrected to state what the scanner does -
 it builds one intermediate representation, and every consumer reads it once.
+
+## The line index walked one character at a time, on the channel that had no choice (2026-10-26)
+<!-- landed: crates/pyrs-event/src/lib.rs::newline_lanes -->
+<!-- landed: crates/pyrs-event/src/lib.rs::zero_lanes -->
+
+The refresh job's `profile` input (#633) answered its first question on the image that enforces
+the floors, and the answer was a share rather than a hypothesis. Of `documents_long_strings`'
+328,990,899 counted instructions, 170,394,000 (51.79%) sit in `<pyrs_event::LineTable>::line_col`
+and 62,170,000 (18.90%) in `LineTable::new` - 70.69% of the scenario in two functions that walk a
+document one character at a time. The short-value pair beside them reads 20,218,000 (21.09%) and
+6,842,000 (7.14%) of 95,854,941. Both scenarios are line-delimited JSON, where the index is built
+once and the cursor then advances for every event: neither job had a word-sized path, and together
+they were the largest term the harness could name.
+
+The change gives both one. `zero_lanes` marks the empty lanes of a `u64`, `newline_lanes` turns
+that into the lanes holding `\n`, and the tail of the document stays a scalar walk. `line_col`
+advances the column by eight while a word holds no byte at or above `0x80`, because eight
+single-width characters are eight columns, and breaks out to the character walk the moment a word
+could hold a multi-byte one. The line index needs no UTF-8 awareness at all: a `0x0A` byte cannot
+appear inside a multi-byte sequence, since every continuation byte is at or above `0x80`.
+
+Measured twice on one host, `rustc 1.97.1` (the compiler the baseline names), valgrind 3.22.0, the
+harness binary `ir_gate-32fe5bfcd93ee66a` before (`a77bbab866280a80`) and after
+(`8bd4697974c4e351`), so the two readings are the same target and different code:
+
+| scenario | before (instr) | after (instr) | move | `line_col` | `LineTable::new` |
+|---|---:|---:|---:|---|---|
+| `documents_long_strings` | 308,642,512 | 126,840,512 | **-58.84%** | 170,394,000 → 29,618,000 | 62,170,000 → 21,144,000 |
+| `documents_short_strings` | 75,506,559 | 64,952,559 | **-13.98%** | 20,218,000 → 13,060,000 | 6,842,000 → 3,446,000 |
+
+Every number in the last two columns is a row the profiler printed, not arithmetic over the rows
+that happened to appear. The pair accounts for the whole drop in each scenario - in the long case
+232,564,000 became 50,762,000, which is exactly the 181,802,000 the loop lost - and their share of
+it fell from 75.35% to 40.02%. `ir_gate::main` reads 30,001,920 in both runs, unchanged to the
+instruction, which is why its percentage doubles from 9.72% to 23.65%: the harness's fixed cost did
+not grow, the walk under it shrank. The short scenario moves a third as much because the pair owns
+less of it - 27,060,000 of 75,506,559 (35.84%) before, against 75.35% of the long one - so the same
+cut buys 10,554,000 instructions there rather than 181,802,000.
+
+**The over-report is the bug, and the property found it.** A zero-lane test of the shape
+`(w - 0x0101..) & ~w & 0x8080..` cannot be trusted alone: a borrow out of a zero lane turns the
+lane above it into `0xFF`, so `0x01` followed by `0x00` reads as a break. `newline_lanes` therefore
+checks each candidate against the byte it claims, and that check runs only on a word that has a
+candidate - every word without one still costs the single test. The differential property
+`a_word_at_a_time_sweep_matches_a_rescan_byte_for_byte` compares `starts` and `line_col` against a
+byte-by-byte rescan at every position of an arbitrary document; its first counterexample was
+`"a0a\0\n\u{b}¡"`, a phantom line start the source never wrote. Without the byte check this change
+would have shipped an index that invents lines.
+
+**The floors moved with the code, on the image that enforces them.** Run #64 of "Ir baseline
+refresh" measured this head on `ubuntu24` image `20261023.334.3` with the pinned `rustc 1.97.1` and
+wrote the file; no local `--update` was used, which is the point of the channel. The committed
+floors move `documents_long_strings` 328,990,934 → 147,188,912 (**-55.26%**) and
+`documents_short_strings` 95,854,968 → 85,300,932 (**-11.01%**), and two scenarios no local profile
+had named move with them - `stream_json_medium` **-14.90%** and `stream_json_stop` **-27.17%** -
+because the same line index serves the whole JSON stream route, not only the NDJSON one. The other
+38 scenarios move by 0.0051% or less, so the instrument is still measuring the same thing it
+measured before.
+
+**What the image's own attribution says.** The refresh's `profile` input named
+`documents_long_strings`, and its after-table has `line_col` at 29,618,000 and `LineTable::new` at
+21,144,000 - the same two numbers the local table printed, to the instruction, on a binary whose
+engine rows match. The loops still differ: 147,188,890 there against 126,840,512 here, and
+17,341,472 of that 20,348,378 gap is one libc row, `__memcpy_avx_unaligned_erms` (21,567,856 on the
+image against 4,226,384 here). That is the shape of (gk)'s residual, now measured on the enforcing
+image rather than argued from off it: the engine is not what disagrees between the two hosts.
+
+**Not claimed.** (gk)'s host residual is narrowed, not closed - the third divergent scenario,
+`from_json5_medium`, was not profiled on this head, so its +1.20% term stays where (gk) left it.
+What this section does settle is (gk)'s question about where the work sits: the term that dominated
+the long scenario is no longer the term that dominates it, and the rows above it now are the
+harness's own `main`, libc's `__memcpy_avx_unaligned_erms` and the parser.
