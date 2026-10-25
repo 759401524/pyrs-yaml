@@ -248,6 +248,12 @@ status: new
   `.github/dependabot.yml`에서 제외되고 이유 옆에 측정값을 적었으며, 제외가 사라지면
   `test_the_bump_bot_is_told_never_to_offer_the_floor_selector`가 빨개집니다. 바닥을 옮기기는 계속
   사람의 일입니다.
+- **TOML 크레이트는 중간 트리를 만들지 않는다고 적었지만, 만든다** —
+  `crates/pyrs-toml/src/lib.rs`의 첫 문장은 `(fs)`, `(ft)`, `(fv)` 세 기록이 각각 "트리를 없애는
+  변경"에 미루던 빚이었다. `(fw)`에서 측정했다: 두 테이블 삽입 행은 `load_toml_medium`의 8.10 %,
+  `from_toml_medium`의 9.68 %를 차지하고, 그 프로파일에서 더 큰 행들은 트리가 없는 파서도 수행하는
+  스캔 작업이다. 따라서 재작성은 일정에 오르지 않고, 문장은 실제로 내보내는 구성을 설명한다.
+  문서만 변경 — 동작, 출력, 셀린 수치 모두 그대로다.
 
 #### 성능
 

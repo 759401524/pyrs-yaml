@@ -206,6 +206,12 @@ status: new
   PR 只会被急急忙忙关掉再重发，而配置本身就保证重发：`actions` 分组带着 `patterns: ["*"]`，没有
   `ignore`。现在这个名字在 `.github/dependabot.yml` 里被排除，理由旁边写着测量，排除被改掉时
   `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` 会转红；抬地板仍然是一件人做的事。
+- **TOML crate 的自述写着不构建中间树，而它构建了一棵** —
+  `crates/pyrs-toml/src/lib.rs` 开头那句 "no intermediate value tree"，是 `(fs)`、`(ft)`、`(fv)`
+  三条记录各自记在"移除树的那次改动"账上的欠项。`(fw)` 把它量了出来：两张表插入行占
+  `load_toml_medium` 的 8.10 %、占 `from_toml_medium` 的 9.68 %，而该剖析里更大的行是无树解析器
+  同样要做的扫描工作。于是重写并未排期，这句话改为描述真实的构建。纯文档改动 — 行为、输出与
+  计数都不动。
 
 #### 性能
 

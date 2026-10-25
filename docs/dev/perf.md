@@ -1439,8 +1439,23 @@ for the guard: selecting the route per call means registering and unregistering 
 timed reference, which inflates that reference by about 0.7 per cent and would let a silent fallback
 pass a floor set against it.
 
-What is still open. The intermediate tree stays, and `crates/pyrs-toml/src/lib.rs` still opens with
-"no intermediate value tree" - a sentence this change does not make true either, so it remains owed
-to whichever one removes the tree. After this reader, `load_toml` pays scan plus tree plus Python
-objects and nothing else, which leaves the row at about 1.5x behind `rtoml` and puts the rest behind
-the same lever `(fs)` declined to price: not building the tree at all.
+What was still open when that was written has since been measured rather than argued.
+`scripts/ir_gate.py --profile`, on the `rustc 1.97.1` the baseline pins, ranks the loader route
+`load_toml_medium` - loop 144,813,562 counted instructions, −0.054% against the committed floor of
+144,891,981, so this reading and the gate describe the same build. Its two
+`IndexMap<Arc<str>, TomlTable>` insertion rows carry 5,902,000 and 5,828,000: 8.10% of the loop. The
+identical pair appears in the engine route `from_toml_medium` (loop 121,169,608) at 9.68%, which is
+the evidence that the IR is one tree both consumers read rather than two costs. The second tree the
+hub route builds - `cow_table_to_node` 5,008,000, `IndexMap<CustomNode, CustomNode>` 5,178,000,
+`<CustomNode as Hash>::hash` 3,332,000, `drop_glue::<CustomNode>` 3,100,000, `toml_value_to_node`
+2,892,000 - is a further 16.1% of `from_toml_medium` and is already absent from the loader route.
+
+So not building the IR is worth a named 8% of `load_toml`, not the ~1.5x that still separates the
+row from `rtoml`; the larger named rows in the loader's own profile are `parse_ir` (6.83%) and
+`parse_key_segment` (4.06%), which a tree-free parser would still execute. The allocator rows
+(`_int_free`, `malloc`, `_int_malloc`, `free`, about 15% together) are deliberately not charged to
+the tree: that inference was tested and refuted once already, and the profiler prints functions
+exactly as named rather than grouped by a pattern over a name. Rewriting `parser.rs`'s table
+strategy to buy a named 8% is therefore not scheduled. The sentence in `crates/pyrs-toml/src/lib.rs`
+that this paragraph used to leave owed has instead been corrected to state what the scanner does -
+it builds one intermediate representation, and every consumer reads it once.

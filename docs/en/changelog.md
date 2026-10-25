@@ -264,6 +264,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.github/dependabot.yml` now, with the measurement written beside the reason, and
   `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` reddens if the exclusion is edited
   away. Moving the floor stays a human act.
+- **The TOML crate documented a parser that builds no intermediate tree; it builds one** —
+  `crates/pyrs-toml/src/lib.rs` opened with "no intermediate value tree", a sentence the three
+  records `(fs)`, `(ft)` and `(fv)` each left owed to the change that removes the tree. `(fw)`
+  measured it: the two table-insertion rows are 8.10 % of `load_toml_medium` and 9.68 % of
+  `from_toml_medium`, and the larger rows in that profile are scanning work a tree-free parser
+  still performs. The rewrite is therefore not scheduled and the sentence now describes the build
+  it ships. Documentation only - no behaviour, output or counted number moves.
 
 #### Performance
 

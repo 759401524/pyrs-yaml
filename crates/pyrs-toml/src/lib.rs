@@ -2,8 +2,13 @@
 //!
 //! Native TOML **1.1** grammar ([toml.io/en/v1.1.0]) implemented in
 //! the `granit-parser` house style: byte-level scanner with exact
-//! error positions, direct AST construction, no intermediate value
-//! tree. The writer renders the shared AST back to TOML text with
+//! error positions that builds the engine's own intermediate
+//! representation (`TomlTable` / `TomlValue`), which every consumer
+//! then reads once — `from_toml` projects it onto the shared AST,
+//! `read_toml` walks it straight into Python values, `events` replays
+//! it. One intermediate tree, not two: the scanner never keeps a
+//! second copy of the document behind the one its readers consume. The
+//! writer renders the shared AST back to TOML text with
 //! stable rejection reasons. Round-trip EDITING (comments, styles,
 //! splices) stays YAML-only by design: TOML is an exchange format
 //! here, not an editing substrate.
