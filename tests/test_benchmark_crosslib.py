@@ -218,11 +218,16 @@ def test_yaml_edit_parse(benchmark, size):
     try:
         yaml_edit.Document.parse(src)
     except ValueError as exc:
-        # Newer yaml_edit releases reject stream-level comments in
-        # Document.parse (the commented fixture is intentional — comment
-        # fidelity is the point of the comparison). A competitor that
-        # cannot ingest the benchmark input degrades to skip, mirroring
-        # the not-installed path, instead of reddening the suite.
+        # yaml_edit refuses a stream-level comment that sits outside a document —
+        # `Document::from_str: Input contains stream-level comments` — and the
+        # commented fixture is intentional, because comment fidelity is the point
+        # of the comparison. A competitor that cannot ingest the benchmark input
+        # degrades to skip, mirroring the not-installed path, instead of reddening
+        # the suite. Which fixtures land in that branch is release-dependent, and
+        # a row of skips beside an installed competitor is not a comparison, so
+        # `tests/test_leaderboard.py::test_yaml_edit_row_measures_something` holds
+        # the floor. (Measured: 0.1.3 refused all three fixtures; 0.2.0 accepts
+        # `small` and `medium` and still refuses `large`.)
         pytest.skip(f"yaml_edit cannot parse the commented fixture: {exc}")
     benchmark(yaml_edit.Document.parse, src)
 

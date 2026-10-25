@@ -197,6 +197,20 @@ status: new
   순환, 그리고 빈 등록부 자체가 주장인 두 테스트입니다. 새 빈 순환 테스트를 막는 장치는 아직
   없습니다. 이번 훑기는 한 번뿐인 스크립트이지 등록된 확인 절차가 아니기 때문입니다. 규칙으로 만들면
   리터럴과 `@given`의 경우까지 잘못 걸러냅니다. `(ge)`로 기록합니다.
+- **경쟁 라이브러리를 이름만 싣고 한 번도 재지 않은 줄** — `tests/test_benchmark_crosslib.py`는
+  fixture를 읽지 못하는 경쟁자를 skip으로 넘기는데, `yaml_edit` 분기의 주석은 그 거부를 더 최신
+  yaml_edit 탓으로 돌렸습니다. 잠겨 있던 0.1.3으로 실측하면 신구의 문제가 아니었습니다: 세 fixture가
+  모두 `Document::from_str: Input contains stream-level comments`를 던져서, 그 줄은 설치된 패키지
+  옆에 skip 셋이었습니다. 통과 개수만 세는 suite는 실행되지 않은 벤치를 볼 수 없습니다. 0.2.0은
+  범위를 지정한 `uv lock --upgrade-package`로 취한 것이고 전체 재해결에 섞여 들어온 것이 아닙니다:
+  `small`과 `medium`은 읽고 `large`은 여전히 거부하니, 이제 이 줄은 둘을 잽니다. `YamlError`는
+  `ValueError`를 상속하므로 기존 `except`가 두 릴리스를 모두 덮고, 바뀌는 것은 어느 분기로
+  들어가는가뿐입니다. 오래 남는 쪽은 하한
+  `tests/test_leaderboard.py::test_yaml_edit_row_measures_something`입니다: 설치됨은 최소한 fixture
+  하나를 읽는 것을 뜻해야 합니다. bench 파일은 일반 실행에서 deselect되고 `--codspeed`는 `benchmark`
+  표지가 없는 사례를 모두 deselect하므로(실측 `50 deselected`), 하한은 leaderboard 파일에 두었습니다
+  — 거기에 뒀다면 두 레그 모두에서 돌지 않습니다. 대조: venv를 0.1.3으로 되돌리면 메시지에 버전이
+  찍혀 빨개지고, 0.2.0에서는 녹색입니다. `(gg)`로 기록합니다.
 
 #### 변경
 

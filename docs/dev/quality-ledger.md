@@ -8762,6 +8762,41 @@ surface either: the large-document shapes divan measures, and edits inside ancho
 regions, are still outside the gate - they are in the fuzz tier, which can say a shape is wrong but
 not that it got slower.
 
+### (gg) A competitor row can be installed and still measure nothing (2026-10-25)
+
+**The claim the tree contradicted.** The skip branch for `yaml_edit` in
+`tests/test_benchmark_crosslib.py` said the refusal belonged to "newer yaml_edit releases". Run
+against the pinned 0.1.3 it was not newer: `Document.parse` raised on all three fixtures
+(`Document::from_str: Input contains stream-level comments`), so that row was three skips beside an
+installed package. Nothing noticed, because a benchmark that never ran is not a failure in a suite
+that counts passes, and the leg reporting it prints skips as skips.
+
+**What moved.** `yaml-edit` went 0.1.3 -> 0.2.0 by a scoped `uv lock --upgrade-package`, not as
+drift from a full re-resolve - `AGENTS.md` documents that route (a bare `uv run --group` re-resolves
+the whole project) and the declared range is uncapped at `>=0.1.2`, so a re-resolve takes whatever
+is newest. 0.2.0 parses `small` and `medium` and still refuses `large`, so the row times two
+fixtures instead of none. Its `YamlError` subclasses `ValueError` - read off the MRO, not assumed -
+so the one `except` clause covers both releases and only which branch is taken differs.
+
+**The floor, and where it had to sit.**
+`tests/test_leaderboard.py::test_yaml_edit_row_measures_something` requires that an installed
+`yaml_edit` ingests at least one of the three fixtures. It was first written in the benchmark file,
+where it ran nowhere: that file is deselected from normal runs, and `--codspeed` deselects every
+test without a `benchmark` marker - measured as `50 deselected` for the whole file. The leaderboard
+file carries no benchmark markers and runs in normal CI, which is the only place in this repository
+where such a floor can bite.
+
+**Control.** Reinstalling 0.1.3 into the project venv turned the floor red with
+`yaml_edit 0.1.3 imports but refuses all 3 fixtures`; on 0.2.0 it is green and
+`tests/test_leaderboard.py` reports 7 passed. The comment on the skip branch now states what was
+measured instead of which release it blamed.
+
+**Not claimed.** The floor asks for one fixture, not for the row to be representative - a release
+that parsed only `small` would still pass. Whether the other competitors' rows ran is read by
+nothing, and `yaml-edit` stays uncapped in `pyproject.toml`, so the next full re-resolve is still
+free to move it; capping the range or listing it in the bump bot's `ignore` were the alternatives
+this change did not take.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

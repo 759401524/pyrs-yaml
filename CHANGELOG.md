@@ -198,6 +198,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whose concrete siblings pin the shape, and the two registry tests where an empty registry *is* the
   assertion. Nothing yet stops a new vacuous-loop test: the sweep is a one-off script, not a
   checker, and as a rule it would reject the literal and `@given` cases too. Recorded as `(ge)`.
+- **A cross-library row named a competitor it never timed** — `tests/test_benchmark_crosslib.py`
+  skips a competitor that cannot ingest a fixture, and the comment on that branch for `yaml_edit`
+  attributed the refusal to "newer yaml_edit releases". Measured against the pinned 0.1.3 the
+  refusal was not newer: all three fixtures raised `Document::from_str: Input contains stream-level
+  comments`, so the row was three skips beside an installed package, and a suite that counts passes
+  cannot see a benchmark that never ran. 0.2.0 — taken with a scoped `uv lock --upgrade-package`,
+  not as drift from a full re-resolve — parses `small` and `medium` and still refuses `large`, so
+  the row times two fixtures now. Its `YamlError` subclasses `ValueError`, so the existing `except`
+  covers both releases and only which branch is taken changes. The durable half is the floor
+  `tests/test_leaderboard.py::test_yaml_edit_row_measures_something`: installed has to mean ingests
+  at least one fixture. It lives in the leaderboard file because the benchmark file is deselected
+  from normal runs and `--codspeed` deselects every test without a `benchmark` marker (measured:
+  `50 deselected`), so the floor placed there would have run in neither leg. Control: putting the
+  venv back on 0.1.3 turns it red with the release in the message; on 0.2.0 it is green. Recorded as
+  `(gg)`.
 
 ### Changed
 

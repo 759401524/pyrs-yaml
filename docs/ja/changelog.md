@@ -197,6 +197,20 @@ status: new
   が形を固定している `@given` のループ、空の登録簿こそが主張である二件のテストです。新しい空ループの
   テストを止める仕組みはまだありません。今回の走査は一回きりのスクリプトで、登録済みの検査ではないた
   めです。規則にするとリテラルと `@given` の場合まで誤って弾きます。`(ge)` として記録。
+- **比較表に、一度も計測しない競合を載せた行があった** — `tests/test_benchmark_crosslib.py` は
+  fixture を読み込めない競合を skip に落とすが、`yaml_edit` のその分岐のコメントは拒否を新しい
+  yaml_edit の仕業にしていた。ロックしていた 0.1.3 で実測すると新旧ではなかった：3 本の fixture
+  がすべて `Document::from_str: Input contains stream-level comments` を投げ、行はインストール済み
+  のパッケージの隣で skip 三つ。通過を数える suite には、走らなかった基準が見えない。0.2.0 は
+  範囲付きの `uv lock --upgrade-package` で取ったのであって、全体の再解決に流されたのではない：
+  `small` と `medium` は読み、`large` はなお拒否するので、この行は 2 本を計るようになった。
+  `YamlError` は `ValueError` を継承するため、既存の `except` が両方のリリースを覆い、変わるの
+  はどの分岐に入るかだけ。永続するのは下限
+  `tests/test_leaderboard.py::test_yaml_edit_row_measures_something` のほう：インストール済みなら
+  少なくとも fixture を 1 本読む必要がある。基準ファイルは通常実行で deselect され、`--codspeed`
+  は `benchmark` 印のない用例をすべて deselect する（実測 `50 deselected`）ので、下限は
+  ランキング側のファイルに置いた——あちらではどちらのレッグでも走らない。対照：venv を 0.1.3 に
+  戻すとメッセージに版数が乗って赤になり、0.2.0 では緑。`(gg)` として記録。
 
 #### 変更
 
