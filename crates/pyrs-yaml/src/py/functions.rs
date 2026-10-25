@@ -232,6 +232,41 @@ pub fn bench_to_python(yaml: &str) -> Result<usize, pyo3::PyErr> {
     })
 }
 
+/// Feature-gated seam for the instruction-count harness (`crates/pyrs-yaml/benches/ir_gate.rs`):
+/// the TOML loader's whole route, source text to Python object.
+///
+/// Unlike [`bench_to_python`], this does not step around a fast path on purpose. For TOML the direct
+/// IR-to-Python reader *is* the route an ordinary document takes, so the quantity a caller pays is
+/// scan, intermediate tree, scalar projection and object construction together, and a floor set on
+/// any one of those parts alone would let a regression hide in the others. The AST route stays
+/// reachable rather than compiled out: registering a tag handler sends a document through the node
+/// model, and the harness registers nothing, so the measured route is the served one.
+///
+/// The error is returned, never swallowed, for the same one-sided-tolerance reason as
+/// [`bench_to_python`]: a fixture that stopped parsing would loop, count less work, and read as a
+/// large speedup.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn bench_load_toml(toml: &str) -> Result<usize, pyo3::PyErr> {
+    pyo3::Python::attach(|py| {
+        let value = load_toml(py, toml)?;
+        Ok(usize::from(!value.as_ptr().is_null()))
+    })
+}
+
+/// Whether the harness's next `load_toml` call would take the direct reader.
+///
+/// The floor prices one route, so the harness states the condition that selects it rather than
+/// assuming it: with a handler registered `load_toml` answers from the node model, and the same
+/// scenario name would report a different quantity - which matters because the gate's tolerance is
+/// one-sided, so a route change could read as a speedup. Asked once in setup, not per iteration, so
+/// the premise check stays out of the measured work.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn toml_route_is_direct() -> bool {
+    crate::py::tag_registry::is_empty()
+}
+
 #[pyfunction]
 #[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.

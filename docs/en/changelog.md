@@ -218,6 +218,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The TOML loader's route has an instruction floor now** - `(fs)` moved `load_toml` onto
+  `pyrs_toml::read_toml`, and neither Ir harness entered it: the engine channel's `from_toml_*`
+  stops at the tree, the binding channel's `to_python_*` measures the YAML AST-to-Python walk.
+  Two binding scenarios, `load_toml_medium` and `load_toml_long_strings`, drive `load_toml` itself
+  through a feature-gated seam, and the harness asks that loader's own route guard before the
+  counted loop rather than price the node model under a reader's name. On the image that enforces
+  the floors, largest of three samples: 144,803,683 against `from_toml_medium`'s 120,986,802, and
+  140,182,211 against `from_toml_long_strings`' 109,012,890 - the loader is 1.20x and 1.29x the
+  tree builder, and that gap is the Python half no counted number described. The baseline goes
+  from 33 scenarios to 35, and growing it moved its siblings by +0.212%, -0.357% and -0.111% on
+  the three `to_python_*` rows - inside the 0.5% line, so the refresh was written naming nobody.
+  The JSON loaders' fast paths stay wall-clock-gated; floors of the same shape are the follow-up.
 - **`load_json5` takes the AST-free route its two siblings already had** — the family's fast path
   (`json_fast::try_load`, one pass straight into `dict` / `list` / scalars) was wired into
   `load_json` and `load_jsonc` only, so the loader advertising the same family paid the whole

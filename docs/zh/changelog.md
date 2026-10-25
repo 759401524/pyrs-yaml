@@ -172,6 +172,16 @@ status: new
 
 #### 性能
 
+- **TOML 加载器走的那条路现在有指令地板了** - `(fs)` 把 `load_toml` 移到了
+  `pyrs_toml::read_toml` 上，而两条 Ir harness 都不进这条路：引擎通道的 `from_toml_*` 停在中间树，
+  绑定通道的 `to_python_*` 量的是 YAML 的 AST→Python 遍历。绑定通道新增 `load_toml_medium` 与
+  `load_toml_long_strings` 两个场景，经一道特性门控的缝直接驱动 `load_toml` 本身；harness 在计数
+  循环之前先问这条加载路自己的路线守卫，而不是顶着读取器的名字给节点模型定价。在执行地板的那台
+  镜像上量、取三次里的最大值：144,803,683 对 `from_toml_medium` 的 120,986,802，140,182,211 对
+  `from_toml_long_strings` 的 109,012,890 - 加载器是建树器的 1.20 倍与 1.29 倍，那段差额正是此前
+  没有任何计数描述过的 Python 一半。地板从 33 个场景增到 35 个，增多这一步让同通道的三条
+  `to_python_*` 分别动了 +0.212%、-0.357% 与 -0.111% - 都在 0.5% 线内，所以这次刷新没点名任何
+  场景。JSON 加载器的快速路径仍只由墙钟把关，同形状的地板是后续的事。
 - **`load_json5` 走上两个同胞早已启用的免 AST 路径** — 本家族的快速路径
   （`json_fast::try_load`，一趟直接构建 `dict` / `list` / 标量）只接到了 `load_json` 与
   `load_jsonc`，于是自称同一家族的这个加载器对每份文档都要付完整的 `CustomNode` 往返：同样的
