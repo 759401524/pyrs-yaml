@@ -8644,6 +8644,38 @@ each carry their own test, `AGENTS.md` now states the rule for the next checker,
 `quality_matrix.py`'s orphan-gate probe is what tells a written rule from an executed one. The six
 touched self-test files run 125 green together.
 
+### (gd) A governance sentence named a measurement no code performs (2026-10-25)
+
+**What was claimed.** `(gc)` swept the checkers. The same sweep read the sentences that *describe*
+them, and `AGENTS.md` had one that was false in its own terms: "`scripts/build-docs.py` output is
+measured by counting rendered signature/class markers, not by the exit code". `build-docs.py` is
+`build_locale`, `main` and
+`_create_root_redirect`. It returns `True` on `zensical`'s zero exit code, prints lines containing
+"warn", and counts nothing; `grep` over the repository found no counter of rendered markers in the
+built HTML either.
+
+**What actually measures it, named instead.** `tests/test_api_doc_signatures.py` requires every
+public callable in the shipped stub to be named in each locale's pages, and asserts each locale
+contributes at least 20 pages - so an empty or narrowed page set is a failure, not a silent pass -
+and `scripts/check_doc_signatures.py` compares each typed `:::` block against the shipped object,
+measured today at 344 blocks across 28 pages. The corrected bullet says who reddens a page that
+lost its directives, which is the question the sentence was answering.
+
+**Two probes that came back clean, so they were left alone.** `check_doc_wrapping.py` rejects a path
+outside its governed set with exit 2 before the skip-missing-file branch is reachable (measured:
+`python scripts/check_doc_wrapping.py no/such/page.md` → `refusing pages this rule does not own`,
+exit 2), so the `len(paths)` in its OK line cannot overstate a run that read nothing.
+`check_doc_metadata.py` already refuses an empty selection - `no pages selected - a renamed docs
+tree would silently disable this gate` - and its test pins the refusal, though it reports it as
+exit 1 where `(gc)`'d gates use 2. The convention this repository needs is "not a pass"; changing
+that one number would edit a pinned test for taxonomy alone, so it is recorded rather than done.
+
+**Why this class has no gate.** `check_landed_claims.py` reads `docs/dev/*.md` and needs a `<!--
+landed: path -->` lock under each heading that claims something landed; `check_hole_claims.py` reads
+this file for quality-hole ids only. A sentence in `AGENTS.md` that names a mechanism is neither, so
+nothing checks it - which is why the correction here is prose and the durable part is the two tests
+it now names.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
