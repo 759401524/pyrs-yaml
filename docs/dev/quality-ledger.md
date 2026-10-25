@@ -8466,11 +8466,10 @@ WSL at +1.43 % - it buys 0.15 of a point and leaves the slot unread for every ot
 the ruling was to pay the full price: one `or_else` per pair, the drop closed for every entry line,
 both floors named.
 
-**What is not claimed.** 352,000 instructions over sixteen pairs is 22,000 a pair, which reading one
-`Option` field does not spend; the long-string move is priced by the gate and not attributed to a
-function - `scripts/ir_gate.py --profile` was not run on this shape, and a codegen effect (the
-emitter growing, an inline decision changing) explains it as plainly as per-pair work explains the
-medium fixture. The verdict does not depend on which.
+**What is not claimed.** `scripts/ir_gate.py --profile` was not run on this shape, so no function is
+named here - and the mechanism this section first guessed at (a codegen effect, because 352,000
+instructions over sixteen pairs reads as 22,000 a pair) was an arithmetic error: the harness emits
+each fixture 2,000 times. `(ga)` decomposes both moves per site and retires that guess.
 
 **Seen to bite.** `writer::tests::a_note_on_the_key_line_of_a_section_body_entry_is_written` asserts
 `[a]\nb = {x = 1} # n` and the node-level fixed point;
@@ -8525,6 +8524,36 @@ exclusion is edited away. Falsified by pointing the rule at a different action, 
 **Left open on purpose.** Moving the floor stays a human act: eight manifests declare `1.96`, the Ir
 baseline pins its own compiler (`rustc 1.97.1`) separately, and both are already guarded from their
 own direction. This entry changes no workflow step and no dependency version.
+
+### (ga) The entry-line price decomposes per site once the loop is counted (2026-10-25)
+
+**The arithmetic `(fy)` got wrong.** It divided a floor delta by the pairs in one document and
+concluded that the cost could not be the fallback. Both Ir harnesses call the work `ITERATIONS =
+2_000` times (`crates/pyrs-yaml-core/benches/ir_gate.rs:53`), and the fixtures are small:
+`MEDIUM_YAML` is 14 leaf pairs under 4 section headers (`bench_inputs.rs:24`), `long_string_yaml` is
+16 pairs with no header at all (`bench_inputs.rs:270`). Divided the way the harness runs:
+
+| scenario | floor moved | per `to_toml` call | sites it visits |
+|:--|--:|--:|:--|
+| `to_toml_medium` | +419,916 | 210.0 | 14 entry lines + 4 headers |
+| `to_toml_long_strings` | +351,933 | 176.0 | 16 entry lines, no header |
+
+**What that buys.** `to_toml_long_strings` never enters the section pass, so its 176.0 is
+`emit_pair` alone - **11.0 instructions per entry line**. Spend the same 11.0 on the medium
+fixture's fourteen lines and **56.0 remain for four headers: 14.0 each** - the header fallback
+priced from a second fixture that shares nothing with the first but the writer. The two figures are
+the size of what the change adds: `CustomNode::comment()` returns `Option<&Comment>`
+(`crates/pyrs-ast/src/ast.rs:493`), so each extra site is a borrow, a null test and a branch - not
+an allocation, and not a rewritten loop.
+
+**So `(fy)`'s hedge is retired.** The two moves are per-site work at eleven to fourteen instructions
+a site, not a codegen artifact, and no `--profile` run was needed to say so: this is arithmetic over
+numbers already committed (the two floors, the two fixtures, the loop count). What still needs a
+profile to answer is *which* function the 11.0 lands in, and no claim is made about that.
+
+**The trap worth keeping.** A floor delta is a whole run, so any per-key reasoning divides by
+`ITERATIONS` first - the same reason `--profile` subtracts `--setup-only` before ranking functions,
+and the reason `(fy)`'s "every pair pays" was right while its arithmetic against it was not.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
