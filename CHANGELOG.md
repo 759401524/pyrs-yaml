@@ -426,6 +426,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `load_toml_medium` stayed green. Growing the scenario set moves its siblings, so the refresh ran
   on this head: `to_python_anchors` read +0.1343% and `load_toml_long_strings` -0.2175%, both
   inside the 0.5% line, so the run was written naming nobody.
+- **The edit layer has an instruction floor now** — `AGENTS.md` names parse, edit and AST serialize
+  as the three expensive pure-Rust computations, and the gate priced two of them: no scenario
+  entered `set_path`, `insert_path` or `delete_path`, so an edit that began doing more work moved no
+  committed number. Three scenarios join, one per verb, over the `MEDIUM_YAML` the readers already
+  use, with the tree cloned inside the measured span and `--setup-only` subtracting that clone along
+  with the parse, so what is left is the verb; `move_path` needs no row because its halves are
+  priced. Named gate-only rather than after divan's `edit_set_medium`, which replaces a whole
+  `database` section — a different edit, and a shared name would make two reports of different work
+  read as one measurement. Both premise guards were observed against a single misspelling: the
+  harness exits 3 on `missing-path`, and the test-time pin fails on the same scenario for the same
+  reason. Growing the set was priced by the refresh instead of predicted — six JSON readers moved
+  +0.73%…+1.91% on the enforcing image with no engine file in the diff, were named in
+  `accept_drift`, and left `tolerance_hint` at 0.5%. Recorded as `(gf)`.
 
 ## [v0.18.3] — 2026-10-22
 
