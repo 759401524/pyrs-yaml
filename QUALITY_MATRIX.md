@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 814 Rust `#[test]`, 1,950 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 814 Rust `#[test]`, 1,952 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -379,6 +379,22 @@ review habit:
     it true now is that the measurement pins the part of the environment it could not control, and a
     baseline records the method — image, compiler, sample count, pinned glibc capabilities — not just the
     number.
+
+    A second environment input closed the same way, and it was the larger one. Three refresh runs print
+    one digest for the binding harness (`7adbeac719edacd6`) and spread `load_json_long_strings` 1.121%
+    across their nine samples, while the engine scenarios on those same bytes agreed inside 0.00001% —
+    and only one harness links CPython. `PYTHONHASHSEED` was not pinned, so every measured process drew
+    its own dict layout. Ask the seed and the answer is exact: with `PYTHONHASHSEED=0` that scenario
+    reads 95,136,157 three times over, and all seven binding scenarios collapse (0.2811%, 0.2550%,
+    0.1249%, 0.0787% to 0.0000–0.0004%), while the engine harness does not move in a way a reader could
+    call a term (`parse_medium` 321,690,260 unpinned against 321,689,870 pinned). The refresh that
+    re-drew the baseline under the pin reports every one of the forty-two scenarios within 0.0010% of
+    itself across its three samples, which is the instrument being ~800× inside the line it enforces
+    instead of straddling it — the same remedy as the glibc caps: pin the input the environment chooses
+    rather than widen the line to absorb it. The floors then moved only where the seed had been doing
+    the work: −0.526% on `load_json_long_strings`, −0.166% to −0.055% on the other five loaders,
+    +0.051% on `to_python_medium`, and the thirty-five engine scenarios by 0.001% or less. Guarded by
+    `tests/test_ir_gate_provenance.py`, which names the key if it goes missing.
 - **No CI check is required for a merge at all - not one leg of the matrix, not the hook set, not
   the performance gate.** Read from `gh api repos/<repo>/branches/main/protection`:
   `strict: true`, `contexts: []`, `checks: []`. Measured consequence: #298 was rebase-merged while
@@ -497,16 +513,19 @@ an argument conducted without one.
 
 Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
 with a measured line instead of a vibe. That line is 0.5%. Within one run, three samples of each
-scenario spread at most 0.002% on the engine channel (`parse_inline_merge`, 7,792 instructions out of
-451M) and at most 0.19% on the binding channel (`to_python_small`). Across jobs and hosts — with the
-glibc caps pinned, which is what makes the two comparable — the engine channel agrees with a baseline
+scenario now spread at most 0.0010% on either channel — the binding channel had spread 0.853% inside a
+single run before its interpreter's hash seed was pinned, which is the story of the bullet above. Across
+jobs and hosts — with the glibc caps and the seed pinned, which is what makes the two comparable — the
+engine channel agrees with a baseline
 generated elsewhere by at most +0.05%: all twenty-one scenarios were re-measured on WSL2 against the
 artifact the refresh job had just produced for the same `main`, sixteen of them printing 0.00%
 (`serialize_medium` 32,648,867 against the runner's 32,648,850), and the run's verdict was
-`OK: every scenario within tolerance`. The binding channel is the exception, and it is wider than
-this paragraph used to claim by writing 0.10% for everything: the same host comparison reads +0.26%
-on `to_python_medium` and +0.19% on `to_python_small`, which is the size of that channel's own
-within-run spread rather than a property of the host. What the old 2% was: the distance between a
+`OK: every scenario within tolerance`. The binding channel was the exception, and this paragraph used
+to write 0.10% for everything: the same host comparison read +0.26% on `to_python_medium` and +0.19% on
+`to_python_small`, which was put down to that channel's own within-run spread. The seed above accounts
+for most of it; the part of it that was the host has not been re-measured since the pin, so this file
+claims only what was measured after — the within-run spread, 0.0000-0.0004% on that channel — and leaves
+the local-to-image residual as a reading the next WSL run owes. What the old 2% was: the distance between a
 WSL-generated baseline and the same code measured on a runner, +1.45% on `serialize_block_scalars` —
 now explained as the ISA that glibc binds at start-up (the bullet above), which is why the caps are
 pinned rather than the line widened: a tolerance sized to absorb a host's CPUID flags would be a
@@ -516,7 +535,8 @@ shrug, not a gate.
 `to_python_small` came out 0.83% apart between two runs of one commit — more than the tolerance it
 was about to be held to — while the engine scenarios agreed to 0.0009%. The loop was too small for
 the variation inside it, so the harness runs 2 000 iterations like its engine sibling, which brought
-its within-run spread down to 0.076-0.24%. Each scenario is also sampled three times and the *largest*
+its within-run spread down to 0.076-0.24% - the rest of that band was the seed, not the iteration
+count. Each scenario is also sampled three times and the *largest*
 value is what gets committed, because a single draw of a distribution that wide enforced at 0.5% is a
 flaky gate. The sample count travels inside `generated_by` and the enforcing run reads it from there:
 max-of-3 against a single sample, or the reverse, is a different instrument wearing the same name, and
@@ -524,8 +544,10 @@ the run prints every sample and spread so the claim is auditable in the job log 
 in a comment.
 
 **How much of that band is left is itself a measurement, and it was taken again here.** Against the
-refreshed baseline the enforcing job moved every scenario by at most 0.10%, so the band is essentially
-unused — which is not what an earlier version of this paragraph reported: in #299's measurement the same
+baseline re-drawn under the seed pin the floor moves stay with the channel the pin touches -
+`load_json_long_strings` -0.526%, the other five loaders -0.166% to -0.055%, `to_python_medium`
++0.051%, and every one of the thirty-five engine scenarios 0.001% or less - so the band is essentially
+unused, which is not what an earlier version of this paragraph reported: in #299's measurement the same
 comparison spread from −2.35% (`parse_anchors`) to +1.61% (`serialize_anchors`), and in this branch's own
 first run `serialize_block_scalars` came in at +1.44% before the ISA was pinned. That last scenario is
 now the cleanest single reading of the method: the same sources measured 12,288,634 on WSL2 against the
@@ -541,12 +563,12 @@ those bridges grew a long-value twin at both ends, since the long-value shape th
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.25% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256, 95,854,904 against 328,990,932), since
+the same eight records at value widths of 9 and 256, 95,854,968 against 328,990,934), since
 the TOML loader's own route joined (`load_toml_medium` and `load_toml_long_strings`, driven
-through `bench_load_toml` at 145,025,547 and 139,739,849 - 1.20x and 1.29x the tree that
+through `bench_load_toml` at 144,946,040 and 139,507,647 - 1.20x and 1.29x the tree that
 `from_toml_medium` and `from_toml_long_strings` stop at), since the JSON loader's fast route
 joined the same way (`load_json_medium` and `load_json_long_strings` through `bench_load_json` at
-57,187,621 and 95,395,109 - 0.73x and 0.85x what `from_json_medium` and `from_json_long_strings`
+57,153,557 and 94,893,565 - 0.73x and 0.85x what `from_json_medium` and `from_json_long_strings`
 pay to build the node model that route skips), and this row is shared by `load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
 what differs between them is the fallback the engine harness already prices, since the edit layer
@@ -796,13 +818,15 @@ is done when its test is green, not when the change is merged.
   agreeing with what is left.
 - **P2-F, Ir baseline breadth and provenance** (`done`): the `to_json`, `to_toml` and inline-merge
   scenarios are in the gate, and so are the three `to_python_*` scenarios that close
-  `perf-coverage:binding-layer` — 15 measured scenarios, 15 committed numbers, all generated rather than
+  `perf-coverage:binding-layer` — 42 measured scenarios, 42 committed numbers, all generated rather than
   transcribed: `--update` writes every key including the sample size, `--update --only` can no longer
   write a short baseline, each scenario is the largest of three samples, and every run prints its samples,
   their spread, the binary hashes and the pinned environment. The 0.5% line is sized from that spread
-  (≤0.002% engine, ≤0.19% binding within a run) and holds across jobs and hosts (≤0.10%) because the one
-  environmental input the measurement could not control — the ISA glibc binds from the VM's CPUID flags —
-  is pinned rather than tolerated. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
+  (≤0.0010% within a run on either channel, since both environmental inputs the measurement could not
+  control — the ISA glibc binds from the VM's CPUID flags and the interpreter's per-process hash seed —
+  are pinned rather than tolerated) and holds across jobs on the engine channel (≤0.05%); the binding
+  channel's local-to-image residual has not been re-measured since the seed pin, and this row says so
+  rather than quoting the +0.19%/+0.26% readings the seed explained. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
   keys to exactly what `--update` writes and the sample size to the default; the two jobs agree at
   `24fcba0a`; and `ir-unbaselined` / `ir-stale-baseline` stay empty.
 

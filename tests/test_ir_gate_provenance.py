@@ -86,3 +86,27 @@ def test_the_run_time_note_no_longer_quotes_a_stale_residual():
     text = GATE.read_text(encoding="utf-8")
     assert "A WSL-generated number was measured 1.45% off" not in text
     assert "docs/dev/perf.md" in text
+
+
+def test_every_measured_process_runs_under_both_environment_pins():
+    """The two inputs a measured process can pick for itself are named, not assumed.
+
+    `GLIBC_TUNABLES` closed the 1.44% cross-host term; `PYTHONHASHSEED` closes the term the binding
+    harness drew from the interpreter, which spread `load_json_long_strings` 1.121% over three refresh
+    runs on one binary digest while the engine scenarios on the same bytes agreed inside 0.00001%.
+    Dropping either key makes the tolerance describe a distribution rather than the code, so this
+    fails by naming what went missing instead of letting a run pass on a noisier instrument.
+    """
+    env = _gate().MEASUREMENT_ENV
+    assert "hwcaps" in env.get("GLIBC_TUNABLES", ""), "the ISA cap pin is what makes the host term zero"
+    assert env.get("PYTHONHASHSEED") == "0", (
+        f"PYTHONHASHSEED is {env.get('PYTHONHASHSEED')!r}; an unpinned seed gives every draw a fresh "
+        "dict layout, and the binding floors stop meaning the code they were drawn from"
+    )
+
+
+def test_the_pairing_note_no_longer_quotes_a_floor_into_a_docstring():
+    """Same defect class as a stale paragraph: a measurement copied into prose nothing re-reads."""
+    text = GATE.read_text(encoding="utf-8")
+    assert "21,444,780" not in text and "21,444,880" not in text
+    assert "within tens of instructions" in text, "the size survives, the digits that dated it do not"

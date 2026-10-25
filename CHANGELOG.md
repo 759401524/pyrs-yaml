@@ -320,6 +320,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **The gate's widest reading was the interpreter, and it is pinned now** - three refresh runs
+  record the binding harness under one binary digest (`7adbeac719edacd6`) and spread
+  `load_json_long_strings` 1.121% across their nine samples, while the engine scenarios on those
+  same bytes agree inside 0.00001%. Only one harness links CPython, and the term is the hash seed
+  it draws per process: under `PYTHONHASHSEED=0` that scenario reads 95,136,157 three times over
+  and all seven binding scenarios collapse (0.2811%, 0.2550%, 0.1249%, 0.0787% down to
+  0.0000-0.0004%). `scripts/ir_gate.py` pins the seed beside the glibc caps - the same remedy that
+  closed the 1.44% cross-host term - and the refresh run on this change's head reports all 42
+  scenarios within 0.0010% of themselves. The floors moved only where the seed had been doing the
+  work: `load_json_long_strings` -0.526%, five other loaders -0.166% to -0.055%,
+  `to_python_medium` +0.051%, and the 35 engine scenarios 0.001% or less, nothing past the line
+  upward. The line stays at 0.5% because the instrument no longer needs the room;
+  `tests/test_ir_gate_provenance.py` names the key if it goes missing, and no shipped code moved.
 - **The TOML loader's route has an instruction floor now** - `(fs)` moved `load_toml` onto
   `pyrs_toml::read_toml`, and neither Ir harness entered it: the engine channel's `from_toml_*`
   stops at the tree, the binding channel's `to_python_*` measures the YAML AST-to-Python walk.

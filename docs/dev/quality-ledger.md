@@ -8880,6 +8880,74 @@ difference lives in the scanner, which `from_jsonc_*` and `from_json5_*` already
 does not make the stop fast: it makes a regression there visible, which is the weaker claim and the
 only one this record makes.
 
+### (gj) The binding harness was sampling a distribution, not measuring a code path (2026-10-25)
+
+**What (gi) left open.** A binding scenario whose own three samples sat 0.853 % apart, judged by a
+line at 0.5 %, is an instrument whose tolerance is smaller than the thing it reads. That was filed
+as an open question with three candidate answers - more repeats, a per-scenario tolerance, or a
+registered hole - and none of them was satisfying, because each absorbs the spread instead of naming
+it.
+
+**The pairing, done properly.** Refresh runs 59, 60 and 61 each print their own `build_exe` digests,
+and all three record the binding harness as `7adbeac719edacd6` while the engine harness moves from
+`8fd6a7b7c39bc1a5` to `377c554b69c34873` when the scenario set grows. Reading the per-scenario
+sample tables out of the three job logs and comparing them with the two committed baselines agrees
+cell for cell - which is the check that the reading is of the same numbers the files carry, not a
+plausible-looking parse. On those bytes the binding channel spreads `load_json_long_strings` over
+1.121 % (nine draws) and 0.754 % between runs, `load_toml_long_strings` 0.546 %, while every engine
+scenario on identical bytes agrees inside 0.00001 %. One harness links CPython and one does not, so
+the term is not the host.
+
+**Asking the seed.** `PYTHONHASHSEED` was not in `MEASUREMENT_ENV`: left alone, the interpreter
+draws a fresh seed per process, and every draw gets its own dict layout. Measured through the gate's
+own `loop_instructions`, varying only that key:
+
+| scenario | unpinned spread over three draws | pinned spread |
+|:---------|---------------------------------:|--------------:|
+| `load_json_long_strings` | 0.432 % across five explicit seeds | 0.0000 % - 95,136,157 three times |
+| `load_json_medium` | 0.2550 % | 0.0000 % - 57,587,741 three times |
+| `load_toml_medium` | 0.2811 % | 0.0000 % - 145,499,884 three times |
+| `load_toml_long_strings` | 0.2815 % | 0.0000 % - 140,070,415 three times |
+| `to_python_anchors` | 0.1249 % | 0.0004 % |
+| `to_python_medium` | 0.0787 % | 0.0004 % |
+| `to_python_small` | 0.1060 % across five seeds | 0.0009 % |
+
+Four of the seven then repeat to the instruction. The control runs the other way: on the engine
+harness the same key changes nothing a reader could call a term - `parse_medium` 321,690,260
+unpinned against 321,689,870 pinned, `stream_medium` +0.00003 % - so the pin is free where the
+interpreter is absent.
+
+**Why this and not the three candidates.** More repeats would have paid for thirty-five scenarios
+that already agree to ten instructions, and would still have been sampling a distribution. A
+per-scenario tolerance widens the line exactly where the noise lives, which is the move `AGENTS.md`
+forbids. A registered hole leaves the gate reading noise as a verdict. The repository had already
+settled this shape once: when two jobs measured the same binary 1.44 % apart, the answer was not a
+wider line but `GLIBC_TUNABLES`, the input the host chose for itself pinned so the count belongs to
+the code. Same remedy, second instance.
+
+**What the image then said.** The refresh dispatched on this change's own head (run 62 - same image,
+same pinned `rustc 1.97.1`, both harness digests unchanged from run 61) reports every one of the
+forty-two scenarios with a within-run spread of 0.0010% or less, median 0.0000%. Its floors move
+where the seed had been doing the work - `load_json_long_strings` -0.526%,
+`load_toml_long_strings` -0.166%, `to_python_anchors` -0.134%, `to_python_small` -0.099%,
+`load_json_medium` -0.060%, `load_toml_medium` -0.055%, `to_python_medium` +0.051% - and the
+thirty-five engine scenarios by 0.001% or less, with `accept_drift` empty because nothing crossed
+the line upward. A digest pair that says "same bytes" and a floor set that moves only on the channel
+that links CPython is the cleanest form this instrument has ever produced: the delta *is* the term,
+isolated by nothing but an environment variable.
+
+**What is still true after the pin.** Two `to_python_*` scenarios keep ~0.0004 % and
+`to_python_small` ~0.0009 % of residual movement under a fixed seed, which is a half-thousand to a
+thousand-and-a-half instructions and sits ~500× inside the line; the repeats stay at three because
+the residual is not zero and a sample size the baseline does not record is a gate nobody can re-run.
+The floors are re-drawn on the enforcing image in the same change, so the file and the regime agree
+rather than one describing the other from an older measurement. And the probe ran on this box's
+default `rustc 1.99.0`, so its absolute counts are not the floors - only the spreads transfer.
+
+**Not claimed.** Pinning makes the measurement deterministic; it does not prove the pinned layout is
+representative of the distribution the gate used to sample, and a reader who wants the average case
+should say so rather than read it out of a fixed seed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
