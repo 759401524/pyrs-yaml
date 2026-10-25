@@ -247,6 +247,35 @@ def test_the_instruction_count_gate_is_a_leg_and_exists_once():
     assert "ir" not in job_names(codspeed), "the count gate is duplicated outside the fan-in"
 
 
+def test_the_hook_set_is_a_leg_and_exists_once():
+    """Measured on PR #632: the hook-set check reported failure while the verdict reported success.
+
+    `prek hook set on the full tree` lived in `hygiene.yml`, and `toJSON(needs)` only carries the jobs of
+    the workflow the fan-in lives in, so a changeset the repository's own hook set rejects could be merged
+    on a green verdict - the same shape as #522's red `ir` leg and #299's unsquashed formatter, and the
+    reason this file asserts the instruction gate is a leg too. The job now runs here, once: a copy kept
+    outside the fan-in would be a report again, and an `if:` on it would make its absence a `skipped` the
+    verdict has no way to attribute. Both directions were proven by mutation: dropping `hooks` from the
+    fan-in's `needs` reddened this test and the exact-set test, and a second workflow carrying
+    `prek run --all-files` reddened this one alone.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "hooks" in job_names(text), "ci.yml declares no hook-set job for the verdict to wait on"
+    body = job_body(text, "hooks")
+    assert "prek run --all-files" in body, "the job does not run the hook set over the tree"
+    assert "name: prek hook set on the full tree" in body, "the check name is not the one the record names"
+    assert not re.search(r"^ {4}if:", body, re.M), (
+        "a conditional job reads as `skipped` for a reason the verdict cannot attribute"
+    )
+    assert "hooks" in fan_in_needs(text), "the hook set is a job the merge verdict does not wait on"
+    outside = [
+        path.name
+        for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+        if path.name != "ci.yml" and "prek run --all-files" in path.read_text(encoding="utf-8")
+    ]
+    assert not outside, f"the whole-tree hook set runs outside the fan-in again: {outside}"
+
+
 def test_the_checker_stays_loadable_on_the_supported_floor(gate):
     """The fan-in runs on 3.8; annotations that 3.8 evaluates at import time would break the gate."""
     text = GATE_PATH.read_text(encoding="utf-8")

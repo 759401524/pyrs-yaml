@@ -1267,8 +1267,10 @@ def measure() -> dict:
     rust_tests = rust_test_count()
     python_tests = python_test_functions()
 
-    hygiene_path = WORKFLOWS / "hygiene.yml"
-    skip_match = re.search(r"SKIP: ([A-Za-z0-9,_-]+)", read(hygiene_path)) if hygiene_path.exists() else None
+    # The hook set runs in `ci.yml` because the merge verdict only consumes the jobs of the workflow
+    # it lives in; reading the skip list from anywhere else would measure a gate the merge cannot see.
+    ci_path = WORKFLOWS / "ci.yml"
+    skip_match = re.search(r"SKIP: ([A-Za-z0-9,_-]+)", read(ci_path)) if ci_path.exists() else None
     skipped = sorted(x.strip() for x in skip_match.group(1).split(",")) if skip_match else []
 
     holes = []
@@ -1330,7 +1332,11 @@ def measure() -> dict:
         command = entry.split(" --")[0] if entry else hook
         if command not in all_commands:
             holes.append(
-                ["hook-skipped-uncovered", hook, "hygiene.yml skips it and no workflow runs its command either"]
+                [
+                    "hook-skipped-uncovered",
+                    hook,
+                    "ci.yml's hook-set job skips it and no workflow runs its command either",
+                ]
             )
 
     for script in scripts:

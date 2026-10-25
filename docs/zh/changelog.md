@@ -72,6 +72,16 @@ status: new
 
 #### 修复
 
+- **合并裁定可能全绿而钩子集是红的** — `Test matrix (all legs)` 由 `ci.yml` 的作业算出，而
+  `toJSON(needs)` 带不动另一个 workflow 里的作业，所以住在 `hygiene.yml` 的
+  `prek hook set on the full tree` 从来不在裁定读取的名字里。PR #632 首个 head 上的实测：那条
+  check-run 报了 `failure` — `check_changelog_coupling.py` 拒绝了一个挪动产品却没带发布说明的
+  changeset — 而同一 sha 上的必需名报的是 `success`。这一步现在就在 `ci.yml` 里跑，只有一份且无
+  条件，`hygiene.yml` 已删除，`quality_matrix.py` 也从裁定等待的那个作业读跳过清单。两个方向的
+  守卫：扇入的精确集合测试会在作业进了文件却没进 `needs` 时变红，
+  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` 则会在作业离开
+  `ci.yml`、或第二份 `prek run --all-files` 在别处重现时变红 — 重复正是这个洞悄悄回潮的方式。
+  引擎代码与已发布的行为都没有移动。
 - **JSON5 的键位报错说出了方言允许的写法** — 键位置的消息此前写作
   `expected a quoted object key`，可 JSON5 的键位置也接受裸标识符，于是这条报错要求了一个语法
   从未要求的写法。措辞现在由方言自己的旗标决定：允许无引号键时是

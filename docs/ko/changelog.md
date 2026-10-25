@@ -84,6 +84,17 @@ status: new
 
 #### 수정
 
+- **판정이 초록인데 훅 집합은 빨간 상태가 생겼습니다** — `Test matrix (all legs)` 는 `ci.yml` 의
+  작업에서 계산되고, `toJSON(needs)` 는 다른 워크플로 작업을 실어 올 수 없으므로, `hygiene.yml` 에
+  있던 `prek hook set on the full tree` 는 판정이 읽는 이름에 들어 있지 않았습니다. PR #632 의 첫
+  head 에서 측정한 사실: 그 check-run 은 `failure` 를 보고했습니다 (`check_changelog_coupling.py` 가
+  제품을 옮기면서 출시 기록을 빼 바꾼 changeset 을 거부), 같은 sha 의 필수 이름은 `success` 를
+  보고했습니다. 이제 이 작업은 `ci.yml` 에서 한 번, 조건 없이 돌고 `hygiene.yml` 은 사라졌으며,
+  `quality_matrix.py` 도 판정이 기다리는 그 작업에서 건너뜀 목록을 읽습니다. 반대 방향의 두 방어선:
+  fan-in 의 정확집합 테스트는 작업이 늘었는데 `needs` 에 없을 때 빨개지고,
+  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` 는 작업이 `ci.yml`
+  을 벗어나거나 `prek run --all-files` 의 두 번째 복사본이 다른 곳에 나타나면 빨개집니다 —
+  중복이야말로 이 구멍이 조용히 돌아오는 길입니다. 엔진 코드도 출시된 동작도 움직이지 않았습니다.
 - **JSON5 키 위치 거부 메시스가 방언이 허용하는 표기를 적습니다** — 키 위치의 메시지는
   `expected a quoted object key` 였지만 JSON5 는 따옴표 없는 식별자 키도 받으므로, 문법이
   요구하지 않는 형태를 에러가 요구했습니다. 문구는 방언 자체의 플래그에서 정합니다: 따옴표 없는

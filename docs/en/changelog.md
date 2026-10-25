@@ -88,6 +88,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The merge verdict could be green while the hook set was red** — `Test matrix (all legs)` is
+  computed from `ci.yml`'s jobs, and `toJSON(needs)` cannot carry a job from another workflow, so
+  `prek hook set on the full tree` — which lived in `hygiene.yml` — was never a name the verdict
+  read. Measured on PR #632's first head: that check-run reported `failure`, refused by
+  `check_changelog_coupling.py` over a changeset that moved the product with no release note, while
+  the required name on the same sha reported `success`. The job runs in `ci.yml` now, once and
+  unconditionally, `hygiene.yml` is gone, and `quality_matrix.py` reads the skip list from the job
+  the verdict waits on. Two guards in opposite directions: the fan-in's exact-set test reddens if
+  the job is added without its `needs` entry, and
+  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` reddens if the job
+  leaves `ci.yml` or a second copy of `prek run --all-files` reappears elsewhere — the duplication
+  being how this hole reopens quietly. No engine code and no shipped behaviour move.
 - **The JSON5 key refusal names a spelling its grammar allows** — in key position the message read
   `expected a quoted object key`, while JSON5 also takes a bare identifier, so the error asked the
   author for a form the dialect never required. The wording now comes from the dialect's own flag:

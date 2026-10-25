@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 814 Rust `#[test]`, 1,955 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 814 Rust `#[test]`, 1,956 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -306,9 +306,9 @@ heap allocation ceilings (`crates/pyrs-yaml-core/tests/alloc_gate.rs`), the fuzz
 replay, changelog-mirror / localized-script-purity / release-guard / stub-drift, the changelog
 coupling check (`scripts/check_changelog_coupling.py`, evaluated on the pull request's file list
 because a version-header comparison cannot see a release note that was never written), and —
-as of this document — the `prek` hook set over the whole tree (`hygiene.yml`).
+as of this document — the `prek` hook set over the whole tree (the `hooks` job in `ci.yml`).
 
-Seven blind spots were found by measuring, not by reasoning. One had already done damage in
+Nine blind spots were found by measuring, not by reasoning. One had already done damage in
 `main`; the others were caught before merging, which is the difference between a gate and a
 review habit:
 
@@ -316,7 +316,7 @@ review habit:
   and the colocated `jj` workflow does not execute Git hooks at all, so the 17 hooks were
   a local courtesy. Consequence, measured: 15 tracked files reached `main` carrying CRLF —
   12,263 lines of them, including five changelog mirrors — and one of those files turned a
-  dozen changed lines into a 2,500-line diff while every gate stayed green. `hygiene.yml`
+  dozen changed lines into a 2,500-line diff while every gate stayed green. The `hooks` job
   now runs `prek run --all-files` on PRs, on `main`, and weekly.
 - **`cargo fmt --check` was in no workflow.** It is a hook, and nothing ran hooks. Now
   covered by the same job (the measurement caught this as `hook-skipped-uncovered`, which
@@ -459,6 +459,20 @@ review habit:
   and the tip's tree is then an earlier commit's. `scripts/dependency_merge_gate.py` reads `last` of the
   same response and carries the same shape; it is named rather than fixed here, because nothing dispatches
   this workflow on a Dependabot head, so no absence can yet sit beside its verdict.
+- **A check that runs in a second workflow is invisible to the one required name.** The fan-in turns
+  `ci.yml`'s jobs into `Test matrix (all legs)`, and `toJSON(needs)` cannot carry a job from another
+  file, so the hook set's own leg was never in it. Measured on PR #632's first head: the check-run
+  `prek hook set on the full tree` reported failure - `check_changelog_coupling.py` refusing a
+  changeset that moved the product with no release note - while the required name on the same sha
+  reported `success` and the merge button unlocked. That is #522's `ir` leg and #299's unsquashed
+  formatter in a third place, and the shape is what generalises: this repository's merge defence is
+  exactly as wide as the one workflow its verdict reads. The job runs in `ci.yml` now, once and
+  unconditionally, and `hygiene.yml` is gone. Two guards, one in each direction: the exact-set test
+  `tests/test_matrix_verdict_gate.py::test_the_fan_in_waits_on_every_job_in_the_workflow` reddens if
+  the job is added without its `needs` entry, and
+  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` reddens if the job
+  leaves `ci.yml` or a second copy of `prek run --all-files` reappears in another workflow - the
+  duplication being how the hole reopens quietly.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and
@@ -803,7 +817,7 @@ is done when its test is green, not when the change is merged.
 
 - **P0-A, line-ending and hook policy** (`done`): `.gitattributes` declares LF,
   `scripts/check_line_endings.py` enforces the absolute rule, `prek.toml` runs it as a
-  hook, `hygiene.yml` runs the hook set in CI, and the polluted files are normalised.
+  hook, the `hooks` job in `ci.yml` runs the hook set in CI, and the polluted files are normalised.
   Acceptance: `tests/test_quality_matrix.py` no longer reports the hook holes, and
   `tests/test_line_endings_gate.py` proves the checker fires on an all-CRLF file.
 - **P0-B, property tier elevation** (`done`): the three writer fixed points hold at 20 000

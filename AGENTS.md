@@ -206,8 +206,8 @@ Learnings from the initial CLI implementation (2026-08):
 - Use `IndexMap` for Mapping order
 - Implement `INPUT_TYPE`/`OUTPUT_TYPE` for all PyO3 types
 - Use `#[pyo3(signature = "...")]` with double-quoted types
-- Run prek hooks before committing — and fold their edits into the commit you push: `prek run --all-files` fixes files in the *working copy*, so if you squashed first, the pushed commit still carries what the hook set rejects (measured: CI's `Hygiene` job reddened on a `rumdl fmt` rewrite that sat unsquashed beside it).
-- Before declaring a CI check enforced, ask what merge decision consumes it. A matrix leg that nobody requires is a report: `Test matrix (all legs)` (`scripts/check_matrix_verdict.py`) is the single name to require, and it reads `success` only - `skipped`/`cancelled` legs are refusals.
+- Run prek hooks before committing — and fold their edits into the commit you push: `prek run --all-files` fixes files in the *working copy*, so if you squashed first, the pushed commit still carries what the hook set rejects (measured: the hook-set job reddened on a `rumdl fmt` rewrite that sat unsquashed beside it).
+- Before declaring a CI check enforced, ask what merge decision consumes it. A matrix leg that nobody requires is a report: `Test matrix (all legs)` (`scripts/check_matrix_verdict.py`) is the single name to require, and it reads `success` only - `skipped`/`cancelled` legs are refusals. The name is computed from **this workflow's** jobs, so a gate that lives in another file is not consumed: measured on PR #632, `prek hook set on the full tree` was red while the required name on the same sha said `success`.
 - **Bench design**: Include setup costs (e.g. `ast.clone()`) in both sides of the comparison, or document them as external
 - **pyo3 visibility**: `#[pyclass]` methods may need `#[allow(dead_code)]` even when `pub` — Rust visibility != Python visibility
 
