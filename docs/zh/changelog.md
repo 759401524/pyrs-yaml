@@ -182,8 +182,10 @@ status: new
   `test_json_crosslib.py`、`test_key_resolution_parity.py`、`test_property_dialects.py` 里
   712 条对照 `json.loads` 与 `pyjson5` 的测试。在同一进程里跟同一加载器自己的方言路径相比——
   这是 Python 能同时看见两条路径的唯一办法——快速路径在 300 项文档上快 6.25 倍、在 1,200 项上快
-  9.34 倍，两者都是 5/5 配对；绑定层没有指令地板（`perf-coverage:binding-layer`），所以这个比值
-  现在由 `tests/test_json_leaderboard.py` 把关：手工关掉探测后两侧都停在 187.8 µs，门禁逐对报出
+  9.34 倍，两者都是 5/5 配对；这个比值现在由 `tests/test_json_leaderboard.py` 把关，因为这个
+  加载器的两条路径都没有指令地板给它定价——CodSpeed 用 `--exclude pyrs-yaml` 构建 workspace，
+  而 Ir 通道的绑定 harness 只给一条路留了地板，即 `bench_to_python`，YAML 的 AST→Python 遍历。
+  手工关掉探测后两侧都停在 187.8 µs，门禁逐对报出
   并变红。已公布的 JSON5 行用的是方言形状文档，因此它仍走 AST 路径、仍慢于 `pyjson5`；那道缺口
   需要一个懂 JSON5 的直接构造器，不是这次改动能填的。
 - **出口转义扫描改为一次 16 字节** — 读路径先向量化，因为它的份额更大；写路径要等到长值形状

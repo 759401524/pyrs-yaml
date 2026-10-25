@@ -8083,9 +8083,11 @@ subset (`1.0` stays a float, duplicate keys keep last-wins-first-position, >i64 
 documented source-text string) and the forms that must still fall through.
 
 **How a route becomes observable in Python.** The two paths of one loader cannot be told apart from
-the outside, and the binding layer is a registered hole for instruction counting
-(`perf-coverage:binding-layer`) - `cargo codspeed build` excludes `pyrs-yaml`, so no floor prices
-it. So the gate compares the loader against *itself*: `_dialect_twin` adds one trailing comma, legal
+the outside, and neither of this loader's routes is priced by an instruction count: CodSpeed
+builds the workspace with `--exclude pyrs-yaml`, and the Ir channel's binding harness floors one
+route by design - `bench_to_python`, which mirrors `safe_load`'s AST path and skips a shortcut on
+purpose, as `QUALITY_MATRIX.md` records. So the gate compares the loader against *itself*:
+`_dialect_twin` adds one trailing comma, legal
 in JSON5 and outside the fast path, which moves the identical content to the AST route. Paired in
 one process, the fast path is 6.25x at 300 items and 9.34x at 1,200, 5/5 pairs each, and
 `tests/test_json_leaderboard.py` requires both the pair majority and a 1.5x floor.

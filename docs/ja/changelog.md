@@ -222,8 +222,10 @@ status: new
   `test_property_dialects.py` の 712 件で、`json.loads` と `pyjson5` を引き合わせます。同じ
   実行過程の中で同じ読み込み器自身の方言の道と比べる——Python が両方の道を同時に見られる唯一の
   方法——と、速路は 300 項目の文書で 6.25 倍、1,200 項目で 9.34 倍勝ち、どちらも 5/5 の組です。
-  バインディング層には命令のフロアがない（`perf-coverage:binding-layer`）ので、この比は
-  `tests/test_json_leaderboard.py` が持ちます。手元でその試行を無効にすると両側とも 187.8 µs に
+  この比は `tests/test_json_leaderboard.py` が持ちます。この読み込み器の二つの道はどちらも命令数で
+  値付けされていません——CodSpeed は `--exclude pyrs-yaml` で workspace を組み、Ir 系統の
+  バインディング harness は `bench_to_python`（YAML の AST→Python 走査）という一つの道にだけ
+  フロアを置きます。手元でその試行を無効にすると両側とも 187.8 µs に
   並び、チェックはすべての組を挙げて赤くなります。公開済みの JSON5 の行は方言形の文書を使うため
   AST の道のままで、`pyjson5` より遅いままです。あの差を埋めるには JSON5 を知っている直接
   ビルダーが必要で、今回の変更では覆いません。

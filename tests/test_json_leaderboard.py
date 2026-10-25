@@ -88,9 +88,10 @@ def test_json5_canonical_route_beats_its_own_ast_route(size):
     than in a comment, because the two routes of one loader are otherwise invisible to Python -
     a single trailing comma, legal in JSON5 and outside what the fast path accepts, moves the whole
     document to the AST path and gives the comparison its reference in the same process. Removing
-    the probe leaves both sides identical and this gate red, which is the point: the binding layer
-    has no instruction floor (`perf-coverage:binding-layer` in `.ci/quality-holes.json`), so a
-    paired wall-clock is what stands between this route and a silent revert.
+    the probe leaves both sides identical and this gate red, which is the point: neither of this
+    loader's routes is priced by an instruction count - CodSpeed excludes `pyrs-yaml` and the Ir
+    channel's binding harness floors only the YAML AST-to-Python walk - so a paired wall-clock is
+    what stands between this route and a silent revert.
     """
     doc = _SIZES[size]
     twin = _dialect_twin(doc)

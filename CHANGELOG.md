@@ -220,9 +220,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test_json_crosslib.py`, `test_key_resolution_parity.py` and `test_property_dialects.py`.
   Measured in one process against the same loader's own dialect route - the only way Python can
   see both - the fast path wins 6.25x on a 300-item document and 9.34x on 1,200 items, 5/5 pairs
-  each, and `tests/test_json_leaderboard.py` now gates that ratio because the binding layer has no
-  instruction floor (`perf-coverage:binding-layer`): with the probe disabled by hand both sides sit
-  at 187.8 µs and the gate reddens naming every pair. The published JSON5 row is a dialect-shaped
+  each, and `tests/test_json_leaderboard.py` now gates that ratio because neither of this
+  loader's routes is priced by an instruction count - CodSpeed builds the workspace with
+  `--exclude pyrs-yaml`, and the Ir channel's binding harness floors one route only,
+  `bench_to_python`, the YAML AST-to-Python walk. With the probe disabled by hand both sides sit
+  at 187.8 µs and the gate reddens naming every pair. The published JSON5 row is a
+  dialect-shaped
   fixture, so it still takes the AST route and stays behind `pyjson5`; that gap needs a
   JSON5-aware direct builder, not this change.
 - **The outbound escape scan runs sixteen bytes at a time in the JSON and TOML writers** — the

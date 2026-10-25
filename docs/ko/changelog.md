@@ -215,8 +215,10 @@ status: new
   `test_json_crosslib.py`, `test_key_resolution_parity.py`, `test_property_dialects.py`의 712개
   시험이고 `json.loads`와 `pyjson5`를 맞댑니다. 같은 실행 안에서 같은 읽어들기의 방언 경로와 견주는
   것이 Python이 두 길을 함께 보는 유일한 방법인데, 빠른 경로는 300개 항목 문서에서 6.25배, 1,200개
-  항목에서 9.34배 이기고 둘 다 5/5 짝입니다. 바인딩 층에는 명령 마루금이 없어서
-  (`perf-coverage:binding-layer`) 이 비는 이제 `tests/test_json_leaderboard.py`가 지킵니다. 탐지를
+  항목에서 9.34배 이기고 둘 다 5/5 짝입니다. 이 비는 이제 `tests/test_json_leaderboard.py`가
+  지킵니다. 이 읽어들기의 두 경로 모두 명령 수로 값이 매겨지지 않기 때문입니다. CodSpeed는
+  `--exclude pyrs-yaml`로 워크스페이스를 만들고, Ir 채널의 바인딩 harness는
+  `bench_to_python`(YAML AST→Python 탐색)이라는 한 경로에만 마루금을 둡니다. 탐지를
   수동으로 끄면 양쪽 모두 187.8 µs에서 맞물리고 잣대는 짝을 모두 적어 빨개집니다. 실린 JSON5 줄은
   방언 모양 문서를 쓰니 여전히 AST 경로이고 `pyjson5`보다 느립니다. 그 차는 JSON5를 아는 직접
   생성자가 있어야 메워지고, 이번 변경으로는 메우지 않습니다.
