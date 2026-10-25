@@ -122,7 +122,22 @@ STALE_FAIL = 0.05
 # jobs now differ by two instructions on that scenario (15,780,927 in the refresh job against
 # 15,780,929 in the enforcing one, on hosts of different models), where with the caps unmasked they were
 # 1.44% apart. The line was not widened to absorb the host; the input the host controlled was pinned.
-MEASUREMENT_ENV = {"GLIBC_TUNABLES": "glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT"}
+# The second key belongs to the interpreter, and it was found the same way - by pairing bytes, then
+# by measuring. Three refresh runs recorded the binding harness with one digest throughout
+# (`7adbeac719edacd6`) and still spread `load_json_long_strings` 1.121% apart, while the engine
+# scenarios on those same bytes agreed inside 0.00001%. Only one harness links CPython. Asking the
+# seed directly settles it: with `PYTHONHASHSEED=0` that scenario reads 95,136,157 three times over -
+# no spread at all - against 0.4321% across the five seeds tried, and the other six binding scenarios
+# collapse the same way (`load_toml_medium` 0.2811% to 0.0000%, `load_json_medium` 0.2550% to 0.0000%,
+# `to_python_anchors` 0.1249% to 0.0004%). Left alone, the interpreter draws a fresh seed for every
+# process, so the gate was sampling a distribution rather than measuring a code path, and the 0.5%
+# line was inside the width of the thing it compared. The engine side pays nothing for this: the same
+# binary reads `parse_medium` 321,690,260 unpinned against 321,689,870 pinned, which is its own
+# residual noise and not the seed.
+MEASUREMENT_ENV = {
+    "GLIBC_TUNABLES": "glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT",
+    "PYTHONHASHSEED": "0",
+}
 
 # Written into every baseline this script generates, verbatim. The first committed baseline carried a
 # hand-written `generated_by.note` explaining where its numbers came from; `--update` does not write
@@ -142,6 +157,11 @@ PROVENANCE_NOTE = (
 # committed value is the *largest* of `--repeats` runs: normal variation cannot exceed its own
 # envelope, and a real regression still has to clear it. The count is recorded in the baseline's
 # `generated_by` because max-of-3 enforced against a single-run number is a different gate.
+#
+# Most of that width turned out to be the hash seed above, and pinning it removes the term rather than
+# hiding it: under the pin the binding scenarios repeat to the instruction or within ~0.001%. Three
+# draws stay anyway, because the residual is not zero, the envelope is what a floor a no-op cannot
+# clear, and a sample size the baseline does not record is a gate nobody can re-run.
 DEFAULT_REPEATS = 3
 
 
@@ -405,10 +425,11 @@ def binary_pairing(recorded: dict[str, str] | None, current: dict[str, str]) -> 
     filed as an environment mystery. It was not an environment: the two builds had different SHA-256
     digests, so the numbers described different code. The rule the digests give is symmetric, and both
     halves matter: matching bytes whose numbers move points at the host, differing bytes point at the
-    code. Under the pinned `MEASUREMENT_ENV` below, matching bytes measured across the two jobs land 21
-    instructions apart (`to_json_medium` 21,444,780 against 21,444,880), which is how large the host
-    term is; before the ISA was pinned the same bytes on two hosts moved 1.44%, which is why the env is
-    printed alongside.
+    code. Under the pinned `MEASUREMENT_ENV` below, matching bytes measured across the two jobs land
+    within tens of instructions of each other, which is how large the host term is; before the ISA was
+    pinned the same bytes on two hosts moved 1.44%, which is why the env is printed alongside. The
+    counts behind that reading move with every refresh, so none is quoted here - a floor copied into a
+    docstring goes stale exactly like a floor copied into a paragraph.
     """
     if not recorded:
         return [
