@@ -44,7 +44,15 @@ def gate():
 
 @pytest.fixture(scope="module")
 def config() -> dict:
-    return yaml.safe_load(DEPENDABOT.read_text(encoding="utf-8"))
+    loaded = yaml.safe_load(DEPENDABOT.read_text(encoding="utf-8"))
+    # `all()` over an empty list is True and a `for` over one asserts nothing, so the five per-entry
+    # rules below all pass on a policy that declares no entry at all. Measured 2026-10-25: 4 entries
+    # (cargo `/`, cargo `/fuzz`, uv, github-actions); three is what this file's own ecosystem rule needs.
+    assert len(loaded["updates"]) >= 3, (
+        f"dependabot.yml declares {len(loaded['updates'])} update entries, so every per-entry "
+        "assertion in this file measured nothing and reported green"
+    )
+    return loaded
 
 
 def _entries(config: dict, ecosystem: str) -> list[dict]:

@@ -133,7 +133,11 @@ class TestDocWalk:
 
     def test_doc_walk_yields_nodes(self):
         doc = pyrs_yaml.parse("a: 1\n")
-        for node in doc.walk():
+        nodes = list(doc.walk())
+        # Measured 2026-10-25: the root mapping and its one scalar. A walk that yielded nothing would
+        # run no isinstance check and still report green, which is the whole content of this test.
+        assert len(nodes) >= 2, f"walk() of 'a: 1' yielded {len(nodes)} node(s), so nothing was typed"
+        for node in nodes:
             assert isinstance(node, Node)
 
     def test_doc_scalars_values(self):

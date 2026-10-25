@@ -216,15 +216,23 @@ def _documented_names(page):
 def test_no_locale_page_is_thinner_than_the_others_on_member_names():
     """Coverage, not just parameter lists: a name one locale documents must be documented in all.
 
-    Measured 2026-10-20 across the four locales and the six API pages: no page - English included -
-    omits a member any sibling locale names, so the API is equally learnable in every language even
-    though the section shapes differ. This is the assertion the signature comparison cannot make:
-    two pages can agree on every parameter list they state and still differ in what they state.
+    Measured again 2026-10-25 across the four locales and the seven API pages: no page - English
+    included - omits a member any sibling locale names, so the API is equally learnable in every
+    language even though the section shapes differ. This is the assertion the signature comparison
+    cannot make: two pages can agree on every parameter list they state and still differ in what
+    they state.
     """
     by_page: dict[str, dict[str, set[str]]] = {}
     for page in sorted((REPO / "docs").glob("*/api/*.md")):
         by_page.setdefault(page.name, {})[_locale(page)] = _documented_names(page)
+    # Measured 2026-10-25: 28 files = 7 page names x 4 locales. Both loops are vacuous when the glob
+    # matches nothing, and a page name held by one locale alone is a comparison of a page with itself:
+    # `union - docs` is empty in either case, so the run reports green without having read a page.
+    assert len(by_page) >= 7, (
+        f"docs/*/api/*.md matched {len(by_page)} page names, so no locale was compared with another"
+    )
     for name, per in sorted(by_page.items()):
+        assert len(per) >= 2, f"docs/*/api/{name} is published only in {sorted(per)}: nothing to compare"
         union = set().union(*per.values())
         for loc, docs in sorted(per.items()):
             missing = sorted(union - docs)

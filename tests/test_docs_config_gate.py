@@ -89,6 +89,9 @@ def test_every_configured_option_is_accepted_by_the_handler():
 
 def test_the_paths_the_handler_is_told_to_read_exist():
     _configured, python = configured_options()
+    # Measured 2026-10-25: `paths = ['python']`. An empty list here is not a finding but a pass,
+    # because the loop below would have nothing to resolve and `:::` blocks would render nothing.
+    assert python["paths"], "the handler is told to read no package directory at all"
     for relative in python["paths"]:
         assert (REPO_ROOT / relative).is_dir(), f"{relative} is not a package directory"
 

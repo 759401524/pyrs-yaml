@@ -163,15 +163,22 @@ def test_parity_empty_input(empty):
 
 def test_parity_line_column_equal():
     yaml_str = "a: 1\nb:\n  - 2\n  - 3\n"
-    streamed = pyrs_yaml.YAML().load_stream(io.StringIO(yaml_str))
+    # `YamlStream` is lazy and has no len(), so the comparison below needs both sides materialised.
+    streamed = list(pyrs_yaml.YAML().load_stream(io.StringIO(yaml_str)))
     parsed = [e for e in pyrs_yaml.parse_stream(yaml_str) if e["type"] != "comment"]
+    # `zip()` truncates to the shorter side: one producer emitting 13 events and the other 3 would
+    # compare three pairs and report green. Measured 2026-10-25: 13 events on both sides.
+    assert len(streamed) == len(parsed) >= 13, f"streamed {len(streamed)} events vs parsed {len(parsed)}"
     for se, pe in zip(streamed, parsed):
         assert (se["line"], se["column"]) == (pe["line"], pe["column"])
 
 
 def test_parity_all_seven_keys_present():
     keys = {"type", "value", "style", "anchor", "tag", "line", "column"}
-    for e in pyrs_yaml.YAML().load_stream(io.StringIO("key: value")):
+    events = list(pyrs_yaml.YAML().load_stream(io.StringIO("key: value")))
+    # Measured 2026-10-25: 8 events for one pair. A stream that emitted none would inspect no event.
+    assert len(events) >= 8, f"load_stream emitted {len(events)} events, so no event was inspected"
+    for e in events:
         assert keys.issubset(e.keys())
 
 
