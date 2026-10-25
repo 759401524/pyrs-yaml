@@ -48,6 +48,20 @@ on:
           refusing is the point of the guard.
         required: false
         default: ""
+      profile:
+        description: >-
+          Space- or newline-separated scenario names to attribute per function after the
+          measurement, using the same `--profile` the gate documents. Leave empty for a
+          refresh that reports totals only: attribution rebuilds with symbols and costs one
+          extra callgrind pair per named scenario, and it answers "where" - which no floor ever did.
+        required: false
+        default: ""
+      profile_top:
+        description: >-
+          How many ranked rows to print per profiled scenario. Empty leaves the row count to the
+          gate's own --top default.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -157,6 +171,34 @@ jobs:
           git --no-pager diff -- .ci/ir-baseline.json
           echo "### scenario count"
           python3 -c "import json;d=json.load(open('.ci/ir-baseline.json'));print(len(d['scenarios']), 'scenarios,', d['toolchain'])"
+
+      - name: Per-function attribution
+        # A floor says how much a scenario costs, never where. `--profile` is the tool for
+        # that question and it has only ever been run by hand, which is how a -21% reading on
+        # a scanner scenario stayed unattributed: the local profile and the committed floor are
+        # different builds, so the pair nobody can compare is not evidence (`docs/dev/quality-ledger.md`
+        # (gk)). This step makes the image produce it on request. It costs a second build - the
+        # gate sets `CARGO_PROFILE_RELEASE_STRIP=false` for a profile, because a stripped binary
+        # profiles as a table of addresses - plus one callgrind pair per named scenario, and it
+        # cannot move the floor: a profile run returns before the measurement, so the baseline the
+        # previous step wrote is exactly what that step measured.
+        if: ${{ inputs.profile != '' }}
+        env:
+          PROFILE: ${{ inputs.profile }}
+          PROFILE_TOP: ${{ inputs.profile_top }}
+        run: |
+          set -euo pipefail
+          read -ra want <<< "$PROFILE"
+          echo "attributing ${#want[@]} scenario(s): ${want[*]}"
+          args=()
+          for name in "${want[@]}"; do
+            args+=(--profile "$name")
+          done
+          if [ -n "${PROFILE_TOP:-}" ]; then
+            python3 scripts/ir_gate.py "${args[@]}" --top "$PROFILE_TOP"
+          else
+            python3 scripts/ir_gate.py "${args[@]}"
+          fi
 
       - uses: actions/upload-artifact@v7
         with:

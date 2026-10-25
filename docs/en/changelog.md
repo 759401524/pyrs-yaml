@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The refresh job can answer "where" as well as "how much"** — `scripts/ir_gate.py --profile`
+  has ranked a scenario's functions by self instructions since #401 registered it, but only a hand
+  run ever called it, and a hand run cannot pair with a committed floor: the local build and the
+  image's are different bytes. That is how the -21.23% reading on `documents_short_strings` stayed
+  unattributed (`docs/dev/quality-ledger.md` (gk)). "Ir baseline refresh" takes `profile` and
+  `profile_top` inputs now, one `--profile` flag per named scenario, on the image that enforces
+  these numbers, and the step sits behind `if: inputs.profile != ''` so a refresh that names nobody
+  still costs one measurement. Attribution rebuilds with symbols and returns before the
+  measurement, so it cannot move a floor. Two tests in `tests/test_ir_baseline_workflow.py` pin the
+  input reaching the command and the empty default keeping the refusal. No shipped behaviour and no
+  measured floor moved.
 - **The scan the aarch64 wheels ship is tested as the whole path, not as a tail** — every SSE2
   string scan dispatches by `target_arch`, so on an x86 CI the scalar loop only ever answers for the
   last partial vector, while the aarch64 wheels ship it as the entire answer with no test asking it

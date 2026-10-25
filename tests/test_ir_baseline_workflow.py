@@ -407,3 +407,37 @@ def test_the_page_counts_the_scenarios_the_file_carries():
         f"the baseline holds {count} scenarios; QUALITY_MATRIX.md section 2 says otherwise, "
         f"and no gate but this one reads it"
     )
+
+
+def test_a_refresh_can_be_asked_where_a_scenario_spends_its_instructions():
+    """A floor answers "how much" and never "where", and only the image's answer pairs with it.
+
+    `scripts/ir_gate.py --profile` has been the registered tool for that question since #401, but it
+    has only ever been run by hand, and a hand-run has a fatal pairing problem: the local build and
+    the committed floor are different bytes. That is exactly how a -21.23% reading on
+    `documents_short_strings` stayed unattributed (ledger (gk)) - the local profile puts 26.78% of
+    the loop in `LineTable::line_col`, and the image's number for the same function is simply unknown.
+    Declaring the input is one half; the step has to read it and pass one `--profile` flag per name.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert re.search(r"^ {6}profile:", text, re.M), "no way to ask for attribution"
+    block = text[text.index("- name: Per-function attribution") :]
+    assert "inputs.profile" in block, "the input is declared and never read"
+    assert re.search(r"args\+=\(--profile \"\$name\"\)", block), block
+    assert re.search(r"ir_gate\.py \"\$\{args\[@]", block), "the flags are built and dropped"
+
+
+def test_an_empty_profile_input_costs_no_extra_measurement():
+    """Attribution is on request, or the refresh job pays callgrind twice for nobody's question.
+
+    A step that ran `--profile` unconditionally would re-measure every scenario it just measured - and
+    `--profile` rebuilds with symbols (`CARGO_PROFILE_RELEASE_STRIP=false`), so the extra pass is not
+    even the same binary. The guard is the point, so the condition has to sit on the step and the
+    default has to stay empty.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    head = text[: text.index("- name: Per-function attribution")]
+    assert 'default: ""' in head[head.index("profile:") :], "a non-empty default profiles by surprise"
+    step = text[text.index("- name: Per-function attribution") :]
+    assert re.search(r"if: \$\{\{ inputs\.profile != '' \}\}", step), step[:400]
+    assert "${#want[@]}" in step, "the log has to name how many scenarios it will attribute"
