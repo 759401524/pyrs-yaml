@@ -8357,6 +8357,44 @@ removes it - `(fs)` and `(ft)` both say so. What this row does not price either:
 loaders take once a document is non-canonical, which stays the engine harness's job because there
 the dialect is decided without a Python object in sight.
 
+### (fw) The TOML intermediate tree was priced by function, and a named 8% did not buy a rewrite (2026-10-25)
+
+**The obligation.** `(fs)`, `(ft)` and `(fv)` each ended by naming the same open item: the loader
+still builds `pyrs_toml`'s intermediate representation, and `crates/pyrs-toml/src/lib.rs` opened
+with "no intermediate value tree" - a sentence all three left owed "to whichever one removes the
+tree". Nobody had measured what removing it would return, so the choice was being made on a guess.
+
+**The reading.** `python scripts/ir_gate.py --profile <scenario>` on the `rustc 1.97.1` the baseline
+pins, valgrind in WSL with a target directory on the Linux filesystem. `load_toml_medium`: loop
+144,813,562 counted instructions, −0.054% against the committed floor of 144,891,981, so the profile
+describes the build the gate prices. The two `IndexMap<Arc<str>, TomlTable>` insertion rows carry
+5,902,000 and 5,828,000 - 8.10% of the loader route. `from_toml_medium`: loop 121,169,608, with the
+*identical* pair of insertion rows at 9.68%, and a second tree on top - `cow_table_to_node`
+5,008,000, `IndexMap<CustomNode, CustomNode>` 5,178,000, `<CustomNode as Hash>::hash` 3,332,000,
+`drop_glue::<CustomNode>` 3,100,000, `toml_value_to_node` 2,892,000 - 16.1% more, none of which the
+loader route pays.
+
+**What that decides.** One IR, read once by each consumer, not two costs: the byte-for-byte
+agreement of the insertion rows across the two harnesses is the evidence. So skipping the IR would
+return a named 8% of `load_toml`, while the larger named rows in the loader's own profile -
+`parse_ir` 6.83%, `parse_key_segment` 4.06% - are scanning work a tree-free parser still performs.
+The remaining distance to `rtoml` is about 1.5x in wall clock, and 8% does not explain it. Rewriting
+`parser.rs`'s table strategy is therefore not scheduled, and the claim stays retired unless a new
+measurement moves the share.
+
+**What the number does not include.** The allocator rows (`_int_free`, `malloc`, `_int_malloc`,
+`free`, roughly 15% together) are not charged to the tree. That inference was made once, tested, and
+refuted - the profiler prints functions exactly as named and never grouped by a pattern over a name,
+which is the same rule that killed the invented 12.46% "hash" row. Some of that traffic is the IR's
+and some is CPython's; separating them needs a different instrument than this one, and the decision
+above does not depend on the split.
+
+**What changed instead.** The sentence in `crates/pyrs-toml/src/lib.rs` now states the architecture
+as the profile shows it: a byte-level scanner that builds one intermediate representation, which
+`from_toml` projects onto the shared AST, `read_toml` walks straight into Python values and `events`
+replays - one tree, not none. `docs/dev/perf.md` carries the readings beside the reasoning, so the
+next person asking "how much is the tree?" finds a number rather than a hypothesis.
+
 ### (fx) The TOML writer learned to read a second note slot, and two explanations fell with it (2026-10-25)
 
 **The defect.** `to_toml` of a YAML document whose section key carries an inline note -
