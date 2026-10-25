@@ -8,6 +8,7 @@ pub mod document;
 pub mod editing;
 pub mod functions;
 pub mod json_fast;
+pub mod json_lines;
 pub mod stream_events;
 pub mod stream_iterator;
 pub mod streaming;
@@ -165,6 +166,10 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::streaming::YamlStream;
 
+    // ---- JsonLines (lazy line-delimited JSON value iterator) ----
+    #[pymodule_export]
+    pub(crate) use super::json_lines::JsonLines;
+
     // ---- Module-level functions ----
     #[pymodule_export]
     pub(crate) use super::functions::clear_tag_handlers;
@@ -196,6 +201,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::list_schemas;
     #[pymodule_export]
     pub(crate) use super::functions::load_json;
+    #[pymodule_export]
+    pub(crate) use super::functions::load_json_lines;
     #[pymodule_export]
     pub(crate) use super::functions::load_json5;
     #[pymodule_export]

@@ -618,6 +618,19 @@ pub(crate) fn load_json(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "JsonLines")]
+/// Iterate the values of a line-delimited JSON stream (`NDJSON`, `JSON Lines`, `.jsonl`): one
+/// complete document per line, resolved as the iterator is asked for rather than all up front.
+///
+/// Each value is what `load_json` returns for that line, and the stream keeps the engine's
+/// contract: a blank line, a line holding only a note, or a value that needs the next line to
+/// finish raises with its position in the whole input, and the refusal is reported again until the
+/// iteration stops.
+pub(crate) fn load_json_lines(_py: Python, json_str: &str) -> crate::py::json_lines::JsonLines {
+    crate::py::json_lines::JsonLines::new(json_str)
+}
+
+#[pyfunction]
 #[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
 /// Parse a JSONC document directly into Python values (dict / list /
 /// scalar). Handy for TypeScript `tsconfig.json`, VS Code

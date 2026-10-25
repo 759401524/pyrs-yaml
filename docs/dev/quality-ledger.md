@@ -9062,6 +9062,75 @@ not the other - the tunables that would have explained it were already tested an
 What this record does settle is the "where the work sits" question: the term that dominated the long
 scenario is now the third row, behind the harness's own `main` and libc's memcpy.
 
+### (gm) The line stream (gl) indexed had no Python reader, and now it has one (2026-10-26)
+
+**Why this was owed.** Pillar 6's line-delimited route was Rust-only. #599 gave `pyrs_json` a
+one-document-per-line walk and (gl) made its line index eight bytes at a time, but the Python layer
+could still not read a `.jsonl` file as values: a caller split the text and called `load_json` per
+line, which pays for a list of lines and a tree per record on top of the parse and materialises the
+whole stream before the first value is usable. The ruling on 2026-10-25 chose a value iterator
+(`load_json_lines`) over an event or document-object surface, so the gap being closed here is the
+public API, not the engine.
+
+**What the change does.** Two engine items and one binding class. `pyrs_json::Lines` yields
+`(number, start..end)` one line at a time and `document_from_line` resolves a line into the tree
+`from_json_with_options` returns for it, sharing `parse_line`'s blank-line refusal and `shift_error`
+instead of restating them — the value surface and the event surface are siblings, so a line cannot
+be accepted by one and refused by the other. `pyrs_yaml.load_json_lines(text)` returns a `JsonLines`
+iterator whose `__next__` takes the AST-free route `load_json` uses when the line is canonical JSON
+and the engine's line walk when it is not, and refuses to advance past a bad line: asking again
+reports the same record rather than skipping it.
+
+**The constraint that shaped the API.** A `#[pyclass]` cannot borrow the string it owns, so `Lines`
+reports *offsets* rather than the line's text — a `&str` item would have to outlive the `&mut self`
+that advances the cursor. The iterator therefore stores two integers and rebuilds the walk with
+`Lines::resume(text, at, number)` per value, which is exactly the seam an off-by-one could break in
+silence: a resumed walk that shifted by one byte would repeat or drop a record and raise nothing.
+`a_resumed_line_walk_reads_the_same_lines_as_one_that_never_stopped` asks that question, including
+the case where the input has no final break and the resume offset lands one past the end.
+
+**Measured, twice against a different reader.** Three Rust tests compare the value surface with the
+event surface: the same line count, the same tree per line (`from_events` of that line's own
+stream), and — over six malformed inputs — the same refused line *and* the same wording. 16 Python
+tests compare the surface with `load_json` per line and with the standard library's `json.loads`,
+and pin the laziness by taking two records from a stream whose third line is malformed. The refusal
+table had to earn a sixth row: replacing `shift_error(error, index)` with `shift_error(error, 0)`
+left the first five inputs green, because their first refusal is either the blank line, which never
+reaches the shift, or a parser error on line zero, where a shift by zero is invisible. The sixth
+input — two good lines and a malformed third — fails under that same mutation naming the two
+surfaces, and passes again with the code restored. Locally
+(release build, best of 15, this host, 10,000 records / 576.5 KiB): whole stream 3.861 ms,
+`[load_json(line) for line in text.splitlines()]` 8.440 ms, first record alone 0.343 ms. The last
+two figures are the claim worth reading: the iterator is roughly 2.2× the per-line route on the
+whole stream, and taking one record is 11× rather than 10,000× cheaper than taking all of them,
+because the input is copied once into the iterator — what disappears is the tree and the list of
+lines, not the buffer.
+
+**No detach, on purpose.** `__next__` holds the GIL for its line. A line's dominant cost is building
+Python objects, which needs the GIL, so detaching the scan would add an acquire-release per record
+to the work it was meant to overlap — the same reading AGENTS.md records for `direct_dump`. The
+concurrency comes from the iterator boundary: every value returns to the interpreter, so another
+thread gets the GIL between records.
+
+**Not claimed, and two floors that moved anyway.** No instruction floor governs the new Python
+surface: `.ci/ir-baseline.json` has no scenario that builds a Python object, and the binding's
+`load_json_*` floors describe single documents. The number is therefore left to CodSpeed's two new
+scenarios. What the change did move, measured on the image that enforces the floors, is the pair the
+shared line walk already belonged to. CI's `Instruction-count baseline` leg read
+`documents_short_strings` at +1.00% against its floor, past the 0.50% tolerance, and
+`documents_long_strings` at 128,724,904 against a floor of 147,188,912 — 12.54% *below* it, which is
+the lower edge the gate refuses as `FLOOR_STALE`. Refresh run #67, dispatched on this head with
+`accept_drift=documents_short_strings`, rewrote all 42 values: 147,188,912 → 128,724,949
+(−12.54%) and 85,300,932 → 86,154,921 (+1.00%), with the other 40 within +0.04%. The engine's
+per-line work did not change; what changed is that `lines()` no longer keeps its own vector — the
+document walks now iterate the same `Lines` the value surface uses, so the compiled shape of that
+module moved with it. A shared walk is cheaper to keep correct and more expensive to keep still: its
+floors now belong to whoever last touched the walk, not to the scenario that names it.
+
+The surface is strict-JSON only, mirroring `load_json` — the dialect stays an engine
+parameter of `document_from_line`, and no option was invented for a caller that has not asked for
+one — and it takes a `str`, not a path or file object, like the rest of the family.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

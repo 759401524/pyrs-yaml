@@ -679,6 +679,7 @@ __version__ = "0.18.3"
         - load_json
         - load_jsonc
         - load_json5
+        - load_json_lines
         - load_toml
         - load_ini
         - to_toml
@@ -696,6 +697,7 @@ __version__ = "0.18.3"
         - compliance_report
         - validate_custom_types
         - CustomType
+        - JsonLines
         - YamlStream
         - detect_language
         - get_language
