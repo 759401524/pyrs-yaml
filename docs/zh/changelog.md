@@ -108,6 +108,17 @@ status: new
   具、比值列说出它除的是哪个库，并让没有 `bench:` 标记的对比表直接变红。为此实跑了六个反证——过期的单
   元格、颠倒的方向词、删掉的行、移除的标记、调换的标签、不再标明基线的表头——每一条都按页面与行名失
   败。
+- **已经闭合的缺口被写成还开着，如今是一次红灯** — `scripts/check_hole_claims.py` 原先只读
+  `AGENTS.md` 与 `CLAUDE.md`，所以一条关于本树已不再复现的测量的过期断言得以在八处存活：五份变更日志
+  镜像、`docs/dev/quality-ledger.md`、一条测试为自己存在的理由，以及早已闭合该缺口的 `ir-gate` 代码
+  上的 Rust 文档注释。它还跟着两个 PR（#613、#614）一路全绿。现在的范围按现在时划定：两份指令文件，
+  加上每份镜像的 `[Unreleased]` 区块，切分交给 `scripts/check_changelog_mirrors.py` 新增的
+  `unreleased_lines`，于是「什么是 `[Unreleased]`」只有一套解析器。已发布章节与
+  `docs/dev/quality-ledger.md` 仍是带日期的记录，那里可以点名一个此后已经闭合的洞。某份镜像切不出任
+  何 `[Unreleased]` 行时以 2 退出而非通过：漏掉方括号的话会让这道门静默失效。
+  `tests/test_hole_claims_gate.py` 里有四条反证：`[Unreleased]` 内的洞 id 会失败并报出路径与行号，同
+  一个 id 放在已发布标题下通过，矩阵仍在测量它时同一个 id 也通过，默认范围丢掉任一镜像即为红。谓词也
+  在真实树上跑过：把该 id 插到 `CHANGELOG.md:9` 返回 1，还原后返回 0。
 
 #### 变更
 

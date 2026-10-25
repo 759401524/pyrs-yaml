@@ -226,14 +226,17 @@ priority = "checks"
 # wrong way about what to do with an API page. The rule is narrow on purpose: an id counts as a hole id only
 # when `scripts/quality_matrix.py` can emit its kind, which is read off the probe rather than listed here, so
 # `line:column` in a changelog entry is not a claim; and a named id must be one the measurement reproduces now.
-# History keeps its ids - the five release-note pages and `docs/dev/quality-ledger.md` are dated records. An
-# instruction file is present tense, which is why only the two agent files are in scope.
+# History keeps its ids - a released section and `docs/dev/quality-ledger.md` are dated records. Scope is
+# present tense: the two agent files and the `[Unreleased]` block of the five release notes, because that block
+# is the text the next cut turns into a dated record. `perf-coverage:binding-layer` was called an open hole in
+# five mirrors, a ledger row, a test and a Rust doc comment across two pull requests with every gate green, so
+# the release notes are in scope now and `tests/test_hole_claims_gate.py` falsifies both halves of that story.
 [[repos.hooks]]
 id = "hole-claims"
-name = "instruction files name measured holes"
+name = "present-tense files name measured holes"
 language = "system"
 entry = "python scripts/check_hole_claims.py"
-files = "^(AGENTS|CLAUDE)\\.md$"
+files = "^(AGENTS|CLAUDE|CHANGELOG)\\.md$|^docs/(en|ja|ko|zh)/changelog\\.md$"
 priority = "checks"
 
 # The release is the only place that reads `.ci/requirements-test.txt`, so a missing test dependency arrived as a

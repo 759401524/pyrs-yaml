@@ -66,11 +66,14 @@
   by counting rendered signature/class markers, not by the exit code (a page missing its directives renders
   perfectly while showing nothing).
 - This file is gated. `scripts/check_hole_claims.py` asserts that every quality-hole id named here or in
-  `CLAUDE.md` is an id the matrix measures right now, because for a milestone this file described a closed
-  gap as open and nothing read it: the matrix compared the registry with `QUALITY_MATRIX.md` in both
-  directions and stopped there. Keep the rule honest rather than working around it — state the defence as it
-  is now, name the pull request that closed a gap instead of the id of it, and leave histories to the dated
-  records (`CHANGELOG.md`, `docs/dev/quality-ledger.md`), where naming a closed hole is the point.
+  `CLAUDE.md`, and every one named inside the `[Unreleased]` block of the five changelog mirrors, is an id the
+  matrix measures right now, because for a milestone this file described a closed gap as open and nothing read
+  it: the matrix compared the registry with `QUALITY_MATRIX.md` in both directions and stopped there. The
+  release notes joined that scope after one closed gap was still described as open in five mirrors, a ledger
+  row and the Rust doc comment of the seam that closed it, across two pull requests with every gate green.
+  Keep the rule honest rather than working around it — state the defence as it is now, name the pull request
+  that closed a gap instead of the id of it, and leave histories to the dated records
+  (`docs/dev/quality-ledger.md`, a released `CHANGELOG.md` section), where naming a closed hole is the point.
 - Switching jj changes does not rebuild the extension. `python/pyrs_yaml/pyrs_yaml.pyd` belongs to whichever
   sources were checked out when it was last built, so a Python run after `jj edit`/`jj rebase` can silently
   test another branch's binary — which has now produced three misleading results in one session (a JSON5 test

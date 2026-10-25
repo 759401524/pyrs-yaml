@@ -141,6 +141,25 @@ def level_errors(text: str, name: str) -> list[str]:
     return errors
 
 
+def unreleased_lines(text: str) -> list[tuple[int, str]]:
+    """The `[Unreleased]` body as `(line number, line)` pairs.
+
+    Public because `scripts/check_hole_claims.py` reads that same block to check the hole ids a
+    release note names, and two parsers of "what is `[Unreleased]`" is how a parity check ends up
+    disagreeing with the hook that enforces it. The opening and closing of the block is this file's
+    existing rule: only a version heading moves it.
+    """
+    out: list[tuple[int, str]] = []
+    inside = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if _VERSION_HEADING_RE.match(line):
+            inside = bool(re.match(r"^#{2,4} \[Unreleased\]", line))
+            continue
+        if inside:
+            out.append((number, line))
+    return out
+
+
 def unreleased_counts(text: str) -> dict[str, int]:
     """Entry bullets per section heading inside [Unreleased], keyed by the heading as written.
 
@@ -149,16 +168,9 @@ def unreleased_counts(text: str) -> dict[str, int]:
     `scripts/quality_matrix.py` compares those positions across mirrors and registers a blind spot
     when they diverge; this script prints them so the divergence is visible wherever the hook runs.
     """
-    inside = False
     section = None
-    out = {}
-    for line in text.splitlines():
-        if _VERSION_HEADING_RE.match(line):
-            inside = bool(re.match(r"^#{2,4} \[Unreleased\]", line))
-            section = None
-            continue
-        if not inside:
-            continue
+    out: dict[str, int] = {}
+    for _number, line in unreleased_lines(text):
         if re.match(r"^#{3,4} ", line):
             section = line.lstrip("#").strip()
         elif _ENTRY_RE.match(line) and section:
