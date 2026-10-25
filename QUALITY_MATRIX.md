@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 814 Rust `#[test]`, 1,952 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 814 Rust `#[test]`, 1,953 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -516,16 +516,22 @@ with a measured line instead of a vibe. That line is 0.5%. Within one run, three
 scenario now spread at most 0.0010% on either channel — the binding channel had spread 0.853% inside a
 single run before its interpreter's hash seed was pinned, which is the story of the bullet above. Across
 jobs and hosts — with the glibc caps and the seed pinned, which is what makes the two comparable — the
-engine channel agrees with a baseline
+engine channel once agreed with a baseline
 generated elsewhere by at most +0.05%: all twenty-one scenarios were re-measured on WSL2 against the
 artifact the refresh job had just produced for the same `main`, sixteen of them printing 0.00%
 (`serialize_medium` 32,648,867 against the runner's 32,648,850), and the run's verdict was
-`OK: every scenario within tolerance`. The binding channel was the exception, and this paragraph used
+`OK: every scenario within tolerance`. That ceiling is no longer a property of the channel: measured on
+this tree, three scanner scenarios read -21.23%, -6.19% and +1.20% off the image's floors from the same
+pinned compiler, and (gk) keeps the number rather than the sentence. The binding channel was the
+exception, and this paragraph used
 to write 0.10% for everything: the same host comparison read +0.26% on `to_python_medium` and +0.19% on
-`to_python_small`, which was put down to that channel's own within-run spread. The seed above accounts
-for most of it; the part of it that was the host has not been re-measured since the pin, so this file
-claims only what was measured after — the within-run spread, 0.0000-0.0004% on that channel — and leaves
-the local-to-image residual as a reading the next WSL run owes. What the old 2% was: the distance between a
+`to_python_small`, which was put down to that channel's own within-run spread. The seed above was most
+of it: re-measured on the pinned compiler after the pin, that channel reads +0.15% worst against the
+image's floors (`load_json_medium` +0.15%, `load_json_long_strings` +0.10%, `load_toml_medium` -0.09%,
+`to_python_anchors` +0.08%), and every scenario on either channel repeats to +/-0.0001% of itself. What
+the pin does *not* buy is named in `docs/dev/quality-ledger.md` (gk) with its own numbers: three scanner
+scenarios still read -21.23%, -6.19% and +1.20% off the image, and both explanations that could be
+tested off-image - our own SIMD dispatch and glibc's routine choice - were measured and refuted. What the old 2% was: the distance between a
 WSL-generated baseline and the same code measured on a runner, +1.45% on `serialize_block_scalars` —
 now explained as the ISA that glibc binds at start-up (the bullet above), which is why the caps are
 pinned rather than the line widened: a tolerance sized to absorb a host's CPUID flags would be a
@@ -824,9 +830,10 @@ is done when its test is green, not when the change is merged.
   their spread, the binary hashes and the pinned environment. The 0.5% line is sized from that spread
   (≤0.0010% within a run on either channel, since both environmental inputs the measurement could not
   control — the ISA glibc binds from the VM's CPUID flags and the interpreter's per-process hash seed —
-  are pinned rather than tolerated) and holds across jobs on the engine channel (≤0.05%); the binding
-  channel's local-to-image residual has not been re-measured since the seed pin, and this row says so
-  rather than quoting the +0.19%/+0.26% readings the seed explained. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
+  are pinned rather than tolerated) and holds across jobs on the engine channel; re-measured off-image
+  after the pin, the binding channel's local-to-image residual is +0.15% worst, and three scanner
+  scenarios are the named exception (`docs/dev/quality-ledger.md` (gk)) rather than a licence to quote a
+  ceiling that no longer covers them. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
   keys to exactly what `--update` writes and the sample size to the default; the two jobs agree at
   `24fcba0a`; and `ir-unbaselined` / `ir-stale-baseline` stay empty.
 

@@ -848,7 +848,9 @@ artifact `ir-baseline-34`, same pinned `rustc 1.97.1`, same image id `20261012.3
 scenario by scenario with the committed file. Every movement reproduced: `to_toml_medium` measured
 +0.494% again and `stream_medium` +0.478% again — identical to three decimals, not merely close —
 and the largest disagreement anywhere was 0.09 percentage points, on `to_python_small`, the
-CPython-linked scenario `AGENTS.md` already names as the noisy one.
+CPython-linked scenario whose term has since been named and pinned: the interpreter drew a fresh
+hash seed for every measured process (`docs/dev/quality-ledger.md` (gj)). The sentence this replaces
+pointed at an `AGENTS.md` claim about noise that no governance file contains.
 
 So those two floors were not loosened by run-to-run noise; they sit where this image repeatably puts
 them, and no code on those paths has moved since the 2026-10-14 numbers. Two consequences, stated as
@@ -899,7 +901,9 @@ nineteen of the twenty-two scenarios reproduce the image's numbers to within ±0
 non-binding move being `parse_block` at −0.0029%. What makes a counted-instruction measurement
 comparable, then, is the pinned ISA and the pinned compiler, not the exact build — which is why the
 same digests disagreeing is not a reason to distrust the residual, and why the three scenarios that
-*are* noisy (`to_python_*`) are noisy for the reason `AGENTS.md` already gives: they link CPython.
+*were* noisy (`to_python_*`) were noisy for a reason no governance file named until (gj): they link
+CPython, and the interpreter chose a fresh hash seed per measured process. That term is pinned now,
+and their within-run spread measures 0.0004-0.0009%.
 
 Three consequences, all acted on rather than noted.
 
@@ -932,10 +936,14 @@ term, and a note that quotes a number nobody can reproduce teaches the reader to
 variable. The sentence now points at this section instead of carrying a number of its own.
 
 Not measured: no macOS or ARM reading — the table compares two compilers on one Linux userland, and
-the host term is pinned by `MEASUREMENT_ENV`, not by this experiment. And the +0.1639% on
-`to_python_medium` is one machine's largest of three; the CPython-linked scenarios are the ones
-`AGENTS.md` already calls noisy, and 0.060% of run-to-run spread on `to_python_anchors` in the same
-sitting is in the same range.
+the glibc term is pinned by `MEASUREMENT_ENV`, not by this experiment. And the +0.1639% on
+`to_python_medium` is one machine's largest of three; the CPython-linked scenarios were the wide
+ones until (gj) named and pinned the reason — the interpreter's per-process hash seed — which this
+file used to attribute to a sentence `AGENTS.md` does not in fact contain, and 0.060% of run-to-run
+spread on `to_python_anchors` in the same sitting is in the same range. What "the host term is
+pinned" does *not* cover is recorded in (gk): re-measuring this tree on the same pinned compiler
+still leaves three scanner scenarios far off the image's floors, so a host reading is comparable to
+the floors on the channel the seed touched, and not on those three.
 
 ## The floor a win leaves behind (2026-10-17)
 
