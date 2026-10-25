@@ -454,6 +454,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reason. Growing the set was priced by the refresh instead of predicted — six JSON readers moved
   +0.73%…+1.91% on the enforcing image with no engine file in the diff, were named in
   `accept_drift`, and left `tolerance_hint` at 0.5%. Recorded as `(gf)`.
+- **The event stream's cancellation half now costs a number, and it is a quarter of the walk** —
+  `parse_stream(..., on_event=...)` stops a producer mid-document and nothing priced the stop: the
+  JSON producer had no floor in any shape (`stream_medium` and `stream_long_strings` are YAML's path
+  over granit), so a change to the check that ends the walk, to the state dropped on the way out, or
+  to an event built for a consumer that had already refused could land with every gate green. Two
+  paired scenarios on `MEDIUM_JSON` - `stream_json_medium` and `stream_json_stop` - and the run that
+  wrote the file read 50,237,295 against 12,603,257: the stop costs **25.09 %** of the walk, which
+  is the evidence that `Break` ends the scan and not merely the delivery. That document emits 49
+  events, so the stop sits at twelve; the limit is derived from the stream's own length in setup
+  rather than written down, and both premise guards were observed against a mutation - asking for
+  the whole stream exits 3 ("so a quarter asks for 49"), and a sink that answers `Break` one event
+  late exits 3 ("the sink saw 13 events where the stop asks for 12 of 49"). Growing the set was
+  again priced by the refresh instead of predicted: the first dispatch refused over one upward move,
+  `load_json_long_strings` +0.76 %, measured from a binding binary whose digest the committed file
+  already records, so the runner moved and the code did not - named in `accept_drift`, and
+  `tolerance_hint` stayed at 0.5 %. TOML deliberately gets no stop scenario: its `Break` ends the
+  emission, not the scan, so the number would price the intermediate representation under a name
+  that promises cancellation. Recorded as `(gi)`, with `(gh)`: the harness had copied a floor into a
+  comment (`parse_medium` "321,836,091" against a committed 321,580,801), and a refresh rewrites the
+  JSON without ever touching a comment, so those citations state the relationship now and leave the
+  numbers to `.ci/ir-baseline.json`.
 
 ## [v0.18.3] — 2026-10-22
 
