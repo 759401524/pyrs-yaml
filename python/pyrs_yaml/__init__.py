@@ -38,6 +38,7 @@ from .pyrs_yaml import (
     YAML as _YAML,
 )
 from .pyrs_yaml import (
+    JsonLines,
     StreamIterator,
     YamlDocument,
     YamlDuplicateKeyError,
@@ -67,6 +68,7 @@ from .pyrs_yaml import (
     list_schemas,
     load_json,
     load_json5,
+    load_json_lines,
     load_jsonc,
     load_schema,
     load_toml,
@@ -412,6 +414,7 @@ safe_dumps_async = safe_dump_async
 __all__ = [
     "YAML",
     "CustomType",
+    "JsonLines",
     "MergedView",
     "Node",
     "PyrsYamlConfigSettingsSource",
@@ -450,6 +453,7 @@ __all__ = [
     "load_ini",
     "load_json",
     "load_json5",
+    "load_json_lines",
     "load_jsonc",
     "load_schema",
     "load_toml",

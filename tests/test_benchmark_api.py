@@ -60,6 +60,9 @@ from tests.data.yaml_samples import (
     BENCHMARK_MULTI_DOC as MULTI_DOC_YAML,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_NDJSON as NDJSON,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_SCHEMA as SCHEMA,
 )
 
@@ -316,6 +319,25 @@ def test_load_jsonc_large(benchmark):
     result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_LARGE)
     assert result["server"]["workers"] == 4
     assert len(result["items"]) == 50
+
+
+def test_load_json_lines(benchmark):
+    """200 documents, one per line, through the line-delimited iterator."""
+    result = benchmark(lambda: list(pyrs_yaml.load_json_lines(NDJSON)))
+    assert len(result) == 200
+    assert result[7]["host"] == "h7"
+
+
+def test_load_json_lines_versus_per_line_loads(benchmark):
+    """The same bytes through `load_json` with the line split done in Python.
+
+    One call per record plus the Python-side split: the pair names what the line route is worth,
+    rather than what parsing 200 documents costs, and both sides resolve the identical values.
+    """
+    lines = NDJSON.splitlines()
+    result = benchmark(lambda: [pyrs_yaml.load_json(line) for line in lines])
+    assert len(result) == 200
+    assert result[7]["host"] == "h7"
 
 
 def test_load_jsonc_floats(benchmark):

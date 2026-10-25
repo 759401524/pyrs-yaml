@@ -40,7 +40,8 @@ mod writer;
 #[cfg(feature = "parallel")]
 pub use documents::parse_documents_with_options_to_parallel;
 pub use documents::{
-    parse_documents, parse_documents_with_options, parse_documents_with_options_to,
+    Line, Lines, document_from_line, parse_documents, parse_documents_with_options,
+    parse_documents_with_options_to,
 };
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_events, from_json, from_json_with_max_depth,

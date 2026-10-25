@@ -1524,7 +1524,11 @@ floors move `documents_long_strings` 328,990,934 → 147,188,912 (**-55.26%**) a
 had named move with them - `stream_json_medium` **-14.90%** and `stream_json_stop` **-27.17%** -
 because the same line index serves the whole JSON stream route, not only the NDJSON one. The other
 38 scenarios move by 0.0051% or less, so the instrument is still measuring the same thing it
-measured before.
+measured before. Those two numbers are no longer the floors: the refresh that enforces them today,
+run 67 of the same job on the head that hands the line walk to `Lines`, wrote
+`documents_long_strings` 128,724,949 and `documents_short_strings` 86,154,921, and the reason a
+Python-surface change moves an engine floor at all is recorded in
+`docs/dev/quality-ledger.md` under the line-delimited stream.
 
 **What the image's own attribution says.** The refresh's `profile` input named
 `documents_long_strings`, and its after-table has `line_col` at 29,618,000 and `LineTable::new` at

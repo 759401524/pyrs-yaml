@@ -639,3 +639,95 @@ class TestJson5LoadFastPath:
         pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
         doc = '{"hex": 0xFF, "lead": .5, "plus": +7}'
         assert pyrs_yaml.load_json5(doc) == {"hex": 255, "lead": 0.5, "plus": 7} == pyjson5.loads(doc)
+
+
+class TestLoadJsonLines:
+    """`load_json_lines` — the line-delimited (NDJSON / JSON Lines) value iterator.
+
+    The engine has described one document per line since #599 (`pyrs_json::parse_documents`); this
+    is the Python surface over that contract, so what is pinned here is what only shows at this
+    tier: each value equals what `load_json` returns for the same line, the stream is walked as it
+    is consumed rather than up front, and a refusal names its own line and stays on it rather than
+    moving past it.
+    """
+
+    def test_each_value_is_what_load_json_gives_for_that_line(self):
+        lines = ['{"i": 0}', "[1, 2, 3]", '"text"', "null", "-0.25", '{"k": "名字"}']
+        text = "\n".join(lines) + "\n"
+        assert list(pyrs_yaml.load_json_lines(text)) == [pyrs_yaml.load_json(line) for line in lines]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '{"s": "hi", "n": 42, "t": true, "nl": null}',
+            "[[1,2],[3,4]]",
+            '"\\u00e9"',
+            "1.5e10",
+            "123",
+        ],
+    )
+    def test_parity_with_json_loads_line_by_line(self, line):
+        # The same record twice, so the per-line route is exercised more than once per case.
+        assert list(pyrs_yaml.load_json_lines(f"{line}\n{line}\n")) == [json.loads(line)] * 2
+
+    def test_the_stream_is_walked_as_it_is_consumed(self):
+        # Laziness is the surface's point: a caller that stops early never meets - or pays for - a
+        # record further down, so the malformed last line stays invisible until it is reached.
+        stream = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\nnot json at all\n')
+        assert next(stream) == {"a": 1}
+        assert next(stream) == {"b": 2}
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            next(stream)
+
+    def test_a_refusal_names_its_line_and_does_not_move_past_it(self):
+        stream = pyrs_yaml.load_json_lines('{"a": 1}\n \t\n{"b": 2}\n')
+        assert next(stream) == {"a": 1}
+        for _ in range(2):
+            with pytest.raises(pyrs_yaml.YamlParseError, match="line 2"):
+                next(stream)
+
+    def test_a_value_that_needs_the_next_line_is_refused(self):
+        # Valid JSON as one document, but line 1 leaves the object open: a record this format does
+        # not define, so neither line is served.
+        with pytest.raises(pyrs_yaml.YamlParseError, match="line 1"):
+            list(pyrs_yaml.load_json_lines('{"a": 1,\n"b": 2}\n'))
+
+    def test_crlf_reads_like_lf(self):
+        assert list(pyrs_yaml.load_json_lines('{"a": 1}\r\n[2]\r\n')) == [{"a": 1}, [2]]
+
+    def test_no_final_break_adds_no_empty_record(self):
+        assert list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}')) == [{"a": 1}, {"b": 2}]
+        # A file ending in two breaks does have a blank last line, and the blank is refused.
+        with pytest.raises(pyrs_yaml.YamlParseError, match="line 2"):
+            list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
+
+    def test_empty_input_yields_nothing(self):
+        assert list(pyrs_yaml.load_json_lines("")) == []
+
+    def test_later_lines_keep_their_numbering_over_multi_byte_text(self):
+        # Line numbers count lines, not bytes, so a record's position must not drift because an
+        # earlier value was written in characters wider than one byte.
+        with pytest.raises(pyrs_yaml.YamlParseError, match="line 3"):
+            list(pyrs_yaml.load_json_lines('{"k": "名字"}\n{"k": "值"}\n{oops}\n'))
+
+    def test_strict_rejects_the_dialect_extensions_on_every_line(self):
+        # Nothing the iterator accepts is wider than what `load_json` accepts for that line: both
+        # routes are asked, so a widening in the line walk is a failure rather than a belief.
+        for line in ["// note", "{'a': 1}", '{"a": 1,}', "Infinity", "0xFF", "[1,]"]:
+            with pytest.raises(pyrs_yaml.YamlParseError):
+                list(pyrs_yaml.load_json_lines(f"{line}\n"))
+            with pytest.raises(pyrs_yaml.YamlParseError):
+                pyrs_yaml.load_json(line)
+
+    def test_iterator_protocol_and_type(self):
+        stream = pyrs_yaml.load_json_lines('{"a": 1}\n')
+        assert isinstance(stream, pyrs_yaml.JsonLines)
+        assert iter(stream) is stream
+        assert next(stream) == {"a": 1}
+        with pytest.raises(StopIteration):
+            next(stream)
+        assert list(stream) == []
+
+    def test_one_line_is_the_whole_document(self):
+        doc = '{"a": [1, 2.5, true], "b": "café"}'
+        assert list(pyrs_yaml.load_json_lines(doc)) == [pyrs_yaml.load_json(doc)]

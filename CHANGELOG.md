@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`load_json_lines` reads a `.jsonl` stream as values, one line at a time** — the engine has
+  described line-delimited JSON since #599 (`pyrs_json::parse_documents`), but nothing at the Python
+  layer could read it: a caller split the text and called `load_json` per line, paying for a list of
+  lines plus a tree per record on top of the parse. `pyrs_yaml.load_json_lines(text)` returns a
+  `JsonLines` iterator whose `__next__` resolves one line: canonical JSON goes straight to Python
+  objects through the AST-free route `load_json` uses, and anything else through
+  `pyrs_json::document_from_line`, so one document is live at a time and a caller that stops early
+  never reaches the next record. The input is copied once into the iterator — the saving is the
+  tree, not the buffer. Refusals keep the engine's contract: a blank line, a note-only line, or a
+  value needing the next line raises naming its line in the whole input, and asking again reports
+  the same record rather than skipping it. Measured here (release build, best of 15, 10,000 records
+  / 576.5 KiB): whole stream 3.861 ms, first record 0.343 ms, per-line `load_json` 8.440 ms. Three
+  Rust tests pin the value surface to the event surface — same lines, same trees, same refusal and
+  wording — and 16 Python tests pin the surface; two CodSpeed scenarios carry the number.
 - **The refresh job can answer "where" as well as "how much"** — `scripts/ir_gate.py --profile`
   has ranked a scenario's functions by self instructions since #401 registered it, but only a hand
   run ever called it, and a hand run cannot pair with a committed floor: the local build and the

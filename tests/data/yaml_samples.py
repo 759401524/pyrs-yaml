@@ -394,6 +394,18 @@ BENCHMARK_CONFIG_JSON_ESCAPES = json.dumps(
     }
 )
 
+# A line-delimited stream (`NDJSON` / JSON Lines, `.jsonl`): one complete document per line, which
+# is the shape `load_json_lines` reads. Each record goes through `json.dumps` on its own, so every
+# line is canonical strict JSON — what a real producer writes and what the AST-free route resolves.
+# 200 records, because the per-line cost is what the surface adds and a handful of lines would
+# measure the harness instead of the work.
+BENCHMARK_NDJSON = (
+    "\n".join(
+        json.dumps({"host": f"h{index}", "ms": index * 1.5, "tags": [f"t{index}", "prod"]}) for index in range(200)
+    )
+    + "\n"
+)
+
 # Block-comment-dense JSONC document. Objective §测试覆盖 5 explicitly names
 # "block-comment" as a hot sample that must be quantified per change. Until
 # now, only inline ``//`` comments appeared in benchmarks (via

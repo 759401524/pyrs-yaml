@@ -11,6 +11,24 @@ from .merged_view import MergedView
 from .node import Node
 
 @final
+class JsonLines:
+    """
+    Iterator over the values of a line-delimited JSON stream, one document per line.
+    """
+    def __iter__(self, /) -> JsonLines:
+        """
+        Return self (iterator protocol).
+        """
+    def __next__(self, /) -> Any:
+        """
+        Yield the next line's value; `None` once the stream is exhausted.
+
+        A line the stream refuses raises with its position in the whole input, and the cursor does
+        not move: asking again reports the same record rather than the one after it, because a
+        record this format defines is not one to lose silently.
+        """
+
+@final
 class StreamIterator:
     """
     YAML event stream iterator, yielding parsed events one by one.
@@ -497,6 +515,17 @@ def load_json5(json_str: "str") -> "dict[str, Any] | list[Any]":
     JSON takes the same AST-free fast path `load_json` and `load_jsonc`
     use; every JSON5-only form falls through to the AST parser that owns
     the dialect's number and string semantics.
+    """
+
+def load_json_lines(json_str: "str") -> "JsonLines":
+    """
+    Iterate the values of a line-delimited JSON stream (`NDJSON`, `JSON Lines`, `.jsonl`): one
+    complete document per line, resolved as the iterator is asked for rather than all up front.
+
+    Each value is what `load_json` returns for that line, and the stream keeps the engine's
+    contract: a blank line, a line holding only a note, or a value that needs the next line to
+    finish raises with its position in the whole input, and the refusal is reported again until the
+    iteration stops.
     """
 
 def load_jsonc(json_str: "str") -> "dict[str, Any] | list[Any]":

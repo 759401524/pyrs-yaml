@@ -27,31 +27,71 @@
 
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
+use pyrs_ast::ast::CustomNode;
 use pyrs_ast::error::ParseError;
 use pyrs_event::{EventSink, LineTable, StreamEvent, StreamEventType};
 
-use crate::{JsonParseOptions, parse_stream_with_options_to};
+use crate::{JsonParseOptions, from_json_with_options, parse_stream_with_options_to};
 
 /// A line's `start..end` in the whole input, the `\n` excluded.
-type Line = (usize, usize);
+pub type Line = (usize, usize);
 
-/// Every line of `text`, in order.
+/// Every line's `start..end` in the whole input, in order.
 ///
-/// A final line break adds no empty line: `"{}\n"` is one line, `"{}"` is one line. A file that
-/// ends in two breaks has a blank last line, which the walk refuses.
+/// The collecting form of [`Lines`], for the walks that need the index at once: `parse_documents_with_options_to`
+/// shifts each line's events by its start, and the shard split in
+/// `parse_documents_with_options_to_parallel` ends a shard where the next one starts.
 fn lines(text: &str) -> Vec<Line> {
-    let mut out = Vec::new();
-    let mut start = 0;
-    for (index, byte) in text.bytes().enumerate() {
-        if byte == b'\n' {
-            out.push((start, index));
-            start = index + 1;
+    Lines::new(text).map(|(_, line)| line).collect()
+}
+
+/// One line of a line-delimited stream at a time: its 0-indexed number and its `start..end`.
+///
+/// Offsets rather than the line's text, because a consumer that owns its text and moves its own
+/// cursor between items — a `#[pyclass]`, which cannot borrow the string it holds — cannot keep a
+/// slice into it. Two integers survive the borrow ending, and the line they name always ends before
+/// the break: a final break adds no empty line, so `"{}\n"` is one line, `"{}"` is one line, and a
+/// file ending in two breaks has a blank last line for [`document_from_line`] to refuse.
+pub struct Lines<'a> {
+    text: &'a str,
+    /// The first byte of the line not yet returned.
+    at: usize,
+    /// How many lines were returned before it.
+    number: usize,
+}
+
+impl<'a> Lines<'a> {
+    /// Every line of `text`, numbered from zero.
+    pub fn new(text: &'a str) -> Self {
+        Self::resume(text, 0, 0)
+    }
+
+    /// The lines of `text` from byte `at` on, numbered from `number`.
+    ///
+    /// A resumed walk is indistinguishable from one that never stopped: the two arguments are the
+    /// last line's `end + 1` and its number plus one.
+    pub fn resume(text: &'a str, at: usize, number: usize) -> Self {
+        Lines { text, at, number }
+    }
+}
+
+impl<'a> Iterator for Lines<'a> {
+    type Item = (usize, Line);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.at >= self.text.len() {
+            return None;
         }
+        let end = self.text[self.at..]
+            .find('\n')
+            .map_or(self.text.len(), |index| self.at + index);
+        let item = (self.number, (self.at, end));
+        // One past the break, which is the end of the input itself when the line had none: the
+        // guard above then reads the stream as finished rather than slicing past the last byte.
+        self.at = end + 1;
+        self.number += 1;
+        Some(item)
     }
-    if start < text.len() {
-        out.push((start, text.len()));
-    }
-    out
 }
 
 /// Whether a line holds no token at all.
@@ -143,6 +183,43 @@ fn shift_error(error: ParseError, base: usize) -> ParseError {
     }
 }
 
+/// The refusal a line with no token at all earns, named by its place in the stream.
+fn blank_refusal(index: usize) -> ParseError {
+    ParseError::Syntax {
+        message: format!(
+            "a blank line carries no document in a line-delimited JSON stream at line {} column 1",
+            index + 1
+        ),
+        line: index,
+        col: 0,
+    }
+}
+
+/// The document one line of a line-delimited stream holds, with positions against the stream.
+///
+/// The value surface of [`parse_documents_with_options`] and the value sibling of [`parse_line`],
+/// so the two cannot disagree about a line: the same blank-line refusal, the same [`shift_error`]
+/// on the parser's own error, and underneath it the single-document reader
+/// [`from_json_with_options`] — the tree the event walk replays into is the tree this returns,
+/// which is what `crates/pyrs-json/tests/events_replay.rs` already proves for every document the
+/// scanner accepts.
+///
+/// A consumer that can resolve a line itself — the binding builds Python objects straight from the
+/// bytes of a canonical JSON line — hands it here only when its own route declines, so one line is
+/// never read twice into two different values.
+pub fn document_from_line(
+    text: &str,
+    (start, end): Line,
+    index: usize,
+    opts: JsonParseOptions,
+) -> Result<CustomNode, ParseError> {
+    let line = &text[start..end];
+    if is_blank(line) {
+        return Err(blank_refusal(index));
+    }
+    from_json_with_options(line, opts).map_err(|error| shift_error(error, index))
+}
+
 /// Describe one line as the document it must be, reporting through `sink`.
 ///
 /// Returns whether the sink asked to stop. The line's own `StreamStart`/`StreamEnd` never reach
@@ -156,14 +233,7 @@ fn parse_line<'a, S: EventSink<'a> + ?Sized>(
 ) -> Result<bool, ParseError> {
     let line = &text[start..end];
     if is_blank(line) {
-        return Err(ParseError::Syntax {
-            message: format!(
-                "a blank line carries no document in a line-delimited JSON stream at line {} column 1",
-                index + 1
-            ),
-            line: index,
-            col: 0,
-        });
+        return Err(blank_refusal(index));
     }
     let mut shifted = LineSink {
         out: sink,
@@ -313,7 +383,7 @@ pub fn parse_documents_with_options_to_parallel<'a, S: EventSink<'a> + Send>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{from_json5, parse_stream};
+    use crate::{from_events, from_json5, parse_stream, parse_stream_with_options};
     use alloc::string::{String, ToString};
     use alloc::vec::Vec;
 
@@ -488,7 +558,8 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "parallel")]
+    /// A line-delimited corpus with multi-byte values, so a walk that counts bytes and one that
+    /// counts characters cannot both get away with the same number.
     fn corpus(count: usize) -> String {
         (0..count)
             .map(|index| format!("{{\"i\":{index},\"s\":\"名字{index}\",\"v\":[{index}]}}"))
@@ -641,5 +712,131 @@ mod tests {
         let sinks = shards("", 3);
         assert_eq!(sinks[0], parse_documents("").unwrap());
         assert!(sinks[1..].iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn the_value_surface_resolves_each_line_the_event_surface_describes() {
+        // The two ways this module answers a line-delimited stream: describe it as events and fold
+        // them, or hand each line to the single-document reader. The Python value iterator takes the
+        // second route and the registered contract is the first, so a line the stream describes has
+        // to resolve to the tree that stream describes — same count, same trees, per line.
+        let inputs = [
+            ("lf", corpus(40)),
+            ("crlf", corpus(40).replace('\n', "\r\n")),
+            ("padding", " [1] \n\t{}\n{\"a\":2}".to_string()),
+            ("no final break", "{\"a\":[1,2]}".to_string()),
+            ("single line", "[1]".to_string()),
+            ("empty", String::new()),
+        ];
+        for (name, text) in inputs {
+            let events = parse_documents(&text).unwrap();
+            let lines: Vec<(usize, Line)> = Lines::new(&text).collect();
+            assert_eq!(
+                lines.len(),
+                document_starts(&events).len(),
+                "{name}: the two surfaces count different documents"
+            );
+            for (number, line) in lines {
+                let folded = from_events(
+                    &parse_stream_with_options(&text[line.0..line.1], JsonParseOptions::STRICT)
+                        .unwrap(),
+                )
+                .unwrap_or_else(|error| panic!("{name} line {number}: replays ({error})"));
+                let value = document_from_line(&text, line, number, JsonParseOptions::STRICT)
+                    .unwrap_or_else(|error| panic!("{name} line {number}: {error}"));
+                assert_eq!(folded, value, "{name} line {number}: the surfaces disagree");
+            }
+        }
+    }
+
+    #[test]
+    fn a_resumed_line_walk_reads_the_same_lines_as_one_that_never_stopped() {
+        // A `#[pyclass]` cannot borrow the text it owns, so the Python iterator rebuilds the walk
+        // between every value from the two numbers the last item named: that line's `end + 1` and
+        // its own number plus one. Off by one and it re-reads a line or skips one, so values repeat
+        // or vanish with no error to say so.
+        let text = corpus(60) + "\n";
+        let whole: Vec<(usize, Line)> = Lines::new(&text).collect();
+        let mut resumed: Vec<(usize, Line)> = Vec::new();
+        let (mut at, mut number) = (0, 0);
+        while let Some(item) = Lines::resume(&text, at, number).next() {
+            let (index, line) = item;
+            assert_eq!(
+                index, number,
+                "a resumed walk must number from where it was pointed"
+            );
+            resumed.push(item);
+            at = line.1 + 1;
+            number += 1;
+        }
+        assert_eq!(resumed, whole);
+        assert!(Lines::resume(&text, at, number).next().is_none());
+        // An input with no final break leaves the same offset one past the end rather than at it,
+        // and the walk reads that as finished instead of slicing past the last byte.
+        let open = corpus(3);
+        let (_, last) = Lines::new(&open).last().unwrap();
+        assert!(Lines::resume(&open, last.1 + 1, 3).next().is_none());
+    }
+
+    #[test]
+    fn the_value_surface_refuses_the_line_the_event_surface_refuses() {
+        // Same refusal, same words, same line — the message is part of the contract because it is
+        // what a caller sees when a record is malformed in the middle of a stream.
+        let cases = [
+            (
+                "blank in the middle",
+                JsonParseOptions::STRICT,
+                "{\"a\":1}\n \t\r\n{}\n",
+            ),
+            ("trailing blank", JsonParseOptions::STRICT, "[1]\n\n"),
+            (
+                "parser error on a later line",
+                JsonParseOptions::STRICT,
+                "[1]\n[2]\n{oops}\n",
+            ),
+            ("document left open", JsonParseOptions::STRICT, "{\"a\":1\n"),
+            (
+                "string spanning the break",
+                JsonParseOptions::JSON5,
+                "\"a\\\nb\"\n",
+            ),
+            (
+                "note and no value",
+                JsonParseOptions::JSONC,
+                "// only a note\n{}\n",
+            ),
+        ];
+        for (name, opts, text) in cases {
+            let described = parse_documents_with_options(text, opts)
+                .err()
+                .unwrap_or_else(|| panic!("{name}: the event surface must refuse it"));
+            let resolved = Lines::new(text)
+                .filter_map(|(number, line)| document_from_line(text, line, number, opts).err())
+                .next()
+                .unwrap_or_else(|| panic!("{name}: the value surface accepted every line"));
+            let (
+                ParseError::Syntax {
+                    message: first,
+                    line: first_line,
+                    ..
+                },
+                ParseError::Syntax {
+                    message: second,
+                    line: second_line,
+                    ..
+                },
+            ) = (described, resolved)
+            else {
+                panic!("{name}: both refusals must be syntax errors");
+            };
+            assert_eq!(
+                first_line, second_line,
+                "{name}: the two surfaces name different lines"
+            );
+            assert_eq!(
+                first, second,
+                "{name}: the two surfaces word the refusal differently"
+            );
+        }
     }
 }

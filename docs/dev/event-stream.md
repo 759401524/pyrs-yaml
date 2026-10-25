@@ -932,8 +932,54 @@ documents through the `parse_*` entry points, and this module is on none of thei
 gated is that the code keeps compiling and passing on a leg the default build never visits:
 `ci.yml` runs `cargo test -p pyrs-json --features parallel` as its own step.
 
-**Not answered.** There is no Python surface for line-delimited streams yet — `parse_documents*` is
-Rust-only, and the binding's `parse_stream` still walks one document. The shard count is the
-caller's to choose; nothing sizes it from the input, so a caller that hands 24 shards 24 lines gets
-less than serial. And parallelism here divides *documents*, not one document: a single 20 MiB JSON
-value still goes down the serial walk.
+**Not answered.** The shard count is the caller's to choose; nothing sizes it from the input, so a
+caller that hands 24 shards 24 lines gets less than serial. And parallelism here divides
+*documents*, not one document: a single 20 MiB JSON value still goes down the serial walk. What was
+answered since — the Python surface this section said did not exist — is the next section.
+
+## The line-delimited stream reached the Python layer as values (2026-10-26)
+
+<!-- landed: crates/pyrs-json/src/documents.rs::document_from_line -->
+<!-- landed: crates/pyrs-json/src/documents.rs::Lines -->
+<!-- landed: crates/pyrs-yaml/src/py/json_lines.rs::JsonLines -->
+<!-- landed: crates/pyrs-yaml/src/py/functions.rs::load_json_lines -->
+<!-- landed: tests/test_json.py::TestLoadJsonLines -->
+<!-- landed: tests/test_benchmark_api.py::test_load_json_lines -->
+
+**What was missing.** `parse_documents*` could describe a `.jsonl` stream since #599 and nothing
+above it could read one. A caller that wanted values split the text in Python and called
+`load_json` per line, which pays for a list of lines and a `CustomNode` tree per record on top of
+the parse, and builds all of them before the first value is usable.
+
+**The two surfaces, by construction.** `pyrs_json::Lines` yields one line at a time as
+`(number, start..end)` and `document_from_line` resolves one line into the tree
+`from_json_with_options` returns for it, reusing `parse_line`'s blank-line refusal and its
+`shift_error`. The event surface and the value surface therefore share the splitting rule and the
+refusal text rather than restating them, which is what three Rust tests then check from outside:
+same line count, same trees per line, and for six malformed inputs the same refused line *and* the
+same message. `Lines` reports offsets rather than the line's text for a reason that only shows at
+the binding: a `#[pyclass]` cannot borrow the string it owns, so the iterator stores two integers
+and calls `Lines::resume(text, at, number)` per value — and the resumed walk is tested against one
+that never stopped, because an off-by-one there repeats or drops a record without raising anything.
+
+**No detach, and why.** `__next__` holds the GIL for its whole line. The dominant cost of a line is
+building its Python objects, which needs the GIL, so a `py.detach` around the scan would add an
+acquire-release per record to the work it was meant to overlap — the reading AGENTS.md already
+records for `direct_dump`. Concurrency comes from the iterator boundary instead: every yielded value
+returns to the interpreter, so another thread gets its turn between records.
+
+**Measured here** (release build, best of 15, this host, so the wall-clock direction only —
+CodSpeed carries the number): 10,000 records / 576.5 KiB. Whole stream through
+`load_json_lines` 3.861 ms; the same bytes as `[load_json(line) for line in text.splitlines()]`
+8.440 ms; the first record alone 0.343 ms. The last figure is the point of the surface and it is
+not 10,000× smaller than the first, because the input is copied once into the iterator: the saving
+is the tree and the list, not the buffer.
+
+**Not claimed.** No instruction floor governs the Python surface — `.ci/ir-baseline.json` measures
+the engine's `documents_short_strings` / `documents_long_strings` scenarios, and `load_json_lines`
+shares their line walk but adds Python-object work the harness does not enter; the binding's own
+`load_json_*` floors describe single documents. Dialect stays engine-side
+(`document_from_line(text, line, number, opts)` takes `JsonParseOptions`): the Python surface is
+strict-only, matching `load_json`, and no `jsonl`-flavoured option was added for a caller that has
+not asked for one. There is no path or file-object input either — `load_json_lines` takes a `str`,
+like every other loader in the family.
