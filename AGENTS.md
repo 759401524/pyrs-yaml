@@ -62,9 +62,13 @@
 - `docs/<locale>/api/*.md` are generated: each page carries `:::` directives and mkdocstrings renders the
   extension's signatures and docstrings into it. That gap closed with #321, so the obligation is now the
   inverse of what this bullet used to describe: a `:::` block added to an `en` page needs its zh/ja/ko twins,
-  and "the build was green" is not evidence the content arrived — `scripts/build-docs.py` output is measured
-  by counting rendered signature/class markers, not by the exit code (a page missing its directives renders
-  perfectly while showing nothing).
+  and "the build was green" is not evidence the content arrived. The build is not the measurement:
+  `scripts/build-docs.py` reports zensical's exit code and nothing else (three functions, no counting of
+  its own), so what answers the question is `tests/test_api_doc_signatures.py` — every public callable the
+  stub declares must be named in each locale's pages, and each locale must contribute at least 20 of them
+  — together with `scripts/check_doc_signatures.py`, which compares each typed `:::` block against the
+  shipped object (344 blocks across 28 pages measured today). A page missing its directives renders
+  perfectly while showing nothing, and those two are what reddens it.
 - This file is gated. `scripts/check_hole_claims.py` asserts that every quality-hole id named here or in
   `CLAUDE.md`, and every one named inside the `[Unreleased]` block of the five changelog mirrors, is an id the
   matrix measures right now, because for a milestone this file described a closed gap as open and nothing read
