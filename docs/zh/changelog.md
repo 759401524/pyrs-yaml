@@ -129,6 +129,15 @@ status: new
   `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` 与
   `TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header` 钉住；
   只读映射槽的反证会逐字重现丢失：`"[sec]\nx = 1\n"` 对上 `"[sec] # note\nx = 1\n"`。
+- **段内条目键行上的注释不再在通往 TOML 的路上消失** — 上一条目为表头行补上的那个槽位，写
+  `key = value` 这一行仍然没读：`to_toml("a:\n  b: # note\n    x: 1\n")` 交出 `[a]\nb = {x = 1}`，
+  数组形状交出 `b = [{x = 1}]`，注释两处都不见；而 YAML 路线会重新写出它，TOML 出身的
+  `b = {x = 1} # note` 两轮不变。`emit_pair` 现在退而读键节点的行内槽。表头是少数，每一对键值都要
+  付钱。在执行地板的那台镜像上，用基线钉住的编译器、三轮取最大，TOML 写出侧的两块地板一起动：
+  `to_toml_medium` 从 26,604,776 到 27,024,692（+1.58 %），`to_toml_long_strings` 从 28,255,071 到
+  28,607,004（+1.25 %）；37 个场景里其余没有一个移动超过 0.32 %，所以这次改动自带的刷新在
+  `accept_drift` 里两个都点名。内联表写法一轮就定；数组会展开并把注释带到最后一个元素上，在那儿定
+  下来——是挪位置，不是丢内容。
 
 #### 变更
 
