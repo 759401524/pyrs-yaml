@@ -8357,6 +8357,40 @@ removes it - `(fs)` and `(ft)` both say so. What this row does not price either:
 loaders take once a document is non-canonical, which stays the engine harness's job because there
 the dialect is decided without a Python object in sight.
 
+### (fx) The TOML writer learned to read a second note slot, and two explanations fell with it (2026-10-25)
+
+**The defect.** `to_toml` of a YAML document whose section key carries an inline note -
+`sec: # note` over `x: 1` - emitted `[sec]\nx = 1\n`. The note was not relocated and not shadowed;
+it was gone. The section pass read `tbl.comment()` and the leading lists, and the hub delivers a
+YAML key-line note on the KEY node's inline slot, which that pass never opened. #146 had already
+fixed exactly this one level down, for an inline member's key; the header line was the remaining
+blind slot.
+
+**The fix.** One `or_else` in `crates/pyrs-toml/src/writer.rs`: consult the key node's inline
+comment when the section mapping carries none, and write it on the header line the section pass
+already knows how to decorate. The TOML-origin shape - where `cow_table_to_node` parks the header
+note on the mapping - keeps its existing path, so no output changes for a TOML document.
+
+**What the measurement retired.** `engine:container-inline-note-position` was registered with the
+explanation that the locked granit comment-capture model cannot keep a comment on a container's key
+line, and `docs/dev/boundaries.md` repeated it, adding "verified independently: pure YAML
+`sec: # note` loses that position too". Both measured false: `pyrs_toml`'s own scanner captures the
+header's inline note (`parse_table_header` calls `take_comment()` and `register_header` clones it
+into the table struct), granit is nowhere in that route, and `parse_stream` reports a YAML
+`sec: # note` as `style: inline, owner: preceding_inline`, which is now also what `to_toml` writes
+back. The registry entry and the boundary document now name the real blocker - the
+container-inline-note placement rule `api:set-comment-container-owner` records - instead of a
+dependency that was never involved. Registering a gap on a wrong premise keeps it open for as long
+as the premise goes untested; nine months here.
+
+**Seen to bite.** Forcing the writer back to reading only the mapping's slot reproduces the drop
+verbatim - `"[sec]\nx = 1\n"` against the expected `"[sec] # note\nx = 1\n"` - in
+`writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header`, which also
+asserts the node-level fixed point (`to_toml(from_toml(out)) == out`). The Python test states the
+weaker, honest thing: one TOML round still relocates a TOML-origin header note onto the table's last
+body line, and that is the residual's pinned behaviour, asserted in the same class so the two claims
+cannot be confused.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

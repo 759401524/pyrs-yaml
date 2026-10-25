@@ -143,6 +143,18 @@ status: new
   の穴 id は失敗してパスと行を名乗り、同じ id をリリース済みの見出しの下に置けば通り、マトリクスがま
   だそれを測っているあいだも通り、既定のスコープがミラーを一つでも落とせば赤になります。実際のツリー
   でも確かめました。id を `CHANGELOG.md:9` に挿すと 1、戻すと 0 です。
+- **キー行の注釈が TOML への途中で消えなくなりました** — `to_toml("sec: # note\n  x: 1\n")` は
+  `[sec]\nx = 1\n` を返していました。注釈はヘッダーに残るでもなく他所へ移るでもなく、すてられていた
+  のです。TOML 書き出しの段落節が読んだのはマッピング自身の行内スロットだけで、ハブは YAML 文書のキ
+  ー行の注釈を**キー節**に載せて渡します。同じスロットを #146 が一段下（インライン member）で読ませ
+  たときと、まったく同じ欠陥でした。この測定は、関連する穴の説明としてこのリポジトリがしてきた二つの
+  言いぶんも取り下げます。`pyrs_toml` 自身のスキャナは `[sec] # note` の行内注釈をたしかに捕まえ、
+  granit はその経路にまったく居らず、YAML 由来の `sec: # note` は位置を保ったままハブを通ります。開
+  いたままなのは `api:set-comment-container-owner` の残差が記録する配置規則です。TOML 由来のヘッダー
+  注釈はいまだ表の最後のメンバー行に戻ります。この動作は変えず、引き続き固定しています。
+  `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` と
+  `TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header` が押さ
+  え、マッピングだけを読む形に戻すと損失は `"[sec]\nx = 1\n"` としてそのまま再現します。
 
 #### 変更
 

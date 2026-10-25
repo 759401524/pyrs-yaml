@@ -20,8 +20,8 @@
       "repro": "tests/test_toml.py::TestSectionHeaderCommentBoundary::test_header_inline_comment_is_relocated_not_dropped",
       "tier": "rust-core",
       "opened": "2026-10-19",
-      "exit": "to_toml(from_toml('[sec] # note\\nx = 1\\n')) writes the note on the header line itself; reaching it needs the hub to carry a container inline-note position, which the locked granit capture model does not offer today",
-      "why": "the note keeps its text and its table but not its line; values are lossless (docs/dev/boundaries.md)"
+      "exit": "to_toml(from_toml('[sec] # note\\nx = 1\\n')) writes the note on the header line itself; reaching it means changing where the YAML writer places a container's inline note (today: the last line of that container's body) - the placement api:set-comment-container-owner records, not a parser limitation",
+      "why": "the note keeps its text and its table but not its line; values are lossless (docs/dev/boundaries.md). The registration blamed granit's capture model; measured 2026-10-25, granit is not in this path, and a YAML-origin `sec: # note` now keeps its line because the TOML section pass reads the key node's inline slot too"
     },
     {
       "id": "api:set-comment-container-owner",
