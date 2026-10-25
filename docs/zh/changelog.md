@@ -214,6 +214,14 @@ status: new
 
 #### 变更
 
+- **两个锁文件都升到各自声明区间允许的最新版本** — Rust 侧只剩 `similar` 3.2.0 → 3.2.1 这一步，
+  因为八个 crate 声明的 MSRV 1.96 地板挡住了其余更新；Python 侧共 9 个包：`zensical`
+  0.0.71 → 0.0.72、`mkdocstrings` 1.0.7 → 1.0.8、`mkdocstrings-python` 2.0.9 → 2.0.10、
+  `python-dateutil` 2.9.0.post0 → 3.0.0、`deepmerge` 3.0.1 → 4.0.0，另有 griffelib、markdown
+  和两个补丁版本。刻意钉住的版本没有动：`maturin` 停在 1.15.0（它本身就是最新），`pyo3` 留在
+  0.29 系列；最新的 `pytest`、`hypothesis`、`pydantic`、`numpy` 要求的解释器高于本版本仍支持的
+  3.8 地板。本机实测：806 条 Rust 测试、4,306 条 Python 测试、
+  `cargo clippy --all --all-targets -- -D warnings`、整套钩子、四 locale 严格构建全部通过。
 - **评估文档的盲区计数改由列表算出，不再靠人记** — `QUALITY_MATRIX.md` 里那句
   `Seven blind spots were found by measuring` 写下时，它下面的列表其实已经有八条，而没有任何门禁能
   看出这个差别：派生出的层级行只数测试与场景，从不数段落。现在有一条测试会从那句话引出的列表里重新

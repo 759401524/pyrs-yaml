@@ -258,6 +258,16 @@ status: new
 
 #### 변경
 
+- **두 잠금 파일을 선언한 범위가 허락하는 최신으로 올렸습니다** - Rust 쪽은 `similar` 3.2.0 →
+  3.2.1 한 단계뿐입니다. 여덟 크레이트가 선언한 MSRV 1.96 하한이 나머지를 막습니다. Python 쪽은
+  9개 패키지입니다: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8,
+  `mkdocstrings-python` 2.0.9 → 2.0.10, `python-dateutil` 2.9.0.post0 → 3.0.0, `deepmerge`
+  3.0.1 → 4.0.0, 그리고 griffelib·markdown·패치 두 단계. 의도적으로 고정한 판은 움직이지
+  않았습니다: `maturin`은 1.15.0에 그대로(이것이 곧 최신), `PyO3`는 0.29 계열에 남습니다. 최신
+  `pytest`·`hypothesis`·`pydantic`·`numpy`는 이 릴리스가 받는 3.8보다 더 새로운 실행 환경을
+  요구합니다. 실측: Rust 테스트 806건, Python 테스트 4,306건,
+  `cargo clippy --all --all-targets -- -D warnings`, 훅 전체, 네 로케일 strict 빌드가
+  통과했습니다.
 - **평가 문서의 사각지대 개수를 목록에서 계산합니다** — `QUALITY_MATRIX.md` 의
   `Seven blind spots were found by measuring` 문장을 쓸 무렵 그 아래 목록은 이미 여덟 항목을 담고
   있었지만, 그 차이를 보는 문지는 없었습니다. 파생 행은 테스트와 시나리오만 세고 단락은 세지 않기

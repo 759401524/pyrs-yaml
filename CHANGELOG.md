@@ -262,6 +262,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Both lockfiles moved to the newest version their declared ranges allow** — `similar`
+  3.2.0 → 3.2.1 on the Rust side, the only step left under the eight crates' MSRV 1.96 floor, and
+  nine Python packages: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8,
+  `mkdocstrings-python` 2.0.9 → 2.0.10, `python-dateutil` 2.9.0.post0 → 3.0.0, `deepmerge`
+  3.0.1 → 4.0.0, plus griffelib, markdown and two patch rows. The deliberate pins held: `maturin`
+  stays at 1.15.0, which is current, and `pyo3` stays on the 0.29 line; the newest `pytest`,
+  `hypothesis`, `pydantic` and `numpy` ask for an interpreter above the 3.8 floor this release
+  still supports. Measured here: 806 Rust tests, 4,306 Python tests,
+  `cargo clippy --all --all-targets -- -D warnings`, the whole hook set, and a strict four-locale
+  docs build.
 - **The assessment's blind-spot count is derived from the list, not trusted** — the sentence in
   `QUALITY_MATRIX.md` said `Seven blind spots were found by measuring` while the list under it
   already carried eight entries, and no gate could see the difference: the derived tier row counts
