@@ -15,6 +15,7 @@ The absolute per-op timings live in CodSpeed (``test_benchmark_*``,
 every fixture size and both parse + serialize.
 """
 
+import importlib.metadata
 import io
 
 import pytest
@@ -54,6 +55,13 @@ try:
     HAS_RYAML = True
 except ImportError:  # pragma: no cover
     HAS_RYAML = False
+
+try:
+    import yaml_edit as _yaml_edit
+
+    HAS_YAML_EDIT = True
+except ImportError:  # pragma: no cover
+    HAS_YAML_EDIT = False
 
 
 def _load(lib, y):
@@ -162,3 +170,32 @@ def test_serialize_top3(size):
             f"serialize/{size}: pyrs not >5x faster than {lib} ({result.candidate_us:.1f} vs "
             f"{result.reference_us:.1f}, {result.ratio:.2f}x). {result.verdict('serialize/' + lib)}"
         )
+
+
+@pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
+def test_yaml_edit_row_measures_something():
+    """A competitor that imports but ingests none of the fixtures is a skip, not a comparison.
+
+    Measured on the two releases this repository has pinned. 0.1.3 refused all three of these
+    fixtures with `Document::from_str: Input contains stream-level comments`, so the `yaml_edit` row
+    of `tests/test_benchmark_crosslib.py` was three skips beside an installed competitor and nothing
+    read the difference, because a benchmark that never ran does not appear as a failure. 0.2.0
+    accepts `small` and `medium` and still refuses `large`. Its `YamlError` subclasses `ValueError`,
+    so the sibling's one `except` clause covers both spellings and only this floor says whether the
+    row measures anything.
+
+    It lives here rather than in the benchmark file because that file is deselected from normal runs
+    and `--codspeed` deselects every test without a `benchmark` marker — placed there, the floor
+    would have run in neither leg (measured: `50 deselected`).
+    """
+    ingested = 0
+    for fixture in _SIZES.values():
+        try:
+            _yaml_edit.Document.parse(fixture)
+        except ValueError:
+            continue
+        ingested += 1
+    assert ingested, (
+        f"yaml_edit {importlib.metadata.version('yaml-edit')} imports but refuses all {len(_SIZES)} "
+        "fixtures, so the cross-library table names a competitor it never measures"
+    )

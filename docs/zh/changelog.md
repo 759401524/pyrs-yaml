@@ -164,6 +164,17 @@ status: new
   空的字面量，已由别的测试钉住的常量，具体兄弟用例已经定住形状的 `@given` 循环，以及空登记表本身就是
   要断言的那两条。还没有任何东西拦住下一条空循环测试：这次扫描是一次性脚本，不是注册检查，做成规则会
   连字面量与 `@given` 两种情形一起误拒。记为 `(ge)`。
+- **跨库表里有一行点了竞品却从未计时** — `tests/test_benchmark_crosslib.py` 把读不进 fixture 的
+  竞品退成 skip，而 `yaml_edit` 那条分支的注释把拒绝说成较新 yaml_edit 版本的行为。对着锁住的
+  0.1.3 实测，与新旧无关：三个 fixture 全部抛 `Document::from_str: Input contains stream-level
+  comments`，所以那一行是三个 skip 摆在已安装的包旁边，而只数通过条数的套件看不见一条从未运行的
+  基准。0.2.0 是用有范围的 `uv lock --upgrade-package` 取的，不是整项目重解析带出的漂移：它解析
+  `small` 与 `medium`，仍然拒绝 `large`，于是这一行现在计时两个 fixture。它的 `YamlError` 继承
+  `ValueError`，既有那条 `except` 覆盖两个版本，变的只是走哪条分支。耐久的一半是下限
+  `tests/test_leaderboard.py::test_yaml_edit_row_measures_something`：已安装必须意味着至少读进一个
+  fixture。它住在排行榜文件里，因为基准文件在常规运行中被 deselect，而 `--codspeed` 又 deselect
+  所有没有 `benchmark` 标记的用例（实测 `50 deselected`）——放在基准文件里，这条下限两条腿都不会
+  跑。对照：venv 退回 0.1.3 它就变红，消息里带着版本号；在 0.2.0 上是绿的。记为 `(gg)`。
 
 #### 变更
 
