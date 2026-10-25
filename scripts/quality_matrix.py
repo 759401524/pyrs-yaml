@@ -1017,6 +1017,26 @@ def property_functions() -> list[str]:
     return sorted(names)
 
 
+def _property_breakdown(props: list[str]) -> str:
+    """The section-1 property cell's parenthetical, split by the naming shape each property uses.
+
+    The total count alone hid the shape that made it rot: the breakdown was typed by hand and still
+    read "2 in `pyrs-event`" once `crates/pyrs-yaml-core/src/file.rs` had added a prose-named property
+    of its own, so the sentence that explains why the count is not just `prop_*` was the stalest part
+    of the row. Deriving it from the same list the count comes from costs no second measurement.
+    """
+    prefixed = [name for name in props if name.partition("::")[2].startswith("prop_")]
+    prose = [name for name in props if not name.partition("::")[2].startswith("prop_")]
+    if not prose:
+        return f"{len(prefixed):d} named `prop_*`"
+    by_crate: dict = {}
+    for name in prose:
+        crate = name.split("/")[1]
+        by_crate[crate] = by_crate.get(crate, 0) + 1
+    spelled = ", ".join(f"{by_crate[crate]:d} in `{crate}`" for crate in sorted(by_crate))
+    return f"{len(prefixed):d} named `prop_*`, {len(prose):d} named in prose: {spelled}"
+
+
 _GUARDED_ASSERT = re.compile(r"if let Some\([^=]*=\s*try_[a-z0-9_]+\(")
 
 
@@ -1613,8 +1633,10 @@ ROW_RULES = (
     ),
     (
         "property row",
-        re.compile(r"^(\| property \| )(\d+)( proptest properties)", re.M),
-        lambda data: "{:d}".format(data["property_function_count"]),
+        re.compile(r"^(\| property \| )(\d+ proptest properties \([^)]*\))(, default)", re.M),
+        lambda data: "{:d} proptest properties ({})".format(
+            data["property_function_count"], _property_breakdown(data["property_functions"])
+        ),
     ),
     (
         "fuzz row",

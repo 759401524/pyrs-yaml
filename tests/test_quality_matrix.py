@@ -494,6 +494,15 @@ def test_a_stale_digit_and_a_reworded_row_are_both_named(matrix, measured):
     problems = matrix.row_drift(reworded, measured)
     assert any("no sentence matches" in problem for problem in problems), problems
 
+    # The property row's parenthetical is inside the derived sentence now, so a breakdown that no
+    # longer splits the tier is named rather than waved through because the leading count still reads
+    # right. That half was hand-typed and rotted once: it read "2 in `pyrs-event`" while two crates
+    # held four prose-named properties between them.
+    stale_breakdown = text.replace("3 in `pyrs-event`", "2 in `pyrs-event`", 1)
+    assert stale_breakdown != text, "the breakdown this control edits is no longer on the page"
+    problems = matrix.row_drift(stale_breakdown, measured)
+    assert any(problem.startswith("property row") for problem in problems), problems
+
     # A rewrite repairs a stale number and is idempotent; a sentence the rules cannot find is not
     # something it can invent, so the reworded row stays reported.
     fixed, changed = matrix.apply_rows(text.replace(stale_number.group(1), wrong, 1), measured)

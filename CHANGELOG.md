@@ -352,6 +352,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **A line of JSON is now indexed eight bytes at a time** — `pyrs_event::LineTable` counted one
+  UTF-8 character per step, both to find the line starts and to carry the cursor between events, and
+  on the image that enforces the instruction floors that walk read 51.79% of
+  `documents_long_strings` and 21.09% of `documents_short_strings` (`docs/dev/quality-ledger.md`
+  (gl)). A `u64` now answers eight bytes at once: `zero_lanes` finds the breaks, and each candidate
+  lane is checked against the byte it claims, because the borrow out of a zero lane makes a
+  following `0x01` look like a break too - the new property test caught that before it shipped. The
+  cursor's column advances by the byte count while a word holds no byte at or above 0x80, and a word
+  that does goes back to the character walk. Measured twice on one host with the compiler the
+  baseline names: `documents_long_strings` 308,642,512 counted instructions against 126,840,512
+  (**-58.84%**), `line_col` down 82.6% and `LineTable::new` down 66.0%; `documents_short_strings`
+  75,506,559 against 64,952,559 (**-13.98%**). Positions are unchanged: the property asserts
+  `starts` and `line_col` against a rescan at every byte of an arbitrary document, and a lane table
+  covers a break sitting in any of the eight positions and eight breaks in one word. Core only - no
+  dependency, no unsafe, so the `no_std` set is unchanged. The floors moved with the code,
+  re-measured on the image that enforces them: `documents_long_strings` 328,990,934 to 147,188,912
+  (**-55.26%**) and `documents_short_strings` 95,854,968 to 85,300,932 (**-11.01%**), and two
+  scenarios no local profile had named moved with them - `stream_json_medium` **-14.90%** and
+  `stream_json_stop` **-27.17%** - because the same index serves the whole JSON stream route. The
+  other 38 moved by 0.0051% or less.
 - **The gate's widest reading was the interpreter, and it is pinned now** - three refresh runs
   record the binding harness under one binary digest (`7adbeac719edacd6`) and spread
   `load_json_long_strings` 1.121% across their nine samples, while the engine scenarios on those

@@ -326,12 +326,29 @@ struct Cursor {
 impl<'a> LineTable<'a> {
     /// Index the line starts of `text`.
     pub fn new(text: &'a str) -> Self {
+        let bytes = text.as_bytes();
         let mut starts = Vec::with_capacity(8);
         starts.push(0usize);
-        for (index, byte) in text.bytes().enumerate() {
-            if byte == b'\n' {
-                starts.push(index + 1);
+        // A ``\n`` byte cannot hide inside a multi-byte character - continuation bytes are all at or
+        // above 0x80 - so the line starts need no UTF-8 awareness and can be found eight bytes a
+        // time. The scalar walk this replaces cost 18.90% of the long-value line scenario's own
+        // instructions on the enforcing image.
+        let mut at = 0usize;
+        while at + 8 <= bytes.len() {
+            if let Ok(chunk) = <[u8; 8]>::try_from(&bytes[at..at + 8]) {
+                let mut mask = newline_lanes(u64::from_le_bytes(chunk), at, bytes);
+                while mask != 0 {
+                    starts.push(at + (mask.trailing_zeros() as usize) / 8 + 1);
+                    mask &= mask - 1;
+                }
             }
+            at += 8;
+        }
+        while at < bytes.len() {
+            if bytes[at] == b'\n' {
+                starts.push(at + 1);
+            }
+            at += 1;
         }
         Self {
             text,
@@ -364,6 +381,31 @@ impl<'a> LineTable<'a> {
         let (mut at, mut line, mut column) =
             (self.cursor.pos, self.cursor.line, self.cursor.column);
         let mut visited = 0usize;
+        // Eight bytes at a time while all eight are single-width, so the column can advance by the
+        // byte count instead of one step per character. On the enforcing image this walk read
+        // 51.79% of the long-value and 21.09% of the short-value line scenario's own instructions
+        // (`docs/dev/perf.md`); a word holding any byte at or above 0x80 is left to it, because its
+        // characters may be two to four bytes wide.
+        while at + 8 <= pos {
+            let Ok(chunk) = <[u8; 8]>::try_from(&bytes[at..at + 8]) else {
+                break;
+            };
+            let word = u64::from_le_bytes(chunk);
+            if word & HIGH_BYTES != 0 {
+                break;
+            }
+            let lanes = newline_lanes(word, at, bytes);
+            if lanes == 0 {
+                column += 8;
+            } else {
+                line += lanes.count_ones() as usize;
+                // The highest set lane is the line the cursor ends on: every byte after it, up to
+                // the end of the word, sits on that line.
+                column = 7 - (63 - lanes.leading_zeros() as usize) / 8;
+            }
+            at += 8;
+            visited += 8;
+        }
         while at < pos {
             let step = utf8_len(bytes[at]);
             if at + step > pos {
@@ -408,6 +450,43 @@ impl<'a> LineTable<'a> {
         };
         (line, column)
     }
+}
+
+/// The high bit of every byte lane, used to spot a lane that has been shifted into it.
+const HIGH_BYTES: u64 = 0x8080_8080_8080_8080;
+/// One per byte lane, so a subtract borrows across a whole word at once.
+const LANE_ONES: u64 = 0x0101_0101_0101_0101;
+/// `\n` in every lane, so XOR makes the lanes that held one read as zero.
+const NEWLINE_LANES: u64 = 0x0A0A_0A0A_0A0A_0A0A;
+
+/// The high bit of each lane of `word` whose byte was zero.
+///
+/// The subtract borrows out of every non-zero lane into the one above it; `!word` then clears the
+/// lanes that had a high bit of their own, leaving exactly the zero lanes. Standard word-at-a-time
+/// string search, in core with no dependency and no unsafe.
+#[inline]
+fn zero_lanes(word: u64) -> u64 {
+    word.wrapping_sub(LANE_ONES) & !word & HIGH_BYTES
+}
+
+/// The lanes of `word` that hold a line-feed byte, one high bit each, checked against the source.
+///
+/// The zero-lane test over-reports: a borrow out of a zero lane can turn the lane above it into
+/// `0xFF`, and `0x01` followed by a `0x00` therefore reads as a break too. Checking the few
+/// candidates against the byte they claim is what makes the answer exact, and it runs only on a word
+/// that has a candidate - every word without one still costs the single test.
+#[inline]
+fn newline_lanes(word: u64, base: usize, bytes: &[u8]) -> u64 {
+    let mut candidates = zero_lanes(word ^ NEWLINE_LANES);
+    let mut lanes = 0u64;
+    while candidates != 0 {
+        let bit = candidates.trailing_zeros();
+        if bytes.get(base + (bit / 8) as usize) == Some(&b'\n') {
+            lanes |= 1 << bit;
+        }
+        candidates &= candidates - 1;
+    }
+    lanes
 }
 
 /// The byte length a UTF-8 character starting with `first` occupies.
@@ -475,6 +554,35 @@ mod tests {
             None => before.chars().count(),
         };
         (line, column)
+    }
+
+    /// The word-at-a-time pass must read a newline in any lane, not just the first, and must still
+    /// hand the word's tail to the same arithmetic the scalar path uses. Each lane is its own case
+    /// because the column a word ends on depends on where inside it the last break sat.
+    #[test]
+    fn a_newline_in_any_lane_of_a_word_ends_on_its_own_column() {
+        for lane in 0..8 {
+            let mut bytes = vec![b'a'; 40];
+            bytes[lane] = b'\n';
+            let text = String::from_utf8(bytes).unwrap();
+            let mut table = LineTable::new(&text);
+            assert_eq!(
+                table.starts,
+                vec![0, lane + 1],
+                "lane {lane} indexed its break wrong"
+            );
+            assert_eq!(table.line_col(20), rescan(&text, 20), "lane {lane}");
+            assert_eq!(
+                table.line_col(text.len()),
+                (1, 40 - lane - 1),
+                "lane {lane}"
+            );
+        }
+        // Eight breaks inside one word: the line advances by the count of lanes, the column by the
+        // last one only.
+        let text = "\n".repeat(8) + "x";
+        let mut table = LineTable::new(&text);
+        assert_eq!(table.line_col(text.len()), (8, 1));
     }
 
     /// A stream of events over a one-line document must not cost a rescan per event.
@@ -816,6 +924,41 @@ mod tests {
             // The end of the source, and anything past it, clamp to one answer rather than
             // panicking: a producer that ran off the end still has to report somewhere.
             prop_assert_eq!(table.line_col(text.len()), table.line_col(text.len() + 64));
+        }
+
+        /// The word-at-a-time index and the cursor's word steps agree with a rescan at every byte of
+        /// an arbitrary document - including the words a multi-byte character straddles, which is how
+        /// the fast path decides to back off. A line of six characters never fills a word, so the
+        /// property, not the hand-picked table, is what covers a long document.
+        #[test]
+        fn a_word_at_a_time_sweep_matches_a_rescan_byte_for_byte(
+            chars in prop::collection::vec(prop::char::any(), 0..72),
+        ) {
+            let text: String = chars.into_iter().collect();
+
+            let mut expected = vec![0usize];
+            expected.extend(
+                text.bytes()
+                    .enumerate()
+                    .filter(|(_, byte)| *byte == b'\n')
+                    .map(|(index, _)| index + 1),
+            );
+            prop_assert_eq!(
+                LineTable::new(&text).starts.clone(),
+                expected,
+                "line starts of {:?}",
+                text
+            );
+
+            let mut table = LineTable::new(&text);
+            for pos in 0..=text.len() {
+                prop_assert_eq!(
+                    table.line_col(pos),
+                    rescan(&text, pos),
+                    "byte {} of {:?} resolved to a different place",
+                    pos, text
+                );
+            }
         }
 
         /// Owning an event is a no-op on everything but where its text lives, and it is idempotent

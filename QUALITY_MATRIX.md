@@ -22,8 +22,8 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 814 Rust `#[test]`, 1,956 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 29 proptest properties (26 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| unit / integration | 816 Rust `#[test]`, 1,956 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 30 proptest properties (26 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
@@ -724,15 +724,18 @@ The question that filled it again on 2026-10-14 was about the tier itself: `prop
 counts properties, and a count is satisfied by a property that never asserts.
 `conditional_property_assertions()` therefore reads each property body for a guard of the shape
 `if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
-round-trip classifier has since replaced that guard, and the probe now reports 0 of the 29 properties.
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 30 properties.
 Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
 to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it
-25. It is 27 because the count demanded the `prop_` prefix, and the two properties in
-`crates/pyrs-event/src/lib.rs` are declared inside a `proptest!` block with prose names: they existed, ran
-in CI, and were not measured. The rule is now the `#[test]` attribute proptest requires, which also
+25. It was 27 then because the count demanded the `prop_` prefix, and the two properties in
+`crates/pyrs-event/src/lib.rs` were declared inside a `proptest!` block with prose names: they existed, ran
+in CI, and were not measured. The prose-named family has since grown to four across two crates, and the
+row above spells that breakdown from the same measurement instead of typing it: the hand-written
+parenthetical still read "2 in `pyrs-event`" after `crates/pyrs-yaml-core/src/file.rs` had added one.
+The rule is now the `#[test]` attribute proptest requires, which also
 excludes the nested helpers (`key_order`, `mapping_key_orders`, `tag_texts`) that a naive "every `fn` in
-the block" rule counted - a first attempt measured 30 that way.
+the block" rule counted - a first attempt measured 30 that way while the tier held 27.
 The rate behind the guard was measured rather than argued: 3423 of 4000 drawn trees filtered, zero
 unparseable. So the row is not "the property tier is thin"; it is the specific, checkable statement
 that seven properties are silent on most of what they generate, which is the shape of the blind spot
