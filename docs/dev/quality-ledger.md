@@ -8555,6 +8555,35 @@ profile to answer is *which* function the 11.0 lands in, and no claim is made ab
 `ITERATIONS` first - the same reason `--profile` subtracts `--setup-only` before ranking functions,
 and the reason `(fy)`'s "every pair pays" was right while its arithmetic against it was not.
 
+### (gb) The bump bot's own check-run says the config it was handed is unreadable (2026-10-25)
+
+**What arrived.** A check-run named `.github/dependabot.yml` failed on the head of #619
+with "Your .github/dependabot.yml contained invalid details" and five rejections: under `groups`,
+the values `version-update:semver-patch` / `-minor` / `-major` "did not match one of the following
+values: major, minor, patch" - in `cargo-routine`, `cargo-major` and `python-routine`. The commit
+that wrote them is `807e8632` (2026-10-16), so the file has been unreadable in those three places
+for nine days, and nothing in CI ever said so: the same head's `Hygiene`, `Fuzz`, `Validate` and
+`CodSpeed` runs all reported success, and the rejection rides on a check the merge verdict does not
+read.
+
+**The vocabulary is a pair, not one.** GitHub's configuration reference gives
+`groups.<name>.update-types` the short forms and gives `ignore.<dependency>.update-types` - like
+`allow` - the `version-update:semver-*` forms. The file mixed them in both directions at once: the
+one `ignore` rule that declares types, `granit-parser`'s `-major`, is spelled correctly and was not
+flagged, and the three groups were. The one entry that demonstrably worked is the one whose group
+declares no `update-types` at all - `github-actions`, which produced #620 - while no cargo or uv bot
+pull request exists since the config landed. From outside, a refused entry and an uneventful week
+look identical, which is the shape this record keeps meeting.
+
+**Fix, and what keeps it fixed.** The five group values now take the short forms; the `ignore` rules
+keep the prefixed ones. `tests/test_dependabot_config.py` asserts the two vocabularies separately,
+so an edit that harmonises either side into the other reddens one of the two tests, and each test
+fails outright if the sites it polices disappear rather than passing in their absence. The file's
+header comment claimed "every key below is one the hosted schema documents" two lines above the
+paragraph that warns a schema-rejected value "stops updates for the ecosystem" quietly; it now names
+both vocabularies, the test that pins them, and the fact that the rejection is invisible to the gate
+that decides merges.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

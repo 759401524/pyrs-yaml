@@ -254,6 +254,14 @@ status: new
   `from_toml_medium`의 9.68 %를 차지하고, 그 프로파일에서 더 큰 행들은 트리가 없는 파서도 수행하는
   스캔 작업이다. 따라서 재작성은 일정에 오르지 않고, 문장은 실제로 내보내는 구성을 설명한다.
   문서만 변경 — 동작, 출력, 셀린 수치 모두 그대로다.
+- **자동 올림 봇이 자기 설정을 다시 읽을 수 있습니다** — `.github/dependabot.yml` 의 `groups` 항목
+  셋이 `version-update:semver-patch` / `-minor` / `-major` 를 쓰고 있었습니다. 그건 `ignore` 와
+  `allow` 의 어휘이고, `groups.*.update-types` 는 `major` / `minor` / `patch` 만 받습니다. 그래서
+  Dependabot 은 이 설정을 거부했습니다 — 등록된 뒤 9일이 지나도록 어떤 병합 게이트도 읽지 않는
+  check-run 으로 드러날 때까지 모든 workflow 는 초록이었습니다. 다섯 값은 짧은 형태로 고쳤고, 타입을
+  선언한 유일한 `ignore` 규칙은 접두 형식이 있어야 할 자리에 그대로 둡니다.
+  `tests/test_dependabot_config.py` 는 두 어휘를 따로 고정하고 어느 쪽이든 관리할 항목이 사라지면
+  실패하게 하므로, 둘을 '통일' 하는 편집은 조용히 올림을 멈추는 대신 테스트를 빨갛게 만듭니다.
 
 #### 성능
 

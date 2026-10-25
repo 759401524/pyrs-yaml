@@ -259,6 +259,14 @@ status: new
   `load_toml_medium` の 8.10 %、`from_toml_medium` の 9.68 % を占め、その剖析でもっと大きい行は
   ツリーなしパーサでも行う走査処理です。そこで書き換えは予定せず、一文は実際の実装を記すように
   なりました。ドキュメントのみ — 挙動・出力・命令数のいずれも変わりません。
+- **bump ボットが自分の設定を読めるようになりました** — `.github/dependabot.yml` の三つの `groups`
+  項目が `version-update:semver-patch` / `-minor` / `-major` を書いていました。あれは `ignore` と
+  `allow` の語彙で、`groups.*.update-types` が受け取るのは `major` / `minor` / `patch` だけです。そ
+  のため Dependabot はこの設定を拒否していました — 導入から9日後、どのマージ門も読まない check-run
+  として見つかるまで、workflow はすべて緑のままでした。五つの値は短い形に直し、型を宣言している唯一
+  の `ignore` 規則は接頭辞形が正しい場所にそのまま残します。`tests/test_dependabot_config.py` は二つ
+  の語彙を別々に固定し、どちらかが管理する項目が消えれば失敗するようにしたので、両者を「統一」する編
+  集は静かに上げ込みを止める代わりにテストを赤くします。
 
 #### パフォーマンス
 
