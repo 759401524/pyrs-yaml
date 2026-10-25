@@ -8226,9 +8226,13 @@ the change that makes it true, which is not this one. What is left of the row is
 this change `load_toml` pays scan, tree and the Python objects it must build either way, so the
 remaining distance to `rtoml` is the tree itself and closing it means the lever `(fr)` priced at
 9.7% plus 6.5% of instructions - rewriting 2,941 lines of table policy to construct the output
-directly, which is a bigger decision than a read-path win and is not scheduled. The binding layer
-still has no instruction floor (`perf-coverage:binding-layer`), so this row's number lives in the
-wall-clock snapshot and in `test_toml_leaderboard.py`, not in `.ci/ir-baseline.json`.
+directly, which is a bigger decision than a read-path win and is not scheduled. What prices this
+row is the wall-clock snapshot and `test_toml_leaderboard.py`, not `.ci/ir-baseline.json`: the
+binding's instruction channel floors one route - `bench_to_python`, the YAML AST-to-Python walk -
+and this reader is not in it. Naming `perf-coverage:binding-layer` would be wrong twice over: that
+hole closed on 2026-10-08 when `crates/pyrs-yaml/benches/ir_gate.rs` landed, and
+`.ci/quality-holes.json` registers nothing today. What is unfloored is the loaders' own Python
+construction, and `(fq)` states it in those terms now that the correction is in the base.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
