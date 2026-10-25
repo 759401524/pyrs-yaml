@@ -1538,8 +1538,23 @@ engine rows match. The loops still differ: 147,188,890 there against 126,840,512
 image against 4,226,384 here). That is the shape of (gk)'s residual, now measured on the enforcing
 image rather than argued from off it: the engine is not what disagrees between the two hosts.
 
-**Not claimed.** (gk)'s host residual is narrowed, not closed - the third divergent scenario,
-`from_json5_medium`, was not profiled on this head, so its +1.20% term stays where (gk) left it.
-What this section does settle is (gk)'s question about where the work sits: the term that dominated
-the long scenario is no longer the term that dominates it, and the rows above it now are the
-harness's own `main`, libc's `__memcpy_avx_unaligned_erms` and the parser.
+**The third scenario, paired on both hosts.** `from_json5_medium` is now profiled on each of them.
+The image printed loop 88,376,773 twice - refresh runs 66 and 68, on two different heads whose Rust
+sources are the same file set - and this host prints 89,442,043, so **+1.20%**. Of the 20 rows both
+tables carry, 16 agree to the instruction, and they include every engine function that appears:
+`Parser::object'2` 9,306,000, `identifier_key` 9,244,000, `quoted_or_plain` 5,400,000, `ws_extended`
+4,408,000, `CustomNode as Hash::hash` 3,332,000, `drop_glue::<CustomNode>'2` 3,100,000, `object`
+2,718,000, `reserve_rehash` 1,948,000, and libc's own `malloc` 5,039,955 and `free` 3,135,972. Four
+rows differ, and all four are the allocator or the copy routine: `_int_malloc` 7,395,230 there
+against 8,184,672 here (+789,442), `malloc_consolidate` +75,852,
+`__memcpy_avx_unaligned_erms` -39,904, `_int_free` -4,000 - together 821,390 of the 1,065,270 gap.
+The remaining 23% is not attributed: it sits below the 20 rows either side printed, so the honest
+reading is "the difference that has a name is glibc's malloc bookkeeping", not "the whole difference
+has a name". The two hosts also produce different bytes from the same sources - the same executable
+name `ir_gate-32fe5bfcd93ee66a` with digest `bcb23024986ae734` there against `8bd4697974c4e351`
+here - which is why a pairing prints its digests instead of assuming them.
+
+So (gk)'s residual is not closed by widening a tolerance; it is explained by where the instructions
+are counted. What this section does settle is (gk)'s question about where the work sits: the term
+that dominated the long scenario is no longer the term that dominates it, and the rows above it now
+are the harness's own `main`, libc's `__memcpy_avx_unaligned_erms` and the parser.
