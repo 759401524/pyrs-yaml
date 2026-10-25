@@ -258,6 +258,15 @@ status: new
 
 #### 変更
 
+- **二つのロックファイル宣言済み範囲が許す最新へ更新しました** - Rust 側は `similar` 3.2.0 →
+  3.2.1 の一段だけ。八つのクレートが定める MSRV 1.96 の下限が他を止めています。Python 側は
+  9 パッケージで、`zensical` 0.0.71 → 0.0.72、`mkdocstrings` 1.0.7 → 1.0.8、
+  `mkdocstrings-python` 2.0.9 → 2.0.10、`python-dateutil` 2.9.0.post0 → 3.0.0、`deepmerge`
+  3.0.1 → 4.0.0、他に griffelib・markdown・パッチ二段。意図的に固定した版は動いていません:
+  `maturin` は 1.15.0 のまま（これが最新）、`PyO3` は 0.29 系に留まります。最新の
+  `pytest`・`hypothesis`・`pydantic`・`numpy` は、このリリースが支える 3.8 より新しい実行環境を
+  要求します。実測: Rust テスト 806 件、Python テスト 4,306 件、
+  `cargo clippy --all --all-targets -- -D warnings`、フック一式、四ロケールの strict ビルドが通過。
 - **評価文の盲区数えをリストから導出します** — `QUALITY_MATRIX.md` の
   `Seven blind spots were found by measuring` という文を書いた時点で、その下のリストはすでに八件の
   項目を含んでいました。しかしその差を見られる門番はありませんでした。導出される行はテストと
