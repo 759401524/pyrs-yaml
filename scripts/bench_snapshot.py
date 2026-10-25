@@ -6,8 +6,9 @@ faster than the clock resolution: each case is measured as several whole batches
 many calls, and the reported value is the fastest per-call time across batches.
 
 The snapshot has a format axis. YAML is measured on parse, serialize and round-trip
-against PyYAML and ruamel.yaml; JSON on parse against `json` and `orjson`; TOML on parse
-against `tomllib`; JSON5 on parse against `pyjson5`. A write column is published only
+against PyYAML, ruamel.yaml and the Rust-backed `yaml-rs` and `ryaml`; JSON on parse against
+`json` and `orjson`; TOML on parse against `tomllib` and `rtoml`; JSON5 on parse against
+`pyjson5`. A write column is published only
 where a counterparty does the same job from the same starting object: pyrs emits
 JSON/TOML/JSON5 from its own AST rather than from a Python object, so `json.dumps` and
 `tomli_w.dumps` are a different operation, and those writer halves stay priced by the
@@ -15,8 +16,8 @@ committed instruction floors in `.ci/ir-baseline.json`. The snapshot names them 
 `unpublished_writers` so the absence is a record, not a silence.
 
 Every case also records whether the columns decode to the same object (`same_object`).
-Where they do not - the three YAML readers type some scalars differently on the large
-fixture - the row still times the same bytes through three readers, and the disagreement
+Where they do not - some reader types a scalar differently on the large
+fixture - the row still times the same bytes through every reader, and the disagreement
 is the fidelity fact the round-trip suite already owns rather than a reason to drop it.
 
 `--docs` rewrites the wall-clock tables on the four locales' performance and feature
@@ -44,18 +45,26 @@ sys.path.insert(0, str(ROOT))
 import yaml  # noqa: E402
 from ruamel.yaml import YAML  # noqa: E402
 
-try:  # Counterparty readers, needed only by --update; a missing one stops a re-measure.
+try:  # Counterparty readers: needed by --update only, and marker-bounded off several matrix legs.
     import orjson
     import pyjson5
     import rtoml
     import ryaml
     import tomllib
     import yaml_rs
-except ImportError as error:  # pragma: no cover - the writer of the snapshot installs the test extra
-    raise SystemExit(
-        f"--update measures every published column, and {error.name} is missing; "
-        "install the test dependency group (uv sync --group test) rather than publishing a partial table"
-    ) from error
+except ImportError:  # pragma: no cover - every leg has to be able to import this script
+    orjson = pyjson5 = rtoml = ryaml = tomllib = yaml_rs = None
+
+#: The peers `--update` measures, bound to `None` where an interpreter cannot import them;
+#: `_require_counterparties` turns that into a refusal at the point the work is asked for.
+COUNTERPARTIES = {
+    "orjson": orjson,
+    "pyjson5": pyjson5,
+    "rtoml": rtoml,
+    "ryaml": ryaml,
+    "tomllib": tomllib,
+    "yaml_rs": yaml_rs,
+}
 
 import pyrs_yaml  # noqa: E402
 from tests.data.yaml_samples import (  # noqa: E402
@@ -102,9 +111,11 @@ FORMATS = {
             "ruamel.yaml": {"read": RUAMEL.load, "write": ruamel_dump},
             # The two Rust-backed Python readers. They belong in the same column group because
             # they do the same job on the same bytes, and the headline ratio stays PyYAML's so the
-            # published rows remain comparable with the ones they replace.
-            "yaml-rs": {"read": yaml_rs.loads, "write": yaml_rs.dumps},
-            "ryaml": {"read": lambda text: ryaml.load(io.StringIO(text)), "write": ryaml.dumps},
+            # published rows remain comparable with the ones they replace. Their attributes are read
+            # inside a lambda, like every other optional peer: the module has to import on a leg
+            # where the marker kept it out, and `None.loads` would not let it.
+            "yaml-rs": {"read": lambda text: yaml_rs.loads(text), "write": lambda doc: yaml_rs.dumps(doc)},
+            "ryaml": {"read": lambda text: ryaml.load(io.StringIO(text)), "write": lambda doc: ryaml.dumps(doc)},
         },
         "operations": ("parse", "serialize", "roundtrip"),
     },
@@ -221,7 +232,25 @@ def _plain(value):
     return value
 
 
+def _require_counterparties():
+    """Stop a re-measure that would publish a table with a hole in it, and name what is missing.
+
+    This asks rather than raising at import, because `tests/test_scripts_import_on_supported_python.py`
+    imports this file on every leg the matrix runs and the peers are marker-bounded - no `tomllib`
+    below 3.11, no `orjson` at 3.14, no `yaml-rs` at 3.15 - so an import-time refusal is five red jobs
+    for a command nobody ran. `--docs` reads the committed snapshot and needs none of them.
+    """
+    missing = sorted(name for name, module in COUNTERPARTIES.items() if module is None)
+    if missing:
+        raise SystemExit(
+            f"--update measures every published column, and the counterparty readers are not all importable "
+            f"on this interpreter (left unbound: {', '.join(missing)}); run it where `uv sync --group test` "
+            "installs them together, rather than publishing a partial table"
+        )
+
+
 def collect():
+    _require_counterparties()
     warm_up()
     formats = {}
     libraries = {}
