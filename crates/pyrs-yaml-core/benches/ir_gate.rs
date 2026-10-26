@@ -42,9 +42,10 @@ use pyrs_json::{
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
-    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
-    MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML, long_string_json, long_string_json5,
-    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
+    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, DIALECT_NOTES_YAML, MEDIUM_JSON,
+    MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, NOTE_FLOW_YAML,
+    NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
+    long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
@@ -123,10 +124,14 @@ enum Work {
     StreamJsonStop,
     /// The edit layer: the third of the three expensive pure-Rust computations `AGENTS.md` names
     /// beside `parse` and AST serialize, and the only one of the three with no number here. A
-    /// regression in path navigation, in the dirty-plan build, or in the way a note or anchor is
-    /// carried across a moved node was free to land while every floor above stayed green. One
-    /// scenario per verb, so a red reading says which verb got more expensive - `move_path` is a
-    /// `set_path` plus a `delete_path` and needs no floor of its own.
+    /// regression in path navigation or in the dirty-plan build was free to land while every floor
+    /// above stayed green. One scenario per verb, so a red reading says which verb got more
+    /// expensive - `move_path` is a `set_path` plus a `delete_path` and needs no floor of its own.
+    /// What these three do *not* reach is decided by the fixture, not by the verb: `MEDIUM_YAML`
+    /// carries no `#`, no `&` and no `!`, so every branch of `editing::metadata::merged_meta` that
+    /// copies a note, an anchor or a tag forward misses on all `ITERATIONS` calls, and the note
+    /// span `delete_path` would extend over an empty region. Making metadata carriage dearer moves
+    /// no floor here, and `docs/dev/quality-ledger.md` `(go)` records the measurement that says so.
     EditSet,
     /// `insert_path` into a block sequence: the verb that writes a new position into the text
     /// instead of replacing a node that already had one.
@@ -150,6 +155,10 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
             Work::Serialize,
         ),
         ("serialize_anchors", ANCHOR_YAML, Work::Serialize),
+        // Gate-only, like the `parse_*` rows: no divan twin, because what it prices is the note
+        // shape decisions the writers make - the other five serialize scenarios hold no brace and
+        // no comment, so they never enter that code.
+        ("serialize_note_flow", NOTE_FLOW_YAML, Work::Serialize),
         ("parse_small", SMALL_YAML, Work::Parse),
         ("parse_medium", MEDIUM_YAML, Work::Parse),
         ("parse_block", BLOCK_STYLE_YAML, Work::Parse),
@@ -213,6 +222,19 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         ("to_json5_long_strings", LONG_YAML.as_str(), Work::ToJson5),
         ("to_jsonc_medium", MEDIUM_YAML, Work::ToJsonc),
         ("to_json5_medium", MEDIUM_YAML, Work::ToJson5),
+        // The note half of the same two bridges. `MEDIUM_YAML` carries no comment, so the writers
+        // above never reach `emit_root_leading`, `emit_standalone_comment` or the trailing-note
+        // sites - the reader fixtures of these bridges are authored with comments for that reason,
+        // and the writers had no twin of that care. Gate-only, as the rows above.
+        ("to_jsonc_notes", DIALECT_NOTES_YAML, Work::ToJsonc),
+        ("to_json5_notes", DIALECT_NOTES_YAML, Work::ToJson5),
+        // Their reader twins. `quality_matrix.py`'s pairing rule is the pair rather than the name -
+        // a `to_<format>_<shape>` without its `from_<format>_<shape>` is a half-measured bridge, and
+        // #292's cost sat exactly in the missing half - so the two floors above earn these two. They
+        // are also the price of resolving seven comments, in both spellings, onto the nodes that own
+        // them, which `from_jsonc_medium` and `from_json5_medium` measure at three comments each.
+        ("from_jsonc_notes", NOTES_JSON, Work::FromJsonc),
+        ("from_json5_notes", NOTES_JSON, Work::FromJson5),
         // The event path over the same fixture the AST scenarios read, so the two are comparable:
         // `parse_medium` builds nodes here, and whatever this reports is the price of the *other*
         // shape the same text can take. The ratio is the claim; the instruction counts behind it move
@@ -497,10 +519,17 @@ fn main() {
             }
         }
         Work::EditSet | Work::EditInsert | Work::EditDelete => {
-            // Setup outside the loop on both modes, as for the writers: the document is parsed once,
-            // and only the verb is priced. The tree is cloned per iteration because an edit applied
-            // twice to the same tree is not the same edit, and `--setup-only` subtracts that clone
-            // exactly as it subtracts the parse, so what is left is the verb.
+            // The document is parsed once, outside the loop, and `--setup-only` stops there: it runs
+            // no iteration at all, so what it subtracts is the parse and nothing else. The tree is
+            // cloned per iteration because an edit applied twice to the same tree is not the same
+            // edit - which means the floor prices that clone and its teardown too, not only the
+            // verb. `ir_gate.py --profile edit_set_nested` sizes it (the `CustomNode`/`NodeMeta`
+            // clone rows and their `drop_glue` pairs are a large share of the loop, and the parse's
+            // own line table is rebuilt inside the span because the verbs are handed `None`), so a
+            // reader should take these three numbers as "an edit through the API-shaped route the
+            // harness must build", not as the verb alone. Shrinking that span is a floor move on
+            // three scenarios and so a change of its own; `docs/dev/quality-ledger.md` `(go)` keeps
+            // the reading.
             let ast = parse(src, Schema::Core).expect("setup parse");
             if setup_only {
                 std::hint::black_box(&ast);
@@ -510,8 +539,9 @@ fn main() {
                 for index in 0..ITERATIONS {
                     let mut tree = std::hint::black_box(ast.clone());
                     let unit = match work {
-                        // `server.port` -> 9090: the replacement a user asks for most often, and the
-                        // branch that carries the old node's metadata and anchor forward.
+                        // `server.port` -> 9090: the replacement a user asks for most often. The
+                        // carry-forward of the old node's metadata runs here, but on this input its
+                        // three branches all miss - see `Work::EditSet`.
                         Work::EditSet => set_path(
                             &mut tree,
                             &[

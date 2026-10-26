@@ -9288,6 +9288,113 @@ entry, or receives the already-demoted local back from that writer - the brace d
 here claims the class cannot reappear where a new reader of the flag is added, and the tables and
 the strategy answer that only by reddening.
 
+### (go) The gate that priced the writer had never been handed a note (2026-10-26)
+
+**How the gap was found.** `(gn)` records a writer change that moved five floors, and the
+explanation written next to it - parent and child walk a flow container's members twice - was
+refuted by counting what the benchmark inputs hold. That count is the finding worth keeping: every
+YAML fixture the serialize scenarios run over carries **zero `#`** characters - `SMALL_YAML` 24
+bytes, `MEDIUM_YAML` 298, `BLOCK_STYLE_YAML` 121, `BLOCK_SCALAR_YAML` 210, `ANCHOR_YAML` 201,
+`MERGE_INLINE_YAML` 178 - and the five writer inputs carry zero `{`, `[`, `]` or `}`. So
+`mapping_is_spelled_flow` short-circuits on the style flag, and `notes_have_flow_spelling`, the
+flow-to-block demotion, `hoist_marker_note`, `spine_has_notes` and the two `lift_first_*_notes`
+helpers answered no measured question anywhere in the gate. A change that made any of them dearer -
+the whole class `(gn)` just closed - would have moved no number in `.ci/ir-baseline.json`.
+
+**What was added.** `NOTE_FLOW_YAML` and one scenario, `serialize_note_flow`, running the same
+`Work::Serialize` over a document that gives the walk all five answers it can give: braces kept
+because every member's note fits, braces abandoned because one member holds two, a `?` marker with
+its note on the marker line, a marker whose own note slot is empty while its spine carries one three
+levels down (the only shape in the tree that runs both `Sequence` arms of the lift - the pair `(gn)`
+had to fix), and an anchored header whose first entry is annotated. Flow nests four deep, because
+one shallow container would make the walk a constant instead of a cost.
+
+**What the image says.** Refresh run 71 measured it on `ubuntu24, image 20261023.334.3` with the
+baseline's own `rustc 1.97.1`: **62,065,638** counted instructions, three samples (62,065,592 /
+62,065,587 / 62,065,638) inside 0.000%, the loop span being full 62,964,375 minus setup 898,846. The
+run's `--profile` puts the walk at **12.61% of the scenario** - 4,084,000 in
+`notes_have_flow_spelling'2` plus 3,740,000 in the same predicate's other instantiation, 7,824,000
+together - which is the first price that machinery ever had. The engine harness's binary digest
+moved (`c11a7a5ca629f6fc`); the binding harness's did not (`0236618381731bac`), which is what a
+scenario added on one side only should look like.
+
+**The premise, not just the parse.** In `crates/pyrs-yaml-core/tests/ir_fixtures.rs`,
+`the_note_flow_fixture_reaches_every_answer_the_writer_gives` asserts each of the five answers
+against the text the engine emits and demands the document settle on its first emission. Two
+mutations, both reddening by name: deleting the `over` member's second note takes the demotion
+assertion down, deleting the spine note takes the lift assertion down. Restored, 13/13. Without that
+pin the floor could keep guarding a document a later writer change had quietly turned note-free.
+
+**What growing the set cost, three times.** Run 70 refused with `accept_drift` empty and named the
+movement: `from_json_medium` 78,671,707 → 79,283,878 (**+0.78%**), a scenario this change does not
+enter; fifteen floors moved past 0.005% and that one alone past the 0.50% line. Adding the dialect
+writer pair did it a second time: run 72 refused with the *same* scenario past the line
+(`from_json_medium: 79,283,878 -> 79,904,869, +0.78%`), run 73 named it and wrote thirteen floors
+past 0.005%. The two readings of one build also agreed: run 72 predicted 79,904,869 and run 73
+measured 79,904,977 - 108 instructions apart, 0.0001% - so a refusal is a verdict and not a coin
+toss. The reader twins then did it a third time, and this is the sentence that matters: run 74 was
+dispatched with `from_json_medium` *pre-named* from those two precedents, and it refused with a
+different crossing set - `from_json5_medium: 88,695,332 -> 89,626,187 (+1.05%)`,
+`from_jsonc_medium: 92,242,276 -> 92,909,901 (+0.72%)`,
+`parse_inline_merge: 355,946,191 -> 358,324,103 (+0.67%)`,
+`from_json5_long_strings: 101,440,467 -> 101,950,037 (+0.50%)` - while `from_json_medium` itself
+went **0.41% the other way**, inside the line. Run 75 named those four and wrote 47 floors, eighteen
+of them past 0.005%. So the crossing set is not a property of the scenario added; it is a property
+of the build, and the names have to come from a dispatch rather than from a prediction - the
+prediction was wrong on its third trial in exactly the way AGENTS.md says to expect.
+`QUALITY_MATRIX.md` §2 counts forty-seven floors out loud and `tests/test_ir_baseline_workflow.py`
+reddens if the sentence and the file disagree.
+
+**The neighbouring half, closed by the same method - both directions.** The count that found the
+writer gap found the bridge next to it: `to_jsonc_medium`, `to_json5_medium`,
+`to_jsonc_long_strings` and `to_json5_long_strings` are each handed the AST of a YAML input holding
+zero `#`, while the dialect *reader* fixtures carry comments on purpose (`MEDIUM_JSONC`: two `//`
+and one `/*`; `MEDIUM_JSON5`: one each) - the asymmetry `ir_gate.rs` documents for the read side and
+never revisited for the write side. `DIALECT_NOTES_YAML` (six notes over seven lines) feeds the two
+writer floors: run 73 measured `to_jsonc_notes` at 27,543,162 and `to_json5_notes` at 27,661,162
+(samples 27,543,162 / 27,543,162 / 27,543,162 and 27,661,162 / 27,661,157 / 27,661,162), and its
+`--profile` pairs name the money in the same place in both: `<str>::replace` - the flattening every
+note passes through before it is written as a comment, reachable from note text and nothing else
+(`crates/pyrs-json/src/writer.rs` has seven calls, all on `c.text` or `text`) - is the largest self
+term at **16.08%** and **16.01%** (4,428,000 in both), with `TwoWaySearcher::next` 1,710,000,
+`push_block_note` 1,030,000 and `emit_value_block_notes` 728,000 behind it; those five rows are
+8,508,000 of `to_jsonc_notes`' 27,543,090 loop, **30.9%**. Run 75 re-read both - 27,543,372 and
+27,661,399, +0.0007% for a harness two scenarios larger. A flattening that allocates a `String` per
+call, per note, is the obvious thing to ask about next; asking is not this change's job, so it is
+left as a follow-up rather than chased. The reader floors exist because the matrix pairs the shapes:
+`from_jsonc_notes` 50,684,157 and `from_json5_notes` 50,864,157 (each three identical samples), and
+their attribution is a different place entirely - `<pyrs_json::parser::Parser>::ws_extended` at
+**19.86%** and **19.79%** (10,066,000 in both), which is the scanner walking *through* the comments,
+and `pyrs_json::parser::attach_pending` at 1,484,000 (2.93%), which is where a comment finds its
+node. All six floors sit in the engine harness, and the digests say so: the engine binary moved to
+`a5204da3e7c91c2f` while the binding binary is byte-for-byte the run-71 value (`0236618381731bac`).
+`serialize_note_flow` reads 62,066,048 in the committed file against run 71's 62,065,638 - the same
+document, +0.0006%, from a harness four scenarios larger.
+
+**Not claimed, and now measured.** Two halves the same count still leaves open, both on the inbound
+YAML side. First: no `parse_*` or `stream_*` scenario carries a `#` - `SMALL_YAML`, `MEDIUM_YAML`,
+`BLOCK_STYLE_YAML`, `MERGE_INLINE_YAML`, `LONG_YAML` and `ANCHOR_YAML` (which holds one `&` and two
+`*`) all count zero - so the byte scan `parser/yaml/comment.rs::scan_yaml` runs and sets `has_hash`
+false in every one of them, and what the flag gates is priced only by the three documents added
+here. That one is now sized rather than argued: `--profile parse_medium` gives a loop of 321,538,173
+whose project-owned rows are `AstReceiver::on_event` 5.40%, `push_node` 3.09% and
+`parse_with_options` 2.27% - about 10.8% between them, and the 20th row is 1.23% - with no
+comment-shaped symbol in the top 20 at all. Note what that does *not* license: a symbol missing from
+a ranked self list can be inlined into its parent (the same scan is a named 20.93% row in the edit
+arm), so the reading is "nothing comment-shaped is separately visible", not "the branch is free".
+Second, and sharper: `edit_set_nested`'s own arm comment promised that "`--setup-only` subtracts
+that clone exactly as it subtracts the parse, so what is left is the verb", but the setup branch
+returns before the loop that clones, so the clone of the whole tree per iteration stays inside the
+floor. A `--profile` run in WSL on the pinned `rustc 1.97.1` - a local attribution of where work
+sits, not a floor, so the shares below are read as shares and not as enforced numbers - sizes it:
+`<CustomNode as Clone>::clone` 13.44% + 1.88%, `<NodeMeta as Clone>::clone` 8.45%, the three
+`drop_glue` rows 5.89% + 2.07% + 4.23%, plus much of the malloc traffic - a substantial share of
+48,280,955 instructions that is the harness handing the verb a fresh tree, not the verb. The same
+profile puts `scan_yaml` at 20.93% of that loop: the verbs are called with `line_offsets` as `None`
+(`editing/plan.rs:31` takes the `None` branch and rebuilds the table), 10,104,000 instructions for a
+298-byte document. Both are left for their own changes rather than named as holes here, because
+either fix moves three floors and a floor move is a claim, not a side effect.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

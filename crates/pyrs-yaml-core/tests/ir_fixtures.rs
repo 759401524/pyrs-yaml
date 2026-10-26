@@ -22,9 +22,9 @@ use pyrs_json::{
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
-    LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML,
-    long_string_json, long_string_json5, long_string_jsonc, long_string_ndjson, long_string_toml,
-    long_string_yaml, short_string_ndjson,
+    DIALECT_NOTES_YAML, LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
+    MEDIUM_TOML, MEDIUM_YAML, NOTE_FLOW_YAML, NOTES_JSON, long_string_json, long_string_json5,
+    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
@@ -475,4 +475,128 @@ fn the_json_stream_stop_leaves_a_tail_to_skip_and_skips_it() {
         "the sink saw {delivered} events where the stop asks for {limit} of {total}, so \
          `ControlFlow::Break` no longer ends the walk"
     );
+}
+
+#[test]
+fn the_note_flow_fixture_reaches_every_answer_the_writer_gives() {
+    // `serialize_note_flow` prices the note-shape decisions the other five serialize scenarios never
+    // take: `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`, `BLOCK_SCALAR_YAML` and `ANCHOR_YAML` hold
+    // demotion nor either lift runs. Each assertion below is one of the five answers that walk can
+    // give. A fixture that quietly stopped producing one would keep the floor green while measuring a
+    // document that no longer reaches the code the scenario is named for.
+    let ast = parse(NOTE_FLOW_YAML, Schema::Core).expect("the note-flow fixture parses");
+    let once = to_yaml(&ast);
+    let again = to_yaml(&parse(&once, Schema::Core).unwrap_or_else(|error| {
+        panic!("the fixture emitted text that will not re-parse: {error}")
+    }));
+    assert_eq!(
+        once, again,
+        "the fixture's shape needs two emissions to settle, so the scenario measures a document the \
+         reader cannot hand back:\nfirst:\n{once}\nsecond:\n{again}"
+    );
+
+    // Braces kept with the note still on the line: the walk visited every member and said yes.
+    assert!(
+        once.contains("kept: [1, {b: 2}]  # fits"),
+        "the accepted flow spelling is gone, so the walk no longer runs to a verdict:\n{once}"
+    );
+    // Braces abandoned for the member carrying two notes: the walk said no and the container demoted.
+    assert!(
+        once.contains("over:\n  - \n") && !once.contains("over: ["),
+        "the two-note member no longer forces the demotion, so the block path is unmeasured:\n{once}"
+    );
+    // A `?` marker inside braces, with the note lifted onto the marker rather than into the body.
+    assert!(
+        once.contains("? [k1, k2]:"),
+        "the marker form is gone, so `hoist_marker_note` and `spine_has_notes` price nothing:\n{once}"
+    );
+    // A complex key with no note of its own, whose note rides the first item of its body: the lift
+    // walks down the spine to find it, and both the `Sequence` arms - the mutable one and its
+    // read-only guard - only run on this shape. This is the pair PR #641 had to fix.
+    assert!(
+        once.contains("spine:\n  # hoisted above the marker\n  ?\n"),
+        "the note no longer lands above the marker, so `spine_has_notes` and `hoist_marker_note`'s \
+         sequence arm price nothing:\n{once}"
+    );
+    // The anchored header whose first entry carries a note: the lift that puts it above the dash.
+    assert!(
+        once.contains("lift: &A\n  # first entry note\n"),
+        "the header lift no longer fires, so the two `lift_first_*_notes` helpers are unmeasured:\n{once}"
+    );
+}
+
+#[test]
+fn the_dialect_note_fixture_reaches_both_dialect_writers() {
+    // `to_jsonc_notes` and `to_json5_notes` exist because the two floors beside them do not see a
+    // single note: `to_jsonc_medium` and `to_json5_medium` run over `MEDIUM_YAML`, which carries no
+    // `#`, so `emit_root_leading`, `emit_standalone_comment` and the trailing-note sites of
+    // `pyrs-json/src/writer.rs` had no price on either dialect. The premise is that this fixture
+    // still reaches those sites - a note that a later writer change stopped carrying would otherwise
+    // leave the two floors guarding a comment-free emission while their names say otherwise.
+    let ast = parse(DIALECT_NOTES_YAML, Schema::Core).expect("the dialect fixture parses");
+    for (dialect, text) in [
+        (
+            "jsonc",
+            to_jsonc_text(&ast).expect("jsonc writes the fixture"),
+        ),
+        (
+            "json5",
+            to_json5_text(&ast).expect("json5 writes the fixture"),
+        ),
+    ] {
+        assert!(
+            text.contains("// root leading note"),
+            "{dialect} no longer spells the document note as a comment:\n{text}"
+        );
+        for note in [
+            "trailing on a pair",
+            "note on the pair the value follows",
+            "above the inner key",
+            "item note",
+            "note on a flow value",
+        ] {
+            assert!(
+                text.contains(note),
+                "{dialect} dropped the note {note:?}:\n{text}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_dialect_note_reader_fixture_reaches_both_dialect_readers() {
+    // The reader twins of the two floors above, added because `quality_matrix.py::ir_bridge_pairs`
+    // reads a `to_<format>_<shape>` without its `from_<format>_<shape>` as a half-measured bridge.
+    // Their premise is that this document still resolves seven comments - five line-form, one
+    // block-form, one before the document - into notes the tree carries. A reader that started
+    // skipping comments would keep returning `Ok`, keep looping and keep printing a number, so the
+    // floor would price a walk that records nothing; the check is the fixed point the dialect
+    // property tests already demand, re-emit what the reader built and every text must come back.
+    for (dialect, written) in [
+        (
+            "jsonc",
+            to_jsonc_text(&from_jsonc(NOTES_JSON).expect("jsonc reads the fixture"))
+                .expect("jsonc writes what its reader built"),
+        ),
+        (
+            "json5",
+            to_json5_text(&from_json5(NOTES_JSON).expect("json5 reads the fixture"))
+                .expect("json5 writes what its reader built"),
+        ),
+    ] {
+        for note in [
+            "root leading note",
+            "trailing on a pair",
+            "block above a key",
+            "note on the inner value",
+            "note on the pair the value follows",
+            "item note",
+            "note on a flow value",
+        ] {
+            assert!(
+                written.contains(note),
+                "{dialect} reading lost the note {note:?}:\n{written}"
+            );
+        }
+    }
 }
