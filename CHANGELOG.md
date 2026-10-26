@@ -9,6 +9,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A quoted Ir floor is checked against the file it quotes** — a refresh rewrites all forty-seven
+  readings in `.ci/ir-baseline.json`, and every copy left in undated prose becomes history nobody
+  marked: nine minutes after the last one, `QUALITY_MATRIX.md` disagreed with the file on nine of
+  the eleven floors it quotes (15 to 31,977 instructions) with every gate green. The page now
+  declares which readings it means as current, each followed by a comment naming its scenario, and
+  `scripts/check_ir_floor_quotes.py` compares every declaration with the baseline — refusing a stale
+  digit, an unknown scenario, an orphan marker whose number was deleted, and a page that declares
+  nothing (exit 2, never a pass). Declaration rather than parsing, because the same page keeps
+  refuted measurements, event counts and fixture widths, and a proximity heuristic for that question
+  produced ~110 false hits in `docs/dev/perf.md`. `tests/test_ir_floor_quote_gate.py` forces each
+  refusal and proves the hook's `files:` pattern reaches the page and the baseline. An *unmarked*
+  hand-copy stays invisible: absence of a marker reads as history, which only the author can claim
+  wrongly.
 - **`load_json_lines` reads a `.jsonl` stream as values, one line at a time** — the engine has
   described line-delimited JSON since #599 (`pyrs_json::parse_documents`), but nothing at the Python
   layer could read it: a caller split the text and called `load_json` per line, paying for a list of

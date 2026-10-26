@@ -182,6 +182,11 @@ jobs:
           python scripts/check_changelog_mirrors.py
           python scripts/check_cjk_localisation.py
           python scripts/check_i18n.py
+          # A refresh rewrites every number in .ci/ir-baseline.json, and each copy of one of them left in
+          # undated prose becomes history nobody marked. The page states which readings it means as
+          # current, so this needs no parser to guess; it caught nine stale quotes on the page itself the
+          # day it was written.
+          python scripts/check_ir_floor_quotes.py
 
       - name: Create virtualenv
         run: uv venv .venv
