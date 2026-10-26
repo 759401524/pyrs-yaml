@@ -302,7 +302,12 @@ mod tests {
             .chain(node.leading_comments().iter().map(|c| c.text.to_string()))
         {
             let trimmed = text.trim();
-            if !trimmed.is_empty() && !emitted.contains(trimmed) {
+            // Restated here rather than borrowed from the serializer, so a writer that stopped
+            // flattening reddens this check instead of agreeing with it: a note line has no spelling
+            // for a break in any of these formats, so what must reach the document is the one-line
+            // form. The fixed-point properties are what prove that form is re-readable and stable.
+            let expected = trimmed.replace(['\n', '\r'], " ");
+            if !trimmed.is_empty() && !emitted.contains(&expected) {
                 missing.push(format!("note never reached the document: {text:?}"));
             }
         }

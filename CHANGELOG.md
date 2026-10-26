@@ -105,6 +105,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note can no longer break the line it is written on** — `arb_comment` drew note text from
+  `[ -~]+`, so no property test could reach the flattening a one-line comment carrier owes. Widening
+  it to also draw `\n` and `\r` reddened four properties at once: the YAML and TOML writers put the
+  text after the break into the document, so TOML refused its own output
+  (`bare carriage return (must be part of a CRLF pair)`) and an array item's note `"<\n&"` came back
+  as a bare `&` value. Both writers now flatten a break to a space in a single `push_note_text`
+  that writes into the document: the `Cow` that shape first returned allocated nothing per note and
+  still cost `serialize_note_flow` +8.80% on the enforcing image. The shape that shipped is priced
+  by the floor this change moves: 62,066,033 → 64,411,980 (+3.78%), what it costs to ask every note
+  whether it holds a break. Deleting a writer's branch reddens its own two properties again;
+  `proptest-regressions/fmt_pbt.txt` keeps the shrunk cases.
 - **The dash and the colon opened for a child that had already decided to go block** —
   `write_mapping_node` and `write_sequence_node` demote a flow-marked container when a member
   carries more notes than the braces can hold, but seven decisions trusted the `flow_style` flag

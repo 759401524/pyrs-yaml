@@ -145,7 +145,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 out.push('[');
                 push_scalar_key(&mut out, key_node)?;
                 out.push_str("] # ");
-                out.push_str(c.text.trim());
+                push_note_text(&mut out, &c.text);
                 out.push('\n');
             }
             _ => {
@@ -167,12 +167,32 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     Ok(out)
 }
 
+/// The text one TOML comment carrier can hold on its line: trimmed, and with every line break written
+/// as a space. A TOML comment ends at the break and the reader refuses a bare carriage return outright,
+/// so `# a\r!` is not TOML at all — the tail would reach the reader as content, or the writer's own
+/// output would be rejected. Pushed rather than returned, so a text with no break — every note a TOML
+/// reader can produce — reaches `out` without a temporary.
+fn push_note_text(out: &mut String, text: &str) {
+    let trimmed = text.trim();
+    // Byte-wise, as in the YAML serializer: a byte equal to `\n` or `\r` can only be that ASCII
+    // character in UTF-8, so the search is exact without decoding.
+    if trimmed
+        .as_bytes()
+        .iter()
+        .any(|b| *b == b'\n' || *b == b'\r')
+    {
+        out.push_str(&trimmed.replace(['\n', '\r'], " "));
+    } else {
+        out.push_str(trimmed);
+    }
+}
+
 /// One standalone `# note` line. Pushed rather than `writeln!` because the document emitter writes
 /// one of these per comment line and `String as fmt::Write` costs a `Formatter` and a `write_str`
 /// call each time. Byte-identical to the macro it replaces.
 fn write_note(out: &mut String, text: &str) {
     out.push_str("# ");
-    out.push_str(text.trim());
+    push_note_text(out, text);
     out.push('\n');
 }
 
@@ -207,7 +227,7 @@ fn emit_pair(
         .or_else(|| key_node.comment().filter(|c| !c.standalone));
     if let Some(c) = inline {
         out.push_str(" # ");
-        out.push_str(c.text.trim());
+        push_note_text(out, &c.text);
     }
     out.push('\n');
     Ok(())
@@ -246,7 +266,7 @@ fn write_notated_array(out: &mut String, items: &[CustomNode]) -> Result<(), Ser
     for (i, it) in items.iter().enumerate() {
         for c in it.leading_comments() {
             out.push_str("  # ");
-            out.push_str(c.text.trim());
+            push_note_text(out, &c.text);
             out.push('\n');
         }
         out.push_str("  ");
@@ -256,18 +276,14 @@ fn write_notated_array(out: &mut String, items: &[CustomNode]) -> Result<(), Ser
         // leading note - so that placement moved the comment on every round and the text never
         // settled. Anywhere but last, the note gets its own line after the element, which is where
         // the reader hands it to the next one.
-        match it
-            .comment()
-            .filter(|c| !c.standalone)
-            .map(|c| c.text.trim())
-        {
-            Some(text) if i + 1 == items.len() => {
+        match it.comment().filter(|c| !c.standalone) {
+            Some(c) if i + 1 == items.len() => {
                 out.push_str(" # ");
-                out.push_str(text);
+                push_note_text(out, &c.text);
             }
-            Some(text) => {
+            Some(c) => {
                 out.push_str(",\n  # ");
-                out.push_str(text);
+                push_note_text(out, &c.text);
             }
             None => {
                 if i + 1 != items.len() {
@@ -429,7 +445,7 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                 for (idx, (k, v)) in pairs.iter().enumerate() {
                     for c in k.leading_comments() {
                         out.push_str("  # ");
-                        out.push_str(c.text.trim());
+                        push_note_text(out, &c.text);
                         out.push('\n');
                     }
                     // A note that ended its key's line reaches this writer on the key's *inline*
@@ -439,7 +455,7 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                     // TOML reader reports a note from. Measured, the second emission is identical.
                     if let Some(c) = k.comment().filter(|c| !c.standalone) {
                         out.push_str("  # ");
-                        out.push_str(c.text.trim());
+                        push_note_text(out, &c.text);
                         out.push('\n');
                     }
                     let last = idx + 1 == count;
@@ -455,14 +471,14 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                     // never settled (proptest `prop_toml_writer_is_fixed_point`, 20 000
                     // cases). Anywhere but last, the note gets its own line after the
                     // member, which is the position the reader reports it from.
-                    match v.comment().filter(|c| !c.standalone).map(|c| c.text.trim()) {
-                        Some(text) if last => {
+                    match v.comment().filter(|c| !c.standalone) {
+                        Some(c) if last => {
                             out.push_str(" # ");
-                            out.push_str(text);
+                            push_note_text(out, &c.text);
                         }
-                        Some(text) => {
+                        Some(c) => {
                             out.push_str(",\n  # ");
-                            out.push_str(text);
+                            push_note_text(out, &c.text);
                         }
                         None => {
                             if !last {

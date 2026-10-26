@@ -583,12 +583,12 @@ those bridges grew a long-value twin at both ends, since the long-value shape th
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 86,124,125<!-- ir-floor: documents_short_strings --> against 128,694,083<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 86,124,066<!-- ir-floor: documents_short_strings --> against 128,694,094<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.49x the short one on that route), since the TOML loader's own route joined
-(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,296<!-- ir-floor: load_toml_medium --> and
-139,507,459<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.28x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
+(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,945,761<!-- ir-floor: load_toml_medium --> and
+139,507,310<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.28x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
 since the JSON loader's fast route joined the same way (`load_json_medium` and `load_json_long_strings`
-through `bench_load_json` at 57,153,813<!-- ir-floor: load_json_medium --> and 94,893,377<!-- ir-floor: load_json_long_strings --> - 0.72x and 0.85x what `from_json_medium` and
+through `bench_load_json` at 57,153,278<!-- ir-floor: load_json_medium --> and 94,893,228<!-- ir-floor: load_json_long_strings --> - 0.72x and 0.85x what `from_json_medium` and
 `from_json_long_strings` pay to build the node model that route skips), and this row is shared by
 `load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
@@ -599,8 +599,8 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 62,066,033<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 17,002,806<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 17,120,806<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,682,128<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,862,128<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,980<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 17,002,828<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 17,120,828<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,680,171<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,860,171<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. Growing the set

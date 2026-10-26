@@ -526,7 +526,7 @@ impl Serializer {
             && note_is_writable(c)
         {
             self.output.push_str("  # ");
-            self.output.push_str(note_text_to_write(&c.text));
+            push_note_text(&mut self.output, &c.text);
             self.trailing_note_slot_open = false;
         } else {
             self.trailing_note_slot_open = true;
@@ -697,7 +697,7 @@ impl Serializer {
         // Through `insert_note_at`, because the inserted bytes precede the pending marker:
         // an untracked insert would leave that offset pointing into the new note line, and
         // the next closure would then measure from the wrong place (crash-5561902a's defect).
-        self.insert_note_at(at, &format!("{indent}# {text}\n"));
+        self.insert_note_at(at, &format!("{}\n", note_line(&indent, text)));
     }
 
     /// Write a note as a line of its own. This is the single place that knows a note line
@@ -713,7 +713,7 @@ impl Serializer {
         self.close_pending_tag_line();
         self.write_indent(indent_width);
         self.output.push_str("# ");
-        self.output.push_str(note_text_to_write(text));
+        push_note_text(&mut self.output, text);
         self.output.push('\n');
         // A note line has used its trailing slot, and a following note cannot
         // share it.
@@ -920,7 +920,7 @@ impl Serializer {
             // the inline slot: `- !fuzz2 ~  # n` re-reads with the note on the item it was written for.
             self.close_pending_tag_line();
             self.output.push_str("  # ");
-            self.output.push_str(note_text_to_write(&c.text));
+            push_note_text(&mut self.output, &c.text);
             noted = true;
         }
         // The slot is used up by this scalar's own note, and neither a block
@@ -1134,7 +1134,7 @@ impl Serializer {
                 && note_is_writable(c)
             {
                 self.output.push_str("  # ");
-                self.output.push_str(note_text_to_write(&c.text));
+                push_note_text(&mut self.output, &c.text);
                 self.trailing_note_slot_open = false;
             } else {
                 self.trailing_note_slot_open = true;
@@ -1243,7 +1243,7 @@ impl Serializer {
                 {
                     self.output.pop();
                     self.output.push_str("  # ");
-                    self.output.push_str(note_text_to_write(&c.text));
+                    push_note_text(&mut self.output, &c.text);
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
                 } else if indent_width > 0 {
@@ -1288,7 +1288,7 @@ impl Serializer {
             && note_is_writable(c)
         {
             self.output.push_str("  # ");
-            self.output.push_str(note_text_to_write(&c.text));
+            push_note_text(&mut self.output, &c.text);
             self.trailing_note_slot_open = false;
         } else {
             self.trailing_note_slot_open = true;
@@ -1547,7 +1547,7 @@ impl Serializer {
                     let at = self
                         .note_slot_on_pair_line(own_line_start)
                         .unwrap_or(fallback);
-                    self.insert_note_at(at, &format!("  # {text}"));
+                    self.insert_note_at(at, &note_line("  ", &text));
                 } else {
                     // One line, one trailing slot. A note line above the pair is not a
                     // fallback of convenience: measured against the reader, a comment line
@@ -1682,7 +1682,7 @@ impl Serializer {
                         let at = self
                             .note_slot_on_pair_line(own_line_start)
                             .unwrap_or(self.output.len() - 1);
-                        self.insert_note_at(at, &format!("  # {}", note.text));
+                        self.insert_note_at(at, &note_line("  ", &note.text));
                     } else {
                         let above =
                             self.close_captured_pending_line(pending_before, own_line_start);
@@ -1706,7 +1706,7 @@ impl Serializer {
                 {
                     self.output.pop();
                     self.output.push_str("  # ");
-                    self.output.push_str(note_text_to_write(&c.text));
+                    push_note_text(&mut self.output, &c.text);
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
                 } else {
@@ -1860,7 +1860,7 @@ impl Serializer {
             // `|`/`>` would be absorbed into the block content on re-read
             // (libFuzzer `yaml_roundtrip` crash-cfb3fa83).
             self.output.push_str("  # ");
-            self.output.push_str(note_text_to_write(text));
+            push_note_text(&mut self.output, text);
         }
     }
 
@@ -2066,7 +2066,7 @@ impl Serializer {
     fn write_flow_note(&mut self, gap: &str, note: &Comment, flow_column: usize) {
         self.output.push_str(gap);
         self.output.push_str("# ");
-        self.output.push_str(note_text_to_write(&note.text));
+        push_note_text(&mut self.output, &note.text);
         self.output.push('\n');
         self.write_indent(flow_column);
         self.trailing_note_slot_open = false;
@@ -2588,6 +2588,40 @@ fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool
 /// rule answers it once and the first emission is already canonical.
 fn note_text_to_write(text: &str) -> &str {
     text.trim_matches(pyrs_schema::is_yaml_blank)
+}
+
+/// One note line: the indent, the `#` carrier, and the text as that carrier can hold it.
+fn note_line(indent: &str, text: &str) -> String {
+    let mut line = String::with_capacity(indent.len() + text.len() + 3);
+    line.push_str(indent);
+    line.push_str("# ");
+    push_note_text(&mut line, text);
+    line
+}
+
+/// Write a note's text as the one line a comment carrier can hold: outer blanks dropped, and every
+/// interior break written as a space. `note_text_to_write` alone left the break in, and a note line
+/// ends there — `a: 1 # x\n!` came back with `!` as document content, and in an array a note like
+/// `"<\n&"` re-read as a bare `&` value, so a note could inject a node (proptest, after
+/// `arb_comment` was widened to draw `\n` and `\r`). Pushed rather than returned: the `Cow` this
+/// first used allocated nothing per note and still cost `serialize_note_flow` +8.80% on the
+/// enforcing image, so a clean note now costs one scan and no temporary.
+fn push_note_text(out: &mut String, text: &str) {
+    let trimmed = note_text_to_write(text);
+    // The break is searched byte-wise, not by `contains(['\n', '\r'])`: both bytes are ASCII and no
+    // UTF-8 continuation byte can equal either, so a byte scan is exact and measured cheaper —
+    // 64,806,027 for the character form against 64,412,121 here, on `serialize_note_flow` with the
+    // pinned compiler. `#[inline]` on this helper changed neither reading (64,412,063), so what the
+    // scenario pays is the extra pass over the note text, not the call.
+    if trimmed
+        .as_bytes()
+        .iter()
+        .any(|b| *b == b'\n' || *b == b'\r')
+    {
+        out.push_str(&trimmed.replace(['\n', '\r'], " "));
+    } else {
+        out.push_str(trimmed);
+    }
 }
 
 /// Whether a note still has something to say once its blanks are gone. A comment of only blanks has
