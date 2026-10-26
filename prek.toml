@@ -270,6 +270,18 @@ pass_filenames = false
 files = "^(docs/dev/.*\\.md|crates/.*\\.rs|python/pyrs_yaml/pyrs_yaml\\.pyi)$"
 priority = "checks"
 
+# Fires on either half of the pair: the page that quotes a floor, and the file those quotes must
+# match. `pass_filenames = false` because the checker reads the governed page from its own path, so a
+# staged baseline alone still re-checks the prose.
+[[repos.hooks]]
+id = "ir-floor-quotes"
+name = "quoted Ir floors equal the committed baseline"
+language = "system"
+entry = "python scripts/check_ir_floor_quotes.py"
+pass_filenames = false
+files = "^(QUALITY_MATRIX\\.md|\\.ci/ir-baseline\\.json)$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

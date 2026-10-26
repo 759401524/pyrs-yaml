@@ -9427,6 +9427,42 @@ generated tree. That gap is recorded as its own change rather than folded into a
 because widening a generator shared by every property tier becomes a YAML note-ownership question
 the moment it starts.
 
+### (gq) A floor quoted in prose is now checked against the file it quotes (2026-10-26)
+
+`.ci/ir-baseline.json` is the only place an Ir reading lives, and `ir_gate.py --update` and the
+refresh job rewrite it wholesale — but nothing compared the copies of those numbers that sit in
+undated prose. Measured nine minutes after run 79's artifact landed in main: `QUALITY_MATRIX.md`
+quotes eleven floors in its §2, and nine of the eleven disagreed with the file it describes. The
+drifts were `serialize_note_flow` 62,066,048 against 62,066,033 (15 instructions),
+`documents_short_strings` 86,156,102 against 86,124,125 and `documents_long_strings` 128,726,060
+against 128,694,083 (31,977 each), `load_toml_medium` 144,946,071 against 144,946,296,
+`load_toml_long_strings` 139,508,754 against 139,507,459, `load_json_medium` 57,153,588 against
+57,153,813, `load_json_long_strings` 94,894,672 against 94,893,377, and `from_jsonc_notes`
+50,684,157 against 50,682,128 with its JSON5 twin the same 2,029 apart. Every gate was green. The
+two readings that matched were the two the refresh PR had re-pointed by hand, which is the whole
+diagnosis: the copies survive exactly as far as the human who touched them.
+
+The rule is a declaration, not a parser. A reading the author means as *current* is followed by an
+HTML comment naming its scenario, and `scripts/check_ir_floor_quotes.py` re-reads the baseline and
+compares: it refuses a stale digit, a scenario the file does not contain, a marker whose number was
+deleted, a reading without thousands separators, and a governed page that declares nothing at all
+(exit 2, distinct from a pass). Declaration is not laziness — the same page must keep measurements a
+later run refuted, event counts, `ITERATIONS = 2_000` and fixture widths, and an earlier attempt to
+find the live quotes by scanning for a scenario name near a number produced roughly 110 hits in
+`docs/dev/perf.md`, nearly all of them legitimate history. The first version of the checker itself
+was refuted while writing its tests: a pattern matching number-then-marker together let an orphan
+marker drop out of the scan silently, so a page with eleven declarations and ten numbers printed
+`OK: 10 marked floor reading(s)`. It now counts markers and demands a number for each.
+
+`tests/test_ir_floor_quote_gate.py` forces each refusal, re-resolves every marker on the page
+against the file, and checks that the `ir-floor-quotes` hook's `files:` pattern really matches
+`QUALITY_MATRIX.md` and `.ci/ir-baseline.json` while refusing `docs/en/changelog.md` and
+`docs/dev/perf.md` — a hook whose pattern never fires is a report, not a gate. The `docs-gates` job
+runs the checker as its own step, so the verdict reads it. What it cannot see is an *unmarked*
+hand-copy of a live floor: absence of a marker reads as "this is history", and only the author can
+make that claim wrongly. Dated records stay outside the governed set on purpose — the ledger and a
+released changelog section name what was true on their date.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

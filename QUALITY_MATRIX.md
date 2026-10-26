@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 826 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 826 Rust `#[test]`, 1,985 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -581,14 +581,14 @@ bridge grew its reader, since the event path got a number of its own (`stream_me
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
-which costs 8.25% more than `stream_medium` on the very same eight records), since the
+which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 86,156,102 against 128,726,060, so the long
+the same eight records at value widths of 9 and 256 - 86,124,125<!-- ir-floor: documents_short_strings --> against 128,694,083<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.49x the short one on that route), since the TOML loader's own route joined
-(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,071 and
-139,508,754 - 1.20x and 1.28x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
+(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,296<!-- ir-floor: load_toml_medium --> and
+139,507,459<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.28x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
 since the JSON loader's fast route joined the same way (`load_json_medium` and `load_json_long_strings`
-through `bench_load_json` at 57,153,588 and 94,894,672 - 0.72x and 0.85x what `from_json_medium` and
+through `bench_load_json` at 57,153,813<!-- ir-floor: load_json_medium --> and 94,893,377<!-- ir-floor: load_json_long_strings --> - 0.72x and 0.85x what `from_json_medium` and
 `from_json_long_strings` pay to build the node model that route skips), and this row is shared by
 `load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
@@ -599,8 +599,8 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 62,066,048) and the dialect writers' note shape
-with it (`to_jsonc_notes` 17,002,806, `to_json5_notes` 17,120,806 and their reader twins `from_jsonc_notes` 50,684,157 and `from_json5_notes` 50,864,157, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 62,066,033<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 17,002,806<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 17,120,806<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,682,128<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,862,128<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. Growing the set
@@ -619,6 +619,23 @@ re-generable in full: its first committed version carried a hand-written `genera
 explaining its own provenance, which turned out to be wrong in three checkable ways (recorded in
 the bullet above), and `--update` writes no prose at all. The explanation lives here; the file's
 keys are pinned by `tests/test_ir_baseline_workflow.py` to exactly what the job writes.
+
+**A floor quoted in prose is a second copy of a number that moves.** The paragraph above carries
+eleven of them, and the refresh that wrote this file moved nine of the eleven while leaving the two
+the same PR re-pointed: `serialize_note_flow` drifted by 15 instructions, `documents_short_strings`
+and `documents_long_strings` by 31,977 each, four `load_*` and `from_*_notes` readings by hundreds to
+thousands, and every gate stayed green because nothing read prose against the file. The rule now is a
+declaration, not a parser: a reading quoted as *current* is followed by an HTML comment naming its
+scenario, `ir-floor:` and the name inside it, and `scripts/check_ir_floor_quotes.py` compares each
+marked reading with `.ci/ir-baseline.json`, refusing
+a stale digit, an unknown scenario, an orphan marker whose number was deleted, and a page that
+declares nothing at all (exit 2, never a pass). What the author does not mark reads as history, which
+is the point: the same page states measurements a later run refuted, event counts, `ITERATIONS = 2_000`
+and fixture widths, and a heuristic that tried to tell those apart by proximity produced ~110 hits in
+`docs/dev/perf.md`. `tests/test_ir_floor_quote_gate.py` forces each refusal, checks that the hook's
+`files:` pattern really reaches both halves of the pair, and re-resolves every marker on this page
+against the file. What it still cannot see is an *unmarked* hand-copy of a live floor: absence of a
+marker is a claim about the sentence, and only the author can make it wrongly.
 
 **A bridge measured in one direction is not measured.** `to_json_medium` and `to_toml_medium`
 numbered the outbound half of each cross-format bridge; nothing read anything back, and the
