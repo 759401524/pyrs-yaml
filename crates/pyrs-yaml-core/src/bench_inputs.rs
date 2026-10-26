@@ -83,6 +83,92 @@ nested:
   name: nested
 "#;
 
+/// Flow spellings that carry notes, at the five answers the writer can give: braces kept because
+/// every member's note fits (`kept`, `kept2`, `tail`), braces abandoned because one member holds two
+/// (`over`, `over2`), a `?` marker inside braces whose note goes on the marker line (`marker`), a
+/// marker whose own note slot is empty but whose spine carries one three levels down (`spine`, the
+/// only shape here that runs both `Sequence` arms of the lift), and an anchored header whose first
+/// entry carries a note (`lift`) - the other lift.
+///
+/// This input exists because the five writer scenarios before it could not reach any of that:
+/// `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`, `BLOCK_SCALAR_YAML` and `ANCHOR_YAML` hold no
+/// `{`, `[` or `#` at all, so `notes_have_flow_spelling` short-circuits on the style flag and neither
+/// demotion nor either lift is ever taken - measured 2026-10-26, the same day a writer change moved
+/// those five floors and the note machinery that change guards priced nothing. Every flow-marked
+/// container makes the parent and the child ask the same question, so nesting (`nest`, `nest2`) is
+/// what turns that walk into a measured cost rather than a constant.
+pub const NOTE_FLOW_YAML: &str = r#"
+kept: [1, {b: 2}]  # fits
+nest: {a: {b: {c: 3}, d: [4, 5]}}
+over: [
+  # lead
+  x,  # tail
+  y]
+marker: {
+  # on the key spine
+  ? [k1, k2]
+  : v}
+spine:
+  ? [
+      # hoisted above the marker
+      a,  # tail
+      b]
+  : out
+lift: &A
+  # first entry note
+  - &B inner
+  - !tagged two
+tail: [z, [w, 1]]  # after
+kept2: {p: 1, q: [2, 3]}  # second
+over2: [
+  # another lead
+  m,  # and tail
+  n]
+nest2: {e: {f: {g: {h: 4}}}}
+plain: 7
+"#;
+
+/// The same note-shape machinery one bridge over: notes on the root, on a pair, under a key, on a
+/// nested key and on a sequence item, in the positions the JSONC and JSON5 writers each have their
+/// own rule for. `MEDIUM_YAML` - which `to_jsonc_medium` and `to_json5_medium` run over - carries no
+/// `#` at all, so `emit_root_leading`, `emit_standalone_comment` and the trailing-note sites in
+/// `pyrs-json/src/writer.rs` were priced by no floor on either dialect; the reader fixtures of those
+/// same bridges are authored *with* comments for exactly that reason. Keys stay scalars because the
+/// JSON object domain has no other legal key, so this input measures emission, not a refusal.
+pub const DIALECT_NOTES_YAML: &str = r#"
+# root leading note
+top: value  # trailing on a pair
+nested:  # note on the pair the value follows
+  # above the inner key
+  inner: 1
+list:
+  - a  # item note
+  - b
+tail: [1, 2]  # note on a flow value
+"#;
+
+/// The inbound half of the same two bridges: one document, seven comments, in the positions the JSONC
+/// and JSON5 *readers* each have to resolve. `from_jsonc_medium` and `from_json5_medium` carry
+/// comments too, but three apiece over 502 and 399 bytes, and `to_jsonc_notes`/`to_json5_notes`
+/// needed their reader twins for the pairing rule in `scripts/quality_matrix.py::ir_bridge_pairs`
+/// to keep seeing both halves of the bridge. Block (`/* … */`) and line (`// …`) forms both appear,
+/// because the two spellings reach the AST through different branches of the scanner.
+pub const NOTES_JSON: &str = r#"// root leading note
+{
+  "top": "value", // trailing on a pair
+  /* block above a key */
+  "nested": {
+    "inner": 1, // note on the inner value
+    "pair": 2 // note on the pair the value follows
+  },
+  "list": [
+    "a", // item note
+    "b"
+  ],
+  "tail": [1, 2] // note on a flow value
+}
+"#;
+
 /// Block mapping with a nested mapping and a block sequence.
 pub const BLOCK_STYLE_YAML: &str = "key1: value1\nkey2: value2\nnested:\n  subkey1: subvalue1\n  subkey2: subvalue2\nlist:\n  - item1\n  - item2\n  - item3\n";
 

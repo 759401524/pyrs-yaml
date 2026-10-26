@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 822 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 825 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -576,20 +576,21 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — forty-two of them, since the binding harness joined, since each cross-format
+from — forty-seven of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.25% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256, 95,854,968 against 328,990,934), since
-the TOML loader's own route joined (`load_toml_medium` and `load_toml_long_strings`, driven
-through `bench_load_toml` at 144,946,040 and 139,507,647 - 1.20x and 1.29x the tree that
-`from_toml_medium` and `from_toml_long_strings` stop at), since the JSON loader's fast route
-joined the same way (`load_json_medium` and `load_json_long_strings` through `bench_load_json` at
-57,153,557 and 94,893,565 - 0.73x and 0.85x what `from_json_medium` and `from_json_long_strings`
-pay to build the node model that route skips), and this row is shared by `load_jsonc` and
+the same eight records at value widths of 9 and 256 - 86,156,102 against 128,726,060, so the long
+body costs 1.49x the short one on that route), since the TOML loader's own route joined
+(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,071 and
+139,508,754 - 1.20x and 1.28x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
+since the JSON loader's fast route joined the same way (`load_json_medium` and `load_json_long_strings`
+through `bench_load_json` at 57,153,588 and 94,894,672 - 0.72x and 0.85x what `from_json_medium` and
+`from_json_long_strings` pay to build the node model that route skips), and this row is shared by
+`load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
 what differs between them is the fallback the engine harness already prices, since the edit layer
 joined with one scenario per verb (`edit_set_nested`, `edit_insert_sequence` and `edit_delete_key`) —
@@ -597,7 +598,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 `set_path`, `insert_path` or `delete_path`, and since the JSON producer grew its walk-and-stop pair
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
-alone cannot tell a slower prefix from a slower whole, which is why the pair exists. Growing the set
+alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
+writer's note shape joined (`serialize_note_flow`, 62,066,048) and the dialect writers' note shape
+with it (`to_jsonc_notes` 27,543,372, `to_json5_notes` 27,661,399 and their reader twins `from_jsonc_notes` 50,684,157 and `from_json5_notes` 50,864,157, one six-note document through
+each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
+`serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
+measured price until a scenario could reach them. Growing the set
 moves its siblings, which is why the refresh ran on this head rather than locally. Against the file
 it replaced, the first dispatch refused to write over one upward move - `load_json_long_strings`
 +0.76 % - measured from a binding binary whose digest that file already recorded, so the runner had

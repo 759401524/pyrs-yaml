@@ -272,7 +272,7 @@ def test_a_format_with_no_bridge_at_all_is_a_hole(matrix, monkeypatch):
     """The other half of the same blindness, fired on injected names.
 
     Removing one scenario leaves a unidirectional bridge, which the rule above catches. Removing a
-    whole dialect leaves nothing for that rule to start from - so this test drops all four JSON5
+    whole dialect leaves nothing for that rule to start from - so this test drops all of a dialect's
     scenarios and requires the hole to appear by format name, not by scenario name.
     """
     real = matrix.ir_harness_channels()
@@ -290,6 +290,8 @@ def test_a_format_with_no_bridge_at_all_is_a_hole(matrix, monkeypatch):
         "from_json5_medium",
         "to_json5_long_strings",
         "from_json5_long_strings",
+        "to_json5_notes",
+        "from_json5_notes",
     }, sorted(dropped)
     thin = {crate: [name for name in names if name not in dropped] for crate, names in real.items()}
     assert matrix.ir_bridges_absent(thin) == ["json5"], thin
