@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 819 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 30 proptest properties (26 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 168 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| unit / integration | 822 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -724,7 +724,7 @@ The question that filled it again on 2026-10-14 was about the tier itself: `prop
 counts properties, and a count is satisfied by a property that never asserts.
 `conditional_property_assertions()` therefore reads each property body for a guard of the shape
 `if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
-round-trip classifier has since replaced that guard, and the probe now reports 0 of the 30 properties.
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 31 properties.
 Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
 to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it

@@ -43,9 +43,26 @@ def document_of(raw: bytes) -> str | None:
         return None
 
 
+def _jsonable(value: object) -> object:
+    """A JSON-safe shape for any value, with a mapping's order kept as a list of pairs."""
+    if isinstance(value, dict):
+        return {"__pairs__": [[_jsonable(k), _jsonable(v)] for k, v in value.items()]}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, (set, frozenset)):
+        return {"__set__": sorted(json.dumps(_jsonable(v), default=repr) for v in value)}
+    return value
+
+
 def canonical(value: object) -> str:
-    """A rendering that keeps mapping order, so a reordered pair is a failure."""
-    return json.dumps(value, sort_keys=False, default=repr)
+    """A rendering that keeps mapping order, so a reordered pair is a failure.
+
+    Keys are rendered by the same rule as values. A complex YAML key arrives as a tuple - the only
+    hashable spelling a non-scalar key has in Python - and plain `json.dumps` refuses a tuple as a
+    key, which is what a seed-corpus document raised: both readers had already built the same
+    `{('x',): 'y'}`, so the refusal was the comparison's, not the engine's.
+    """
+    return json.dumps(_jsonable(value), sort_keys=False, default=repr)
 
 
 def cases() -> list[tuple[str, str]]:
@@ -98,6 +115,12 @@ def test_the_canonical_rendering_keeps_mapping_order():
     # on contents but disagree on order would pass, and order is the promise this library makes.
     assert canonical({"a": 1, "b": 2}) != canonical({"b": 2, "a": 1})
     assert canonical([{"a": 1, "b": 2}]) != canonical([{"b": 2, "a": 1}])
+    # And a key must not be flattened into the value it holds. `flow-sequence-key-two-note-stack.seed`
+    # reads as `{("x",): "y"}` through both readers; were the tuple rendered as `"x"`, the gate would
+    # call that document identical to `{x: y}` and could not see a key-shape divergence at all.
+    assert canonical({("x",): "y"}) != canonical({"x": "y"})
+    assert canonical({("x",): "y"}) != canonical({("x", "z"): "y"})
+    assert canonical({("x",): "y"}) == canonical({("x",): "y"})
 
 
 def reaches_fast_path(src: str) -> bool:

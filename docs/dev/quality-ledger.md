@@ -9131,6 +9131,163 @@ The surface is strict-JSON only, mirroring `load_json` — the dialect stays an 
 parameter of `document_from_line`, and no option was invented for a caller that has not asked for
 one — and it takes a `str`, not a path or file object, like the rest of the family.
 
+### (gn) The flow flag answered "where does this item's line start", and the demotion had already said no (2026-10-26)
+
+**Why this was owed.** CI's property shard reddened `prop_style_setting_roundtrip` on a #638 head at
+the one assertion that cannot be argued with: `pbt.rs`'s `expect("output re-parses")`. The writer
+had produced a document this engine's own reader refuses. Sampling the same tree locally did not
+bring it back — in debug, and again in release with a far larger budget — so the "debug differs from
+release" explanation was tested and refuted, and what the tier had found was a class rather than a
+flake. A class is pinned by a table, not by another draw.
+
+**One question, three parents.** `write_mapping_node` and `write_sequence_node` demote a flow-marked
+container to block style when a member carries more notes than the braces can hold — the maintainer
+ruling of 2026-10-14 that chose demotion over dropping the note. Three parent-side decisions then
+read the `flow_style` flag alone: `is_compact_item` (may the item share the dash line?),
+`write_sequence_item` (does its body hang under the dash?) and `write_mapping_pair` (does the value
+go below its `key:`?). For a flow-marked child about to demote, each wrote its indicator and let the
+child open a block body at the parent's column: the first note shared the dash, the next sat at
+column 0, and the mapping never received the item's indent, so the sequence ended before its own
+item existed. The bytes were `- # first` / `# second` / `"": v`.
+
+**The value side was measured, not assumed.** Once the item case was fixed, the same question was
+put to `write_mapping_pair` with three hand-built shapes. Two of the three did not re-parse at all —
+a block sequence cannot start on a `key:` line for any reader, so `outer: -` is refused outright —
+and the third re-parsed only because `outer:` read as a null value, inventing a `~` the tree never
+held. All three are in the table now, so the record is about a class the writer had in three places
+rather than one line of one branch.
+
+**Why the tier needed a merge pair.** The shape needs two standalone notes stacked on one key. The
+reported seed reaches that only through resolution: the `<<` pair's own note folds onto the key the
+merge splices in, and two notes that were never on the same node before become one stack. The guard
+therefore builds the stack directly - nineteen shapes beside the seed, across two tables -
+instead of waiting for a draw that happens to line two notes up.
+
+**The marker asked the same question, and its twin was missing half a match.** Four more reads of
+the flag sat behind the explicit key: the branch in `write_mapping_pair` that decides whether to
+lift a note out of a nested key, `hoist_marker_note`'s mapping arm, its sequence arm, and
+`spine_has_notes` — the read-only guard that keeps that lift off the hot path. Each asked
+`*flow_style`, so a flow-marked complex key whose member carries an unrepresentable stack wrote
+`?` then the notes *inside* its own body, and the next round moved them above the marker: the shape
+parsed, but only settled on its second emission. Two plain block-key controls were measured first,
+and they came back canonical, which is what proved the drift belonged to this class rather than to
+markers in general. `spine_has_notes` had a second defect: it matched only `Mapping`, so a note
+riding the first item of a complex *sequence* key never triggered the lift at all and stayed under
+the container's own `&anchor` header line — a shape its mutable twin already walked, which is how
+the guard came to disagree with the thing it guards.
+
+Lifting the overflowing note off the spine has a consequence worth naming: with that note gone the
+braces fit again, so a demoting flow *key* keeps its flow spelling instead of going block. The style
+the source asked for survives because the reason for demoting it moved up to the marker line.
+
+The class is reader-reachable, not a hand-built tree. Four spellings the engine's own parser
+accepts - a flow mapping key with two notes inside the braces, the same notes written before the
+key, the same under a root anchor, and a flow sequence key with a two-note item - were run through
+the built extension after the fix, and each emits a document that re-parses to the same bytes on the
+first round. The pre-fix half of that pair was measured in Rust, on the three trees these four texts
+parse into, where the same emission came back changed on its second round.
+
+**What the fix is.** One predicate, `is_block_container`, asked where the flag used to be read: by
+`is_compact_item`, which decides whether the item shares the dash line, by `write_sequence_item`,
+which decides whether the body hangs under it, by `write_mapping_pair`, which decides whether the
+value goes below its `key:`, and by the marker branch of `write_mapping_pair` that decides whether a
+complex key's spine is worth lifting at all. The two functions that walk that spine —
+`hoist_marker_note` and its read-only guard `spine_has_notes` — ask the same demotion question per
+arm, in both of their `Mapping` and `Sequence` branches, and the guard gained the sequence arm it
+was missing. The compact route is the one that makes the shape canonical in a single emission,
+because its first-pair branch already lifts a key's note stack above the dash - the same bytes the
+reader hands back for a block-flagged item. The intermediate attempt, sending only the body to its
+own line, was measured and rejected: it produced `-` then the body at the item's indent, which
+re-parses but re-emits as the notes above the dash, so the document settled only on its second pass.
+Two exclusions are kept on purpose: an empty container stays on the dash line, because `{}` / `[]`
+have no block spelling (`crash-a58caa38`), and a flow item whose notes do fit keeps sharing the
+dash, because sending every container to its own line would fix the first half of the table by
+silently costing the second.
+
+**Falsified, one site at a time.** Reverting `write_sequence_item` to the flag reproduces the CI
+failure by name: the test reports the shape - "flow item whose key carries two notes has no brace
+for the second" - and the three lines it emitted, `- # first` over `# second` over `"": v`, which
+its own reader refuses. Reverting only `is_compact_item` keeps the output parseable and fails a
+different assertion, `settles only on its second emission`, which is what pinned the choice of route
+above. Reverting `write_mapping_pair` names a value row and reports `a scalar was lost or changed`:
+`outer:` reads back as a null value, so the tree grows a `~` it never held. The marker half is
+falsified the same way, one guard at a time: `hoist_marker_note`'s mapping arm and its sequence arm
+each redden with `left "first" under the marker, where the next round lifts it` on their own row,
+`spine_has_notes`' mapping guard reddens a header row through `settles only on its second emission`,
+deleting the guard's sequence arm reddens the complex-sequence-key row the same way, and the marker
+branch in `write_mapping_pair` reddens the demoting-key row — that last one only after the two lifts
+were fixed, which is why an earlier measurement of it found no difference at all: while the lift
+refused flow-marked keys, asking the branch the right question changed nothing. Restored,
+`PROPTEST_CASES=20000 cargo nextest run --workspace --exclude pyrs-yaml --locked` reads 808/808
+passed on that tree and 809/809 once the strategy below was added, and the Python tier reads 4308
+passed / 10 skipped on the rebuilt extension - the same counts the ledger recorded before this
+change, which is what makes them a control rather than a coincidence.
+
+**The tier could not have found this twice.** `arb_node_meta` carries at most one note per node - an
+`option::of(arb_comment())`, not a stack - so no draw of `arb_custom_node` can put two standalone
+notes on one member, which is the precondition of the whole class. The shard that reported the seed
+reached it only because merge resolution folds two notes onto one key after the fact. A table pinned
+nineteen shapes, but a table cannot generalize: a writer change that reintroduces the bug in an
+undrawn role stays green. So the class also gets a strategy that must hit it.
+`arb_note_stack_overflow` builds the overflow by construction in eight roles - sequence item,
+mapping value, complex key, complex key under an `&anchor` header, each as a mapping body or a
+sequence body, anchored or tagged - and `prop_note_stack_overflow_settles_on_the_first_emission`
+holds the same four demands over the drawn payloads. At 256 cases it reddens on six of the seven
+guard reversions: `write_sequence_item` comes back as `- -` over an indented note stack, which the
+reader refuses; the value line reproduces the `~` invention; the marker family reports
+`settles only on its second emission`. The seventh, `is_compact_item`, is left to the tables, whose
+item shape routes through the compactness question and this strategy's does not.
+
+**What the fix costs.** The enforcing image priced it: run 69 of "Ir baseline refresh" re-measured
+this head on `ubuntu24, image 20261023.334.3` with the same pinned `rustc 1.97.1` and both writer
+scenarios named in `accept_drift`, and its artifact is the committed `.ci/ir-baseline.json`. The
+whole writer family moved together - `serialize_small` +0.7221%, `serialize_anchors` +0.5498%,
+`serialize_medium` +0.3568%, `serialize_block_scalars` +0.2435%, `serialize_block` +0.1798% - and no
+reader scenario moved by more than 0.19%.
+
+The first reading of *why* was wrong and the fixtures refute it. The code shape suggests the parent
+and the child now walk a flow container's members twice, and that was written here as the price. But
+counted in `crates/pyrs-yaml-core/src/bench_inputs.rs`, none of the five writer inputs carries a
+flow spelling at all - `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`, `BLOCK_SCALAR_YAML` and
+`ANCHOR_YAML` hold zero `{`, `}`, `[` or `]` - so `is_block_container` short-circuits on
+`flow_style == false` (or on the scalar arm) and `notes_have_flow_spelling` is never called. A
+second measurement of the same file says the same for the machinery the fix guards: those five
+inputs also carry zero `#` characters, so not one of them holds a note. What the writer family
+actually pays is the call and its match arms at four pair/item sites, where an inline `matches!` on
+one `bool` used to answer - codegen inside `write_mapping_pair` and `serialize_node_internal`, which
+is where the run's attribution puts it, and consistent with the predicate appearing as no new
+symbol.
+
+Two consequences are recorded rather than chased. The payback ledger (ga) names - carry the parent's
+answer down as an argument instead of asking the child twice - cannot pay back this delta, because
+on these inputs the child is never asked. And the gate that priced it cannot see the machinery at
+all: with no flow spelling and no note in any writer scenario, a change that made
+`notes_have_flow_spelling`, the demotion or the two lifts more expensive would move no floor. That
+is a measurement gap in the Ir tier, not a hole in the writer, and naming it is the follow-up rather
+than something claimed closed here.
+
+**Seeds, because the shape is readable.** Six spellings the engine's own parser accepts went into
+`fuzz/seeds/yaml_roundtrip/` (`flow-key-two-note-stack`, `flow-key-two-note-stack-under-anchor`,
+`flow-sequence-key-two-note-stack`, `flow-sequence-item-two-note-key`, `flow-value-two-note-key` and
+`flow-value-sequence-two-note-item`), taking that directory from 76 files to 82. That corpus
+is not just fuzzer fuel: `note_survival.rs` replays every `*.seed` on `cargo nextest` and demands
+each recorded note appear in the emission, and `tests/test_reader_parity.py` compares the two
+readers over it too - so the class bites deterministically at the corpus tier as well as in the
+tables and the strategy. Getting there surfaced a limit in the parity gate itself, not in the
+engine: a complex key reads back as a Python tuple, `json.dumps` refuses a tuple as a key, and the
+seed failed to *compare* even though both readers had built the identical `{('x',): 'y'}`.
+`canonical` now renders keys by the same rule as values and keeps a pair list, and three controls
+pin that it still tells `{('x',): 'y'}` apart from `{x: y}` and from `{('x','z'): 'y'}` - a
+rendering that flattened a key into its contents would have quietly made the gate blind to key-shape
+divergence.
+
+**Not claimed.** The seven sites are the whole set for this tree: every remaining read of
+`flow_style` in the writer either hands the flag to a container writer, which demotes at its own
+entry, or receives the already-demoted local back from that writer - the brace decision in
+`write_container_node`, `writes_block_header`, and the two `lift_first_*_notes` helpers. Nothing
+here claims the class cannot reappear where a new reader of the flag is added, and the tables and
+the strategy answer that only by reddening.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

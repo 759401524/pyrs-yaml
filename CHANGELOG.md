@@ -92,6 +92,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The dash and the colon opened for a child that had already decided to go block** —
+  `write_mapping_node` and `write_sequence_node` demote a flow-marked container when a member
+  carries more notes than the braces can hold, but seven decisions trusted the `flow_style` flag
+  alone: `is_compact_item`, the sequence item's line, the mapping value's line, the `?` marker's
+  lift branch, `hoist_marker_note`'s two arms and its read-only twin `spine_has_notes`. Each wrote
+  its indicator and let the demoted child open a block body at the parent's column, so the emission
+  read `- # first` / `# second` / `"": v` — and a demoted value *sequence* is worse still, since `-`
+  cannot start on a `key:` line for any reader. The property tier hit the item case at 20,000 cases
+  (`prop_style_setting_roundtrip`), and only through a `<<` pair, because merge resolution is what
+  stacks two notes onto one key. All seven now ask the demotion's own question, and
+  `spine_has_notes` gained the sequence arm its twin already had — without it a note riding a
+  complex *sequence* key stayed under the container's own `&anchor` header line. A demoting complex
+  key then keeps its braces: lifting the overflowing note above the marker removes the reason to
+  demote, so the flow spelling the source asked for survives. Two table tests pin nineteen shapes
+  beside the reported seed: each must re-parse, keep its note and scalar text, be spelled the way it
+  settles — a demoted container loses its braces, one whose notes fit keeps them — and be canonical
+  on its first emission. Reverting each of the seven guards on its own reddens a named row, which is
+  what says all seven are load-bearing rather than five of six guessed. The tables are not the whole
+  guard: `arb_node_meta` carries at most one note per node, so no draw of `arb_custom_node` can
+  build the stack that triggers the demotion — the tier that reported this class could not have
+  reported it again. A new strategy builds the overflow by construction in eight roles (sequence
+  item, mapping value, complex key, complex key under an `&anchor` header; mapping body or sequence
+  body; anchored or tagged) and the property over it reddens on six of the seven guard reversions at
+  256 cases; the seventh, `is_compact_item`, is held by the tables. The enforcing image priced the
+  extra question: the writer family moved +0.18% to +0.72% (`serialize_small` the worst) and no
+  reader scenario moved by more than 0.19%, so both floors are re-measured on that image rather than
+  widened. Four reader-accepted spellings of the shape went into `fuzz/seeds/yaml_roundtrip/`, which
+  puts them under `note_survival.rs` and the two-reader parity gate on every `cargo nextest` - and
+  that gate had to learn to render a complex key at all, since `json.dumps` refuses a tuple as a
+  key. The 20,000-case sweep re-runs clean at 809/809; no new scenario, stub or public API.
 - **The refresh job stopped dropping every scenario name after the first** — `profile` and
   `accept_drift` both split their input with `read -ra <<< "$VAR"`, and `read` consumes one line:
   refresh run 40221999337 took a `profile` input carrying two names on two lines - the shape its own
