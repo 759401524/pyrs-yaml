@@ -9395,6 +9395,38 @@ profile puts `scan_yaml` at 20.93% of that loop: the verbs are called with `line
 298-byte document. Both are left for their own changes rather than named as holes here, because
 either fix moves three floors and a floor move is a claim, not a side effect.
 
+### (gp) The block note stopped allocating twice, and the line notes stayed (2026-10-26)
+
+`(go)` put a floor on the dialect note path, and the first thing measured against it was the
+flattening itself. `push_block_note` did `text.replace(['\n', '\r'], " ").trim()
+.replace("*/", "* /")` — two intermediate `String`s for a note about to be written into a `String`
+— so one pass now trims, maps interior breaks, and splits `*/` only where it could close the comment
+early. The enforcing image reads **17,002,806** and **17,120,806** for `to_jsonc_notes` and
+`to_json5_notes`, down 38.27% and 38.11% from the 27,543,372 and 27,661,399 that `(go)` committed,
+with the other 45 scenarios inside ±0.16% (`to_json_medium` −0.0004%, `serialize_note_flow`
+−0.0000%). Refresh run 79 wrote all forty-seven floors with `accept_drift` empty, which is the gate
+saying nothing moved up past the line it enforces.
+
+**The part that was taken back out.** Routing the six line-form sites through the same pass bought a
+further 2.5 points on those two floors and cost about 1% on six writers whose fixture holds no note
+at all: `to_jsonc_medium` +1.63%, `to_json5_medium` +1.59%, `to_jsonc_long_strings` +1.44%,
+`to_json5_long_strings` +1.42%, `to_json_medium` +1.02%, `to_json_long_strings` +0.96%. Two
+independent runs of that one tree printed the same six names and the same percentages to within tens
+of instructions, so the movement is a code property and not the runner. `#[inline(never)]` on the
+new helper was tried first and changed none of the six, which refutes the explanation that looked
+most likely — the cold pass being inlined into its callers. What is left unexplained, and
+deliberately not answered here, is why editing six call sites a fixture never reaches should cost
+the writers of that fixture 1%. The two floors that priced the win are the reason the shape that
+shipped is the smaller one, and the question is left open rather than closed by a guess.
+
+**What guards what shipped.** `to_jsonc_notes` and `to_json5_notes`, and the named case
+`a_note_is_flattened_and_a_block_carrier_splits_its_own_terminator`, whose second assertion reddens
+when the terminator split is removed. No property tier can reach that flattening at all:
+`arb_comment` draws its note text from `[ -~]+`, so a note carrying a line break never appears in a
+generated tree. That gap is recorded as its own change rather than folded into a performance one,
+because widening a generator shared by every property tier becomes a YAML note-ownership question
+the moment it starts.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
