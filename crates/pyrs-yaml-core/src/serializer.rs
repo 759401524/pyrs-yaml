@@ -237,12 +237,7 @@ fn effective_chomping(value: &str, chomping: &Chomping, no_content_line: bool) -
 fn inlineable_value(v: &CustomNode) -> bool {
     match v {
         CustomNode::Scalar { .. } | CustomNode::Null { .. } | CustomNode::Alias { .. } => true,
-        CustomNode::Mapping {
-            pairs, flow_style, ..
-        } => *flow_style || pairs.is_empty(),
-        CustomNode::Sequence {
-            items, flow_style, ..
-        } => *flow_style || items.is_empty(),
+        container => !is_block_container(container),
     }
 }
 
@@ -307,9 +302,13 @@ pub(crate) fn line_has_comment_marker(line: &[u8]) -> bool {
 }
 
 /// Whether a block mapping can be emitted in the compact `- key: value`
-/// sequence-item form: no anchor and no tag, non-empty, all keys simple scalars and
-/// all values inlineable. Mirrors the guard used by `write_sequence_item`;
+/// sequence-item form: it really is spelled block, no anchor and no tag, non-empty, all keys
+/// simple scalars and all values inlineable. Mirrors the guard used by `write_sequence_item`;
 /// shared so the splice layer and the serializer can never drift.
+///
+/// "Really spelled block" is [`is_block_container`], not the `flow_style` flag: a mapping whose
+/// members veto the braces takes this form too, which is what puts its key's note stack above the
+/// dash instead of on the dash line the flag would have opened for it.
 ///
 /// A note the item itself carries does not disqualify it. The dash line's own break is
 /// what the reader reports the note from, so `- a: 1  # n` and `# n` above the dash both
@@ -322,9 +321,9 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
         CustomNode::Mapping {
             pairs,
             meta,
-            flow_style: false,
             ..
-        } if meta.anchor().is_none()
+        } if is_block_container(node)
+            && meta.anchor().is_none()
             && meta.tag().is_none()
             && meta.comment().is_none_or(|c| !c.standalone)
             && !pairs.is_empty()
@@ -950,10 +949,7 @@ impl Serializer {
         // container holding one further down — has no room while any ancestor stays in flow
         // (maintainer ruling, 2026-10-14). Asked only when the node claims flow style, so a block
         // document still pays nothing here.
-        let flow_style = flow_style
-            && pairs
-                .iter()
-                .all(|(k, v)| notes_have_flow_spelling(k) && notes_have_flow_spelling(v));
+        let flow_style = mapping_is_spelled_flow(pairs, flow_style);
         // A note stack riding the first entry cannot stay *below* this node's own
         // anchor/tag header line: granit reports a note in that position as the
         // tagged node's leading comment, so the next round moves it above the
@@ -1026,7 +1022,7 @@ impl Serializer {
     ) -> Result<(), SerializeError> {
         // Same rule as a flow mapping: an item note the braces cannot hold sends the sequence to
         // block style rather than being dropped.
-        let flow_style = flow_style && items.iter().all(notes_have_flow_spelling);
+        let flow_style = sequence_is_spelled_flow(items, flow_style);
         // Same lift as a block mapping's first key: a note under a `&a` / `!tag`
         // header line re-reads as the sequence's own leading comment.
         let (stripped_items, preamble_notes) =
@@ -1399,16 +1395,7 @@ impl Serializer {
                 stripped = strip_leading_comment(key);
                 hoisted = hoist_marker_note(&mut stripped);
                 &stripped
-            } else if matches!(
-                key,
-                CustomNode::Mapping {
-                    flow_style: false,
-                    ..
-                } | CustomNode::Sequence {
-                    flow_style: false,
-                    ..
-                }
-            ) {
+            } else if is_block_container(key) {
                 // The key has no note of its own, but a chain of markers on one line
                 // leaves one riding a nested key inside its body, where the reader
                 // will not put it back. Bring it up to this marker's line instead.
@@ -1482,18 +1469,9 @@ impl Serializer {
         let mut key_note_at: Option<usize> = None;
 
         // Check if value needs to be on next line
-        if (matches!(
-            value,
-            CustomNode::Mapping {
-                flow_style: false,
-                ..
-            } | CustomNode::Sequence {
-                flow_style: false,
-                ..
-            }
-        ) && !Self::is_empty_container(value))
+        if (is_block_container(value)
+            || value.leading_comment().is_some() && !Self::is_empty_container(value))
             || (explicit_key_marker && !alias_key)
-            || (value.leading_comment().is_some() && !Self::is_empty_container(value))
         {
             // Write a block container's anchor/tag after the colon: only
             // block-style Mapping / Sequence suppress their own header in
@@ -1509,17 +1487,7 @@ impl Serializer {
             // next-line branch only under a complex key, and now writes its
             // own anchor/tag in `write_container_node`, so pre-emitting would
             // duplicate it (`: !a` … `!a {}`).
-            if matches!(
-                value,
-                CustomNode::Mapping {
-                    flow_style: false,
-                    ..
-                } | CustomNode::Sequence {
-                    flow_style: false,
-                    ..
-                }
-            ) && !Self::is_empty_container(value)
-            {
+            if is_block_container(value) {
                 if let Some(anchor_name) = value.anchor() {
                     self.output.push_str(" &");
                     self.output.push_str(anchor_name);
@@ -1751,16 +1719,7 @@ impl Serializer {
                 }
             }
         } else if !Self::is_empty_container(item)
-            && (matches!(
-                item,
-                CustomNode::Mapping {
-                    flow_style: false,
-                    ..
-                } | CustomNode::Sequence {
-                    flow_style: false,
-                    ..
-                }
-            ) || item.leading_comment().is_some())
+            && (is_block_container(item) || item.leading_comment().is_some())
         {
             // An empty block container never takes this branch: `{}` / `[]` have no block
             // spelling, so a line of their own re-reads as a *flow* node and the next
@@ -1774,16 +1733,7 @@ impl Serializer {
             // whose own first item may extend the chain. Only a block container consumes it;
             // a scalar with a leading note would leave it for a sibling that does not own it.
             if let Some(start) = enclosing_header
-                && matches!(
-                    item,
-                    CustomNode::Mapping {
-                        flow_style: false,
-                        ..
-                    } | CustomNode::Sequence {
-                        flow_style: false,
-                        ..
-                    }
-                )
+                && is_block_container(item)
             {
                 self.enclosing_header_start = Some(start);
             }
@@ -2569,7 +2519,11 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
         CustomNode::Mapping {
             pairs, flow_style, ..
         } => {
-            if *flow_style || pairs.is_empty() {
+            // The question is whether the body lands on its own lines, not what the node claims:
+            // a flow-marked key that the demotion sends to block has the same spine, so asking the
+            // flag alone left its notes below `? ` where the next round hoists them (see
+            // [`mapping_is_spelled_flow`]).
+            if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
                 return notes;
             }
             // `IndexMap` never hands out `&mut K` (it would break the hash invariant),
@@ -2586,7 +2540,8 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
         CustomNode::Sequence {
             items, flow_style, ..
         } => {
-            if *flow_style || items.is_empty() {
+            // Same question as the mapping arm: the lift follows a body written on its own lines.
+            if items.is_empty() || sequence_is_spelled_flow(items, *flow_style) {
                 return notes;
             }
             if let Some(first) = items.first_mut() {
@@ -2682,6 +2637,44 @@ fn notes_have_flow_spelling(node: &CustomNode) -> bool {
             .all(|(k, v)| notes_have_flow_spelling(k) && notes_have_flow_spelling(v)),
         CustomNode::Sequence { items, .. } => items.iter().all(notes_have_flow_spelling),
         _ => true,
+    }
+}
+
+/// Whether a flow-marked mapping really is spelled with braces, and the same for a sequence.
+///
+/// Both are the single source of the demotion the container writers take, and the question a
+/// *parent* has to ask before deciding where the child's line starts: a child that claims flow but
+/// is about to fall back to block has a multi-line body, and writing `- ` or `k: ` for it strands
+/// that body at the parent's column instead of under the indicator.
+fn mapping_is_spelled_flow(pairs: &NodeMap<CustomNode, CustomNode>, flow_style: bool) -> bool {
+    flow_style
+        && pairs
+            .iter()
+            .all(|(k, v)| notes_have_flow_spelling(k) && notes_have_flow_spelling(v))
+}
+
+fn sequence_is_spelled_flow(items: &[CustomNode], flow_style: bool) -> bool {
+    flow_style && items.iter().all(notes_have_flow_spelling)
+}
+
+/// Whether a node really takes a block spelling: a `Mapping` / `Sequence` whose emission
+/// [`Serializer::write_mapping_node`] / [`Serializer::write_sequence_node`] will demote from the
+/// `flow_style` flag, or which never claimed flow. An empty container is never a block here — the
+/// braces are its only spelling, whatever flag an edit left behind.
+///
+/// This is the question a parent asks before it decides where the child's line starts. Settling it
+/// from the flag alone opened `- ` for a child that then wrote a block body, and that body landed
+/// at the parent's column instead of under the dash — an emission no reader takes back
+/// (property tier `prop_style_setting_roundtrip`).
+fn is_block_container(node: &CustomNode) -> bool {
+    match node {
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => !pairs.is_empty() && !mapping_is_spelled_flow(pairs, *flow_style),
+        CustomNode::Sequence {
+            items, flow_style, ..
+        } => !items.is_empty() && !sequence_is_spelled_flow(items, *flow_style),
+        _ => false,
     }
 }
 
@@ -2785,20 +2778,33 @@ fn lift_first_entry_notes(
 /// keep the caller's clone and allocation off the hot path when there is nothing
 /// to lift.
 fn spine_has_notes(key: &CustomNode) -> bool {
-    let CustomNode::Mapping {
-        pairs, flow_style, ..
-    } = key
-    else {
-        return false;
-    };
-    if *flow_style || pairs.is_empty() {
-        return false;
+    match key {
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => {
+            if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
+                return false;
+            }
+            let (first_key, _) = match pairs.get_index(0) {
+                Some(entry) => entry,
+                None => return false,
+            };
+            !first_key.leading_comments().is_empty() || spine_has_notes(first_key)
+        }
+        // The sequence arm is what makes this the twin of [`hoist_marker_note`]: without it a note
+        // riding the first item of a complex *sequence* key stays below the container's own
+        // `&anchor` header line, and the emission settles only on its second round.
+        CustomNode::Sequence {
+            items, flow_style, ..
+        } => {
+            if items.is_empty() || sequence_is_spelled_flow(items, *flow_style) {
+                return false;
+            }
+            let first = &items[0];
+            !first.leading_comments().is_empty() || spine_has_notes(first)
+        }
+        _ => false,
     }
-    let (first_key, _) = match pairs.get_index(0) {
-        Some(entry) => entry,
-        None => return false,
-    };
-    !first_key.leading_comments().is_empty() || spine_has_notes(first_key)
 }
 
 /// The [`lift_first_entry_notes`] equivalent for a block sequence's first item.

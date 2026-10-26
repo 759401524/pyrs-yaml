@@ -575,6 +575,609 @@ mod tests {
         })
     }
 
+    /// The `? ` marker asked the style flag instead of the demotion, so a flow-marked complex key
+    /// whose note stack the braces cannot hold wrote those notes *below* the marker - one round to
+    /// move them back up, and a body stranded inside the marker's own lines. Lifting the spine on
+    /// the block-body question has a second effect worth pinning: once the overflowing note is off
+    /// the spine the key's braces fit again, so the flow spelling the source asked for survives
+    /// instead of being demoted a second time.
+    ///
+    /// Both halves are rows here. A key that never claimed flow has to keep its block body (the two
+    /// control rows), and a flow-marked key has to keep its braces rather than be sent to block by a
+    /// lift that no longer has anything to lift.
+    #[test]
+    fn an_explicit_key_lift_follows_the_block_body_not_the_style_flag() {
+        use crate::ast::{Comment, CustomNode, NodeMap, Tag};
+
+        let note = |text: &str| Comment {
+            text: text.into(),
+            standalone: true,
+        };
+        let scalar = |value: &str| CustomNode::plain_scalar(value);
+        let mapping = |pairs: Vec<(CustomNode, CustomNode)>| {
+            let mut map = NodeMap::default();
+            for (k, v) in pairs {
+                map.insert(k, v);
+            }
+            CustomNode::plain_mapping(map)
+        };
+        let flow = |mut node: CustomNode| {
+            node.set_flow_style(true);
+            node
+        };
+        let with_notes = |value: &str, texts: &[&str]| {
+            let mut node = scalar(value);
+            for text in texts {
+                node.push_leading_comment(note(text));
+            }
+            node
+        };
+
+        let demoted_key = flow(mapping(vec![(
+            with_notes("k", &["first", "second"]),
+            scalar("v"),
+        )]));
+        let anchored = {
+            let mut node = demoted_key.clone();
+            node.set_anchor("A1");
+            node
+        };
+        let tagged = {
+            let mut node = demoted_key.clone();
+            node.set_tag(Tag {
+                handle: "!!".into(),
+                suffix: "Tag1".into(),
+            });
+            node
+        };
+        let demoted_seq_key = flow(CustomNode::plain_sequence(vec![with_notes(
+            "x",
+            &["first", "second"],
+        )]));
+        let with_anchor = |mut node: CustomNode| {
+            node.set_anchor("ROOT");
+            node
+        };
+
+        /// What the line after the marker is required to look like once the notes are lifted.
+        enum MarkerBody {
+            KeepsBraces,
+            WritesBlockBody,
+        }
+        use MarkerBody::{KeepsBraces, WritesBlockBody};
+
+        let cases: Vec<(&str, CustomNode, MarkerBody)> = vec![
+            (
+                "control: plain block complex key, inner key with two notes",
+                mapping(vec![(
+                    mapping(vec![(with_notes("k", &["first", "second"]), scalar("v"))]),
+                    scalar("x"),
+                )]),
+                WritesBlockBody,
+            ),
+            (
+                "control: plain block complex sequence key, item with two notes",
+                mapping(vec![(
+                    CustomNode::plain_sequence(vec![with_notes("x", &["first", "second"])]),
+                    scalar("y"),
+                )]),
+                WritesBlockBody,
+            ),
+            (
+                "demoting flow mapping as the complex key",
+                mapping(vec![(demoted_key.clone(), scalar("x"))]),
+                KeepsBraces,
+            ),
+            (
+                "anchored demoting flow mapping as the complex key",
+                mapping(vec![(anchored, scalar("x"))]),
+                KeepsBraces,
+            ),
+            (
+                "tagged demoting flow mapping as the complex key",
+                mapping(vec![(tagged, scalar("x"))]),
+                KeepsBraces,
+            ),
+            (
+                "demoting flow sequence as the complex key",
+                mapping(vec![(demoted_seq_key.clone(), scalar("x"))]),
+                KeepsBraces,
+            ),
+            (
+                "demoting flow complex key inside a block sequence item",
+                CustomNode::plain_sequence(vec![mapping(vec![(demoted_key.clone(), scalar("x"))])]),
+                KeepsBraces,
+            ),
+            (
+                "anchored block root whose first key demotes - the header waits for the spine",
+                with_anchor(mapping(vec![(demoted_key.clone(), scalar("x"))])),
+                KeepsBraces,
+            ),
+            (
+                "anchored block root whose first key is a demoting flow sequence",
+                with_anchor(mapping(vec![(demoted_seq_key.clone(), scalar("x"))])),
+                KeepsBraces,
+            ),
+            (
+                "anchored mapping as a block sequence item, its first key demoting",
+                CustomNode::plain_sequence(vec![with_anchor(mapping(vec![(
+                    demoted_key.clone(),
+                    scalar("x"),
+                )]))]),
+                KeepsBraces,
+            ),
+            (
+                "demoting flow complex key nested inside a value mapping",
+                mapping(vec![(
+                    scalar("outer"),
+                    mapping(vec![(demoted_key, scalar("x"))]),
+                )]),
+                KeepsBraces,
+            ),
+        ];
+
+        for (label, node, body) in cases {
+            let yaml = to_yaml(&node);
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).unwrap_or_else(
+                |error| panic!("({label}) emitted {yaml:?}, which does not re-parse: {error:?}"),
+            );
+            let lines: Vec<&str> = yaml.lines().collect();
+            let marker_at = lines
+                .iter()
+                .position(|line| line.trim_start().starts_with('?'))
+                .unwrap_or_else(|| panic!("({label}) wrote no explicit key marker: {yaml:?}"));
+            for text in ["first", "second"] {
+                let note_at = lines
+                    .iter()
+                    .position(|line| line.trim() == format!("# {text}"))
+                    .unwrap_or_else(|| panic!("({label}) lost its {text:?} note: {yaml:?}"));
+                assert!(
+                    note_at < marker_at,
+                    "({label}) left {text:?} under the marker, where the next round lifts it: {yaml:?}"
+                );
+            }
+            assert_eq!(
+                lines
+                    .iter()
+                    .filter(|line| line.trim_start().starts_with('#'))
+                    .count(),
+                2,
+                "({label}) invented a note line: {yaml:?}"
+            );
+            let body_line = lines[marker_at + 1];
+            let spelled_in_braces = body_line.contains('{') || body_line.contains('[');
+            match body {
+                KeepsBraces => assert!(
+                    spelled_in_braces,
+                    "({label}) lost the flow spelling its source asked for: {yaml:?}"
+                ),
+                WritesBlockBody => assert!(
+                    !spelled_in_braces,
+                    "({label}) claimed braces for a body it writes across lines: {yaml:?}"
+                ),
+            }
+            // Canonical on the first round, the same demand the sequence and value rows make.
+            let once = to_yaml(&parsed);
+            assert_eq!(
+                yaml, once,
+                "({label}) settles only on its second emission: {yaml:?} then {once:?}"
+            );
+        }
+    }
+
+    /// A member note the braces cannot hold demotes a flow-marked container to block style, and the
+    /// container writers were the only ones who asked that question. Every parent deciding where a
+    /// child's line starts read the `flow_style` flag alone, so it opened `- ` or `key:` for a child
+    /// that then wrote a block body at the parent's column - bytes no reader takes back. The
+    /// property tier found it through `prop_style_setting_roundtrip` (CI 20k-case shard), where
+    /// merge resolution moved a second standalone note onto one key; the class is wider than that
+    /// seed and reaches both the sequence item and the mapping value, so the guard asks about the
+    /// class.
+    ///
+    /// Both directions are pinned. A demoting container has to be written as the block document it
+    /// really became, with its note stack above the indicator, and a container that stays in flow
+    /// has to keep sharing that indicator line - a fix that sent every container to its own line
+    /// would pass the first half and quietly cost the second. Every row must also settle on its
+    /// first emission, which is what chose the compact route over hanging the body under the dash.
+    #[test]
+    fn a_demoted_flow_container_is_written_as_the_block_document_it_became() {
+        use crate::ast::{Chomping, Comment, CustomNode, NodeMap, ScalarStyle};
+
+        let note = |text: &str| Comment {
+            text: text.into(),
+            standalone: true,
+        };
+        let scalar = |value: &str| CustomNode::plain_scalar(value);
+        let mapping = |pairs: Vec<(CustomNode, CustomNode)>| {
+            let mut map = NodeMap::default();
+            for (k, v) in pairs {
+                map.insert(k, v);
+            }
+            CustomNode::plain_mapping(map)
+        };
+        let flow = |mut node: CustomNode| {
+            node.set_flow_style(true);
+            node
+        };
+        let with_notes = |value: &str, texts: &[&str]| {
+            let mut node = scalar(value);
+            for text in texts {
+                node.push_leading_comment(note(text));
+            }
+            node
+        };
+
+        /// How the row is required to be spelled. `StaysInFlow` is the over-demotion control: a
+        /// container whose notes the braces do hold must keep its brackets. `DemotesToBlock` is the
+        /// note-loss control from the other side: a container that fell back to block must not be
+        /// spelled with braces any more, so a "fix" that dropped the note to stay in flow reddens
+        /// here. Both kinds also hold the universal rules - no dash opens a note-only line, no note
+        /// or scalar text is lost, and the first emission is already the fixed point.
+        enum Placement {
+            StaysInFlow,
+            DemotesToBlock,
+        }
+
+        let cases: Vec<(&str, CustomNode, Placement)> = vec![
+            (
+                "flow item whose key carries two notes has no brace for the second",
+                CustomNode::plain_sequence(vec![flow(mapping(vec![(
+                    with_notes("", &["first", "second"]),
+                    scalar("v"),
+                )]))]),
+                Placement::DemotesToBlock,
+            ),
+            (
+                "flow item whose key carries one note still fits in the braces",
+                CustomNode::plain_sequence(vec![flow(mapping(vec![(
+                    with_notes("k", &["only"]),
+                    scalar("v"),
+                )]))]),
+                Placement::StaysInFlow,
+            ),
+            (
+                "empty flow item has no block spelling to take",
+                CustomNode::plain_sequence(vec![flow(mapping(vec![]))]),
+                Placement::StaysInFlow,
+            ),
+            (
+                "flow sequence item demoted by a note stack inside it",
+                CustomNode::plain_sequence(vec![flow(CustomNode::plain_sequence(vec![
+                    with_notes("x", &["first", "second"]),
+                ]))]),
+                Placement::DemotesToBlock,
+            ),
+            (
+                "flow value mapping demoted by a note stack on its key",
+                mapping(vec![(
+                    scalar("outer"),
+                    flow(mapping(vec![(
+                        with_notes("k", &["first", "second"]),
+                        scalar("v"),
+                    )])),
+                )]),
+                Placement::DemotesToBlock,
+            ),
+            (
+                "flow value sequence demoted by a note stack inside it",
+                mapping(vec![(
+                    scalar("outer"),
+                    flow(CustomNode::plain_sequence(vec![with_notes(
+                        "x",
+                        &["first", "second"],
+                    )])),
+                )]),
+                Placement::DemotesToBlock,
+            ),
+            (
+                "a sequence item whose value mapping demotes",
+                CustomNode::plain_sequence(vec![mapping(vec![(
+                    scalar("outer"),
+                    flow(mapping(vec![(
+                        with_notes("k", &["first", "second"]),
+                        scalar("v"),
+                    )])),
+                )])]),
+                Placement::DemotesToBlock,
+            ),
+            (
+                "a flow value mapping whose notes do fit keeps the key line",
+                mapping(vec![(
+                    scalar("outer"),
+                    flow(mapping(vec![(with_notes("k", &["only"]), scalar("v"))])),
+                )]),
+                Placement::StaysInFlow,
+            ),
+        ];
+
+        fn collect_note_texts(node: &CustomNode, out: &mut Vec<String>) {
+            if let Some(c) = node.comment().filter(|c| !c.standalone) {
+                out.push(c.text.to_string());
+            }
+            for c in node.leading_comments() {
+                out.push(c.text.to_string());
+            }
+            match node {
+                CustomNode::Mapping { pairs, .. } => {
+                    for (k, v) in pairs {
+                        collect_note_texts(k, out);
+                        collect_note_texts(v, out);
+                    }
+                }
+                CustomNode::Sequence { items, .. } => {
+                    for item in items {
+                        collect_note_texts(item, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn collect_scalar_texts(node: &CustomNode, out: &mut Vec<String>) {
+            if let CustomNode::Scalar { value, .. } = node {
+                out.push(value.to_string());
+            }
+            match node {
+                CustomNode::Mapping { pairs, .. } => {
+                    for (k, v) in pairs {
+                        collect_scalar_texts(k, out);
+                        collect_scalar_texts(v, out);
+                    }
+                }
+                CustomNode::Sequence { items, .. } => {
+                    for item in items {
+                        collect_scalar_texts(item, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn sorted(mut texts: Vec<String>) -> Vec<String> {
+            texts.sort();
+            texts
+        }
+
+        fn of(node: &CustomNode, collect: fn(&CustomNode, &mut Vec<String>)) -> Vec<String> {
+            let mut out = Vec::new();
+            collect(node, &mut out);
+            sorted(out)
+        }
+
+        for (label, node, placement) in cases {
+            let yaml = to_yaml(&node);
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false);
+            let parsed = match parsed {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    panic!("({label}) emitted {yaml:?} which does not re-parse: {error:?}")
+                }
+            };
+            let (notes, parsed_notes) = (
+                of(&node, collect_note_texts),
+                of(&parsed, collect_note_texts),
+            );
+            let (texts, parsed_texts) = (
+                of(&node, collect_scalar_texts),
+                of(&parsed, collect_scalar_texts),
+            );
+            assert_eq!(
+                notes, parsed_notes,
+                "({label}) a note was lost or invented by {yaml:?}"
+            );
+            assert_eq!(
+                texts, parsed_texts,
+                "({label}) a scalar was lost or changed by {yaml:?}"
+            );
+            assert!(
+                !yaml.starts_with("- #"),
+                "({label}) opened its dash with a note, stranding the item: {yaml:?}"
+            );
+            let first_line = yaml.split('\n').next().unwrap_or_default();
+            let spelled_in_braces = first_line.contains('[') || first_line.contains('{');
+            match placement {
+                Placement::StaysInFlow => assert!(
+                    spelled_in_braces,
+                    "({label}) was expected to keep its braces, got {yaml:?}"
+                ),
+                Placement::DemotesToBlock => assert!(
+                    !spelled_in_braces,
+                    "({label}) stayed in braces while its notes needed a block, got {yaml:?}"
+                ),
+            }
+            // Canonical on the first round: re-emitting what the reader handed back must not move
+            // the text, or the shape needs two emissions to settle and every consumer of an
+            // already-parsed document pays for the second one.
+            let once = to_yaml(&parsed);
+            assert_eq!(
+                yaml, once,
+                "({label}) settles only on its second emission: {yaml:?} then {once:?}"
+            );
+        }
+
+        // The seed the property tier actually reported: a `<<` pair whose notes only meet once
+        // the reader resolves the merge, styled block-folded all the way down.
+        let mut seed = CustomNode::plain_sequence(vec![mapping(vec![(
+            with_notes("<<", &["note on the merge key"]),
+            mapping(vec![(
+                with_notes("", &["note on the null key"]),
+                scalar("qD.qrA}-/6U=d%"),
+            )]),
+        )])]);
+        deep_apply_styles(&mut seed, ScalarStyle::Folded, Chomping::Clip, true);
+        let seed = as_the_reader_sees(&seed);
+        let yaml = to_yaml(&seed);
+        let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false)
+            .unwrap_or_else(|error| panic!("the CI seed emitted {yaml:?}: {error:?}"));
+        let (notes, reparsed) = (
+            of(&seed, collect_note_texts),
+            of(&parsed, collect_note_texts),
+        );
+        assert_eq!(notes, reparsed, "the CI seed lost a note through {yaml:?}");
+    }
+
+    /// The deepest note stack any single node in the tree carries.
+    fn deepest_note_stack(node: &crate::ast::CustomNode) -> usize {
+        use crate::ast::CustomNode as N;
+        let own = usize::from(node.comment().is_some_and(|c| !c.standalone))
+            + node.leading_comments().len();
+        match node {
+            N::Mapping { pairs, .. } => pairs.iter().fold(own, |best, (k, v)| {
+                best.max(deepest_note_stack(k)).max(deepest_note_stack(v))
+            }),
+            N::Sequence { items, .. } => items
+                .iter()
+                .fold(own, |best, item| best.max(deepest_note_stack(item))),
+            _ => own,
+        }
+    }
+
+    /// Every scalar value in the tree, in document order.
+    fn scalar_texts(node: &crate::ast::CustomNode, out: &mut Vec<String>) {
+        use crate::ast::CustomNode as N;
+        if let N::Scalar { value, .. } = node {
+            out.push(value.to_string());
+        }
+        match node {
+            N::Mapping { pairs, .. } => {
+                for (k, v) in pairs.iter() {
+                    scalar_texts(k, out);
+                    scalar_texts(v, out);
+                }
+            }
+            N::Sequence { items, .. } => {
+                for item in items.iter() {
+                    scalar_texts(item, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A note stack the braces cannot hold, built by construction in every role the class has.
+    ///
+    /// `arb_node_meta` carries at most one note per node, so no draw of `arb_custom_node` can put the
+    /// two standalone notes on one member that send a flow-marked container to block - which is why
+    /// ledger (gn) had to be pinned by a table: the tier could not reach the class at all, and a
+    /// regression in it would pass 20,000 cases. This strategy hands the writer the shape in each
+    /// position a parent decides about - a sequence item, a mapping value, a complex key, and a
+    /// complex key under a root that carries an `&anchor` header of its own - as a mapping body or a
+    /// sequence body, optionally anchored or tagged.
+    fn arb_note_stack_overflow() -> impl Strategy<Value = crate::ast::CustomNode> {
+        use crate::ast::{Comment, CustomNode, NodeMap, Tag};
+
+        /// The container that has to hold the overflowing member: as a mapping key or a sequence item,
+        /// and either flow-marked (so the demotion is what decides its spelling) or block already.
+        fn body(member: CustomNode, as_sequence: bool, flow: bool) -> CustomNode {
+            let mut node = if as_sequence {
+                CustomNode::plain_sequence(vec![member])
+            } else {
+                let mut pairs = NodeMap::default();
+                pairs.insert(member, CustomNode::plain_scalar("v"));
+                CustomNode::plain_mapping(pairs)
+            };
+            node.set_flow_style(flow);
+            node
+        }
+
+        (
+            0u8..8,
+            prop::collection::vec(
+                proptest::string::string_regex("[A-Za-z0-9._-]{1,6}").expect("regex"),
+                2..4,
+            ),
+            proptest::string::string_regex("[A-Za-z0-9._-]{1,6}").expect("regex"),
+            prop::option::of("[a-zA-Z_][a-zA-Z0-9_-]{0,4}"),
+            prop::option::of("[a-zA-Z_][a-zA-Z0-9_-]{0,4}"),
+        )
+            .prop_map(|(role, notes, value, anchor, tag)| {
+                let mut member = CustomNode::plain_scalar(value.as_str());
+                for note in notes {
+                    member.push_leading_comment(Comment {
+                        text: note.into(),
+                        standalone: true,
+                    });
+                }
+                // Every other role pairs a mapping body (the stack sits on a key) with a sequence
+                // body (the stack sits on an item), so both arms of each writer are drawn.
+                let child = body(member, role % 2 == 1, true);
+                match role {
+                    0 | 1 => CustomNode::plain_sequence(vec![child]),
+                    2 | 3 => {
+                        let mut pairs = NodeMap::default();
+                        pairs.insert(CustomNode::plain_scalar("outer"), child);
+                        CustomNode::plain_mapping(pairs)
+                    }
+                    4 | 5 => {
+                        let child = {
+                            let mut child = child;
+                            if let Some(name) = anchor {
+                                child.set_anchor(name);
+                            }
+                            if let Some(suffix) = tag {
+                                child.set_tag(Tag {
+                                    handle: "!!".into(),
+                                    suffix,
+                                });
+                            }
+                            child
+                        };
+                        let mut pairs = NodeMap::default();
+                        pairs.insert(child, CustomNode::plain_scalar("x"));
+                        CustomNode::plain_mapping(pairs)
+                    }
+                    _ => {
+                        let mut root = {
+                            let mut pairs = NodeMap::default();
+                            pairs.insert(child, CustomNode::plain_scalar("x"));
+                            CustomNode::plain_mapping(pairs)
+                        };
+                        root.set_anchor("ROOT");
+                        root
+                    }
+                }
+            })
+    }
+
+    proptest! {
+        /// The note-stack class must be written once and settle once, in every role it can take:
+        /// the same four demands the tables of ledger (gn) make, drawn rather than listed.
+        #[test]
+        fn prop_note_stack_overflow_settles_on_the_first_emission(
+            node in arb_note_stack_overflow(),
+        ) {
+            let yaml = to_yaml(&node);
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).unwrap_or_else(
+                |error| panic!("the draw emitted {yaml:?}, which does not re-parse: {error:?}"),
+            );
+            prop_assert!(
+                deepest_note_stack(&node) >= 2,
+                "the strategy drew no overflowing member: {yaml:?}"
+            );
+            let (mut mine, mut theirs) = (note_texts(&node), note_texts(&parsed));
+            mine.sort();
+            theirs.sort();
+            prop_assert!(
+                mine == theirs,
+                "a note was lost or invented by {yaml:?}: {mine:?} vs {theirs:?}"
+            );
+            let (mut my_scalars, mut their_scalars) = (Vec::new(), Vec::new());
+            scalar_texts(&node, &mut my_scalars);
+            scalar_texts(&parsed, &mut their_scalars);
+            my_scalars.sort();
+            their_scalars.sort();
+            prop_assert!(
+                my_scalars == their_scalars,
+                "a scalar was lost or changed by {yaml:?}: {my_scalars:?} vs {their_scalars:?}"
+            );
+            let once = to_yaml(&parsed);
+            prop_assert!(
+                yaml == once,
+                "settles only on its second emission: {yaml:?} then {once:?}"
+            );
+        }
+    }
+
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
