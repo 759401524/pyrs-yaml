@@ -212,6 +212,49 @@ fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &m
     }
 }
 
+/// The one pass a block note needs before it can be written: `\n` and `\r` become spaces, both ends
+/// are dropped, and an inner `*/` is split so the comment cannot terminate early.
+///
+/// Written into `out` instead of through a `String`: that note used to cost two intermediate
+/// `String`s — one for `replace(['\n', '\r'], " ")`, one for the `*/` split — and the enforcing
+/// image named that flattening as the largest self term of `to_jsonc_notes` and `to_json5_notes`.
+/// Trimming first is what flatten-then-trim did, because `\n` and `\r` are whitespace and so is the
+/// space that replaces them: the same prefix and suffix falls off either way.
+///
+/// The six line-form sites (`// …`) deliberately still flatten through `replace`/`trim`. Measured on
+/// the image, routing them through this pass took `to_jsonc_notes` from −38.27% to −40.80% and moved
+/// six note-free writer scenarios past the tolerance the gate enforces (`to_jsonc_medium` +1.63%,
+/// `to_json5_medium` +1.59%, `to_jsonc_long_strings` +1.44%, `to_json5_long_strings` +1.42%,
+/// `to_json_medium` +1.02%, `to_json_long_strings` +0.96%) — reproduced on two independent runs of
+/// that tree, and unaffected by `#[inline(never)]` on this function, which changed none of the six
+/// readings. So the cost is the line sites' edit itself, not this pass being inlined: 2.5 points of
+/// the drop were not worth 1% on six paths that never reach a note, and those two floors guard it.
+fn push_block_flat(text: &str, out: &mut String) {
+    let flat = text.trim();
+    let bytes = flat.as_bytes();
+    let mut written = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        // `\n`, `\r` and `* /` are ASCII, so every slice boundary here is a char boundary.
+        let terminator = b == b'*' && bytes.get(i + 1) == Some(&b'/');
+        if b == b'\n' || b == b'\r' || terminator {
+            out.push_str(&flat[written..i]);
+            if terminator {
+                out.push_str("* /");
+                i += 2;
+            } else {
+                out.push(' ');
+                i += 1;
+            }
+            written = i;
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&flat[written..]);
+}
+
 /// A comment in the flow (compact) spelling: `/* … */`, terminated in place.
 ///
 /// The compact writer has no line breaks to spend, and `//` would consume everything after it -
@@ -221,8 +264,9 @@ fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &m
 /// which is the drift `fmt_pbt::prop_json_writers_are_fixed_points` refuses. A block comment belongs
 /// to whatever it sits next to and moves nothing.
 fn push_block_note(text: &str, out: &mut String) {
-    let flat = text.replace(['\n', '\r'], " ").trim().replace("*/", "* /");
-    let _ = write!(out, "/* {flat} */");
+    out.push_str("/* ");
+    push_block_flat(text, out);
+    out.push_str(" */");
 }
 
 /// The notes a pair's **key** carries, as block comments ahead of the key.
@@ -1281,6 +1325,54 @@ mod tests {
             "{} stacked-note cases failed:\n{}",
             failures.len(),
             failures.join("\n")
+        );
+    }
+
+    /// What both comment spellings owe a note, pinned as behaviour rather than as one implementation:
+    /// interior breaks become spaces while the ends drop, and a `*/` inside a block carrier is split
+    /// before it can close the comment early. Neither shape comes off the JSON reader — a JSONC block
+    /// comment cannot contain `*/` and a `//` comment cannot span lines — but both come off the hub,
+    /// where a YAML source note or `set_comment` carries any text. This is what `to_jsonc_notes` and
+    /// `to_json5_notes` price, and the block half is the part `push_block_flat` now writes in a
+    /// single pass.
+    #[test]
+    fn a_note_is_flattened_and_a_block_carrier_splits_its_own_terminator() {
+        let mut root = CustomNode::plain_mapping(
+            vec![(CustomNode::plain_scalar("k"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        root.push_leading_comment(pyrs_ast::ast::Comment {
+            text: alloc::sync::Arc::from("  first\r\nsecond  "),
+            standalone: true,
+        });
+        let pretty = to_jsonc_text_pretty(&root, 2).unwrap();
+        assert!(
+            pretty.starts_with("// first  second\n{"),
+            "the line spelling did not flatten and trim in place: {pretty:?}"
+        );
+
+        let mut value = CustomNode::plain_scalar("1");
+        value.push_leading_comment(pyrs_ast::ast::Comment {
+            text: alloc::sync::Arc::from("ends */ here"),
+            standalone: true,
+        });
+        let compact = to_jsonc_text(&CustomNode::plain_mapping(
+            vec![(CustomNode::plain_scalar("k"), value)]
+                .into_iter()
+                .collect(),
+        ))
+        .unwrap();
+        assert!(
+            compact.contains("/* ends * / here */"),
+            "the block spelling wrote a terminator that closes the comment early: {compact:?}"
+        );
+        let reread = crate::from_jsonc(&compact)
+            .unwrap_or_else(|e| panic!("{compact:?} will not re-read: {e}"));
+        assert_eq!(
+            to_jsonc_text(&reread).unwrap(),
+            compact,
+            "the split terminator moved the note on the second round"
         );
     }
 

@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 825 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 826 Rust `#[test]`, 1,973 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -600,7 +600,7 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
 writer's note shape joined (`serialize_note_flow`, 62,066,048) and the dialect writers' note shape
-with it (`to_jsonc_notes` 27,543,372, `to_json5_notes` 27,661,399 and their reader twins `from_jsonc_notes` 50,684,157 and `from_json5_notes` 50,864,157, one six-note document through
+with it (`to_jsonc_notes` 17,002,806, `to_json5_notes` 17,120,806 and their reader twins `from_jsonc_notes` 50,684,157 and `from_json5_notes` 50,864,157, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. Growing the set

@@ -326,28 +326,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   abandoned for a member holding two notes, a `?` marker with its note on the marker line, a marker
   whose own note slot is empty but whose spine carries one three levels down, and an anchored header
   whose first entry is annotated - and the image's own attribution puts that walk at 12.61% of the
-  scenario (7,824,000 across the predicate's two instantiations). `to_jsonc_notes` (27,543,372) and
-  `to_json5_notes` (27,661,399) write one six-note document through the two dialect writers, and the
-  image names where its money goes: `<str>::replace` - the flattening every note passes through
-  before it is written as a comment, and reachable from note text alone - is the largest self term
-  in both, 16.08% and 16.01%, with `push_block_note` and `emit_value_block_notes` behind it. Their
-  reader twins `from_jsonc_notes` (50,684,157) and `from_json5_notes` (50,864,157) exist because the
-  defence matrix pairs a `to_<format>_<shape>` with its `from_<format>_<shape>` and asserts that
-  pair on the committed harness; they resolve a document of seven comments - five line-form, one
-  block-form, one before the document - and name `<pyrs_json::parser::Parser>::ws_extended` as the
-  largest term in both (19.86% and 19.79%), with `attach_pending`, where a comment finds its node,
-  at 1,484,000. `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins the five YAML answers, the six
-  written notes and the seven carried notes against the text the engine emits, and reddens by name
-  when a note is deleted from any of the three fixtures - so a floor cannot quietly come to guard a
-  note-free document. Growing the harness moved 15, then 13, then 18 floors past 0.005%, and the set
-  that crossed the 0.50% line was not the same name each time: `from_json_medium` 78,671,707 →
-  79,283,878 → 79,904,977 crossed twice at +0.78% a step, then the third growth sent it 0.41% the
-  other way while four readers it does not enter crossed instead (`from_json5_medium` +1.05%,
+  scenario (7,824,000 across the predicate's two instantiations). `to_jsonc_notes` (17,002,806) and
+  `to_json5_notes` (17,120,806) write one six-note document through the two dialect writers, and run
+  75's profile named where its money went, before PR #643 took the block half in one pass:
+  `<str>::replace` - the flattening every note passes through before it is written as a comment, and
+  reachable from note text alone - is the largest self term in both, 16.08% and 16.01%, with
+  `push_block_note` and `emit_value_block_notes` behind it. Their reader twins `from_jsonc_notes`
+  (50,684,157) and `from_json5_notes` (50,864,157) exist because the defence matrix pairs a
+  `to_<format>_<shape>` with its `from_<format>_<shape>` and asserts that pair on the committed
+  harness; they resolve a document of seven comments - five line-form, one block-form, one before
+  the document - and name `<pyrs_json::parser::Parser>::ws_extended` as the largest term in both
+  (19.86% and 19.79%), with `attach_pending`, where a comment finds its node, at 1,484,000.
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins the five YAML answers, the six written notes and
+  the seven carried notes against the text the engine emits, and reddens by name when a note is
+  deleted from any of the three fixtures - so a floor cannot quietly come to guard a note-free
+  document. Growing the harness moved 15, then 13, then 18 floors past 0.005%, and the set that
+  crossed the 0.50% line was not the same name each time: `from_json_medium` 78,671,707 → 79,283,878
+  → 79,904,977 crossed twice at +0.78% a step, then the third growth sent it 0.41% the other way
+  while four readers it does not enter crossed instead (`from_json5_medium` +1.05%,
   `from_jsonc_medium` +0.72%, `parse_inline_merge` +0.67%, `from_json5_long_strings` +0.50%). That
   is why the names come from a dispatch's refusal rather than from a prediction: run 74 refused with
   those four while `from_json_medium` sat pre-named from the two earlier crossings, and run 75 named
-  the four and wrote. `tolerance_hint` stays 0.005. All forty-seven floors come from those runs, and
-  `QUALITY_MATRIX.md` §2 counts them out loud.
+  the four and wrote. `tolerance_hint` stays 0.005. All forty-seven floors come from those runs,
+  re-measured by run 79, and `QUALITY_MATRIX.md` §2 counts them out loud.
 - **The assessment's blind-spot count is derived from the list, not trusted** — the sentence in
   `QUALITY_MATRIX.md` said `Seven blind spots were found by measuring` while the list under it
   already carried eight entries, and no gate could see the difference: the derived tier row counts
@@ -469,6 +470,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **A block note is written in one pass** — `to_jsonc_notes` and `to_json5_notes` price the
+  flattening a note passes through before it is written as a comment, and the block half of it
+  allocated twice: `push_block_note` did `text.replace(['\\n', '\\r'], " ").trim()
+  .replace("*/", "* /")`, so a compact note cost two intermediate `String`s before being written
+  into a buffer that was a `String` already. One pass writes it now: trim, map interior breaks to
+  spaces, split `*/` only where it could close the comment early. Trimming first is equivalent and
+  not assumed — `\\n` and `\\r` are whitespace and so is the space that replaces them, so
+  flatten-then-trim drops the same prefix and suffix. On the enforcing image `to_jsonc_notes` reads
+  17,002,806 and `to_json5_notes` 17,120,806, down 38.27% and 38.11% from the floors PR #642
+  committed, with the other 45 scenarios inside ±0.16% (`to_json_medium` −0.0004%) — the refresh
+  wrote all forty-seven without naming a single drift. The six line-form sites went through the same
+  pass in a first version and were taken back out: they bought a further 2.5 points on the two notes
+  floors but moved six note-free writers past the tolerance `ir_gate.py` enforces (`to_jsonc_medium`
+  +1.63%, `to_json5_medium` +1.59%, `to_jsonc_long_strings` +1.44%, `to_json5_long_strings` +1.42%,
+  `to_json_medium` +1.02%, `to_json_long_strings` +0.96%), reproduced on a second run of that same
+  tree, and `#[inline(never)]` on the new helper changed none of the six — so the price is that edit
+  itself, not the pass being inlined, and 2.5 points did not repay 1% on paths that never reach a
+  note. What shipped stays guarded by the two floors and by
+  `a_note_is_flattened_and_a_block_carrier_splits_its_own_terminator`, which pins the line spelling
+  as `// first  second` for a note carrying `"  first\\r\\nsecond  "`, the block spelling as
+  `/* ends * / here */`, and reddens on the second assertion when the terminator split is removed.
 - **A line of JSON is now indexed eight bytes at a time** — `pyrs_event::LineTable` counted one
   UTF-8 character per step, both to find the line starts and to carry the cursor between events, and
   on the image that enforces the instruction floors that walk read 51.79% of
