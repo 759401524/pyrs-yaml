@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The ledger's own citation rule is now a hook** — `docs/dev/quality-ledger.md` numbers its
+  sections `### (xy)`, and a pointer like `(details: quality-ledger (bf))` names one section only
+  while those letters run increasing and unique. Until today the Python tier judged that alone: a
+  change whose only defect was a section placed one letter early passed the hook set, the docs
+  gates, `rust-lint` and the Ir leg, then reddened all twelve `test` legs across three OSes.
+  `scripts/check_ledger_order.py` owns the rule now — exit 1 names the section sitting wrong, exit 2
+  refuses a file with no lettered section at all, which is how a renamed heading form would
+  otherwise buy a permanent pass — and the `ledger-order` hook fires on the ledger itself. Control
+  measured in the working copy: swapping `(gq)` and `(gr)` reddens the hook with
+  `(gq) follows (gr)`, and restoring it gives `9 passed`. `tests/test_ledger_section_order.py`
+  guards the checker and its `files:` pattern instead of holding a second copy of the rule.
 - **A quoted Ir floor is checked against the file it quotes** — a refresh rewrites all forty-seven
   readings in `.ci/ir-baseline.json`, and every copy left in undated prose becomes history nobody
   marked: nine minutes after the last one, `QUALITY_MATRIX.md` disagreed with the file on nine of

@@ -9570,6 +9570,31 @@ named in `the_key_rule_agrees_with_the_writer_and_the_reader`, whose distinguish
 moves 14 to 15 with the new row. Records: a `### Fixed` bullet in all five changelog mirrors, and
 this entry.
 
+### (gt) A rule judged only by the expensive tier is a rule that gets broken (2026-10-26)
+
+`docs/dev/quality-ledger.md` numbers its sections `### (xy)`, and that numbering is how every
+`(details: quality-ledger (…))` pointer resolves. `tests/test_ledger_section_order.py` had owned the
+rule since the `(bh)`/`(ch)` findings and nothing else did. Measured the day this was written:
+PR #646's first head inserted `(gs)` before `(gr)`, passed `prek hook set on the full tree`,
+`docs gates and site build`, `rust-lint` and `Instruction-count baseline`, then reddened all twelve
+`test` legs - 3.8 through 3.15 on ubuntu, windows and macos - for one section in the wrong place.
+`main`'s own run on the same base was green, which is what made the attribution unambiguous.
+
+The rule now lives in `scripts/check_ledger_order.py` and the `ledger-order` hook fires on the
+ledger: exit 1 names the section that sits wrong, exit 2 refuses a file carrying no `### (xy)`
+heading at all, which is the shape a renamed heading form would otherwise leave as a permanent pass.
+The test file keeps the guard rather than the rule - nine tests, one of which re-derives this
+incident from the live ledger by lifting its last section above the previous one. Control run in the
+working copy: swapping `(gq)` and `(gr)` gave `hook_exit=1` reading `(gq) follows (gr)` and two
+failed tests; `jj restore` returned the hook to Passed and the file to `9 passed`. Growing the tier
+moved the derived matrix row, taken with `quality_matrix.py --write-rows` (1,985 to 1,992 Python
+test functions).
+
+The rule is stated here as a shape, not a size: a checker that recites how many sections exist goes
+stale the first time anyone adds one.
+
+Records: an `### Added` bullet in all five changelog mirrors, and this entry.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
