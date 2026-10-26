@@ -1684,9 +1684,11 @@ pub mod proptest_strategies {
         )
     }
 
+    /// Note text includes `\n` and `\r`: a comment carrier holds one line, so the writers'
+    /// flattening is a rule the property tier has to be able to ask for.
     pub fn arb_comment() -> impl Strategy<Value = Comment> {
         (
-            proptest::string::string_regex("[ -~]+").expect("regex"),
+            proptest::string::string_regex("[\\n\\r -~]+").expect("regex"),
             any::<bool>(),
         )
             .prop_map(|(text, standalone)| Comment {

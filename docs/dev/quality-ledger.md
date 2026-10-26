@@ -9463,6 +9463,71 @@ hand-copy of a live floor: absence of a marker reads as "this is history", and o
 make that claim wrongly. Dated records stay outside the governed set on purpose — the ledger and a
 released changelog section name what was true on their date.
 
+### (gr) The note generator could not draw a line break, so nothing priced the flattening (2026-10-26)
+
+`arb_comment` (in `crates/pyrs-ast/src/ast.rs`) drew its text from the regex `[ -~]+` — printable
+ASCII, no `\n`, no `\r`. Every property tier that builds a tree through it therefore explored note
+text that no format can refuse, and the flattening a one-line comment carrier owes went unpriced:
+the JSON dialect writers had it (it is what `to_jsonc_notes` and `to_json5_notes` price), and
+nothing else did. Widening the class to `[\n\r -~]+` reddened four properties immediately —
+`fmt_pbt::prop_toml_output_reparses`, `fmt_pbt::prop_toml_writer_is_fixed_point`,
+`pbt::tests::prop_roundtrip` and `pbt::tests::prop_comment_preserved`. The failures were not
+cosmetic: the writers emitted the text after the break as document content. TOML refused its own
+output (`TOML parse error: bare carriage return (must be part of a CRLF pair) at line 2 column 6`),
+and an array item's standalone note `"<\n&"` re-read as a bare `&` value, i.e. a note could inject a
+node. Five separate TOML comment sites pushed `c.text.trim()` straight after `# `; the YAML writer
+trimmed through `note_text_to_write` and three `insert_note_at` call sites bypassed even that.
+
+The fix is one answer per carrier, not five. `push_note_text` is now the only place that writes note
+text into a comment in each of `pyrs-toml/src/writer.rs` and the YAML serializer: outer blanks
+dropped, every interior break written as a space, pushed into the buffer that is already the
+document. The three YAML `insert_note_at` sites reach it through `note_line`, which builds the whole
+line. Shrunk counterexamples are kept in `crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt`.
+
+The price of that shape is a measurement, not an assumption. The first version returned a
+`Cow<str>` so a note with no break borrowed — it allocated nothing per note — and on the enforcing
+image that head (2ef01e3d) read `serialize_note_flow` +8.80% over the floor with the other 46
+scenarios inside ±0.08%. A helper on the note path costs more than the temporary it saves, so the
+shipped shape pushes: `note_text_to_write` answers with `&str` and the flattening sits behind one
+`contains` scan, which leaves a clean note one scan and no temporary. The enforcing image priced
+it: the refresh job named this scenario (`accept_drift=serialize_note_flow`, run 40315751257) moved
+the floor 62,066,033 → 64,411,980 (+3.78%), and the same shape measured 64,412,121 on this host —
+141 instructions apart, so host and image agree and the movement is the asking, not the fixtures.
+
+The shape was then priced on one host with the pinned compiler, against `main` measured on the same
+host and recipe (`62,070,166`, +0.01% over the floor): searching with `contains(['\n', '\r'])` read
+`64,806,027` (+4.41%), searching the same bytes read `64,412,121` (+3.78%), and `#[inline]` on the
+helper changed nothing (`64,412,063`) — so the scenario pays for the extra pass over the note text,
+not for the call. That is the same lesson (gp) recorded for the JSON dialect writers, arriving from
+the other side: a note the reader can never produce still has to be asked about, and asking costs
+about 2.3 million instructions on the floor that prices notes.
+
+Two claims in the property tier were corrected rather than loosened. `collect_notes` compared the
+document against the note's raw text, so it now compares the one-line form — the substitution is
+restated inside the test, not borrowed from the serializer, so a writer that stopped flattening
+reddens the check instead of agreeing with it. `note_is_writable`'s blank-only rule was left alone:
+a note that is only blanks still has no spelling the reader keeps.
+
+The control was run per writer, because a run that reddens all four at once does not say which
+branch any of them needed. Removing the YAML flatten branch reddened `pbt::tests::prop_roundtrip`
+and `pbt::tests::prop_comment_preserved` and left both `fmt_pbt` properties green; removing TOML's
+reddened `fmt_pbt::prop_toml_output_reparses` and `fmt_pbt::prop_toml_writer_is_fixed_point` and
+left the YAML pair green — 27 tests in the `prop_` filter, 27 passed clean and 2 red each way, with
+the two sources restored byte-exact by digest. Two earlier attempts at this control reported
+`exit 0` while running nothing: a `-E` filterset this `cargo-nextest 0.9.149` refuses to parse and a
+`--failure-output fail-fast` value that does not exist. A control is only read from its summary
+line.
+
+The wider draw also surfaced a defect this change does not fix, and it is recorded as its own change
+rather than folded in. Seed `de78e195a7f1…` shrank to a mapping with two sequence keys — `[null]`,
+and `[null]` with a standalone note `A` on the inner item — which the writer emits as two pairs and
+the reader refuses: `?\n  - null\n:\n  0\n# A\n?\n  - null\n:\n  " "\n` ->
+`DuplicateKey("Sequence { items: [Scalar { value: \"null\", …")`. The note there holds no break, so
+`main`'s narrower class draws the same tree; the widening moved which draws happen, not what is
+reachable. `CustomNode::key_identity()` behind `keys_collide_in_text` is the model that should keep
+the generator from drawing a reader-duplicate pair, and its table had no row for a note inside a
+container key.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
