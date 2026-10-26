@@ -9528,6 +9528,48 @@ reachable. `CustomNode::key_identity()` behind `keys_collide_in_text` is the mod
 the generator from drawing a reader-duplicate pair, and its table had no row for a note inside a
 container key.
 
+### (gs) A standalone note inside a complex key was lifted out of the key it belonged to (2026-10-26)
+
+The writer emitted this for a mapping whose two keys were `[null]` and `[null]`, the second carrying
+a standalone note on the inner item, and its own reader refused it:
+
+```yaml
+?
+  - null
+:
+  0
+# A
+?
+  - null
+:
+  " "
+```
+
+`DuplicateKey("Sequence { items: [Scalar { value: \"null\", …")`. The hoist is the
+writer's own rule — `hoist_marker_note` lifts a note off a `? … :` spine to above the outermost
+`?`, because that is where a re-read reports it (crash-ac5d9043, crash-1445c91a, crash-f8525a9e) —
+so a tree that distinguishes two keys by such a note cannot be emitted as two keys. The generator's
+rule for what may not co-exist in one mapping was `a.key_identity() == b.key_identity()`, which
+counts comments at every level, so it drew the pair anyway and six properties went red on one seed
+(`prop_roundtrip`, `prop_output_always_parses`, `prop_idempotent`, `prop_flow_order_preserved`,
+`prop_mapping_order_preserved`, `prop_tag_preserved`).
+
+The fix narrows the question to what the emission can still tell apart: `keys_collide_in_text` now
+answers on a copy built by `standalone_notes_lifted`, which drops every standalone slot in the
+subtree and keeps everything else. The two directions were measured, not assumed — an *inline* note
+on the same item emits inside the key (`? - null  # A`) and comes back attached to that item, so two
+entries survive; the standalone form does not, so it now counts as one key. That asymmetry is why
+`KeyIdentity`'s container arms were left comparing nodes: an earlier attempt to fold them by
+`key_identity()` — which ignores comments at every level — was reverted after a table row showed it
+merged the inline pair, and a fold that merges two keys the reader keeps apart is data loss.
+
+`proptest-regressions/pbt.txt` keeps the shrunk case (seed `de78e195a7f1…`): 6 failures before the
+change, `27 tests run: 27 passed` in the `prop_` filter and `813 tests run: 813 passed` for the
+whole Rust tier with it pinned, `cargo test --all --no-default-features` clean. The boundary is also
+named in `the_key_rule_agrees_with_the_writer_and_the_reader`, whose distinguishable-side count
+moves 14 to 15 with the new row. Records: a `### Fixed` bullet in all five changelog mirrors, and
+this entry.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
