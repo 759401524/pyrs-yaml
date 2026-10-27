@@ -451,6 +451,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pair refused itself first, at `from_json5_medium` +0.55 % with `pyrs-json` untouched and the
   binding binary's digest unchanged: taking the set from forty-nine scenarios to fifty-one is what
   moved it, so the name went into `accept_drift` and `tolerance_hint` stayed at 0.5 %.
+- **A stream asked of a single-document route is refused, not resolved** — `parse`, `parse_file`,
+  `safe_load`, `to_toml` and the `YAML()` instance's equivalents read one document, and until now an
+  input carrying two answered whichever document the event walk ended on: `a: 1\n---\nb: 2\n` came
+  back as `b: 2` and `a: 1\n---\n` as `null`, with nothing saying a document had been discarded.
+  They now raise `YamlParseError` with a message that opens `multi-document-input`, names the second
+  document's line and column, and points at `parse_all_docs`, `safe_loads` and `parse_stream` — the
+  three routes that still accept separators, each measured doing so over the same ten shapes. PyYAML
+  and ruamel.yaml raise on all ten and still accept a leading `---`, a trailing `...`, a bare `---`
+  and an empty input, which are pinned here as the controls the guard must not over-fire on; the CLI
+  says the same thing with `-A/--all-docs`, whose own behaviour is unchanged. What is not claimed:
+  that the position matches the reference libraries, which mark the second document's directive
+  where this marks its separator. Recorded as `(hg)` in `docs/dev/quality-ledger.md`, together with
+  the compliance-harness mis-scoping this exposed.
 - **The Ir gate gained two floors that price metadata carriage on an edit** — every replacement asks
   `editing::metadata::merged_meta` whose note, whose anchor and whose tag to carry, and
   `delete_path` asks `extend_delete_over_comments` to widen its range, yet no floor reached any of

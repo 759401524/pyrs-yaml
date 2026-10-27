@@ -18,6 +18,12 @@ def fail(message: str) -> NoReturn:
     sys.exit(1)
 
 
+# The stable reason key the arity refusal leads with, built by `single_document_message` in
+# `crates/pyrs-yaml/src/py/mod.rs`. The CLI matches on the key rather than on any wording, so a
+# rephrased refusal falls through to the plain `fail(str(exc))` path instead of mis-splitting.
+MULTI_DOCUMENT_KEY = "multi-document-input:"
+
+
 def read_text(source: Any) -> str:
     """Read text from a file path, or from stdin when *source* is stdio."""
     if is_stdio(source):
@@ -39,7 +45,13 @@ def load_document(source: Any) -> Any:
     except OSError as exc:
         fail(f"cannot read '{source}': {exc.strerror or exc}")
     except YamlParseError as exc:
-        fail(str(exc))
+        message = str(exc)
+        if message.startswith(MULTI_DOCUMENT_KEY):
+            # Keep the refusal's first sentence — it names where the second document starts — and
+            # replace the Python-route recommendation with the flag a shell caller can pass.
+            first, _, _ = message.partition(". ")
+            fail(f"{first}. Pass -A/--all-docs to read every document of the stream.")
+        fail(message)
 
 
 def load_documents(source: Any) -> list[Any]:

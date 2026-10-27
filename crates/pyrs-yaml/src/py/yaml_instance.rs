@@ -65,6 +65,7 @@ impl YAML {
     }
 
     /// Parse a YAML string and return a `YamlDocument`.
+    /// A stream is refused with the reason key `multi-document-input`; `parse_all_docs` reads one.
     #[pyo3(signature = (yaml: "str | bytes") -> "YamlDocument")]
     fn parse(&self, py: Python, yaml: &Bound<'_, PyAny>) -> PyResult<YamlDocument> {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
@@ -80,6 +81,7 @@ impl YAML {
     }
 
     /// Parse YAML into a dict/list (resolves anchors and merges).
+    /// A stream is refused with the reason key `multi-document-input`; `safe_loads` reads one.
     #[pyo3(signature = (yaml: "str") -> "dict[Any, Any] | list[Any]")]
     fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
         let explicit = self.schema.as_deref().map(parse_schema).transpose()?;
@@ -167,6 +169,7 @@ impl YAML {
     }
 
     /// Parse a YAML file and return a `YamlDocument`.
+    /// A file carrying a stream is refused with the reason key `multi-document-input`.
     #[pyo3(signature = (path: "str") -> "YamlDocument")]
     fn parse_file(&self, py: Python, path: &str) -> PyResult<YamlDocument> {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";

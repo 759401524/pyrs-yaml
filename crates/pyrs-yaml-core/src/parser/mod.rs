@@ -247,10 +247,11 @@ pub(crate) fn line_break_between(text: &str, node_end: usize, comment_byte: usiz
 }
 
 /// Drive `AstReceiver` over `yaml` with the shared error contract:
-/// parse failure, duplicate-key rejection and max-depth rejection are
-/// all mapped here so the single-document and multi-document entry
-/// points can never drift. The receiver is returned so callers can
-/// pick `result` (single) or `documents` (stream) as they need.
+/// parse failure, duplicate-key rejection, max-depth rejection and — on the
+/// single-document route — the second document's arrival are all mapped here, so
+/// the single-document and multi-document entry points can never drift. The
+/// receiver is returned so callers can pick `result` (single) or `documents`
+/// (stream) as they need.
 fn load_ast<'a>(
     yaml: &'a str,
     max_depth: usize,
@@ -275,6 +276,9 @@ fn load_ast<'a>(
     }
     if receiver.max_depth_exceeded {
         return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
+    }
+    if let Some((line, col)) = receiver.single_document_conflict {
+        return Err(ParseError::SingleDocumentExpected { line, col });
     }
     Ok(receiver)
 }
@@ -322,6 +326,11 @@ pub struct ParsedDocument {
 }
 
 /// Parse one document and report the directive that arrived with it.
+///
+/// One is the whole contract: input carrying a second document is refused with
+/// [`ParseError::SingleDocumentExpected`] rather than resolved to some document of the stream,
+/// because whichever one this route picked, the caller lost the rest without asking to. Use
+/// [`parse_all_documents`] for a stream.
 ///
 /// The layer above [`parse`] answers "which version is this document" with the reader's own
 /// version, hardcoded, so a stream declaring `%YAML 1.1` and one declaring nothing both answered
@@ -688,6 +697,15 @@ struct AstReceiver<'a> {
     /// strictness the v0.11.5 audit pinned. Stored because `on_event` cannot
     /// return a `Result`, mirroring `duplicate_key_error`.
     flow_indent_error: Option<ParseError>,
+    /// `DocumentStart` events seen so far in this stream.
+    document_starts: usize,
+    /// Position of the second `DocumentStart`, recorded only on the single-document route.
+    ///
+    /// Before this existed, a stream reached through `parse` overwrote `result` once per
+    /// document and the caller received the last one: `a: 1\n---\nb: 2\n` answered `b: 2`, and
+    /// `a: 1\n---\n` answered null. Both readings discard data the caller never asked to
+    /// discard, so the route now reports the seam instead of choosing a document for them.
+    single_document_conflict: Option<(usize, usize)>,
 }
 
 /// Scalar keys already seen in one mapping, keyed by content.
@@ -807,6 +825,8 @@ impl<'a> AstReceiver<'a> {
             orphaned_anchors: Vec::new(),
             has_merge_key: false,
             flow_indent_error: None,
+            document_starts: 0,
+            single_document_conflict: None,
         }
     }
 
@@ -1287,6 +1307,14 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
         match event {
             Event::StreamStart | Event::StreamEnd => {}
             Event::DocumentStart(_, version) => {
+                self.document_starts += 1;
+                if !self.collect_documents && self.document_starts == 2 {
+                    // granit counts lines from one and columns from zero; the engine's own
+                    // position convention (`ParseError::Syntax`) is zero-based in both, so the
+                    // line comes down by one and the column travels unchanged.
+                    self.single_document_conflict =
+                        Some((span.start.line().saturating_sub(1), span.start.col()));
+                }
                 self.document_ended = false;
                 self.document_version = version.map(|v| format!("{}.{}", v.major, v.minor));
             }
@@ -1784,9 +1812,6 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
-    /// `%YAML` declares the document's version and granit reports it in `Event::DocumentStart`.
-    /// The AST path used to drop that argument, which left the layer above free to answer every
-    /// document — declared or not — with the reader's own version.
     #[test]
     fn a_declared_version_is_reported_as_declared() {
         for (src, want) in [
@@ -1838,6 +1863,103 @@ mod tests {
         )
         .expect("a comment-only document parses");
         assert_eq!(parsed.version.as_deref(), Some("1.1"), "{parsed:?}");
+    }
+
+    /// One document requested, several offered: the route refuses instead of choosing.
+    ///
+    /// Before this, `result` was overwritten once per document, so `a: 1\n---\nb: 2\n` answered
+    /// `b: 2` and `a: 1\n---\n` answered null — the caller lost documents without asking to.
+    /// `a: 1\n...\n%YAML 1.1\n---\nb: 2\n` is in the table because the two readings of "where the
+    /// second document starts" diverge there: this reports the separator (line index 3), PyYAML
+    /// marks that document's directive (its line 3, index 2). The verdicts agree; the anchors do
+    /// not, so the anchor is pinned rather than assumed to match.
+    #[test]
+    fn a_second_document_refuses_the_single_document_route() {
+        for (src, line, col) in [
+            ("a: 1\n---\nb: 2\n", 1, 0),
+            ("a: 1\n---\nb: 2\n---\nc: 3\n", 1, 0),
+            ("a: 1\n---\n", 1, 0),
+            ("1\n---\n2\n", 1, 0),
+            ("a: 1\n---\n# just a note\n", 1, 0),
+            ("a: 1\n---\n---\nb: 2\n", 1, 0),
+            ("a: 1\n...\n%YAML 1.1\n---\nb: 2\n", 3, 0),
+        ] {
+            let err = parse_with_options(src, true, YamlSchema::Core, 1000, false)
+                .err()
+                .unwrap_or_else(|| panic!("{src:?}: the stream route must not answer for one"));
+            assert_eq!(
+                err,
+                ParseError::SingleDocumentExpected { line, col },
+                "{src:?} refused at the wrong position"
+            );
+        }
+    }
+
+    /// The two routes agree in both directions, and that is the whole guard: a stream the
+    /// collection route reads as exactly one document must be answered identically by the
+    /// single-document route, and anything it reads as more than one must be refused there.
+    /// Checked over markers in every position, so an explicit start, an explicit end, a
+    /// directive, a comment-only body and the empty input stay readable while separators refuse.
+    #[test]
+    fn one_document_routes_agree_with_the_streams_arity() {
+        for src in [
+            "a: 1\n",
+            "---\na: 1\n",
+            "a: 1\n...\n",
+            "%YAML 1.1\n---\na: 1\n",
+            "---\n",
+            "# only a note\n",
+            "",
+            "a: 1\n---\n",
+            "a: 1\n---\n...\n",
+            "a: 1\n---\nb: 2\n",
+            "1\n---\n2\n",
+            "a: 1\n...\n%YAML 1.1\n---\nb: 2\n",
+        ] {
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+                .unwrap_or_else(|e| panic!("{src:?}: the stream route refused its own input: {e}"));
+            let single = parse_with_options(src, true, YamlSchema::Core, 1000, false);
+            match docs.len() {
+                0 | 1 => {
+                    let node = single
+                        .unwrap_or_else(|e| panic!("{src:?} is {docs:?} and it refused: {e}"));
+                    if let Some(first) = docs.first() {
+                        assert_eq!(
+                            node, first.node,
+                            "{src:?}: the two routes built different trees"
+                        );
+                    }
+                }
+                n => {
+                    assert!(
+                        matches!(single, Err(ParseError::SingleDocumentExpected { .. })),
+                        "{src:?} carries {n} documents and the single route answered {single:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The refusal is scoped to the single-document route: every input the guard rejects is a
+    /// stream the collection route still reads whole, in order, with the same arity. Without this
+    /// the guard could not be told apart from a general rejection of separators.
+    #[test]
+    fn the_stream_route_still_reads_every_document() {
+        for (src, want) in [
+            ("a: 1\n---\nb: 2\n", 2usize),
+            ("a: 1\n---\nb: 2\n---\nc: 3\n", 3),
+            ("a: 1\n---\n", 2),
+            ("1\n---\n2\n", 2),
+            ("a: 1\n---\n# just a note\n", 2),
+            ("a: 1\n---\n---\nb: 2\n", 3),
+            ("a: 1\n...\n%YAML 1.1\n---\nb: 2\n", 2),
+        ] {
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+                .unwrap_or_else(|e| {
+                    panic!("{src:?} is a stream and the stream route refused: {e}")
+                });
+            assert_eq!(docs.len(), want, "{src:?}");
+        }
     }
 
     /// The folded entry's comment survives the null-key fold. `: &b #*<CR>:` lost

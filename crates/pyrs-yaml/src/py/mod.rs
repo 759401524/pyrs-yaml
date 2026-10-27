@@ -47,6 +47,9 @@ pub(crate) fn parse_error_to_py_err(e: ParseError, source: &str, max_depth: usiz
             "max-depth-exceeded",
             &[("max_depth", &max_depth.to_string())],
         )),
+        ParseError::SingleDocumentExpected { line, col } => {
+            YamlParseError::new_err(single_document_message(line, col))
+        }
         ParseError::Syntax { message, line, col } if line > 0 => {
             YamlParseError::new_err(format_source_snippet(source, line, col, &message))
         }
@@ -55,6 +58,24 @@ pub(crate) fn parse_error_to_py_err(e: ParseError, source: &str, max_depth: usiz
             &[("detail", &message)],
         )),
     }
+}
+
+/// The refusal for one document requested from an input that carries several.
+///
+/// `multi-document-input` leads the message so a caller can grep the reason out of an exception
+/// string, the same way [`crate::error::SerializeError::UnsupportedValue`] reasons are keyed.
+/// The position is reported one-based because that is how the reader counts lines, and it is the
+/// position granit anchors the second document at — its own `---` (or that document's `%YAML`
+/// directive), which is where a caller would cut the text. `line` and `col` arrive 0-indexed from
+/// the engine, per [`crate::error::ParseError::SingleDocumentExpected`].
+pub(crate) fn single_document_message(line: usize, col: usize) -> String {
+    format!(
+        "multi-document-input: this input carries a second document at line {}, column {} and \
+         this route reads one. Read every document with safe_loads() or parse_all_docs(), or the \
+         events with parse_stream(). PyYAML and ruamel.yaml raise at this same point.",
+        line + 1,
+        col + 1
+    )
 }
 
 /// Format a YAML parse error with source context and caret marker.

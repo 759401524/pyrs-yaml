@@ -54,6 +54,16 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
+!!! note "One document per call"
+    `parse`, `parse_file` and `safe_load` read one document. An input carrying a second is
+    refused with a `YamlParseError` whose message starts `multi-document-input:` and names where
+    that document begins. The alternative was answering with one document of the stream and
+    discarding the rest: `a: 1\n---\nb: 2` answered `b: 2`, and `a: 1\n---` answered `null`.
+    `parse_all_docs` and `safe_loads` above are the routes that read a stream, and `parse_stream`
+    the one that reads its events; PyYAML and ruamel.yaml refuse the same inputs on their
+    single-document calls. A leading `---`, a trailing `...` and a `%YAML` directive each still
+    read as one document.
+
 #### PyYAML-Compatible Parsing
 
 !!! tip "PyYAML-compatible parsing"

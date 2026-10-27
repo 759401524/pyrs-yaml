@@ -192,11 +192,24 @@ def test_probe_rejects(label):
         pyrs_yaml.parse(PROBES[label])
 
 
+# The accepted inputs here that carry a second document, so the single-document route refuses
+# them by arity rather than by grammar. This audit asks whether the *reader* accepts a shape the
+# spec does not, and that question belongs to the route that reads streams: `a: 1\n...\nb: 2\n`
+# (an implicit document after the end marker, which YAML 1.2 requires `---` to open) still reads
+# as two documents here, while PyYAML refuses it outright — measured on this tree:
+# `ParserError: expected '<document start>', but found '<block mapping start>'` at line 3.
+STREAM_ACCEPT = {"key_after_doc_end"}
+
+
 @pytest.mark.parametrize("label", ACCEPT)
 def test_probe_accepts(label):
-    pyrs_yaml.parse(PROBES[label])
+    if label in STREAM_ACCEPT:
+        pyrs_yaml.safe_loads(PROBES[label])
+    else:
+        pyrs_yaml.parse(PROBES[label])
 
 
 def test_probe_coverage_complete():
     assert set(REJECT) | set(ACCEPT) == set(PROBES)
+    assert set(ACCEPT) >= STREAM_ACCEPT, "a stream probe must still be an accepted input"
     assert len(PROBES) == 70
