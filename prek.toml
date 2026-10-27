@@ -294,6 +294,21 @@ pass_filenames = false
 files = "^docs/dev/quality-ledger\\.md$"
 priority = "checks"
 
+# `rumdl fmt` fixes `MD018` ("no space after a heading's hashes") by reading any line-initial run
+# of hashes as a heading — inside a wrapped paragraph and inside a multi-line code span alike, both
+# measured on the pinned 0.2.78. After the rewrite the line *is* a heading, so no check-priority
+# hook can tell it from one the author meant, and `doc-heading-integrity` recognises only the
+# `## 292 …` digit spelling of the damage. This slot is the only moment the shape is decidable:
+# `format` priority (see `[priorities]`, format = 0 runs before checks = 10) and declared before
+# the rumdl repo, which is what puts it ahead of the formatter in the run order.
+[[repos.hooks]]
+id = "doc-heading-preflight"
+name = "no line-initial hash the formatter will promote"
+language = "system"
+entry = "python scripts/check_doc_headings.py --predamage"
+pass_filenames = false
+priority = "format"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

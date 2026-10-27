@@ -222,3 +222,75 @@ def test_the_ok_line_counts_files_read_not_files_named(checker, tmp_path, monkey
     monkeypatch.setattr(checker, "REPO", tmp_path)
     assert checker.main(["guide.md", "missing.md"]) == 0
     assert "among 1 Markdown files" in capsys.readouterr().out
+
+
+# Both shapes below were fed to the pinned `rumdl fmt` (0.2.78) and came back with the hash
+# lines turned into real headings and the text around them blanked apart.
+PROMOTABLE_PARAGRAPH = [
+    "The record explains why the run reached its limit, and the",
+    "#599 branch as written, and more text continues here after the wrap.",
+]
+PROMOTABLE_SPAN = [
+    "The writer emitted `? a",
+    "#&&x!",
+    " c: d",
+    "#e:`, which is not a fixed point.",
+]
+
+
+def test_a_continuation_line_opening_with_a_hash_is_refused(checker):
+    """The damage is decided before the formatter runs: after it, the line is a heading."""
+    findings = checker.pre_damage(PROMOTABLE_PARAGRAPH, "page.md")
+    assert len(findings) == 1, findings
+    assert "page.md:2" in findings[0], findings[0]
+
+
+def test_a_hash_line_inside_a_multi_line_code_span_is_refused(checker):
+    """A span is inline content, so a heading cannot live inside it - the formatter breaks it."""
+    findings = checker.pre_damage(PROMOTABLE_SPAN, "page.md")
+    assert len(findings) == 2, findings
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "## 1. Test matrix coverage",
+        "### 1-D array",
+        "#### 10. メタデータの操作",
+        "see PR #340 for the ruling",
+        "  # a heading with its space, indented",
+        "####### not a heading level but not a promotion either",
+    ],
+)
+def test_the_preflight_rule_adopts_nothing_a_writer_legitimately_needs(checker, line):
+    assert checker.pre_damage([line], "page.md") == [], line
+
+
+def test_a_hash_line_inside_a_fenced_block_is_not_a_finding(checker):
+    """Fenced samples are the sanctioned way to carry hash-led lines - `(gv)` is full of them."""
+    assert checker.pre_damage(["```yaml", "# a comment", "```"], "page.md") == []
+
+
+def test_the_preflight_runs_on_the_tree_it_was_built_from(checker, capsys):
+    """Its denominator is the same governed set the other two rules read."""
+    assert checker.main(["--predamage"]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting promotion" in out, out
+    assert "split-sentence" not in out
+
+
+def test_the_preflight_hook_is_registered_ahead_of_the_formatter():
+    """`[priorities]` puts format = 0 before checks = 10, and file order decides within a band.
+
+    Declaring the rule anywhere after the rumdl repo would make it a check on the formatter's
+    own output, which is the state the rule was written to refuse.
+    """
+    prek = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
+    preflight = prek.index('id = "doc-heading-preflight"')
+    formatter = prek.index('id = "rumdl-fmt"')
+    assert preflight < formatter, "the preflight must be declared before the formatter"
+    block = prek[preflight - 60 : preflight + 400]
+    assert 'entry = "python scripts/check_doc_headings.py --predamage"' in block
+    assert 'priority = "format"' in block
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "python scripts/check_doc_headings.py --predamage" in ci

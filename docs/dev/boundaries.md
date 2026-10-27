@@ -44,13 +44,14 @@ forms are not reproducible.
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful
   untagged spelling re-resolves to a string and design rule D1 ("only spellings YAML Core also
   accepts get preserved") excluded it. Once a standard tag decided the type in every format (`(bu)`,
-  #340), the projection could state the type instead of dropping the text: `from_toml("b = 0b1010")`
-  is the hub scalar `!!int 0b1010`, which the loader reads as `10`, `to_toml` writes back as
-  `0b1010`, and the JSON writers project as `10`. Since `(eq)` the parser records the token text
-  whole instead of a cleaned copy, so `_` separators and an explicit `+` survive too — both are
-  legal TOML spellings (`underscored` and `signed-int` in the ABNF), and the writer's literal gate
-  accepts the same grammar it emits. Pinned by `tests/test_toml.py::TestBinaryIntegerFidelity`,
-  `TestIntegerSpellingFidelity`, `binary_spelling_reaches_the_hub_under_an_int_tag` and
+  PR #340), the projection could state the type instead of dropping the text:
+  `from_toml("b = 0b1010")` is the hub scalar `!!int 0b1010`, which the loader reads as `10`,
+  `to_toml` writes back as `0b1010`, and the JSON writers project as `10`. Since `(eq)` the parser
+  records the token text whole instead of a cleaned copy, so `_` separators and an explicit `+`
+  survive too — both are legal TOML spellings (`underscored` and `signed-int` in the ABNF), and the
+  writer's literal gate accepts the same grammar it emits. Pinned by
+  `tests/test_toml.py::TestBinaryIntegerFidelity`, `TestIntegerSpellingFidelity`,
+  `binary_spelling_reaches_the_hub_under_an_int_tag` and
   `decimal_spellings_reach_the_hub_word_for_word`. Two things remain deliberately not faithful: a
   sign on a radix literal (`-0x1F`) is not a TOML integer at all — the reader refuses it, so there
   is no spelling for the writer to keep — and an *untagged* `0b1010` or `1_000` in a hand-built node
