@@ -5427,25 +5427,37 @@ of them was right on its own:
 | YAML reader, back | the key's **inline** comment | correct again, by the same rule |
 | TOML writer | - | read the key's *leading* list and the value's inline slot, so nothing matched and the text fell out |
 
-Measured at the shipped boundary, both directions: `arr = [{
+Measured at the shipped boundary, both directions. The shape the hub hands over,
 
-## lead n
+```toml
+arr = [{
+  # lead n
+  a = 1}]
+```
 
-  a = 1}]` came back as
-`arr = [{a = 1}]` while the trailing-note twin came back intact - the asymmetry that made the shape
-worth naming. TOML has no slot that reports a key's inline note, so the writer cannot echo the slot
-it received; it writes the note on its own line above the member, which is where the TOML reader
-reports a note from, and the emission settles in one hop: `p = {
- a = 1, # inner
- b = 2
-}` now
-returns `p = {
-  a = 1,
+came back as `arr = [{a = 1}]` while the trailing-note twin came back intact - the asymmetry that
+made the shape worth naming. TOML has no slot that reports a key's inline note, so the writer cannot
+echo the slot it received; it writes the note on its own line above the member, which is where the
+TOML reader reports a note from, and the emission settles in one hop:
 
-## inner
-
+```toml
+p = {
+  a = 1, # inner
   b = 2
-}` and the second round is byte-identical.
+}
+```
+
+now returns
+
+```toml
+p = {
+  a = 1,
+  # inner
+  b = 2
+}
+```
+
+and the second round is byte-identical.
 
 Rust owns the slot rule and the idempotence
 (`a_note_on_the_key_line_of_an_inline_member_is_written`), red-checked by withdrawing the emission
@@ -5625,21 +5637,26 @@ above is what makes it a measured claim rather than a hunch.
 (2026-10-16)
 
 A 240-second local `cargo fuzz run yaml_roundtrip` (WSL, nightly, target dir on the Linux
-filesystem) reached `<<: #*&
+filesystem) reached
 
-## &&*
-
+```yaml
+<<: #*&
+#&&*!
  ..f!ny#*&
+#&:
+```
 
-## &:`, which `cargo fuzz tmin` minimized to 14
+which `cargo fuzz tmin` minimized to 14 bytes as
 
-bytes as `: #*&
-
-##
-
+```yaml
+: #*&
+#!
  .
+#&
+```
 
-## &`. Both fail one assertion: `to_yaml` output must be a fixed point
+as the two rows in `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` record them. Both fail one
+assertion: `to_yaml` output must be a fixed point.
 
 Neither loses data - the emission converges on its second round and is stable from there - and that
 is why no other tier sees it. The property tier compares tree to tree across one cycle, and
@@ -9594,6 +9611,32 @@ The rule is stated here as a shape, not a size: a checker that recites how many 
 stale the first time anyone adds one.
 
 Records: an `### Added` bullet in all five changelog mirrors, and this entry.
+
+### (gu) A multi-line inline code span in prose becomes a heading (2026-10-27)
+
+The formatter does not protect an inline code span that crosses lines: it splits the span, and a
+line-initial `#` inside the fragment becomes a real ATX heading. `docs/dev/quality-ledger.md`
+carried five of those - `## lead n`, `## inner`, `## &&*`, `## &:`, which…` and `##
+&`. Both… - inside the (dm) and (ds) entries, found while repairing the same damage in PR #646's own `(gs)` entry, where the note line `# A` had become a heading in the ledger.
+
+Both sites are re-presented as fenced blocks, which the formatter leaves alone. The two fuzz inputs
+are quoted from `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` rather than from the broken
+prose: the damaged record had also lost a `!` and an indent, so the test is the authority for those
+bytes, not the paragraph that carried them. Measured with a fence-aware outline scan over the
+governed pages: five promoted headings in `git show bd5a6b7b:docs/dev/quality-ledger.md`, none in
+the tree after the change.
+
+No gate ships with this, and the reason is measured rather than assumed. Two predicates were tried
+against the whole governed set and both were rejected: "a line ending with an unbalanced backtick"
+fires 144 times over 7 pages, most of them spans the wrapper merely split, and "a line-initial
+heading while a span is open" fires 107 times and desynchronizes after the first legitimate odd
+line, after which every ordinary section heading reads as damage. Backtick parity is not a span
+state machine. The shape that could work is a canary over the formatter itself - feed it a fixture
+holding a multi-line span with a `#` line and assert the output keeps the fragment un-promoted -
+which judges the tool instead of the corpus and so cannot generate false hits on prose that already
+renders correctly.
+
+Records: this entry.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
