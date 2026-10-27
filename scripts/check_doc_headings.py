@@ -41,6 +41,7 @@ REPO = Path(__file__).resolve().parent.parent
 EXCLUDED_PREFIXES = ("Reference/", "site/", "target/", "node_modules/", ".venv", ".cache/", ".git/")
 
 HEADING = re.compile(r"^(#{1,6}) (\d{2,})([^\d.])")
+PROMOTED = re.compile(r"^ {0,3}#{1,6}[^ \t#]")
 FENCE = re.compile(r"^\s{0,3}(?:`{3,}|~{3,})")
 SETEXT = re.compile(r"^\s{0,3}(?:-{2,}|={2,})\s*$")
 TABLE = re.compile(r"^\s{0,3}\|")
@@ -119,6 +120,35 @@ def setext_damage(lines, name) -> list:
     return findings
 
 
+def pre_damage(lines, name) -> list:
+    """Refuse a line-initial hash run *before* the formatter can make it a heading.
+
+    `rumdl fmt` fixes `MD018` ("no space after `#` in heading") by reading any run of hashes at
+    the start of a line as a heading — wherever it sits. Measured on the pinned 0.2.78: a
+    paragraph whose continuation line was `#599 branch as written` came back split, with
+    `# 599 branch as written` as a real heading, and a code span whose source lines were
+    `a: b` / `#&&x!` / ` c: d` / `#e:` came back as two headings with the span torn open. After
+    that rewrite the line *is* a heading, so no later rule can tell it from one the author
+    meant — which is why this check has a hook slot of its own ahead of the formatter.
+    """
+    findings = []
+    in_fence = False
+    for index in range(front_matter_end(lines), len(lines)):
+        line = lines[index]
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence or not PROMOTED.match(line):
+            continue
+        findings.append(
+            f"{name}:{index + 1}: {line.strip()[:60]!r} opens with a hash run and no space\n"
+            "    the formatter reads that as a malformed heading and rewrites it into a real one,\n"
+            "    blanking around it and splitting the sentence or the code span it sat in. Put a\n"
+            "    word before the reference (`PR #340`), or give the sample a fenced block."
+        )
+    return findings
+
+
 def is_scoped(rel: str) -> bool:
     """Whether a repository-relative path is a page this rule speaks for.
 
@@ -141,6 +171,8 @@ def tracked_markdown():
 
 
 def main(argv=()) -> int:
+    preflight = "--predamage" in argv
+    argv = [arg for arg in argv if not arg.startswith("--")]
     paths = list(argv) or sorted(set(tracked_markdown()))
     findings: list[str] = []
     read = 0
@@ -150,10 +182,18 @@ def main(argv=()) -> int:
             continue
         read += 1
         text = path.read_text(encoding="utf-8", errors="replace")
-        findings.extend(heading_damage(text.splitlines(), rel))
-        findings.extend(setext_damage(text.splitlines(), rel))
+        if preflight:
+            findings.extend(pre_damage(text.splitlines(), rel))
+        else:
+            findings.extend(heading_damage(text.splitlines(), rel))
+            findings.extend(setext_damage(text.splitlines(), rel))
     if findings:
-        print(f"markdown headings that are really split sentences ({len(findings)}):")
+        label = (
+            "Markdown lines the formatter would promote"
+            if preflight
+            else "markdown headings that are really split sentences"
+        )
+        print(f"{label} ({len(findings)}):")
         for finding in findings:
             print(f"  {finding}")
         return 1
@@ -165,7 +205,11 @@ def main(argv=()) -> int:
             file=sys.stderr,
         )
         return 2
-    print(f"OK: no split-sentence heading among {read} Markdown files")
+    print(
+        f"OK: no hash-led line awaiting promotion among {read} Markdown files"
+        if preflight
+        else f"OK: no split-sentence heading among {read} Markdown files"
+    )
     return 0
 
 

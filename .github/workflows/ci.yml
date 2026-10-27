@@ -179,6 +179,7 @@ jobs:
         run: |
           python scripts/check_doc_metadata.py
           python scripts/check_doc_headings.py
+          python scripts/check_doc_headings.py --predamage
           python scripts/check_changelog_mirrors.py
           python scripts/check_cjk_localisation.py
           python scripts/check_i18n.py

@@ -9,6 +9,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The line the formatter would promote is now refused before it can act** — measured on the
+  pinned 0.2.78, `rumdl fmt` fixes `MD018` ("no space after a heading's hashes") by re-reading any
+  line-initial run of hashes as a heading, and it does that to a wrapped paragraph and to a
+  multi-line inline code span alike: the first comes back split into sentence-heading-sentence, the
+  second comes back as two real headings. After the rewrite that line *is* a valid heading, so no
+  rule that inspects the corpus afterwards can tell it from one the author meant — five classifiers
+  were measured and all five were rejected (144, 107, 100 and 135 false hits, and a scan that read
+  0 by erasing the construct it looked for). The shape *before* the rewrite is decidable: one to six
+  hashes at the line start, the next character not a space, outside a fenced block.
+  `scripts/check_doc_headings.py --predamage` refuses it from a `format`-priority hook slot declared
+  ahead of the formatter, because a `checks`-priority slot would only judge the formatter's own
+  output. Over the 177 tracked pages it reads 2 hits, both live damage-in-waiting, and no false
+  positive. The boundary is stated plainly: it blocks the commit, not the rewrite — with the shape
+  injected, the preflight names both lines and the run refuses, while the formatter rewrites the
+  working copy in the same pass.
 - **The ledger's own citation rule is now a hook** — `docs/dev/quality-ledger.md` numbers its
   sections `### (xy)`, and a pointer like `(details: quality-ledger (bf))` names one section only
   while those letters run increasing and unique. Until today the Python tier judged that alone: a

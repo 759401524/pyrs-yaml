@@ -9638,6 +9638,44 @@ renders correctly.
 
 Records: this entry.
 
+### (gv) A hash-led line is decidable only before the formatter turns it into a heading
+
+(2026-10-27)
+
+`rumdl fmt` fixes `MD018` ("no space after a heading's hashes") by re-reading any line-initial run
+of hashes as a heading, wherever it sits. Measured on the pinned 0.2.78 against this repository's
+own `.rumdl.toml`: a paragraph whose continuation line was `#599 branch as written` came back with
+`# 599 branch as written` as a real heading and blank lines around it, and one inline code span
+whose source lines were `a: b` / `#&&x!` / `c: d` / `#e:` came back as two headings and a span torn
+open into three paragraphs. Those two sentences name the mechanism behind the seven damaged pages
+this ledger carries: `(dm)`, `(ds)` and four siblings, re-presented as fenced blocks by PR #648.
+
+After the rewrite the line *is* a heading, so no rule over the corpus can tell it from one the
+author meant. Five classifiers were measured against the governed set and every one was rejected:
+"line ends with an unbalanced backtick" 144 hits over 7 pages; "line-initial heading while a span is
+open" 107 hits with parity desync, because it flagged every ordinary heading after the first odd
+line; a heading-shape classifier 100 hits, still 42 after narrowing it to "text carries code
+characters"; a heading-opening classifier 135 hits over 177 pages, naming `[Unreleased]`,
+`[v0.18.3] — 2026-10-22`, `i18n Support` and `:material-code-braces: Core Functions` as damage.
+Markdown backtick parity is not a span state machine, and a heading's text tells you nothing about
+whether it was meant.
+
+The shape *before* the rewrite is decidable, and precisely: a run of one to six hashes at the line
+start with no space after it, outside a fenced block. A heading that is meant carries its space; a
+fenced sample is excluded; prose that cites an issue keeps the citation off the line start. Over the
+177 tracked pages it reads 2 hits, and both were live damage-in-waiting — `docs/dev/boundaries.md`
+and `docs/ko/changelog.md`, each with an issue reference pushed to the line start by a wrap — so 0
+false and 0 unfixed. The rule ships as `pre_damage()` behind a `--predamage` flag in
+`scripts/check_doc_headings.py`, in a hook slot of its own at `format` priority declared before the
+rumdl repo, because that is the only band that runs ahead of the formatter.
+
+The position is asserted from the file rather than trusted: `prek run --all-files` lists the
+preflight fourth and `rumdl fmt` sixth on a clean tree, and `tests/test_doc_heading_gate.py`
+compares the two declaration offsets. Injecting the span fixture makes the preflight name both
+lines, and the run refuses the commit while `rumdl fmt` still rewrites the working copy — the gate
+prevents the commit, not the rewrite, which is the honest wording of what a format-priority check
+can do. `docs-gates` runs the flag directly, where no formatter pass exists to hide the shape.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
