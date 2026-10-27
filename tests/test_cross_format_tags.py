@@ -197,3 +197,29 @@ def test_two_keys_the_reader_keeps_apart_are_refused_before_a_projection_overwri
     # projection is not being asked to decide the question the reader already answered.
     with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
         pyrs_yaml.parse("c: 0\n&A1 c: 1\n")
+
+
+def test_the_dict_projection_refuses_the_pair_it_cannot_hold():
+    # A Python dict is the third route that keys by text. `c` beside `!A c` answered
+    # {'c': '!'} from `to_dict()` and from `safe_load()` alike, with the first entry gone and
+    # nothing reported - the same loss the JSON writer now refuses, on the one route the
+    # quickstart advertises. ruamel keeps both (its key object carries the tag) and PyYAML
+    # raises here, so silently dropping an entry was the only answer with no defence, and
+    # `docs/dev/boundaries.md` promises values survive the projection.
+    document = pyrs_yaml.parse('c: 0\n!A c: "!"\n')
+    with pytest.raises(pyrs_yaml.YamlTypeError) as to_dict:
+        document.to_dict()
+    assert "the same Python key `c`" in str(to_dict.value)
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.safe_load('c: 0\n!A c: "!"\n')
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.parse("a:\n  c: 0\n  !A c: 1\n").to_dict()
+
+    # The reader is not being asked to change its mind: the tree still holds both keys and the
+    # document still round-trips, because YAML says a tag is part of a key's identity.
+    assert document.to_yaml() == 'c: 0\n!A c: "!"\n'
+
+    # And a decoration that does not collide is not a refusal: only two entries landing on one
+    # Python key is.
+    assert pyrs_yaml.parse("c: 0\n!A d: 1\n").to_dict() == {"c": 0, "d": 1}
+    assert pyrs_yaml.safe_load("c: 0\nd: 1\n") == {"c": 0, "d": 1}

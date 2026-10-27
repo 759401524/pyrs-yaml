@@ -10226,6 +10226,45 @@ three samples and every `serialize_*` row moved within ±61: a branch taken once
 once per container, which is exactly the shape `(gy)` says is cheap and the shape the writer-state
 rows say is not.
 
+### (hh) The dict projection was the third route that lost the same pair
+
+(2026-10-28)
+
+`(he)` refused the colliding pair on the two routes that write text. The route that builds Python
+values was the third and the quietest: `crates/pyrs-yaml/src/py/convert.rs` assembles a dict, so
+`c: 0` beside `!A c: "!"` answered `{'c': '!'}` — first entry gone, nothing raised — from
+`to_dict()` and from `safe_load()` and `safe_loads()` alike. That is the projection the quickstart
+advertises, and no document characterised it: `docs/dev/boundaries.md` names no boundary for it.
+Measured against the counterparties on that same document, ruamel keeps both entries (its second key
+is a tagged scalar object) and PyYAML's safe loader raises (`ConstructorError` for the unknown tag).
+Of the three answers, the silent overwrite is the only one that cannot be defended.
+
+The guard is one line because the exact question is already answerable there. A mapping's keys are
+distinct nodes by construction, so two of them can reach the same dict key only by losing a tag, an
+anchor or a note — which means `dict.contains(&k)` before the insert *is* the collision test, with
+no text comparison and no second pass. The hot arm's guard, which used to read
+`meta.tag().is_none()`, now reads `is_identity_clean()`: the same shape of boolean, and it is what
+routes a decorated key to the arm that asks. A text comparison would have been wrong as well as
+dearer — `1` and `"1"` are two dict keys and one text.
+
+The ruling was the option that fits what round-trip means here, and that is refusal. The tree and
+`to_yaml()` still hold both keys, and the same file's `unhashable_key_error` has said since that the
+projection refuses rather than fabricates. Keeping the tag inside the key object, which is ruamel's
+answer, was excluded: it changes what a dict key *is* for every consumer and would have the
+cross-library tables re-stated, and it does not make the YAML text round-trip any truer, because the
+text always held two keys.
+
+Readings: `uv run pytest tests/test_cross_format_tags.py` - 49 passed, the new
+`test_the_dict_projection_refuses_the_pair_it_cannot_hold` asserting the root and nested mappings
+both refuse, that the tree still round-trips, and that a decoration which does not collide still
+projects. The mutation that disables the probe (`if false && dict.contains(&k)?`) reddens that one
+test out of 49 and nothing else; the file returned byte-identical by sha256.
+`cargo check -p pyrs-yaml --all-targets` exit 0.
+
+What this does not claim: that the cost is known. No floor's fixture decorates a key, which `(he)`
+measured, so widening the hot guard should leave `to_python_*` where they stand — and that is the
+`Instruction-count baseline` leg's to decide, not a sentence to write in advance.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

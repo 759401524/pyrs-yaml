@@ -166,6 +166,13 @@ status: new
   `json-object-keys-collide-without-metadata`로 `YamlSerializeError`를 던진다. 검사는 "키에
   tag·anchor· 코멘트가 달린" 맵에서만 돌기 때문에, 장식 없는 문서는 키당 불리언 하나만 지불한다.
   발견은 property 계층의 `prop_toml_writer_is_fixed_point`가 이 형태를 무작위로 뽑아냈다.
+- **`to_dict`와 `safe_load`도 YAML만 구별할 수 있는 키 쌍을 거부합니다** — 쓰기 쪽이 막은 그 쌍에는
+  세 번째 경로가 있었고 가장 조용했습니다. Python dict는 텍스트만으로 키를 삼으므로 `c: 0`과
+  `!A c: "!"`가 `{'c': '!'}`가 되어 첫 항목이 소리 없이 사라졌습니다. 이제 두 경로는 충돌하는
+  텍스트를 지목해 `YamlTypeError`를 던집니다. `to_toml()`과 `to_json*()`의 거부와 같은 모양이며,
+  트리는 두 키를 그대로 유지하고 `to_yaml()`은 바뀌지 않습니다. 충돌하지 않는 장식은 그대로
+  투영됩니다. 대조한 라이브러리에서는 ruamel이 두 항목을 남기고 PyYAML도 같은 지점에서 오류를
+  냅니다.
 - **세 편집 하한이, 출하된 호출자는 실행하지 않는 스캔을 더 이상 값으로 매기지 않습니다** — `edit_*`
   세 시나리오는 `line_offsets`를 `None`으로 넘겼고, 편집 계층은그것에 답해 문서의 줄 표를 다시
   만듭니다. 그 표는 `scan_yaml(text).line_offsets`, 즉 `has_hash`·`has_amp`·`is_ascii`까지 정하는
