@@ -1,7 +1,9 @@
 """Integration tests for YAML.load_stream / load_stream_file."""
 
+import gc
 import io
 import itertools
+import tracemalloc
 
 import pytest
 
@@ -222,23 +224,111 @@ def test_early_termination_break_stops_reading():
         assert f.read_calls < 100
 
 
-def test_memory_bound_load_stream_file(tmp_path):
-    pytest.importorskip("psutil", reason="psutil provides RSS measurement")
-    path = tmp_path / "big.yaml"
-    with path.open("w", encoding="utf-8") as fh:
-        for i in range(1_000_000):
-            fh.write(f"k{i}: v{i}\n")
-    import psutil
+_SMALL_LINES = 2_000
+# The ratio is the assertion. A single-size ceiling cannot tell a bounded reader from one that
+# accumulates slowly; 100x the document can.
+_BIG_LINES = 100 * _SMALL_LINES
+# The bound is a fraction of the buffering route's own growth, measured in the same run on the same
+# interpreter, because an absolute byte allowance is not portable. Measured 2026-10-27 on this host:
+# the 1x and 100x streaming readings are 3,168 bytes and 3,168 bytes under CPython 3.12 and 3,200 /
+# 3,200 under 3.14t - zero apart on both - while holding every event costs 1,995,530 / 201,849,970
+# and 2,423,458 / 245,041,146. The `test-freethreaded (3.14t)` leg on ubuntu-latest read **292,544**
+# for the 1x document, which a 262,144-byte allowance written from a Windows reading rejected for a
+# reason that has nothing to do with the claim. Growth is the claim, so growth is what gets compared:
+# a hundredfold document may add at most 1/100 of what a buffering reader adds to itself.
+_GROWTH_SHARE = 100
+# What that bound works out to in the units the defect would occupy. Over the 400,006 events the 100x
+# document emits it is 4.996 bytes per event under 3.12 and 6.065 under 3.14t, so retaining a hundred
+# bytes per event - a leaked reference per node, say - fails. This ceiling is what stops the fraction
+# from going slack on some future interpreter where the buffering reference happens to be large.
+_PER_EVENT_CEILING = 100
 
-    proc = psutil.Process()
-    before = proc.memory_info().rss
-    count = 0
-    for e in pyrs_yaml.YAML().load_stream_file(str(path)):
-        if e["type"] == "scalar":
-            count += 1
-    after = proc.memory_info().rss
-    assert count > 0
-    assert after - before < 128 * 1024 * 1024
+
+def _write(path, lines):
+    with path.open("w", encoding="utf-8") as fh:
+        for i in range(lines):
+            fh.write(f"k{i}: v{i}\n")
+    return str(path)
+
+
+def _streamed_bytes(path):
+    """Events consumed, and the traced Python bytes still held once they are all dropped.
+
+    `tracemalloc` counts the interpreter's own domain, so this measures the events the route hands
+    out, not the engine's read buffer (a fixed chunk, never accumulated here). That is the half the
+    old RSS assertion was credited with, and unlike it, this runs on every interpreter.
+    """
+    tracemalloc.start()
+    base = tracemalloc.get_traced_memory()[0]
+    stream = pyrs_yaml.YAML().load_stream_file(path)
+    events = 0
+    for event in stream:
+        events += 1
+        del event
+    stream.close()
+    gc.collect()
+    held = tracemalloc.get_traced_memory()[0] - base
+    tracemalloc.stop()
+    return events, max(held, 0)
+
+
+def _held_bytes(path):
+    """The same walk keeping every event: what a buffering reader looks like from the Python side."""
+    tracemalloc.start()
+    base = tracemalloc.get_traced_memory()[0]
+    kept = [event for event in pyrs_yaml.YAML().load_stream_file(path)]
+    gc.collect()
+    held = tracemalloc.get_traced_memory()[0] - base
+    del kept
+    tracemalloc.stop()
+    return max(held, 0)
+
+
+def test_streaming_a_hundred_times_more_document_costs_no_more_memory(tmp_path):
+    small = _write(tmp_path / "small.yaml", _SMALL_LINES)
+    big = _write(tmp_path / "big.yaml", _BIG_LINES)
+
+    small_events, small_bytes = _streamed_bytes(small)
+    big_events, big_bytes = _streamed_bytes(big)
+    buffered_growth = _held_bytes(big) - _held_bytes(small)
+
+    assert big_events > 40 * small_events, "the 100x fixture is not 100x the events, so the pair proves nothing"
+    assert buffered_growth > 0, (
+        f"holding every event of the 100x document grows by {buffered_growth} bytes over the 1x one, "
+        "so the reference this bound is scaled by has collapsed and the ratio means nothing"
+    )
+    assert abs(big_bytes - small_bytes) <= buffered_growth // _GROWTH_SHARE, (
+        f"the 100x document holds {big_bytes} traced bytes against the 1x document's {small_bytes}, "
+        f"and a bounded reader may add at most {buffered_growth // _GROWTH_SHARE} - 1/{_GROWTH_SHARE} "
+        "of what an accumulating one adds over the same document"
+    )
+    assert buffered_growth // _GROWTH_SHARE < _PER_EVENT_CEILING * big_events, (
+        f"the bound allows {buffered_growth // _GROWTH_SHARE} bytes across {big_events} events, i.e. "
+        f"over {_PER_EVENT_CEILING} per event, so it would not notice a reader keeping one leaked "
+        "reference per node; the ratio has gone slack and needs restating"
+    )
+
+
+def test_the_streaming_memory_guard_can_be_reddened(tmp_path):
+    """The guard's own predicate, applied to a reader that does accumulate.
+
+    Measured 2026-10-27 on the two interpreters of this host: the buffering walk costs 1,995,530
+    bytes at 1x and 201,849,970 at 100x under 3.12, and 2,423,458 and 245,041,146 under 3.14t. The
+    streaming walk's own growth is 0 on both. So the shape that accumulates violates the bound the
+    shape that does not satisfies with its whole budget unused - which is what makes the first test a
+    guard rather than a number.
+    """
+    small = _write(tmp_path / "small.yaml", _SMALL_LINES)
+    big = _write(tmp_path / "big.yaml", _BIG_LINES)
+
+    small_held = _held_bytes(small)
+    big_held = _held_bytes(big)
+    growth = big_held - small_held
+
+    assert growth > growth // _GROWTH_SHARE, (
+        f"holding every event of both documents grows by {growth} bytes, which fits inside its own "
+        f"1/{_GROWTH_SHARE} - the bound the guard applies is then measuring nothing"
+    )
 
 
 class _ByteReader:

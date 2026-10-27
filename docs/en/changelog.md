@@ -141,6 +141,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The memory bound on `load_stream_file` is measured now instead of skipped forever** — the test
+  that guarded it asked for `psutil` through `pytest.importorskip`, and no requirement file names
+  that package: neither `pyproject.toml` nor `.ci/requirements-test.txt`, so on every interpreter of
+  every leg the assertion reported a skip, which reads like coverage and is none. It is replaced by
+  a scaling invariant on the stdlib `tracemalloc`: consuming a 2,000-line document and a
+  200,000-line one through the same route must leave the same traced footprint, and today it leaves
+  3,168 bytes at both sizes under 3.12 and 3,200 under 3.14t. The boundary is stated, not assumed —
+  `tracemalloc` counts the interpreter's own domain, so the engine's read buffer (a fixed
+  `DEFAULT_CHUNK_SIZE`, never accumulated here) is outside the measurement, which is why the old
+  resident-set figure has no replacement; the bound on how much of the file a route reads stays with
+  the `read_calls` guard beside it. The bound is one hundredth of the accumulating route's own
+  growth, measured in the same run, and both halves are falsifiable in the same file: the streaming
+  readings stay 0 bytes apart while the buffering walk grows by 199,854,440 bytes on 3.12 and
+  242,617,688 on 3.14t, so an accumulating reader fails the guard. A fixed byte allowance was the
+  first shape and the `test-freethreaded (3.14t)` leg rejected it - that runner holds 292,544 bytes
+  for the small document where this host holds 3,168, which is a difference in how a build counts
+  memory, not in what the route reads.
 - **The edit floors no longer price a scan the shipped caller does not run** — the three `edit_*`
   scenarios handed the editing layer `line_offsets: None`, and that layer answers `None` by
   rebuilding the document's line table, which is `scan_yaml(text).line_offsets`: a full pass over
