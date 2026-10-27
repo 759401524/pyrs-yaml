@@ -1794,7 +1794,54 @@ pub mod proptest_strategies {
     /// (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`): the rule
     /// is a hand-maintained model of two other components, and every gap between
     /// them has shown up first as a random property-tier failure.
+    /// Whether two keys are one key **once the writer has laid the document out**.
+    ///
+    /// A standalone note on a node inside a complex key cannot stay there: `hoist_marker_note`
+    /// lifts it above the outermost `?` because the reader reports it at that level, so the key
+    /// text the reader compares never carries it - measured, `[null]` beside `[null]` with a
+    /// standalone note on the inner item emits as
+    /// `?\n  - null\n:\n  0\n# A\n?\n - null\n:\n  " "` and the reader refuses the second key as a
+    /// duplicate. An *inline* note does survive on the key's own line and keeps two keys apart (the
+    /// table in `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` pins both). So the
+    /// question the generator asks is answered on a copy with every standalone slot dropped, which
+    /// leaves [`CustomNode`]'s own equality - inline notes, tags, anchors, style - in charge of
+    /// everything the emission can still tell apart.
+    fn standalone_notes_lifted(node: &CustomNode) -> CustomNode {
+        let mut lifted = node.clone();
+        lifted.remove_leading_comment();
+        match lifted {
+            CustomNode::Sequence {
+                items,
+                flow_style,
+                meta,
+            } => CustomNode::Sequence {
+                items: items.iter().map(standalone_notes_lifted).collect(),
+                flow_style,
+                meta,
+            },
+            // `IndexMap` will not hand out `&mut K` (it would break the hash invariant), so the
+            // spine is rebuilt rather than edited - the same reason `flow_folded` copies.
+            CustomNode::Mapping {
+                pairs,
+                flow_style,
+                meta,
+            } => {
+                let mut rebuilt = NodeMap::default();
+                for (key, value) in pairs.iter() {
+                    rebuilt.insert(standalone_notes_lifted(key), standalone_notes_lifted(value));
+                }
+                CustomNode::Mapping {
+                    pairs: rebuilt,
+                    flow_style,
+                    meta,
+                }
+            }
+            other => other,
+        }
+    }
+
     pub fn keys_collide_in_text(a: &CustomNode, b: &CustomNode) -> bool {
+        let (a, b) = (standalone_notes_lifted(a), standalone_notes_lifted(b));
         // One model, not two branches that can drift: the classes are spelled out on
         // `KeyIdentity`, and the writer's fold reads that same identity.
         a.key_identity() == b.key_identity()

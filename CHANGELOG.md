@@ -105,6 +105,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note inside a complex key can no longer be lifted out of it** — `hoist_marker_note` writes a
+  standalone note owned by a node inside a `? … :` block above the outermost `?`, because that is
+  where a re-read reports it. Two keys that differed only by such a note therefore emitted as two
+  pairs whose keys the reader saw as one, and it refused the second —
+  `DuplicateKey("Sequence { items: [Scalar { value: \"null\", …")`, drawn by the property tier
+  (seed `de78e195…`; the note text holds no break, so the shape predates #645's wider alphabet).
+  `keys_collide_in_text` now answers on a copy with every standalone slot dropped, which keeps the
+  unemittable pair out of a generated tree; an *inline* note still separates two keys, so both
+  directions are named — the shrunk case in `proptest-regressions/pbt.txt` and the boundary in
+  `the_key_rule_agrees_with_the_writer_and_the_reader`.
 - **A note can no longer break the line it is written on** — `arb_comment` drew note text from
   `[ -~]+`, so no property test could reach the flattening a one-line comment carrier owes. Widening
   it to also draw `\n` and `\r` reddened four properties at once: the YAML and TOML writers put the

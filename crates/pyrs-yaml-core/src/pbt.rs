@@ -1608,6 +1608,20 @@ mod tests {
                 scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
                 false,
             ),
+            // Which note slot separates a complex key is measured, not assumed. An *inline* note on
+            // an item inside a sequence key rides the key's own line (`? - null  # A`) and comes
+            // back attached to that item, so the pair re-reads as two entries. A *standalone* note
+            // on the same item is hoisted above the pair (`# A` between the two `?` blocks), never
+            // reaches the key, and the reader then reports the second key as a duplicate - the
+            // shape the property tier drew at seed `de78e195…`.
+            (
+                "two sequence keys, one item with an inline note",
+                crate::ast::CustomNode::plain_sequence(vec![crate::ast::CustomNode::Null {
+                    meta: Default::default(),
+                }]),
+                crate::ast::CustomNode::plain_sequence(vec![null(None, None, Some("A"))]),
+                true,
+            ),
             // A tagged key is outside the reader's text track (`parser/mod.rs` skips tagged
             // scalars there), so two spellings of one tagged text re-read as two entries: measured,
             // `!a k: one` + `!a 'k': two` comes back with both.
@@ -1753,7 +1767,7 @@ mod tests {
         ];
         let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
         assert_eq!(
-            distinguishable, 14,
+            distinguishable, 15,
             "the table must keep a real share of its classes on each side"
         );
 
