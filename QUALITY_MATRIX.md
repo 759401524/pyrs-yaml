@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 828 Rust `#[test]`, 2,005 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 830 Rust `#[test]`, 2,006 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -588,7 +588,7 @@ body costs 1.55x the short one on that route), since the TOML loader's own route
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,295<!-- ir-floor: load_toml_medium --> and
 139,506,994<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.29x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
 since the JSON loader's fast route joined the same way (`load_json_medium` and `load_json_long_strings`
-through `bench_load_json` at 57,153,812<!-- ir-floor: load_json_medium --> and 94,892,912<!-- ir-floor: load_json_long_strings --> - 0.73x and 0.85x what `from_json_medium` and
+through `bench_load_json` at 57,152,342<!-- ir-floor: load_json_medium --> and 94,891,054<!-- ir-floor: load_json_long_strings --> - 0.73x and 0.85x what `from_json_medium` and
 `from_json_long_strings` pay to build the node model that route skips), and this row is shared by
 `load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
@@ -599,12 +599,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,832<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 17,002,904<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 17,120,909<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,858<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,858<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,809<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 18,004,974<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,122,974<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,725<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,725<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 701,017,318<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,612<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 701,023,651<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,479<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the

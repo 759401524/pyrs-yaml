@@ -64,6 +64,30 @@ fn exotic_scalars_quote_or_normalize() {
 }
 
 #[test]
+fn a_key_pair_that_collapses_without_its_tag_is_refused_not_overwritten() {
+    // The reader accepts this document: a tag is part of a key's identity in YAML, so `c` and `!A c`
+    // are two keys. A JSON object has no such slot - both spell `"c"` - and the writer used to emit
+    // `{"c": 0, "c": "!"}`, which every consumer resolves by dropping one entry: measured,
+    // `json.loads` of that text gives `{'c': '!'}`. A silent overwrite is the one outcome the
+    // projection must not have, so the pair is refused where it is written.
+    let node = parse("c: 0\n!A c: \"!\"\n", Schema::Core).unwrap();
+    assert!(matches!(
+        to_json_text(&node),
+        Err(SerializeError::UnsupportedValue(
+            "json-object-keys-collide-without-metadata"
+        ))
+    ));
+    // The same emitter answers for JSONC and JSON5 too, so the refusal has to reach all three.
+    assert!(to_jsonc_text_pretty(&node, 2).is_err());
+    assert!(to_json5_text(&node).is_err());
+
+    // A tag on a key the object can still name uniquely is not the writer's business: the refusal is
+    // about the collision, not about tags.
+    let fine = parse("c: 0\n!A d: \"!\"\n", Schema::Core).unwrap();
+    assert_eq!(to_json_text(&fine).unwrap(), "{\"c\":0,\"d\":\"!\"}");
+}
+
+#[test]
 fn alias_and_non_scalar_keys_are_stable_errors() {
     let node = parse("a: &x 1\nb: *x\n", Schema::Core).unwrap();
     let CustomNode::Mapping { pairs, .. } = &node else {

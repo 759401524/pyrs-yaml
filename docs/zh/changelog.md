@@ -129,6 +129,13 @@ status: new
   节，而累积式读法在 3.12 上增长 199,854,440 字节、在 3.14t 上增长 242,617,688 字节，所以累积型读法
   会让守卫判红。最初写的是固定字节容差，`test-freethreaded (3.14t)` 那条腿把它否证了：同一份小文档在
   那台 runner 上留 292,544 字节，而本机只有 3,168——差在构建怎么数内存，不在这条路线读了多少。
+- **`to_toml` 与 JSON 写器现在拒绝一对只有 YAML 分得开的键** — tag 属于键同一性的一部分，所以读方把
+  `c: 0` 与 `!A c: "!"` 当成两个键收下，而 TOML 与 JSON 只按文本作键。投影过去会发出 `c = 0` 加
+  `c = "!"`——本项目自己的 TOML 读方会判成重复键——以及 `{"c": 0, "c": "!"}`，`json.loads` 把它归约成
+  `{'c': '!'}`，一条记录无声消失。两条路线现在都抛 `YamlSerializeError`，reason key 分别是
+  `toml-keys-collide-without-metadata` 与 `json-object-keys-collide-without-metadata`。检查只对着"键
+  上带 tag、锚或注释"的映射跑，所以没有装饰的文档每个键只多一个布尔判断。发现方式是属性层的
+  `prop_toml_writer_is_fixed_point` 随机抽到了这个形状。
 - **三条编辑地板不再定价一次出货调用方不跑的扫描** — 三个 `edit_*` 场景把 `line_offsets` 交成
   `None`，而编辑层对 `None` 的答复是重建文档的行表，那一张表是 `scan_yaml(text).line_offsets`：一整
   趟全文扫描，顺带决定 `has_hash`、`has_amp` 与 `is_ascii`。在基线自带的 `rustc 1.97.1` 上实测，这趟

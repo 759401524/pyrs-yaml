@@ -160,6 +160,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first shape and the `test-freethreaded (3.14t)` leg rejected it - that runner holds 292,544 bytes
   for the small document where this host holds 3,168, which is a difference in how a build counts
   memory, not in what the route reads.
+- **`to_toml` and the JSON writers now refuse a key pair only YAML can tell apart** — a tag is part
+  of a key's identity, so the reader accepts `c: 0` beside `!A c: "!"` as two keys, while TOML and
+  JSON key by text alone. The projection used to emit `c = 0` plus `c = "!"`, which this project's
+  own TOML reader rejects as a duplicate key, and `{"c": 0, "c": "!"}`, which `json.loads` resolves
+  to `{'c': '!'}` — one entry gone without a sound. Both routes now raise `YamlSerializeError` with
+  the reason keys `toml-keys-collide-without-metadata` and
+  `json-object-keys-collide-without-metadata`. The check runs only for a mapping whose keys carry a
+  tag, an anchor or a note, so an undecorated document pays one boolean per key. Found by
+  `prop_toml_writer_is_fixed_point` drawing the shape at random in the property tier.
 - **The edit floors no longer price a scan the shipped caller does not run** — the three `edit_*`
   scenarios handed the editing layer `line_offsets: None`, and that layer answers `None` by
   rebuilding the document's line table, which is `scan_yaml(text).line_offsets`: a full pass over

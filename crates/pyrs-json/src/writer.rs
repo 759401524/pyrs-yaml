@@ -160,6 +160,39 @@ fn write_json_key(key: &CustomNode, out: &mut String) -> Result<(), SerializeErr
     Ok(())
 }
 
+/// Refuse an object whose keys are two keys in YAML but one key in JSON.
+///
+/// A JSON object keys by text alone, so `c: 0` beside `!A c: "!"` - a document the reader accepts,
+/// because a tag is part of a key's identity in YAML - would emit `{"c": 0, "c": "!"}`. Every
+/// consumer then resolves the duplicate its own way and the first entry disappears without a sound:
+/// measured, `json.loads` of that text gives `{'c': '!'}`. A silent overwrite is the worst outcome
+/// the projection can have, so the pair is refused where it is written.
+///
+/// This is the rare path. Both object loops ask [`CustomNode::is_identity_clean`] of the keys they
+/// are already walking and reach here only once one of them is decorated - an undecorated `IndexMap`
+/// already distinguishes its keys by exactly the text JSON writes. Clearing a whole object with a
+/// second pass over its keys instead cost +5.27% on `to_toml_medium` for the same-shaped check, and
+/// `to_json_medium` read +6.42%.
+fn reject_colliding_texts(
+    pairs: &pyrs_ast::ast::NodeMap<CustomNode, CustomNode>,
+) -> Result<(), SerializeError> {
+    let mut seen: Vec<&str> = Vec::with_capacity(pairs.len());
+    for key in pairs.keys() {
+        let text = match key {
+            CustomNode::Scalar { value, .. } => value.as_ref(),
+            CustomNode::Null { .. } => "null",
+            _ => continue,
+        };
+        if seen.contains(&text) {
+            return Err(SerializeError::UnsupportedValue(
+                "json-object-keys-collide-without-metadata",
+            ));
+        }
+        seen.push(text);
+    }
+    Ok(())
+}
+
 fn write_value(
     node: &CustomNode,
     pretty: bool,
@@ -426,11 +459,16 @@ fn write_value_inner(
             }
         }
         CustomNode::Mapping { pairs, .. } => {
+            let mut unscanned = true;
             if pairs.is_empty() {
                 out.push_str("{}");
             } else if pretty {
                 out.push_str("{\n");
                 for (i, (k, v)) in pairs.iter().enumerate() {
+                    if unscanned && !k.is_identity_clean() {
+                        unscanned = false;
+                        reject_colliding_texts(pairs)?;
+                    }
                     if comments {
                         emit_pair_notes(k, v, step, stack.len(), out);
                     }
@@ -452,6 +490,10 @@ fn write_value_inner(
             } else {
                 out.push('{');
                 for (i, (k, v)) in pairs.iter().enumerate() {
+                    if unscanned && !k.is_identity_clean() {
+                        unscanned = false;
+                        reject_colliding_texts(pairs)?;
+                    }
                     if i > 0 {
                         out.push(',');
                     }
