@@ -10118,6 +10118,40 @@ JSON have no slot for a tag - and this change does not invent one (spelling the 
 text would change the exported value, which the cross-library tables would then disagree about). It
 turns a silent or invalid output into a refusal, and leaves the representation question open.
 
+### (hf) The no_std host steps certified one OS while the project ships three
+
+(2026-10-27)
+
+`no-std-check` was `runs-on: ubuntu-latest`, so the only evidence that a `#![no_std]` crate's logic
+still works without std came from one operating system - the map, hash and ordering tests that the
+step exists to run - while `publish.yml` builds wheels for Ubuntu, Windows and macOS. The bare-metal
+build is genuinely host-independent (it links for `thumbv7em-none-eabi` the same way wherever it
+runs), so the gap was not symmetric: the half that can disagree between hosts ran on one host.
+
+The job now carries `os: [ubuntu-latest, windows-latest]`, its cache key is per-OS, and only the
+cross-target build is gated with `if: matrix.os == 'ubuntu-latest'`: `thumbv7em-none-eabi` links the
+same way wherever it is invoked, so a second host would pay a second cross-compile for a question
+that has no second answer. The four host steps - the unit tests, the std re-check, and the two
+opt-in `mmap` and `parallel` legs - stay ungated, and the widening reaches past the no_std half: no
+other job in this workflow runs a Rust test off Linux (`rust-lint` and `msrv-check` are both
+`ubuntu-latest`), so this is also the first Windows execution of the engine's own tests. macOS is
+deliberately absent: what differs between hosts here is the file-mapping and path family, and
+`ubuntu-latest` already covers the Unix side of it, so a third runner would repeat an axis rather
+than add one.
+
+What makes each leg admissible rather than aspirational: it was run here first, on this Windows
+host. `cargo test --locked --no-default-features` over the six foundation crates runs 724 tests over
+the 23 targets that command reports - 17 test binaries and 6 doc-test binaries - with 0 failures and
+exit 0; `cargo test --locked --features mmap -p pyrs-yaml-core` runs 456 with 0 failures;
+`cargo test --locked -p pyrs-json --features parallel` runs 114 with 0 failures. The no_std reading
+is only true because of the change this stacks on - three dev-dependency edges in `pyrs-yaml-core`'s
+manifest left `std` enabled through feature unification, which is the same fix that turned the
+step's name into a fact - so landed before it, this leg would have gone red on its first run.
+
+`tests/test_no_std_gate.py` holds the shape: the host steps must name both shipped runners, the
+bare-metal build must stay gated while the tests must not, and a synthetic job with no `os:` matrix
+is reported as "runs on exactly one OS" rather than read as a pass.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

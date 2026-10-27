@@ -386,6 +386,15 @@ status: new
 
 #### 변경
 
+- **`no_std` 호스트 단위 테스트를 Windows에서도 실행한다** — 이 잡은 러너 하나에 묶여 있어서,
+  "`#![no_std]` 크레이트에서 std를 빼도 로직이 살아 있다"는 증거가 하나의 OS에서만 나왔다. 그런데
+  wheel은 세 시스템에 배포한다. 베어메탈 빌드는 호스트와 무관하므로 하나에 남겼다
+  (`if: matrix.os == 'ubuntu-latest'`) — 다를 수 없는 확인에 의존성 빌드를 두 번 지불하지 않기
+  위해서다. 다를 수 있는 단위 테스트는 넓힌다. 이 걸음을 추가하기 전에 실측했다: Windows 호스트에서
+  여섯 기본 크레이트로 `cargo test --locked --no-default-features`를 돌리면 724개 테스트가 23개
+  target에서 돌아 실패가 0개다. 같은 변경이 dev-dependency 간선 세 개가 feature 통일으로
+  `std`를 다시 켜는 것을 막았기 때문에 성립하는 결과다. `tests/test_no_std_gate.py`는 단일 호스트로
+  후퇴한 잡을 거부하고, 이 규칙이 지키는 비대칭을 적어 둔다.
 - **no_std 단위 테스트를 밝히던 CI 걸음이 이름이 말하는 설정을 실제로 돌리게 되었습니다** —
   `no-std-check`은 여섯 기본 크레이트를 `cargo test --locked --no-default-features` 한 번의 호출에
   담고, 그 주석은 목록을 넓힌 때를 "std 없이 한 번도 돌지 않은 호스트 테스트 112개 값"으로

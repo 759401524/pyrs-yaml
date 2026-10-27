@@ -28,6 +28,13 @@ The fourth question is about the command rather than the list. A step named "Run
 the host" only earns that name if the units it compiles are std-free, and feature unification across a
 multi-`-p` invocation can take `std` back on through a sibling's manifest. That is measured here from
 the manifests, with the proof and the numbers in the comment above the reader.
+
+The fifth question is which host the answer came from. While the job was `runs-on: ubuntu-latest`, its
+unit tests, its std re-check and the two opt-in `mmap` and `parallel` legs certified one operating
+system - and no other job in this workflow runs a Rust test off Linux, while wheels ship for three. The
+split is kept asymmetric on purpose: the cross-target build is gated to one host because its answer
+cannot move, and a job that collapses the host steps back to a single OS is reported as "runs on exactly
+one OS" rather than read as a pass.
 """
 
 from __future__ import annotations
@@ -165,6 +172,76 @@ def test_the_gate_reports_a_narrowed_recheck() -> None:
     no_std = FOUNDATION
     missing = _std_narrower_than_no_std(no_std, narrowed)
     assert missing == {"pyrs-event", "pyrs-json", "pyrs-toml", "pyrs-yaml-core"}, sorted(missing)
+
+
+_JOB_RE = re.compile(r"^  no-std-check:\n((?:.*\n)*?)(?=^  [a-z][a-z0-9-]*:\n)", re.MULTILINE)
+_OS_MATRIX_RE = re.compile(r"os:\s*\[([^\]]*)\]")
+
+# The runners this project publishes wheels for, so a host outside them certifies nothing users run.
+SHIPPED_RUNNERS = ("ubuntu-latest", "windows-latest")
+
+
+def _no_std_job(text: str) -> str:
+    body = _JOB_RE.search(text)
+    assert body, "the `no-std-check` job is not in ci.yml"
+    return body.group(1)
+
+
+def _step_body(text: str, step_name: str) -> str:
+    """One step's own lines, from its `- name:` to the next step or the end of its job."""
+    block = _no_std_job(text)
+    marks = [(m.group(1), m.start()) for m in _STEP_RE.finditer(block)]
+    for idx, (name, start) in enumerate(marks):
+        if name != step_name:
+            continue
+        end = marks[idx + 1][1] if idx + 1 < len(marks) else len(block)
+        return block[start:end]
+    raise AssertionError(f"step {step_name!r} is not in the no_std job")
+
+
+def _host_oses(text: str) -> set[str]:
+    """Every OS the no_std job's host steps run on."""
+    block = _no_std_job(text)
+    matrix = _OS_MATRIX_RE.search(block)
+    assert matrix, "no_std has no `os:` matrix, so its host steps run on exactly one OS"
+    assert "runs-on: ${{ matrix.os }}" in block, "the job declares an `os:` matrix it does not run on"
+    return {entry.strip().strip("\"'") for entry in matrix.group(1).split(",") if entry.strip()}
+
+
+def test_the_no_std_host_steps_run_on_the_hosts_the_project_ships_for() -> None:
+    """The unit tests are the OS-dependent half, so one host cannot certify them.
+
+    The job used to be `runs-on: ubuntu-latest` alone: the only evidence that a `#![no_std]` crate's
+    logic survives without std came from one OS, while wheels are published for three. The bare-metal
+    *build* genuinely is host-independent - it links for `thumbv7em-none-eabi` identically wherever it
+    runs - so the asymmetry this test protects is deliberate in one direction only: the tests spread,
+    the compile does not have to.
+    """
+    hosts = _host_oses(WORKFLOW.read_text(encoding="utf-8"))
+    missing = sorted(name for name in SHIPPED_RUNNERS if name not in hosts)
+    assert not missing, f"the no_std host steps never run on {missing}, which ship wheels: {sorted(hosts)}"
+
+
+def test_the_bare_metal_build_is_gated_to_one_host_and_the_tests_are_not() -> None:
+    """The one step whose answer cannot move between hosts is the one pinned to a single host."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    build = _step_body(text, BUILD_STEP)
+    assert re.search(r"^\s+if: matrix\.os == ", build, re.MULTILINE), (
+        "`Build no_std foundation crates` runs on every matrix leg, so the job pays a dependency "
+        "build per host for a link check that cannot differ between them"
+    )
+    assert "if: matrix.os" not in _step_body(text, TEST_STEP), "the host unit tests are gated back to one OS"
+
+
+def test_the_gate_reports_a_job_whose_host_steps_run_on_one_os() -> None:
+    """The control: collapsing the matrix has to be named, not read as a pass."""
+    collapsed = "  no-std-check:\n    runs-on: ubuntu-latest\n    steps:\n      - name: x\n        run: y\n\n  other:\n    runs-on: ubuntu-latest\n"
+    try:
+        _host_oses(collapsed)
+    except AssertionError as exc:
+        assert "exactly one OS" in str(exc), exc
+    else:
+        raise AssertionError("a single-host no_std job passed the gate that exists to catch it")
 
 
 def test_the_gate_reads_a_synthetic_step_list() -> None:

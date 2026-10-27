@@ -416,6 +416,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The `no_std` host tests now run on Windows as well as Ubuntu** — the job was pinned to one
+  runner, so the evidence that a `#![no_std]` crate's logic survives without std came from one
+  operating system while wheels are published for three. The bare-metal build is host-independent
+  and stays on one (`if: matrix.os == 'ubuntu-latest'`), so the matrix does not pay a second
+  dependency build for a check that cannot disagree; the unit tests, which can, now spread. Measured
+  before the leg was added rather than after: `cargo test --locked --no-default-features` over the
+  six foundation crates on a Windows host runs 724 tests over 23 targets with 0 failures, and that
+  holds only because the same change set stops three dev-dependency edges from re-enabling `std`
+  through feature unification. `tests/test_no_std_gate.py` refuses a job that drops back to one host
+  and states the asymmetry it protects.
 - **The `no_std` unit-test leg now runs the configuration its name states** — `no-std-check` runs
   `cargo test --locked --no-default-features` over the six foundation crates in one invocation, and
   its comment recorded that widening the list "was worth 112 host tests that had never run without
