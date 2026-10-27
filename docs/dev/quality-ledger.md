@@ -9900,6 +9900,60 @@ that moved. And the control's numbers are shares, not levels: the binary holding
 scenarios the committed set does not, which is why its `parse_notes` reads 702,021,345 where the
 artifact records 701,017,318 - the same set-growth effect, one more time, in the other direction.
 
+### (ha) The step that reported no_std unit tests was reporting the std configuration
+
+(2026-10-27)
+
+A `-p` list is a list of packages, not a statement about features, and the two came apart here. The
+`no-std-check` job runs `cargo test --locked --no-default-features` over the six foundation crates
+in ONE invocation, and its own comment records why the list was widened
+once: "`cargo test --no-default-features -p pyrs-toml` did not even compile … the widening that
+followed was worth 112 host tests that had never run without std". Measured now with
+`cargo test -v --no-run` and the `--cfg feature="…"` set read off each rustc command line, that
+claim was false for the three crates the widening was about.
+`cargo test --no-default-features -p pyrs-toml` alone compiles `pyrs_toml`'s test unit with **no
+feature cfg at all**; the same command naming all six carries
+`--cfg feature="default" --cfg feature="std"` for it, and for `pyrs_json` and `pyrs_ast` too. The
+mechanism is cargo's feature unification across the packages selected in one invocation: a sibling
+named without `default-features = false` gets its defaults back for the whole selection, and the
+edges that did it were `pyrs-yaml-core`'s three dev-dependency lines on `pyrs-json`, `pyrs-toml` and
+`pyrs-ast`.
+
+The first probe was wrong in a way worth writing down, because it is the probe an agent reaches for
+first: `cargo tree -e features --no-default-features -p <six>` prints five `feature "std"` edges and
+looks exactly like the diagnosis - and it prints them for the *lib* units too, which the compiler
+then builds with no feature cfg at all. The display is per-edge requests; the applied configuration
+is not. Only the rustc command line settles the question, and the A/B that proves the rule is one
+crate versus six in the same command, not two different commands.
+
+Two scope limits, both checked rather than assumed. Nothing shipped was wrong: dev-dependencies are
+not in a downstream graph, so the published feature graph of all six crates is untouched, the
+`thumbv7em-none-eabi` build was already compiling every lib unit with `features=[]`, and the wheels
+are unaffected. And no test was failing - the std configuration simply passed its own tests while a
+job named for the other one reported them. The fix is three manifest edges plus the comment; the
+gate is new: `tests/test_no_std_gate.py` now reads every foundation manifest and refuses a path edge
+into a sibling that declares `default = ["std"]` without `default-features = false`, which is the
+*cause* rather than the symptom, so re-opening it reddens a run instead of silently returning the
+std build. An edge into a sibling that declares no features at all - `pyrs-event`, `pyrs-schema` -
+is not demanded, because requiring the clause there would be noise, and a rule that is noise gets
+edited away.
+
+The control is the pre-fix manifest, read from git: against the committed tree the predicate reports
+`[dev-dependencies] pyrs-json`, `[dev-dependencies] pyrs-toml`, `[dev-dependencies] pyrs-ast`;
+against the fixed one it reports nothing. The synthetic controls pin the reader's section walk
+(three sections, three verdicts) and its discrimination between a std-defaulting sibling and one
+that has no features.
+
+After the fix, the CI shape runs 724 tests over 23 targets with every one of them in a std-free unit
+(`pyrs_ast` keeps `test-strategy`, which is what its own suites ask for) and all 724 pass; the
+default shape still runs 815 with `cargo nextest run --all`, and `cargo clippy --all --all-targets`
+is clean under `-D warnings`.
+
+What this does not claim: that the `no_std` logic was ever untested - the bare-metal build compiled
+the same code without std from the start, and that is what the first step of the job was for. What
+was untested was the *behaviour* under that configuration for three of the six crates, which is
+precisely the thing the second step existed to provide and did not.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

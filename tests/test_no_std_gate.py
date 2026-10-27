@@ -23,6 +23,11 @@ YAML engine had just overtaken. A reader of the documents is not served by a gre
 the live documents name are read out of them and compared with the derived foundation as well. The
 dated records - `CHANGELOG.md`, its four mirrors, `docs/dev/quality-ledger.md` - are history and are
 exempt: they may name a five-crate foundation, because that is what was true when they were written.
+
+The fourth question is about the command rather than the list. A step named "Run no_std unit tests on
+the host" only earns that name if the units it compiles are std-free, and feature unification across a
+multi-`-p` invocation can take `std` back on through a sibling's manifest. That is measured here from
+the manifests, with the proof and the numbers in the comment above the reader.
 """
 
 from __future__ import annotations
@@ -278,3 +283,95 @@ def test_the_reader_separates_adjacent_bullets() -> None:
     # paragraph-only split would read the whole list as one block.
     body = "- `pyrs-json` is the JSON engine.\n- The `no_std` job builds `pyrs-toml`.\n"
     assert _named_crates(_no_std_blocks(body)) == {"pyrs-toml"}
+
+
+# The fourth question: does the command the step runs actually mean what its name says?
+#
+# Cargo unifies features across the packages selected in ONE invocation, so a foundation crate whose
+# manifest names a sibling without `default-features = false` re-enables that sibling's `std` even
+# when the same command also selects the sibling as a root and asks for no defaults. Measured on this
+# tree with `cargo test -v --no-run` and the `--cfg feature="..."` set read out of each rustc line:
+# `cargo test --no-default-features -p pyrs-toml` alone compiles `pyrs_toml`'s test unit with no
+# feature cfg at all, while the six-crate command the `no_std` job runs compiled it with
+# `--cfg feature="default" --cfg feature="std"` - and `pyrs_json` and `pyrs_ast` came out the same
+# way. The edge that did it was `pyrs-yaml-core`'s three dev-dependency lines, so the step named
+# "Run no_std unit tests on the host" was running 58 pyrs-json, 54 pyrs-toml and the whole pyrs-ast
+# suite in the std configuration, with every one of them passing there.
+#
+# The rule is therefore read from the manifests and asks about the *target* of each edge: an edge
+# into a sibling that declares `default = ["std"]` must close it, and an edge into a sibling with no
+# features at all (`pyrs-event`, `pyrs-schema`) is harmless and is not demanded. Requiring the clause
+# everywhere would be noise; missing it where it matters is the silent case.
+
+_SECTION_RE = re.compile(r"^\[\s*([a-zA-Z0-9_.\"'-]+dependencies)\s*\]")
+_PATH_RE = re.compile(r'path = "\.\./([^"]+)"')
+
+
+def _declares_std_default(manifest: Path) -> bool:
+    """Whether a crate's own defaults carry `std`, which is what makes an edge load-bearing."""
+    default = re.search(r"^default = \[([^\]]*)\]", manifest.read_text(encoding="utf-8"), re.M)
+    return bool(default) and '"std"' in default.group(1)
+
+
+def _std_reopening_edges(manifest_text: str, std_defaulting: dict[str, bool]) -> list[str]:
+    """Every path edge in one manifest that leaves a std-defaulting sibling's defaults on."""
+    edges: list[str] = []
+    section = "(head)"
+    for line in manifest_text.splitlines():
+        head = _SECTION_RE.match(line)
+        if head:
+            section = head.group(1)
+            continue
+        target = _PATH_RE.search(line)
+        if target is None:
+            continue
+        name = target.group(1)
+        if not std_defaulting.get(name):
+            continue
+        if "default-features = false" not in line:
+            edges.append(f"[{section}] {name}")
+    return edges
+
+
+def test_no_foundation_manifest_reopens_a_siblings_std() -> None:
+    crates_dir = REPO_ROOT / "crates"
+    std_defaulting = {name: _declares_std_default(crates_dir / name / "Cargo.toml") for name in sorted(FOUNDATION)}
+    offenders = {
+        name: _std_reopening_edges((crates_dir / name / "Cargo.toml").read_text(encoding="utf-8"), std_defaulting)
+        for name in sorted(FOUNDATION)
+    }
+    found = {name: edges for name, edges in offenders.items() if edges}
+    assert not found, (
+        f"the `no_std` job selects {sorted(FOUNDATION)} in one `cargo test --no-default-features` "
+        f"invocation, and these manifests re-enable a sibling's std inside it: {found}"
+    )
+
+
+def test_the_gate_reports_an_edge_that_leaves_std_on() -> None:
+    # The falsification control, on the exact edge shape the fix removed: without the clause the
+    # reader must name the section and the sibling, and the same line with the clause must be clean.
+    std_defaulting = {"pyrs-json": True, "pyrs-toml": True, "pyrs-schema": False}
+    broken = '[dev-dependencies]\npyrs-json = { path = "../pyrs-json", version = "0.18.3" }\n'
+    fixed = '[dev-dependencies]\npyrs-json = { path = "../pyrs-json", version = "0.18.3", default-features = false }\n'
+    sibling_without_std = '[dependencies]\npyrs-schema = { path = "../pyrs-schema", version = "0.18.3" }\n'
+    assert _std_reopening_edges(broken, std_defaulting) == ["[dev-dependencies] pyrs-json"]
+    assert _std_reopening_edges(fixed, std_defaulting) == []
+    assert _std_reopening_edges(sibling_without_std, std_defaulting) == []
+
+
+def test_the_gate_reads_a_synthetic_manifest_section_list() -> None:
+    # A manifest whose edges are spread over three sections has to be read section by section: a
+    # reader that stopped at the first one would pass the widest class of reopening edge.
+    body = (
+        "[dependencies]\n"
+        'pyrs-ast = { path = "../pyrs-ast", default-features = false }\n'
+        "[dev-dependencies]\n"
+        'pyrs-toml = { path = "../pyrs-toml" }\n'
+        "[build-dependencies]\n"
+        'pyrs-json = { path = "../pyrs-json" }\n'
+    )
+    std_defaulting = {"pyrs-ast": True, "pyrs-toml": True, "pyrs-json": True}
+    assert _std_reopening_edges(body, std_defaulting) == [
+        "[dev-dependencies] pyrs-toml",
+        "[build-dependencies] pyrs-json",
+    ]

@@ -347,6 +347,23 @@ status: new
 
 #### 変更
 
+- **no_std 単体テストを掲げる CI の脚が、名前の言う設定を実際に走るようになりました** —
+  `no-std-check` は六つの基盤 crate を `cargo test --locked --no-default-features` の 1 回の呼び出し
+  にまとめ、そのコメントは一覧を広げた当時「std なしで一度も走ったことがないホストテスト 112 本分の
+  価値」と記していました。`cargo test -v --no-run` で各 rustc 行の `--cfg feature="…"` を読むと、そ
+  の通りではありませんでした。`-p pyrs-toml` 単独ではテスト単位の feature cfg が皆無で、同じコマンド
+  が六つを同時に名乗ると `pyrs_toml`・`pyrs_json`・`pyrs_ast` に `--cfg feature="default"` と
+  `--cfg feature="std"` が付きます。cargo は 1 回の呼び出しで選ばれたパッケージの feature を統一し、
+  `pyrs-yaml-core` のこの三つの兄弟への dev-dependency 辺が `default-features = false` を書いていな
+  かったためです。出荷物は影響を受けませんでした（dev 依存は下流のグラフに入らず、ベアメタルビルドは
+  最初からすべての lib 単位を `features=[]` でコンパイルしている）。それでも「no_std のもとで挙動を
+  確かめた」という根拠は、std のビルドを測っていた脚に支えられていました。マニフェストの辺を三本う
+  め、ゲートは `-p` の一覧を信じるかわりにマニフェストを読むよう広がりました:
+  `tests/test_no_std_gate.py` は `default = ["std"]` を宣言する兄弟への path 辺を
+  `default-features = false` なしでは受けつけません。反証の制御は修正前のマニフェストで（この三辺を
+  ちょうど報告し）、もう一本は節単位の読み歩きを固定します。直後の CI の形状は std なしの単位で 23
+  ターゲット 724 テストをすべて通し、既定の形状は従来どおり `cargo nextest run --all` の 815、
+  `cargo clippy --all --all-targets` は `-D warnings` でクリーンです。
 - **Ir ゲートに、YAML を読む二つの経路が注釈の値踏みをする床値が増えました** — これまで値踏みしてい
   たのは書く側だけでした。`serialize_note_flow` は書き出し側が出さなければならない注釈に値をつけます
   が、読み取り側が注釈を解決する工程に値をつけた床値は一つもありませんでした。五条の `parse_*` シナ

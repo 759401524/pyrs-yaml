@@ -378,6 +378,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The `no_std` unit-test leg now runs the configuration its name states** — `no-std-check` runs
+  `cargo test --locked --no-default-features` over the six foundation crates in one invocation, and
+  its comment recorded that widening the list "was worth 112 host tests that had never run without
+  std". Read off the actual rustc command lines with `cargo test -v --no-run`, that was not what
+  happened: `cargo test --no-default-features -p pyrs-toml` alone compiles `pyrs_toml`'s test unit
+  with no feature cfg at all, while the same command naming all six carries
+  `--cfg feature="default"` and `--cfg feature="std"` for it, for `pyrs_json` and for `pyrs_ast`.
+  Cargo unifies features across the packages selected in ONE invocation, and `pyrs-yaml-core`'s
+  dev-dependency edges on those three siblings did not say `default-features = false`. Nothing
+  shipped was affected — dev-dependencies are in no downstream graph, and the bare-metal build had
+  been compiling every lib unit with `features=[]` all along — but the behaviour-under-no-std claim
+  rested on a step that was measuring the std build. Three manifest edges close it, and the gate is
+  widened to read the manifests rather than trust a `-p` list: `tests/test_no_std_gate.py` now
+  refuses any foundation path edge into a sibling that declares `default = ["std"]` without
+  `default-features = false`, with the pre-fix manifest as its control (it reports exactly the three
+  edges) and a second control pinning the reader's section walk. The CI shape then runs 724 tests
+  over 23 targets std-free and all pass; the default shape still runs 815, and
+  `cargo clippy --all --all-targets` stays clean under `-D warnings`.
 - **The two YAML readers now carry a floor for a note, not only the writer** — `serialize_note_flow`
   prices what the writer does with a note it has to emit, but nothing priced what a reader does to
   resolve one: the five `parse_*` scenarios read `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`,
