@@ -1591,3 +1591,69 @@ classes the route is given. So a move on the line-delimited pair is not evidence
 until a profile pairing says which rows moved; the profile is the check, not the percentage. The
 floors themselves were re-derived on the enforcing image, as everywhere in this file, and
 `QUALITY_MATRIX.md` §2 quotes the new pair (its long/short ratio is 1.55x, was 1.49x).
+
+## What eleven notes cost the YAML reader (2026-10-27)
+<!-- landed: crates/pyrs-yaml-core/src/bench_inputs.rs::NOTE_FLOW_YAML -->
+<!-- landed: crates/pyrs-yaml-core/tests/ir_fixtures.rs -->
+
+Two floors joined the gate on this head, `parse_notes` 701,017,318 and `stream_notes` 579,067,612,
+and one document feeds both: the 434-byte `NOTE_FLOW_YAML` that `serialize_note_flow` already
+writes. They exist because the reader still had the gap the writer's floor closed. The five
+`parse_*` rows and the two document-carrying `stream_*` rows run over text holding zero `#`, so the
+byte scan in `crates/pyrs-yaml-core/src/parser/yaml/comment.rs`, the receiver's decision about which
+node owns a note and the pending-note carriage were priced on the way out and never once on the way
+in.
+
+**A floor is a level, so the note's share needed a control.** `parse_notes` sits at 2.18x
+`parse_medium`, which is true and useless: the two fixtures differ in the eleven notes *and* in the
+flow spelling, so the ratio cannot say which is dear. The control blanks every note run — from the
+`#` to the end of its line — with the same number of spaces. Byte length 434, line count 29, both
+anchors, both tags and every brace untouched, so nothing about the document changed except whether
+the scanner meets a `#`. One binary holds both scenarios, `ITERATIONS = 2_000`, loop cost = full
+minus `--setup-only`:
+
+- AST route: 702,021,345 against 603,613,299 — **98,408,046** loop instructions for eleven notes,
+  **+16.30 %**, which is 49,204 a read and 4,473 a note.
+- Event route: 579,067,549 against 485,115,111 — **93,952,438**, **+19.37 %**, 46,976 a read and
+  4,271 a note.
+
+**Where the money is, by row.** Eight rows appear only in the note-bearing table: 31,022,014 of the
+AST route's gap (31.5 %) and 33,738,000 of the event route's (35.9 %). Four of them are granit's own
+comment machinery and carry 29,078,000 on both routes (`next_comment_event` 16,884,000,
+`skip_while_non_breakz` 8,764,000, `consume_comment` 3,344,000, `save_pending_node_prop` 86,000).
+The rest of the note-only rows is ours, and it is small: 1,944,000 on the AST route — the blank-trim
+1,210,000, `RawVec<Comment>::grow_one` 460,000, `CustomNode::set_comment` 274,000 — and 4,660,000 on
+the event route, where `StreamReceiver::flush_pending_notes` 3,034,000 leads the same trim, the
+`PendingNote` vector's grow and `Arc<str>::drop_slow`.
+
+Bucketing the whole difference by the leading token of each printed name, net of the rows that moved
+down, gives the split the level cannot show. AST route, 98,408,046: `granit_parser` +69,828,000
+(71.0 %), glibc's malloc and copy rows +14,823,509 (15.1 %), this project's crates +10,650,959
+(10.8 %), the `alloc`/`core` containers that carry the two types +1,892,012 (1.9 %), and the
+`<str>::trim_matches::< pyrs_schema::is_yaml_blank>` row +1,210,000 (1.2 %) printed under `str`
+although the predicate is ours. Event route, 93,952,438: `granit_parser` +69,828,000 again — the
+same 71 % figure is the parser's, not a coincidence, because the two routes differ only in the
+receiver — then this project's crates +13,896,000 (14.8 %), glibc +6,574,414 (7.0 %), the containers
++1,922,000 (2.0 %), the same trim +1,210,000 (1.3 %), and the harness's own `main` +526,000 (0.6 %),
+which is the black_box accumulator keeping eleven more events alive.
+
+So carrying eleven notes costs the reader 98.4M instructions on the route that builds a tree, and
+roughly seven parts in ten of that price sits inside the locked parser rather than in code this
+project owns. A comment is a token, so it is paid for in `peek_token` (+18,810,000) and
+`next_event_impl` (+11,538,000) as much as in the routine that recognises it — the same shape `(gw)`
+and `(gx)` kept pointing at, now with a number attached.
+
+**Two method cautions, both measured.** The first pass subtracted across `--top 40` tables and
+reported `AstReceiver::register_anchor` as a row the *control* runs alone — a row can leave a
+truncated table without leaving the code path, so the cut is the boundary that produced the finding,
+not the engine. At `--top 500` the tables are complete (120 rows and 113) and the decomposition
+closes to 28 instructions. And this pairing is a share, not a level: the binary that holds the
+control also holds two more scenarios than the committed set, so its `parse_notes` reads 702,021,345
+where the image records 701,017,318 (+0.143 %) — the set-growth effect `AGENTS.md` names. The two
+numbers quoted as floors come from the refresh artifact; the ratios come from one local host with
+`rustc 1.97.1` and the pinned `GLIBC_TUNABLES`.
+
+**What this does not claim.** No optimization is proposed here. The rows exist so that making note
+carriage dearer on the read path moves a floor the CI gate reads; the level of that floor is the
+whole read of a note-bearing flow document, and the control above is the only measurement that
+separates the notes from the braces inside it.

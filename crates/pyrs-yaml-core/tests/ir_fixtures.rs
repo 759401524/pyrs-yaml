@@ -22,15 +22,15 @@ use pyrs_json::{
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
-    DIALECT_NOTES_YAML, LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
-    MEDIUM_TOML, MEDIUM_YAML, METADATA_EDIT_YAML, NOTE_FLOW_YAML, NOTES_JSON, long_string_json,
-    long_string_json5, long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml,
-    short_string_ndjson,
+    ANCHOR_YAML, BLOCK_STYLE_YAML, DIALECT_NOTES_YAML, LONG_RECORDS, LONG_VALUE, MEDIUM_JSON,
+    MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, METADATA_EDIT_YAML,
+    NOTE_FLOW_YAML, NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
+    long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
-use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
+use pyrs_yaml_core::parser::{parse, parse_stream};
 use pyrs_yaml_core::serializer::to_yaml;
 use std::borrow::Cow;
 
@@ -606,6 +606,64 @@ fn the_note_flow_fixture_reaches_every_answer_the_writer_gives() {
         once.contains("lift: &A\n  # first entry note\n"),
         "the header lift no longer fires, so the two `lift_first_*_notes` helpers are unmeasured:\n{once}"
     );
+}
+
+#[test]
+fn the_note_flow_fixture_reaches_both_readers_and_the_other_read_fixtures_do_not() {
+    // `parse_notes` and `stream_notes` price the reader's comment machinery: `comment.rs`'s scan,
+    // `AstReceiver::on_comment_event` and `StreamReceiver`'s own note carriage. Before them no
+    // scenario read a document holding a note - `serialize_note_flow` and the two dialect writers
+    // emit notes, the edit verbs move them, but nothing measured the cost of *finding* them.
+    // The premise of a floor is the shape that reaches it, so both halves are asserted here: this
+    // fixture still carries eleven notes through each reader, and the fixtures the older read rows
+    // use still carry none. A drift in either direction turns the pair back into a number that
+    // guards a comment-free document while its name says otherwise.
+    let notes_in = NOTE_FLOW_YAML.matches('#').count();
+    assert_eq!(
+        notes_in, 11,
+        "the fixture's note count moved, so the two floors' premise needs restating"
+    );
+
+    let ast = parse(NOTE_FLOW_YAML, Schema::Core).expect("the note-flow fixture parses");
+    let emitted = to_yaml(&ast);
+    assert_eq!(
+        emitted.matches('#').count(),
+        notes_in,
+        "the AST route lost or invented a note, so `parse_notes` no longer reads what it names:\n{emitted}"
+    );
+    assert_eq!(
+        to_yaml(&parse(&emitted, Schema::Core).expect("the emission re-parses")),
+        emitted,
+        "the fixture is not a fixed point, so the scenario measures a document mid-settlement"
+    );
+
+    let events = parse_stream(NOTE_FLOW_YAML).expect("the note-flow fixture streams");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
+            .count(),
+        notes_in,
+        "the event route reported a different note count than the AST route, so `stream_notes` is \
+         no longer its twin"
+    );
+
+    let long_yaml = long_string_yaml();
+    for (name, fixture) in [
+        ("parse_small", SMALL_YAML),
+        ("parse_medium", MEDIUM_YAML),
+        ("parse_block", BLOCK_STYLE_YAML),
+        ("parse_anchors", ANCHOR_YAML),
+        ("parse_inline_merge", MERGE_INLINE_YAML),
+        ("stream_long_strings", long_yaml.as_str()),
+    ] {
+        assert_eq!(
+            fixture.matches('#').count(),
+            0,
+            "{name} now reads a note, so the pair above is no longer the only floor pricing \
+             the reader's comment scan"
+        );
+    }
 }
 
 #[test]

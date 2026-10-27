@@ -168,6 +168,16 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // Merge sources written inline instead of aliased: the folding path the
         // anchor scenario never enters.
         ("parse_inline_merge", MERGE_INLINE_YAML, Work::Parse),
+        // The reader's comment scanner. The five `parse_*` rows above run over fixtures holding no
+        // note line at all - measured 2026-10-27 over `bench_inputs.rs`: `SMALL_YAML`,
+        // `MEDIUM_YAML`, `BLOCK_STYLE_YAML`, `ANCHOR_YAML` and `MERGE_INLINE_YAML` carry zero `#` in
+        // text - and `stream_*` reads `MEDIUM_YAML` and the generated long-record document, also
+        // zero. So `pyrs-yaml-core`'s `comment.rs` scan, the note-owner decisions in
+        // `on_comment_event` and the pending-slot carriage had no floor on the read path, only on
+        // the write path (`serialize_note_flow`) and in the edit verbs. The fixture reports eleven
+        // notes through both routes, which `tests/ir_fixtures.rs` pins, so a reading of this row is
+        // the price of resolving those eleven onto the nodes that own them.
+        ("parse_notes", NOTE_FLOW_YAML, Work::Parse),
         // The two cross-format writers the binding exposes. `MEDIUM_YAML` is the input
         // both can represent - plain scalars, nested mappings, a block sequence, no
         // null and no alias - so neither scenario measures a failure path.
@@ -249,6 +259,12 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // stream's dialect is chosen by the caller, and the path being priced is granit's scalar
         // handoff, which the YAML fixture already enters.
         ("stream_long_strings", LONG_YAML.as_str(), Work::Stream),
+        // The same note shape through the other reader. `StreamReceiver` decides note ownership in
+        // its own code, not the AST receiver's, and neither of the two `stream_*` rows above carries
+        // a `#`, so a regression confined to the event path's comment carriage moved no number.
+        // `parse_notes` and this row share one fixture on purpose: the pair's difference is the
+        // route, and a second document would confound it.
+        ("stream_notes", NOTE_FLOW_YAML, Work::Stream),
         // The line-delimited pair, one scenario per side. A short value keeps the record inside the
         // first vector of the string scan, so what separates the two is what a long body costs per
         // record. Part of that cost is not the scanner but glibc's copy routine, whose instruction
