@@ -19,6 +19,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The pytest tier's width is derived now, not remembered** — three contributing pages said the
+  blocking Python tier runs "4 Python versions × 3 OSes" and `QUALITY_MATRIX.md` said "3 OSes × 7
+  Python versions", while the declared interpreter floor is eight wide (3.8 through 3.15) and the
+  tier is not a cross product at all: `scripts/ci_matrix_plan.py` runs every interpreter on ubuntu
+  and only the first and last on macOS and Windows, so the product of the two factors names 24 legs
+  where 12 are scheduled. The matrix probe now asks that planner - 3 OSes × 8 interpreters in 12
+  cells - and rewrites the sentence itself, with a pattern wide enough to match both the old
+  spelling and its own output, because a rule that only fits the prose it replaces reports "no
+  sentence matches" forever after running once. `tests/test_ci_matrix_plan.py` holds the three
+  locale pages to the same plan and refuses a bullet that no longer carries exactly three integers:
+  a reworded sentence is a red run here, not an unchecked claim. The scheduled tier builds the full
+  grid on purpose, so the derived numbers describe the pull-request plan the merge verdict consumes.
 - **The line the formatter would promote is now refused before it can act** — measured on the
   pinned 0.2.78, `rumdl fmt` fixes `MD018` ("no space after a heading's hashes") by re-reading any
   line-initial run of hashes as a heading, and it does that to a wrapped paragraph and to a

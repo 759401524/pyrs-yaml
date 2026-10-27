@@ -87,7 +87,7 @@ uv run maturin build --release --generate-stubs
 GitHub Actions runs on every push and PR:
 
 - **Rust**: `cargo nextest run --all`, `cargo clippy --all -- -D warnings`, `cargo fmt --check`
-- **Python**: `uv run pytest tests/` on 4 Python versions × 3 OSes
+- **Python**: `uv run pytest tests/` on 8 Python versions × 3 OSes — 12 (OS, version) cells
 - **Maturin**: Build wheel for each Python version (via `crates/pyrs-yaml/Cargo.toml`)
 
 ### Adding New Tests

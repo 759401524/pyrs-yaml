@@ -85,7 +85,7 @@ uv run maturin build --release --generate-stubs
 GitHub Actions가 모든 푸시와 PR에서 실행:
 
 - **Rust**: `cargo nextest run --all`, `cargo clippy --all -- -D warnings`, `cargo fmt --check`
-- **Python**: 4개 Python 버전 × 3개 OS에서 `uv run pytest tests/`
+- **Python**: 8개 Python 버전 × 3개 OS, 총 12개 셀에서 `uv run pytest tests/`
 - **Maturin**: 각 Python 버전용 wheel 빌드 (`crates/pyrs-yaml/Cargo.toml` 경로 사용)
 
 ## 새 테스트 추가
