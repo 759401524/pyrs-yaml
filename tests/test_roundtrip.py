@@ -149,3 +149,39 @@ class TestAliasCycles:
         doc = pyrs_yaml.parse("base: &base\n  child: *base\n")
         data = doc.to_dict()
         assert data == {"base": {"child": {"child": None}}}
+
+
+class TestBlankLineFidelity:
+    """An empty line between entries is layout the node model has no slot for.
+
+    Characterization, not aspiration: `engine:entry-blank-lines` in
+    `.ci/known-residuals.json`. Values, key order, anchors and notes survive; the
+    blank line does not, at every position measured here, and the output is already
+    a fixed point - so a second round cannot be blamed for the loss.
+    """
+
+    @pytest.mark.known_residual("engine:entry-blank-lines")
+    def test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point(self):
+        positions = {
+            "between two root entries": ("a: 1\n\nb: 2\n", "a: 1\nb: 2\n"),
+            "between two nested keys": ("root:\n  x: 1\n\n  y: 2\n", "root:\n  x: 1\n  y: 2\n"),
+            "between two sequence items": ("seq:\n  - 1\n\n  - 2\n", "seq:\n  - 1\n  - 2\n"),
+            "before a standalone note": ("a: 1\n\n# note\nb: 2\n", "a: 1\n# note\nb: 2\n"),
+            "two consecutive blanks": ("a: 1\n\n\nb: 2\n", "a: 1\nb: 2\n"),
+            "after a block scalar": ("text: |\n  line\n\nb: 2\n", "text: |\n  line\nb: 2\n"),
+            "before the first key": ("\na: 1\n", "a: 1\n"),
+            "after the last key": ("a: 1\n\n", "a: 1\n"),
+        }
+        for label, (src, expected) in positions.items():
+            out = pyrs_yaml.parse(src).to_yaml()
+            assert out == expected, f"{label}: {out!r} != {expected!r}"
+            assert pyrs_yaml.parse(out).to_yaml() == out, f"{label}: not a fixed point"
+
+        # The loss is layout only: the mapping the document carries is unchanged.
+        assert pyrs_yaml.safe_load("a: 1\n\nb: 2\n") == {"a": 1, "b": 2}
+        # The note still lands on its own line, so the blank is not what carries it.
+        assert "# note" in pyrs_yaml.parse("a: 1\n\n# note\nb: 2\n").to_yaml()
+        # Editing does not preserve it either, so no shipped route keeps the line today.
+        doc = pyrs_yaml.parse("a: 1\n\nb: 2\n")
+        doc.set("$.a", 9)
+        assert doc.to_yaml() == "a: 9\nb: 2\n"

@@ -9823,6 +9823,30 @@ lesson is not that the floor moved - the refresh is the only channel that may mo
 move on the line-delimited pair is not evidence about the engine until a profile pairing names the
 rows.
 
+### (gy) An entry blank line has nowhere to come back from
+
+(2026-10-27)
+
+`(gx)`'s sibling finding, from the other side of the same file: `(gx)` arrived with #651 earlier the
+same day, and the two open branches had to agree on the letter order before either one landed.
+
+A document written as `a: 1`, blank line, `b: 2` round-trips to `a: 1\nb: 2\n`. Measured through the
+shipped extension at eight positions - between two root entries, two nested keys, two sequence
+items, before a standalone note, two consecutive blanks, after a block scalar, leading, trailing -
+and the blank is gone in all eight, and from the CRLF spelling of the root case too
+(`a: 1\r\n\r\nb: 2\r\n` comes back `a: 1\nb: 2\n`, so the line-ending normalization does not rescue
+it). `parse(...).set(...)` then `to_yaml()` drops it as well, so no shipped route preserves it.
+Values are unaffected (`safe_load("a: 1\n\nb: 2\n") == {"a": 1, "b": 2}`), key order is unaffected,
+the standalone note still arrives on its own line, and the output is already a fixed point - so the
+loss is a layout choice the author wrote, and a second round cannot be blamed for it.
+
+Registered as `engine:entry-blank-lines` rather than fixed, with the repro
+`tests/test_roundtrip.py::TestBlankLineFidelity::test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point` naming it in `.ci/known-residuals.json`, a row in `QUALITY_MATRIX.md`'s Known residuals table and a bullet in `docs/dev/boundaries.md`. The reason is the same one the serialize floors keep teaching: the reader has no field for "empty lines before me" and the writer emits one break per item, so restoring the layout means per-container state carried through the serialization, and `docs/dev/perf.md` measures what adding a field to that pass costs on every `serialize_*` floor. A declined change with a pinned behaviour and a priced reason is the honest record; silently flattening the layout one more release longer would not be.
+
+What this does not claim: that the choice is right for every caller. The exit criterion is written
+so that *closing* the residual - reproducing the blank at all eight positions - reddens the
+characterization test and forces the entry, the marker and the two documents out in the same change.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

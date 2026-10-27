@@ -394,6 +394,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `documents_long_strings` −7.00% — and the gate's own profile puts the whole move in one glibc
   copy row and its malloc bookkeeping, with every engine row identical to the instruction on both
   hosts: a floor is a count of what the build does, not only of what the engine does.
+- **A blank line between two YAML entries is now a registered boundary, with a test that pins it** —
+  measured through the shipped extension at eight positions (between root entries, between nested
+  keys, between sequence items, before a standalone note, consecutive blanks, after a block scalar,
+  leading, trailing) and through the edit route: the line survives none of them, while values, key
+  order, anchors and the note do, and what comes back is already a fixed point.
+  `tests/test_roundtrip.py` now asserts that behaviour as it is today, so closing the gap reddens
+  the pin and forces the registry entry and the boundary note out in the same change. It stays open
+  because restoring the layout means per-container state carried through the serialization pass,
+  which the instruction floors price on every `serialize_*` scenario. No shipped behaviour changes.
 - **Both lockfiles moved to the newest version their declared ranges allow** — `similar`
   3.2.0 → 3.2.1 on the Rust side, the only step left under the eight crates' MSRV 1.96 floor, and
   nine Python packages: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8,
