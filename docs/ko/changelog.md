@@ -353,6 +353,23 @@ status: new
 
 #### 변경
 
+- **no_std 단위 테스트를 밝히던 CI 걸음이 이름이 말하는 설정을 실제로 돌리게 되었습니다** —
+  `no-std-check`은 여섯 기본 크레이트를 `cargo test --locked --no-default-features` 한 번의 호출에
+  담고, 그 주석은 목록을 넓힌 때를 "std 없이 한 번도 돌지 않은 호스트 테스트 112개 값"으로
+  적었습니다. `cargo test -v --no-run`으로 각 rustc 줄의 `--cfg feature="…"`를 읽어 보면 그 말이
+  맞지 않았습니다. `-p pyrs-toml` 혼자서는 테스트 단위에 feature cfg가 하나도 없다. 같은 명령으로
+  여섯을 함께 지명하면 `pyrs_toml`·`pyrs_json`·`pyrs_ast`에 `--cfg feature="default"`와
+  `--cfg feature="std"`가 붙습니다. cargo는 한 호출에서 고른 패키지의 feature를 합치는데,
+  `pyrs-yaml-core`가 이 세 형제를 가리키는 dev-dependency 간선에 `default-features = false`를 적지
+  않았기 때문입니다. 출시된 것은 영향을 받지 않았습니다 — dev 의존은 어떤 하류 그래프에도 들지 않고
+  베어메탈 빌드는 처음부터 모든 lib 단위를 `features=[]`로 컴파일했다 — 그래도 "no_std에서 동작을
+  시험했다"는 근거는 std 빌드를 재던 걸음에 서 있었습니다. 매니페스트 간선 세 개를 막고, 게이트는
+  `-p` 목록을 믿는 대신 매니페스트를 읽도록 넓혔습니다: `tests/test_no_std_gate.py`는
+  `default = ["std"]`를 선언한 형제로 가는 path 간선을 `default-features = false` 없이 거부합니다.
+  반증 통제로 수정 전 매니페스트를 삼아 정확히 그 세 간선을 보고하고, 두 번째 통제가 절 단위 읽기를
+  못박습니다. 고친 뒤 CI 모양은 std 없는 단위에서 23개 표적 724개 테스트를 모두 통과하고, 기본
+  모양은 `cargo nextest run --all`의 815개이며 `cargo clippy --all --all-targets`는
+  `-D warnings`에서 깔끔합니다.
 - **Ir 게이트에 YAML을 읽는 두 경로가 주석 값을 매기는 하한을 얻었습니다** — 값이 매겨져 있던 쪽은
   쓰는 쪽뿐이었습니다. `serialize_note_flow`는 내보내야 할 주석에 값을 매기지만, 읽는 쪽이 주석을
   해결하는 과정에 값을 매기는 하한은 하나도 없었습니다. 다섯 개의 `parse_*` 시나리오는 `SMALL_YAML`,

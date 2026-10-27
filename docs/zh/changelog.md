@@ -289,6 +289,20 @@ status: new
 
 #### 变更
 
+- **名为 no_std 单元测试的那条 CI 腿，现在真的跑在它名字所说的配置上** — `no-std-check` 把六个基建
+  crate 交给一次 `cargo test --locked --no-default-features` 调用，它的注释记下当年加宽列表"值 112
+  条从没在 std 之外跑过的主机测试"。用 `cargo test -v --no-run` 把每条 rustc 命令行里的
+  `--cfg feature="…"` 读出来，那句话并不成立：单独 `-p pyrs-toml` 时它的测试单元一个 feature cfg 都
+  不带，而同样命令一次点六个 crate 时，`pyrs_toml`、`pyrs_json`、`pyrs_ast` 都带着
+  `--cfg feature="default"` 与 `--cfg feature="std"`。cargo 会在一次调用里把所选包的 feature 统一，
+  而 `pyrs-yaml-core` 指向这三条兄弟的 dev-dependency 边没写 `default-features = false`。出货的东西
+  都没受影响——dev 依赖不在任何下游图里，裸机构建从头就是以 `features=[]` 编译每个 lib 单元——但"在
+  no_std 下测过行为"这句话，靠的是一条其实在测 std 构建的步骤。三条清单边把它关掉，门禁也跟着改成读
+  清单而不是信 `-p` 列表：`tests/test_no_std_gate.py` 现在拒绝任何通往"声明了 `default = ["std"]` 的
+  兄弟"却不带 `default-features = false` 的基建 path 边；反证控制用改动前的清单（它正好报出这三条
+  边），另一条控制钉住读取器按 section 逐个走。修完后 CI 那一形状在 std 之外的单元里跑 23 个
+  target、724 条测试全绿；默认形状仍是 `cargo nextest run --all` 的 815 条，
+  `cargo clippy --all --all-targets` 在 `-D warnings` 下干净。
 - **Ir 门禁为两条 YAML 读路径新增按注释定价的地板，此前只有写路径有** — `serialize_note_flow`
   给写器必须发出的那条注释定价，可没有任何地板给读器解析一条注释定价：五条 `parse_*` 场景读
   `SMALL_YAML`、`MEDIUM_YAML`、`BLOCK_STYLE_YAML`、`BLOCK_SCALAR_YAML`、`ANCHOR_YAML` 与

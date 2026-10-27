@@ -488,9 +488,17 @@ jobs:
       # fails if this step stops covering what the sources declare. (The step once covered two
       # crates only - `cargo test --no-default-features -p pyrs-toml` did not even compile (a
       # recursion-limit case that spawns a thread to get a big stack), and nothing noticed, because
-      # the step listed the other two. The widening that followed was worth 112 host tests that had
-      # never run without std - 58 in pyrs-json, 54 in pyrs-toml - and pyrs-event's test target
-      # compiling there at all.)
+      # the step listed the other two. The widening that followed was meant to add 112 host tests
+      # that had never run without std - 58 in pyrs-json, 54 in pyrs-toml - and it added none,
+      # because naming a crate in a multi-`-p` command and asking for no defaults is not the same as
+      # getting them: cargo unifies features across the packages selected in ONE invocation, and
+      # `pyrs-yaml-core`'s dev-dependency edges named all three siblings without
+      # `default-features = false`, so `--cfg feature="std"` came back on in their *test* units.
+      # Measured with `cargo test -v --no-run` and the cfg list read off each rustc line: alone,
+      # `pyrs_toml`'s test unit carries no feature at all; in this six-name shape it carried `default`
+      # and `std`, and so did `pyrs_json` and `pyrs_ast`. `cargo tree -e features` was the first probe
+      # and it is not a proxy worth trusting - it printed those std edges for the lib units too, and
+      # the lib units were then compiled without them. So the gate reads the manifests, not this list.)
       - name: Run no_std unit tests on the host
         run: >
           cargo test --locked --no-default-features

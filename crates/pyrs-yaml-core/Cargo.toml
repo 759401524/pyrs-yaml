@@ -60,11 +60,19 @@ mmap = ["std", "dep:memmap2"]
 # Cross-format property/integration suites (fmt_pbt, integration/*) exercise
 # the sibling engines; they are dev-only so the YAML engine no longer links
 # them for downstream consumers.
-pyrs-json = { path = "../pyrs-json", version = "0.18.3" }
-pyrs-toml = { path = "../pyrs-toml", version = "0.18.3" }
+#
+# `default-features = false` on all three is load-bearing for the `no_std` leg of CI, not cosmetic:
+# `cargo test --no-default-features -p a -p b …` unifies features across the packages selected in
+# ONE invocation, so a dev edge that leaves a sibling's `std` default on re-enables it in that
+# sibling's own test units — measured on this tree with `cargo test -v --no-run`: alone,
+# `pyrs_toml`'s test unit compiles with no `--cfg feature="std"` at all, and in the six-crate shape
+# the CI step uses it carried `default` and `std`, as did `pyrs_json` and `pyrs_ast`. The step that
+# claims to run the engines' tests without std was running them with it.
+pyrs-json = { path = "../pyrs-json", version = "0.18.3", default-features = false }
+pyrs-toml = { path = "../pyrs-toml", version = "0.18.3", default-features = false }
 proptest = "1.5"
 similar = "3"
-pyrs-ast = { path = "../pyrs-ast", version = "0.18.3", features = ["test-strategy"] }
+pyrs-ast = { path = "../pyrs-ast", version = "0.18.3", default-features = false, features = ["test-strategy"] }
 # The CodSpeed-compatible divan harness for the bench set below.
 divan = { package = "codspeed-divan-compat", version = "6.0" }
 
