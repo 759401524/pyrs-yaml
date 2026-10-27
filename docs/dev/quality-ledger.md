@@ -10045,6 +10045,79 @@ What this does not claim: that 12 cells is the only width. The scheduled event b
 so a sentence about the nightly tier would read differently on purpose - this rule is pinned to the
 pull-request plan, the one the merge verdict consumes.
 
+### (he) A projection that forgets a tag turns two keys into one
+
+(2026-10-28)
+
+`prop_toml_writer_is_fixed_point` reddened at random on a branch that changed no Rust at all, and
+the counterexample it shrank to was `c` beside `!A c`. The reader is right to accept that document:
+a tag is part of a key's identity in YAML, which is the ruling `docs/dev/quality-ledger.md`
+`(dr)`-era work settled and `CustomNode::key_identity` still encodes. The writer was also right that
+TOML has no spelling for the tag. The two rights made an invalid document: `c = 0` and `c = "!"`,
+which this crate's own TOML reader refuses as a duplicate key at offset 6.
+
+The JSON half is worse, because nothing refuses. `{"c": 0, "c": "!"}` parses everywhere;
+`json.loads` answers `{'c': '!'}`, so the first entry is gone and no consumer can tell that a value
+was dropped. That asymmetry - one projection fails loudly downstream, the other silently now - is
+the reason both routes refuse at the place they write, rather than the TOML one alone.
+
+Why the check is gated the way it is. `pyrs-ast` already documents that comparing key identity at
+emission measured +31…33% on the writer floors, so nothing per-key may compute an identity here. An
+undecorated `IndexMap` cannot hold two keys with the same text, so the collision question can only
+be live in a mapping whose keys carry a tag, an anchor or a note. The first shape of that gate - a
+separate pass over a mapping's keys, in front of the loop that already walks them - read **+5.27%**
+on `to_toml_medium` and **+6.42%** on `to_json_medium`, measured on the baseline's own
+`rustc 1.97.1`: the floor doing its job. The test is therefore inlined into those loops through
+`CustomNode::is_identity_clean`, and the whole-mapping scan runs at most once per mapping and only
+after a decorated key turns up. That leaves **+2.44%** on `to_toml_medium` and **+6.47%** on
+`to_json_medium` on this host and toolchain, and the enforcing image repeats both figures to the
+second decimal: what costs is the per-key test inside a traversal that is already the cheapest thing
+in these writers, so a refusal at this seam is not free. It is not free on ten floors. The refresh
+that decides the question - run 87, and run 88 repeating it on this commit, three repeats each,
+every value written by `scripts/ir_gate.py --update` rather than transcribed - found all ten `to_*`
+projection scenarios past the 0.50% line: `to_jsonc_medium` +5.97%, `to_jsonc_notes` +5.89%,
+`to_json5_notes` +5.85%, `to_json5_medium` +5.83%, `to_json_long_strings` +5.32%,
+`to_jsonc_long_strings` +4.99%, `to_json5_long_strings` +4.90% and `to_toml_long_strings` +2.07%
+beside the two already named. The ruling was to pay it rather than to argue it: all ten went into
+that run's `accept_drift` input and its artifact is committed in this change, so the floors describe
+the tree that refuses. Two rows of that artifact were not taken. `load_toml_medium` and
+`load_toml_long_strings` came back 1.71% and 2.91% under where they stood, and the gate then refused
+its own baseline: on this commit it measured 144,904,012 and 139,465,617 where the refresh had
+written 142,467,241 and 135,445,412, with the two jobs' printed harness digests equal
+(`3376c9d821eea00d`, `ce6804e2b95d37b1`) and each job's three repeats agreeing to the instruction.
+The first guess at a cause was the runner's CPU family, and the second refresh refuted it - that job
+landed on the other family and wrote the same two numbers again. What the two jobs did not share is
+the runner image: `20261025.353.1` in the refresh's own banner against `20261012.334.1` in the
+gate's, and the environment string written into the file matches neither. So those two floors stay
+at the numbers the gate reproduces, and every other floor differs from what trunk carried by at most
+0.081%, the largest being `to_python_medium`. The refusal reason keys are stable strings
+(`toml-keys-collide-without-metadata`, `json-object-keys-collide-without-metadata`) because the
+locale templates pass `%{detail}` through and the key IS the message.
+
+What those ten floors do not price, said because a floor is easy to credit for more than its fixture
+can reach (`(gw)` is this record's own precedent for that failure): none of them decorates a
+**key**. `MEDIUM_YAML` is 298 bytes carrying no `#`, no `&` and no `!`; `long_string_yaml` spells
+its keys `k0`, `n0`, `k1`, and so on; and in `DIALECT_NOTES_YAML` the note above the inner key
+settles on the `nested` mapping's leading comments, not on the `inner` key - read off the shipped
+tree, where that key node reports no comment, no anchor and no tag. Every floor therefore runs the
+per-key test on every key and never runs the whole-mapping scan that test guards. The scan has a
+price only in the tests pinned below, which do reach it, and the fixture that would put it under a
+floor is the open half of this seam.
+
+Reproduction is pinned twice, at both tiers, so the shape cannot come back as a random draw: the
+Rust tests build the tree from YAML source (`crates/pyrs-yaml-core/src/integration/json_family.rs`)
+and from hand-made nodes (`crates/pyrs-toml/src/writer.rs`), the Python test
+`tests/test_cross_format_tags.py::test_two_keys_the_reader_keeps_apart_are_refused_before_a_projection_overwrites_one` drives the shipped surface and also asserts the two things this change must NOT do - a tag that does not collide still projects, and an anchor was never a second key. The seed `16b4a97ca3115ecd9db10190e1011152ad03ac4adc071ec35866819a861a72dd` went into `crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt`, and the property passes there because `prop_toml_writer_is_fixed_point` treats a refusal as an acceptable answer.
+
+Readings: `cargo nextest run -p pyrs-toml -p pyrs-json -p pyrs-yaml-core` - 647 passed, 0 failed,
+which includes the pinned replay; `uv run pytest tests/test_cross_format_tags.py` - 48 passed on a
+freshly rebuilt extension.
+
+What this does not claim: that the writers can now represent such a tree. They cannot - TOML and
+JSON have no slot for a tag - and this change does not invent one (spelling the tag into the key
+text would change the exported value, which the cross-library tables would then disagree about). It
+turns a silent or invalid output into a refusal, and leaves the representation question open.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

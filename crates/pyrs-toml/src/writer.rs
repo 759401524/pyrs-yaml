@@ -21,7 +21,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::Write as _;
-use pyrs_ast::ast::{CustomNode, ScalarStyle};
+use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{ParseError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -61,7 +61,12 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     };
     let last_pair = pairs.iter().rposition(|(_, v)| !is_section(v));
     let mut first_pair = true;
+    let mut unscanned = true;
     for (idx, (k, v)) in pairs.iter().enumerate() {
+        if unscanned && !k.is_identity_clean() {
+            unscanned = false;
+            reject_colliding_texts(pairs)?;
+        }
         match v {
             CustomNode::Mapping {
                 pairs: inner,
@@ -157,7 +162,12 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         let CustomNode::Mapping { pairs, .. } = tbl else {
             unreachable!("sections collected are mappings");
         };
+        let mut unscanned = true;
         for (i, (k, v)) in pairs.iter().enumerate() {
+            if unscanned && !k.is_identity_clean() {
+                unscanned = false;
+                reject_colliding_texts(pairs)?;
+            }
             if i > 0 && v.blank_before() {
                 out.push('\n');
             }
@@ -244,6 +254,33 @@ fn push_scalar_key(out: &mut String, k: &CustomNode) -> Result<(), SerializeErro
             "toml-keys-must-be-scalars",
         )),
     }
+}
+
+/// Refuse a mapping whose keys are two keys in YAML but one key in TOML.
+///
+/// TOML spells a key by its text and nothing else, so `c: 0` beside `!A c: "!"` - a document the
+/// reader accepts, because a tag is part of a key's identity in YAML - would emit `c = 0` and
+/// `c = "!"`: text this crate's own reader rejects as a duplicate key. Emitting it is not a style
+/// loss but an invalid document, so the pair is refused where it is written, exactly as null and
+/// alias values already are.
+///
+/// This is the rare path. The emission loops ask [`CustomNode::is_identity_clean`] of the keys they
+/// are already walking and reach here only once one of them is decorated - an undecorated `IndexMap`
+/// already distinguishes its keys by exactly the text TOML writes. Clearing a whole mapping with a
+/// second pass over its keys instead cost +5.27% on `to_toml_medium`, which is the floor's job.
+fn reject_colliding_texts(pairs: &NodeMap<CustomNode, CustomNode>) -> Result<(), SerializeError> {
+    let mut seen: Vec<&str> = Vec::with_capacity(pairs.len());
+    for key in pairs.keys() {
+        if let CustomNode::Scalar { value, .. } = key {
+            if seen.contains(&value.as_ref()) {
+                return Err(SerializeError::UnsupportedValue(
+                    "toml-keys-collide-without-metadata",
+                ));
+            }
+            seen.push(value.as_ref());
+        }
+    }
+    Ok(())
 }
 
 /// Whether an array element owns a note the TOML spelling has to show.
@@ -427,6 +464,7 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             Ok(())
         }
         CustomNode::Mapping { pairs, .. } => {
+            let mut unscanned = true;
             // PR #119: an inline table whose members carry interior
             // comments (a key leading note or a value trailing note)
             // must be rendered multi-line, because a `# ...` comment
@@ -443,6 +481,10 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                 out.push_str("{\n");
                 let count = pairs.len();
                 for (idx, (k, v)) in pairs.iter().enumerate() {
+                    if unscanned && !k.is_identity_clean() {
+                        unscanned = false;
+                        reject_colliding_texts(pairs)?;
+                    }
                     for c in k.leading_comments() {
                         out.push_str("  # ");
                         push_note_text(out, &c.text);
@@ -492,6 +534,10 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             } else {
                 out.push('{');
                 for (i, (k, v)) in pairs.iter().enumerate() {
+                    if unscanned && !k.is_identity_clean() {
+                        unscanned = false;
+                        reject_colliding_texts(pairs)?;
+                    }
                     if i > 0 {
                         out.push_str(", ");
                     }
@@ -1113,6 +1159,48 @@ mod tests {
         pairs.insert(CustomNode::plain_scalar("k"), CustomNode::plain_null());
         let ast = CustomNode::plain_mapping(pairs);
         assert!(to_toml(&ast).is_err());
+    }
+
+    #[test]
+    fn to_toml_refuses_keys_that_become_one_key_without_the_tag() {
+        // The shape `fmt_pbt::prop_toml_writer_is_fixed_point` drew at random on 2026-10-27 (seed
+        // `16b4a97ca3115ecd9db10190e1011152ad03ac4adc071ec35866819a861a72dd`): `c` beside `!A c`,
+        // which the reader keeps apart because a tag is part of a key's identity in YAML. TOML has
+        // no spelling for that tag, so the pair used to go out as `c = 0` and `c = "!"` - text this
+        // crate's own reader rejects, which is why the writer is asked to refuse instead.
+        let mut tagged = CustomNode::plain_scalar("c");
+        tagged.set_tag(pyrs_ast::ast::Tag::local("A"));
+        let mut pairs = pyrs_ast::ast::NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("c"), CustomNode::plain_scalar("0"));
+        pairs.insert(tagged, CustomNode::plain_scalar("!"));
+        assert_eq!(
+            to_toml(&CustomNode::plain_mapping(pairs))
+                .unwrap_err()
+                .to_string(),
+            "toml-keys-collide-without-metadata"
+        );
+
+        // Two clean keys that differ are not the writer's business: the gate that keeps the common
+        // path cheap must not become a refusal of documents that were never at risk.
+        let mut ok = pyrs_ast::ast::NodeMap::default();
+        ok.insert(CustomNode::plain_scalar("c"), CustomNode::plain_scalar("0"));
+        ok.insert(CustomNode::plain_scalar("d"), CustomNode::plain_scalar("1"));
+        assert_eq!(
+            to_toml(&CustomNode::plain_mapping(ok)).unwrap(),
+            "c = 0\nd = 1\n"
+        );
+
+        // And a tagged key whose text is unique still writes: the refusal is about the collision,
+        // not about tags, which the emitter elsewhere carries through the projection on purpose.
+        let mut alone = pyrs_ast::ast::NodeMap::default();
+        let mut keyed = CustomNode::plain_scalar("c");
+        keyed.set_tag(pyrs_ast::ast::Tag::local("A"));
+        alone.insert(keyed, CustomNode::plain_scalar("0"));
+        alone.insert(CustomNode::plain_scalar("d"), CustomNode::plain_scalar("1"));
+        assert_eq!(
+            to_toml(&CustomNode::plain_mapping(alone)).unwrap(),
+            "c = 0\nd = 1\n"
+        );
     }
 
     #[test]

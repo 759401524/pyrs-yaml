@@ -1284,6 +1284,17 @@ impl CustomNode {
         self.meta().map(NodeMeta::standalone_slice).unwrap_or(&[])
     }
 
+    /// Whether nothing about this node distinguishes it from another of the same text: no note, no
+    /// anchor, no tag.
+    ///
+    /// `#[inline]` because a projection that spells nodes by text alone asks it for every key of
+    /// every mapping it writes, and clearing those mappings with a separate pass over the keys cost
+    /// +5.27% on `to_toml_medium` - the reading the writer floor is there to catch.
+    #[inline]
+    pub fn is_identity_clean(&self) -> bool {
+        self.meta().is_none_or(NodeMeta::is_identity_clean)
+    }
+
     /// Whether this node could carry any leading note, without building the
     /// normalised view.
     ///

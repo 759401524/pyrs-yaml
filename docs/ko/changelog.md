@@ -158,6 +158,14 @@ status: new
   `test-freethreaded (3.14t)` 레그가 그것을 거부했다: 같은 작은 문서가 그 러너에서는 292,544바이트,
   이 호스트에서는 3,168바이트를 남긴다. 차이는 빌드가 메모리를 세는 방식이지 그 경로가 무엇을
   읽는지가 아니다.
+- **`to_toml`과 JSON 기록기가 YAML만 구별할 수 있는 키 쌍을 거부한다** — tag는 키 동일성의 일부라서
+  읽는 쪽은 `c: 0`과 `!A c: "!"`을 두 키로 받아들인다. 그런데 TOML과 JSON은 텍스트만으로 키를
+  가른다. 투영은 `c = 0`과 `c = "!"`를 나란히 내보냈다(이 프로젝트 자신의 TOML 읽기가 중복 키로
+  거부하는 텍스트), 그리고 `{"c": 0, "c": "!"}`는 `json.loads`가 `{'c': '!'}`로 줄어든다 — 한 항목이
+  소리 없이 사라진다. 이제 두 경로 모두 reason key `toml-keys-collide-without-metadata`와
+  `json-object-keys-collide-without-metadata`로 `YamlSerializeError`를 던진다. 검사는 "키에
+  tag·anchor· 코멘트가 달린" 맵에서만 돌기 때문에, 장식 없는 문서는 키당 불리언 하나만 지불한다.
+  발견은 property 계층의 `prop_toml_writer_is_fixed_point`가 이 형태를 무작위로 뽑아냈다.
 - **세 편집 하한이, 출하된 호출자는 실행하지 않는 스캔을 더 이상 값으로 매기지 않습니다** — `edit_*`
   세 시나리오는 `line_offsets`를 `None`으로 넘겼고, 편집 계층은그것에 답해 문서의 줄 표를 다시
   만듭니다. 그 표는 `scan_yaml(text).line_offsets`, 즉 `has_hash`·`has_amp`·`is_ascii`까지 정하는

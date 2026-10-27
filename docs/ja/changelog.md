@@ -157,6 +157,15 @@ status: new
   固定のバイト許容値で、`test-freethreaded (3.14t)` レグがそれを拒否した — あのランナーは小文書で
   292,544 バイトを保持し、このホストは 3,168 バイト。違いはビルドがメモリをどう数えるかで、経路が何
   を読むかではない。
+- **`to_toml` と JSON 書き出しが、YAML にしか区別できない鍵の組を拒否するようになりました** — tag は
+  鍵の同一性の一部なので、読み手は `c: 0` と `!A c: "!"` を二つの鍵として受け入れます。ところが TOML
+  と JSON はテキストだけで鍵を分けます。投影は `c = 0` と `c = "!"` を並べて出していました（本プロジ
+  ェクト自身の TOML 読み手が重複鍵として拒否するテキスト）、そして `{"c": 0, "c": "!"}` は
+  `json.loads` が `{'c': '!'}` に縮む、つまり一件が音もなく消えていました。両経路とも reason key
+  `toml-keys-collide-without-metadata` と `json-object-keys-collide-without-metadata` で
+  `YamlSerializeError` を投げます。検査は「鍵に tag・anchor・コメントが付いている」マップでだけ走
+  り、装飾のない文書は鍵あたり真偽値 1 個の支払いで済みます。発見したのは property 層の
+  `prop_toml_writer_is_fixed_point` がランダムにこの形を引いたことです。
 - **三条の編集下限が、出荷された呼び出し側が実行しないスキャンを値踏みしなくなりました** — 三つの
   `edit_*` シナリオは `line_offsets` に `None` を渡していて、編集層はそれに答えて文書の行テーブルを
   再構築します。そのテーブルは `scan_yaml(text).line_offsets`、すなわち `has_hash`・`has_amp`・

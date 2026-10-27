@@ -171,3 +171,29 @@ class TestTheNonSpecificTagIsReadTheSameEverywhere:
         yaml = pytest.importorskip("yaml")
         assert yaml.safe_load("- ! 12\n") == [12]
         assert pyrs_yaml.safe_load("- ! 12\n") == ["12"]
+
+
+def test_two_keys_the_reader_keeps_apart_are_refused_before_a_projection_overwrites_one():
+    # `c` and `!A c` are two keys, because a tag is part of a key's identity in YAML and the reader
+    # says so by accepting the document. A JSON object and a TOML table key by text alone, so the
+    # pair used to go out as `{"c": 0, "c": "!"}` and as `c = 0` plus `c = "!"`: the first drops one
+    # entry silently in every consumer (json.loads of that text gives {'c': '!'}), the second is text
+    # this project's own TOML reader rejects. Refusing is the only answer that cannot lose data
+    # quietly, and it is the shape the property tier drew at random on 2026-10-27.
+    document = pyrs_yaml.parse('c: 0\n!A c: "!"\n')
+    with pytest.raises(pyrs_yaml.YamlSerializeError) as toml:
+        document.to_toml()
+    assert "toml-keys-collide-without-metadata" in str(toml.value)
+    with pytest.raises(pyrs_yaml.YamlSerializeError) as obj:
+        document.to_json()
+    assert "json-object-keys-collide-without-metadata" in str(obj.value)
+
+    # A tag that does not collide still projects: the refusal is about the collision, not the tag.
+    unique = pyrs_yaml.parse('c: 0\n!A d: "!"\n')
+    assert json.loads(unique.to_json()) == {"c": 0, "d": "!"}
+    assert unique.to_toml() == 'c = 0\nd = "!"\n'
+
+    # And an anchor does not make a second key, so the reader never built this pair at all - the
+    # projection is not being asked to decide the question the reader already answered.
+    with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
+        pyrs_yaml.parse("c: 0\n&A1 c: 1\n")
