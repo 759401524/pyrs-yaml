@@ -43,8 +43,8 @@ use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, DIALECT_NOTES_YAML, MEDIUM_JSON,
-    MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, NOTE_FLOW_YAML,
-    NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
+    MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, METADATA_EDIT_YAML,
+    NOTE_FLOW_YAML, NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
     long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
@@ -127,11 +127,13 @@ enum Work {
     /// regression in path navigation or in the dirty-plan build was free to land while every floor
     /// above stayed green. One scenario per verb, so a red reading says which verb got more
     /// expensive - `move_path` is a `set_path` plus a `delete_path` and needs no floor of its own.
-    /// What these three do *not* reach is decided by the fixture, not by the verb: `MEDIUM_YAML`
-    /// carries no `#`, no `&` and no `!`, so every branch of `editing::metadata::merged_meta` that
-    /// copies a note, an anchor or a tag forward misses on all `ITERATIONS` calls, and the note
-    /// span `delete_path` would extend over an empty region. Making metadata carriage dearer moves
-    /// no floor here, and `docs/dev/quality-ledger.md` `(go)` records the measurement that says so.
+    /// What each of these reaches is decided by the fixture, not by the verb. Over `MEDIUM_YAML` the
+    /// input carries no `#`, no `&` and no `!`, so every branch of `editing::metadata::merged_meta`
+    /// that copies a note, an anchor or a tag forward misses on all `ITERATIONS` calls, and the note
+    /// span `delete_path` would extend over an empty region - which is why `edit_set_metadata` and
+    /// `edit_delete_notes` run the same two arms over `METADATA_EDIT_YAML` instead of stopping here.
+    /// `docs/dev/quality-ledger.md` `(go)` records the count that showed the branches were unreachable
+    /// and `(gw)` the line-table fix that made these two worth having.
     EditSet,
     /// `insert_path` into a block sequence: the verb that writes a new position into the text
     /// instead of replacing a node that already had one.
@@ -248,10 +250,14 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // handoff, which the YAML fixture already enters.
         ("stream_long_strings", LONG_YAML.as_str(), Work::Stream),
         // The line-delimited pair, one scenario per side. A short value keeps the record inside the
-        // first vector of the string scan, so the only difference between these two numbers is what
-        // a long body costs the scanner per record - and the per-record restart is the part neither
-        // `from_json_long_strings` (one document, one scan) nor `stream_*` (granit's scalar handoff)
-        // measures. The pair is what makes each one readable on its own.
+        // first vector of the string scan, so what separates the two is what a long body costs per
+        // record. Part of that cost is not the scanner but glibc's copy routine, whose instruction
+        // count follows the size class and the addresses the build hands it: this row measured
+        // 4,226,292 on trunk and 12,838,741 here while every engine row stayed identical to the
+        // instruction (`docs/dev/perf.md` records a third reading, 21,567,856 on the long side).
+        // What the pair prices and neither `from_json_long_strings` (one
+        // document, one scan) nor `stream_*` (granit's scalar handoff) reaches is the per-record
+        // restart. The pair is what makes each one readable on its own.
         (
             "documents_short_strings",
             SHORT_NDJSON.as_str(),
@@ -283,6 +289,19 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         ("edit_set_nested", MEDIUM_YAML, Work::EditSet),
         ("edit_insert_sequence", MEDIUM_YAML, Work::EditInsert),
         ("edit_delete_key", MEDIUM_YAML, Work::EditDelete),
+        // The same two verbs over the fixture that carries something to carry forward. These are the
+        // only floors that price `editing::metadata::merged_meta` doing work rather than answering
+        // `None` three times: `server.port` arrives with an anchor, a tag and an inline note, and an
+        // alias elsewhere in the document means dropping the anchor would emit a dangling reference.
+        // Named for the question they ask rather than for the verb, because the verb already has a
+        // floor - `edit_set_nested` and `edit_delete_key` are the same code over the bare input, so a
+        // reading that moves one of the four says whether the metadata or the text did it. Both print
+        // `touched=4000`, exactly like the bare-input floors, and that is not a contradiction: the
+        // accumulator's second term asks the root node's own comment slot, which no fixture here
+        // fills. The counter says every iteration resolved; `tests/ir_fixtures.rs` is what says the
+        // note, anchor and tag are really in the tree.
+        ("edit_set_metadata", METADATA_EDIT_YAML, Work::EditSet),
+        ("edit_delete_notes", METADATA_EDIT_YAML, Work::EditDelete),
     ]
 }
 
@@ -547,8 +566,9 @@ fn main() {
                     let mut tree = std::hint::black_box(ast.clone());
                     let unit = match work {
                         // `server.port` -> 9090: the replacement a user asks for most often. The
-                        // carry-forward of the old node's metadata runs here, but on this input its
-                        // three branches all miss - see `Work::EditSet`.
+                        // carry-forward of the old node's metadata runs here, and which of its three
+                        // branches answer depends on the fixture - none over `MEDIUM_YAML`, all three
+                        // over `METADATA_EDIT_YAML`.
                         Work::EditSet => set_path(
                             &mut tree,
                             &[

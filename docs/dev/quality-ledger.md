@@ -9747,6 +9747,82 @@ wrapper 4, a clean child 0), and `scripts/ir_gate.py` turns a non-zero run into 
 ineligible edit fails the `Instruction-count baseline` leg on the enforcing image instead of being
 swallowed as a smaller number.
 
+### (gx) Metadata carriage now has a floor of its own
+
+(2026-10-27)
+
+`(gw)` left this open on purpose: the three questions that decide what a replacement keeps, and the
+widening a deletion asks, were running for no measured price. The seam is small enough to name
+exactly. `set_path` asks `with_metadata_from` at `crates/pyrs-yaml-core/src/editing/plan.rs:218` and
+`:307`, both under `if preserve_metadata`, and that function's three questions - whose note, whose
+anchor, whose tag - are the three `or_else` arms of `merged_meta` at
+`crates/pyrs-yaml-core/src/editing/metadata.rs:116`. The shipped Python route passes
+`preserve_metadata = true` unconditionally (`crates/pyrs-yaml/src/py/document.rs:559`), so the arms
+are reached in production and by no floor: `insert_path` and `delete_path` never call them, and
+`edit_set_nested` runs over `MEDIUM_YAML`, which `(go)` counted as holding zero `#`, zero `&` and
+zero `!`. Every arm therefore took its `None` side on each of the 2,000 iterations. `delete_path`'s
+half is `extend_delete_over_comments` (`plan.rs:174`, `:604`, `:616`), which over that fixture
+widens a range by nothing.
+
+`METADATA_EDIT_YAML` is `MEDIUM_YAML`'s shape with the metadata put where the harness's hardcoded
+paths already point: `server.port` carries an anchor, a tag and an inline note, `database.replica`
+aliases that anchor so a carriage that dropped it would emit a dangling reference, and the
+`features.rate_limit` the delete verb removes sits under a standalone comment. Two scenarios reuse
+the existing `Work::EditSet` and `Work::EditDelete` arms over it, so no new verb code entered the
+harness and the pair reads as a contrast: `edit_set_nested` and `edit_set_metadata` are the same
+call over an input with and without something to carry.
+
+The fixture's premise was probed before it was asserted, because the text route and the tree route
+are not the same code. Through the shipped extension, setting `server.port` to 9090 emits
+`port: &P !int 9090  # live value` with `replica: *P` still resolving - the anchor, the tag and the
+note each crossed - and deleting `features.rate_limit` takes its standalone comment with it.
+
+**The counter cannot answer this, and it is worth saying so.** Both new scenarios print
+`touched=4000`, the same as the bare-input floors, because the accumulator's second term is
+`tree.comment().is_none()`, which asks the **root** node's slot; no fixture here puts a note on the
+root. `(gw)`'s claim that the counter shows a comment-free document was therefore too wide, and is
+corrected in that entry. What pins the premises is
+`crates/pyrs-yaml-core/tests/ir_fixtures.rs::the_metadata_edit_fixture_reaches_every_carriage_branch`: one assertion per branch, one that the edited document re-parses so the alias is not dangling, one that the note existed *before* the delete so the widening check cannot pass vacuously, and one control that reddens if `MEDIUM_YAML` is ever decorated - which would leave the pair with nothing to contrast.
+
+Two mutations, both on the fixture rather than the engine, each reddening by its own name: deleting
+the inline note takes down "edit_set_metadata lost the carried note", and deleting the standalone
+comment takes down the pre-existence assertion. Restored, the file is byte-identical (sha256
+`f29655fd32c1`) and the test passes 1/1.
+
+One trap this walked into, recorded so the next helper does not: `.gitattributes` marks both
+`bench_inputs.rs` and `benches/ir_gate.rs` `-text`, so the stored bytes *are* the measured input and
+git converts nothing in either direction. A script that read the fixture in Python's text mode and
+wrote it back with `newline="\n"` turned 399 CRLF lines into 434 LF ones - a 434/399 diff for a
+35-line addition, and a different byte sequence handed to the parser - while its own `sha256` check
+still reported "restored byte-identical", because it compared against what that same script had
+already read. Restoring the file's own convention left the diff at 35/0, `cargo fmt` kept it, and
+the 16 fixture tests plus the 814-test suite pass with the CR bytes inside the raw strings. The
+symptom to look for is a `jj diff --stat` line whose changed count is the whole file.
+
+What this does not close: the per-iteration whole-tree clone (`(go)` sized it, and an edit applied
+twice to the same tree is not the same edit), and the door guard at `plan.rs:54`, which fires only
+for `preserve_metadata: false` - a route no shipped caller takes, since `document.rs:559` passes
+`true`, so leaving it unpriced is the honest reading rather than a gap to fill.
+
+**What the refresh recorded, including what it did not predict.** Run 84 of "Ir baseline refresh" on
+the head that adds the fixture writes `edit_set_metadata` 42,838,349 and `edit_delete_notes`
+27,926,543 next to `edit_set_nested` 36,483,730, `edit_insert_sequence` 30,793,430 and
+`edit_delete_key` 30,583,022. The set pair is the contrast the fixture was built for and it reads
+that way: +6,354,619 (+17.4%) for the decorated document, which is 26 characters *smaller* than
+`MEDIUM_YAML`, so the clone of a smaller tree cannot be what raised it and the three arms of
+`merged_meta` are. The delete pair is not a contrast - 2,656,479 *less* than the bare case, because
+its document is the smaller one; what it buys is a run through `extend_delete_over_comments` that
+the bare fixture cannot enter, so a widening that stops widening reddens a floor instead of going
+unmeasured. The pair reproduces on this host's own build (+21 and +26 instructions against the
+image), so the two new floors are not carrying the term that moved the line-delimited ones. The
+same refresh also moved two floors it never touches,
+`documents_short_strings` 86,180,036 → 77,162,084 and `documents_long_strings` 128,750,092 →
+119,732,112, while the other 45 reproduce within 0.4504%: `docs/dev/perf.md` attributes that to one
+glibc copy row, measured on both hosts with every engine row identical to the instruction. The
+lesson is not that the floor moved - the refresh is the only channel that may move it - but that a
+move on the line-delimited pair is not evidence about the engine until a profile pairing names the
+rows.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

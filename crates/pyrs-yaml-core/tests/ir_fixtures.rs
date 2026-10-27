@@ -23,8 +23,9 @@ use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     DIALECT_NOTES_YAML, LONG_RECORDS, LONG_VALUE, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
-    MEDIUM_TOML, MEDIUM_YAML, NOTE_FLOW_YAML, NOTES_JSON, long_string_json, long_string_json5,
-    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
+    MEDIUM_TOML, MEDIUM_YAML, METADATA_EDIT_YAML, NOTE_FLOW_YAML, NOTES_JSON, long_string_json,
+    long_string_json5, long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml,
+    short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
@@ -435,6 +436,88 @@ fn the_edit_scripts_reach_their_paths_and_change_the_text() {
         to_yaml(&deleted),
         untouched,
         "edit_delete_key no longer changes the document, so it measures a no-op"
+    );
+}
+
+/// `edit_set_metadata` and `edit_delete_notes` exist to price work the three floors above cannot
+/// reach, so the premise is a property of the fixture and each branch needs its own answer: the note,
+/// the anchor and the tag all have to land on the replacement, and the delete has to widen over a
+/// comment that is really there. The last assertion is the control - `MEDIUM_YAML` must stay free of
+/// all three marks, because if someone decorates the shared fixture then `edit_set_nested` stops
+/// being the bare case and the pair no longer says which half moved.
+#[test]
+fn the_metadata_edit_fixture_reaches_every_carriage_branch() {
+    let base = parse(METADATA_EDIT_YAML, Schema::Core).expect("the fixture parses");
+    let untouched = to_yaml(&base);
+    assert!(
+        untouched.contains("toggled by ops"),
+        "the standalone comment `features.rate_limit` is deleted under is not in the document, so \
+         the widening check below could pass on an empty region:\n{untouched}"
+    );
+
+    let mut set = base.clone();
+    set_path(
+        &mut set,
+        &[
+            Segment::Key(Cow::Borrowed("server")),
+            Segment::Key(Cow::Borrowed("port")),
+        ],
+        CustomNode::plain_scalar("9090"),
+        true,
+        METADATA_EDIT_YAML,
+        None,
+        false,
+    )
+    .expect("edit_set_metadata: `server.port` has to resolve, or the scenario prices a refusal");
+    let carried = to_yaml(&set);
+    assert_ne!(
+        carried, untouched,
+        "edit_set_metadata no longer changes the document, so it measures a no-op"
+    );
+    for (what, needle) in [
+        ("the replacement value", "9090"),
+        ("the carried anchor", "&P"),
+        ("the carried tag", "!int"),
+        ("the carried note", "live value"),
+        ("the alias that needs that anchor", "*P"),
+    ] {
+        assert!(
+            carried.contains(needle),
+            "edit_set_metadata lost {what}: `{needle}` is missing from the emitted document:\n{carried}"
+        );
+    }
+    parse(&carried, Schema::Core)
+        .expect("the edited document re-parses, so the carried anchor left no dangling alias");
+
+    let mut deleted = base.clone();
+    delete_path(
+        &mut deleted,
+        &[
+            Segment::Key(Cow::Borrowed("features")),
+            Segment::Key(Cow::Borrowed("rate_limit")),
+        ],
+        METADATA_EDIT_YAML,
+        None,
+    )
+    .expect(
+        "edit_delete_notes: `features.rate_limit` has to resolve, or the scenario prices a \
+         refusal",
+    );
+    let widened = to_yaml(&deleted);
+    assert_ne!(
+        widened, untouched,
+        "edit_delete_notes no longer changes the document, so it measures a no-op"
+    );
+    assert!(
+        !widened.contains("toggled by ops"),
+        "the key is gone but its standalone comment survived, so `extend_delete_over_comments` \
+         widened over an empty region again:\n{widened}"
+    );
+
+    assert!(
+        !MEDIUM_YAML.contains('#') && !MEDIUM_YAML.contains('&') && !MEDIUM_YAML.contains('!'),
+        "MEDIUM_YAML now carries metadata, so `edit_set_nested` and `edit_delete_key` are no longer \
+         the bare half of the pair and the two new floors need re-reading"
     );
 }
 
