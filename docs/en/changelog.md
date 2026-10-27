@@ -378,6 +378,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The Ir gate gained two floors that price metadata carriage on an edit** — every replacement asks
+  `editing::metadata::merged_meta` whose note, whose anchor and whose tag to carry, and
+  `delete_path` asks `extend_delete_over_comments` to widen its range, yet no floor reached any of
+  it: the three `edit_*` scenarios run over `MEDIUM_YAML`, which holds zero `#`, zero `&` and zero
+  `!`, so all three branches missed on each of the 2,000 iterations. `METADATA_EDIT_YAML` is the
+  same shape with an anchored, tagged and annotated `server.port`, an alias that makes that anchor
+  load-bearing and a standalone comment above the key being deleted; `edit_set_metadata` and
+  `edit_delete_notes` run the existing two verbs over it, so making carriage dearer now moves a
+  number. `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins each answer and reddens if the shared
+  fixture is ever decorated, which would leave the pair with nothing to contrast against. The
+  enforcing image writes `edit_set_metadata` 42,838,349 against `edit_set_nested` 36,483,730 on a
+  document 26 characters *smaller*, so what separates the two is the carriage and not the clone of a
+  bigger tree. That same run moved two floors it never enters — `documents_short_strings` −10.46%
+  and `documents_long_strings` −7.00% — and the gate's own profile puts the whole move in one glibc
+  copy row and its malloc bookkeeping, with every engine row identical to the instruction on both
+  hosts: a floor is a count of what the build does, not only of what the engine does.
 - **Both lockfiles moved to the newest version their declared ranges allow** — `similar`
   3.2.0 → 3.2.1 on the Rust side, the only step left under the eight crates' MSRV 1.96 floor, and
   nine Python packages: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8,

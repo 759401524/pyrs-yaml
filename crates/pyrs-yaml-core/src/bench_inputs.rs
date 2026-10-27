@@ -147,6 +147,41 @@ list:
 tail: [1, 2]  # note on a flow value
 "#;
 
+/// `MEDIUM_YAML` cut for the edit verbs, with the metadata a replacement is asked to carry forward.
+///
+/// The three `edit_*` floors could not see any of it. `editing::metadata::merged_meta` answers three
+/// questions per replacement - whose note, whose anchor, whose tag - and on `MEDIUM_YAML` all three
+/// land on `None`, so making carriage dearer moved no floor (`(go)` records the count, `(gw)` the
+/// consequence). This input gives each branch something to copy: the node `server.port` resolves to
+/// carries an anchor, a tag and an inline note, and an alias elsewhere in the document makes that
+/// anchor load-bearing rather than decorative, so a carriage that dropped it would emit a dangling
+/// reference. `features.rate_limit` sits under a standalone comment because `delete_path` asks
+/// `extend_delete_over_comments` to widen its range, and over an empty region that widening is free.
+///
+/// The nesting and the key names are `MEDIUM_YAML`'s, not new shapes: the harness's three verbs point
+/// at `server.port`, `logging.outputs[1]` and `features.rate_limit` by name, so a fixture that renamed
+/// them would price a refusal instead of a verb.
+pub const METADATA_EDIT_YAML: &str = r#"server:
+  host: localhost
+  port: &P !int 8080  # live value
+  timeout: 30
+
+database:
+  driver: postgres
+  replica: *P
+
+logging:
+  level: info
+  outputs:
+    - stdout  # first sink
+    - file:/var/log/app.log
+
+features:
+  auth: true
+  # toggled by ops
+  rate_limit: false
+"#;
+
 /// The inbound half of the same two bridges: one document, seven comments, in the positions the JSONC
 /// and JSON5 *readers* each have to resolve. `from_jsonc_medium` and `from_json5_medium` carry
 /// comments too, but three apiece over 502 and 399 bytes, and `to_jsonc_notes`/`to_json5_notes`

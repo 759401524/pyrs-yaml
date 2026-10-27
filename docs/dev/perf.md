@@ -1558,3 +1558,36 @@ So (gk)'s residual is not closed by widening a tolerance; it is explained by whe
 are counted. What this section does settle is (gk)'s question about where the work sits: the term
 that dominated the long scenario is no longer the term that dominates it, and the rows above it now
 are the harness's own `main`, libc's `__memcpy_avx_unaligned_erms` and the parser.
+
+**The instrument moved, not the engine.** The metadata-carrying edit fixture (ledger `(gx)`) adds no
+engine code, yet the refresh of its head moved two floors that no scenario of its own touches:
+`documents_short_strings` 86,180,036 → 77,162,084 (**-10.46%**) and `documents_long_strings`
+128,750,092 → 119,732,112 (**-7.00%**). Refresh runs 82, 83 and 84 measured that one head with the
+same binary digest (`9afff7c6d6b15448`) and disagree by 0.00055% at worst, and the pair came back
+identical to the instruction in 83 and 84; the other 45 floors reproduce against the previous
+baseline within 0.4504%, `from_json5_medium` being the widest. So this is not the sampling envelope
+and not build drift either — it is the same term this section has already blamed for the host
+residual, now moving between two refreshes of one tree family.
+
+**One host, both trees, rows named.** Pinned `rustc 1.97.1` on this WSL box, `c3c3eb58` (an isolated
+clone that never saw the fixture) reads loop 65,960,291 and the fixture head reads 77,162,083 —
+**+16.98%**, the opposite sign to the image's -10.46% for the same two heads. `--profile
+documents_short_strings --top 500` on each puts the difference entirely in glibc: 29 rows are
+identical to the instruction and they include every engine function plus the harness's own `main`
+(`line_col` 13,060,000, the `LineSink` `StreamOut` 9,076,000, `stream_object` 6,240,000, `string`
+5,136,000, `main` 4,137,927, `LineTable::new` 3,446,000, `drop_glue` 3,052,000, `next_match`
+2,928,000), while all 11 differing rows are libc — `__memcpy_avx_unaligned_erms` 4,226,292 →
+12,838,741, which is 8,612,449 of the 11,201,792 gap, plus malloc bookkeeping (`_int_malloc`
++1,001,180, `_int_free_merge_chunk` +643,933, `unlink_chunk` +383,406, `_int_free` +224,409,
+`_int_free_maybe_consolidate` +215,628, `_int_realloc` +122,785). Two controls on the same host:
+two bytes added inside the new fixture's text leave the scenario at 77,162,083 with every row
+unchanged, so no small edit moves it; and run 84's own image table prints that same 12,838,741 copy
+row, so on this build the two hosts sit five instructions apart.
+
+**How to read those two floors now.** Their level is the engine's line walk *plus* the copy work
+glibc reports for the buffers this build hands it, and the second term is a property of the build —
+`GLIBC_TUNABLES` pins which routine families the CPU offers, and nothing pins the addresses and size
+classes the route is given. So a move on the line-delimited pair is not evidence about the engine
+until a profile pairing says which rows moved; the profile is the check, not the percentage. The
+floors themselves were re-derived on the enforcing image, as everywhere in this file, and
+`QUALITY_MATRIX.md` §2 quotes the new pair (its long/short ratio is 1.55x, was 1.49x).

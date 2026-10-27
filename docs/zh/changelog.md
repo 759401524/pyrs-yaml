@@ -289,6 +289,18 @@ status: new
 
 #### 变更
 
+- **Ir 门禁新增两条为编辑携带元数据定价的地板** — 每次替换都要问 `editing::metadata::merged_meta` 该
+  带谁的注释、哪个锚点、哪个标签，`delete_path` 还要问 `extend_delete_over_comments` 把范围放宽到
+  哪；可这些分支没有一条地板量到过：三个 `edit_*` 场景跑在 `MEDIUM_YAML` 上，那里零个 `#`、零个
+  `&`、零个 `!`，所以三条分支在 2,000 轮里每次都落空。`METADATA_EDIT_YAML` 是同一个形状，只是
+  `server.port` 带锚点、标签和注释，另一处的别名让这个锚点必须留着，被删的键上方还有一条独立注释；
+  `edit_set_metadata` 与 `edit_delete_notes` 用现有两个动词跑它，于是把携带做贵就会动一个数。
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` 钉住每个答案，并在共享夹具被添上元数据时判红—— 那会让
+  这一对失去对照。执法镜像写下 `edit_set_metadata` 42,838,349，与 `edit_set_nested` 36,483,730 并
+  列，而带元数据的那份文档还小 26 个字符：把两个数拉开的是携带本身，不是更大那棵树的克隆。同一次刷新
+  还动了它根本没进入的两条地板——`documents_short_strings` −10.46%、`documents_long_strings` −7.00%——
+  门禁自带的剖析把这整个移动归到 glibc 的拷贝行与其 malloc 簿记，而两台机器上每一个引擎行的指令数逐
+  条相同。地板数的是这次构建做了多少，不只是引擎做了多少。
 - **两个锁文件都升到各自声明区间允许的最新版本** — Rust 侧只剩 `similar` 3.2.0 → 3.2.1 这一步，
   因为八个 crate 声明的 MSRV 1.96 地板挡住了其余更新；Python 侧共 9 个包：`zensical`
   0.0.71 → 0.0.72、`mkdocstrings` 1.0.7 → 1.0.8、`mkdocstrings-python` 2.0.9 → 2.0.10、
