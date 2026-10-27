@@ -9676,6 +9676,77 @@ lines, and the run refuses the commit while `rumdl fmt` still rewrites the worki
 prevents the commit, not the rewrite, which is the honest wording of what a format-priority check
 can do. `docs-gates` runs the flag directly, where no formatter pass exists to hide the shape.
 
+### (gw) The edit floors priced a full-text scan the shipped caller does not run
+
+(2026-10-27)
+
+`(go)` left two things for their own changes rather than naming them as holes. This is the first:
+the three `edit_*` scenarios handed `line_offsets` as `None`, and the editing layer answers `None`
+by rebuilding the document's line table. That table is not a small thing - `compute_line_offsets` is
+`scan_yaml(text).line_offsets`, one full pass over the input that also decides `has_hash`, `has_amp`
+and `is_ascii`. Re-measured on the baseline's own `rustc 1.97.1`, the scan costs **10,104,000
+counted instructions in every one of the three loops and the three counts are byte-identical**,
+which is possible only because the work cannot depend on the edit: 20.92% of `edit_set_nested`'s
+48,288,804 instruction loop, 23.80% of `edit_insert_sequence`'s 42,462,446 and 23.83% of
+`edit_delete_key`'s 42,392,085. Read these as shares of a local attribution, not as floors - the
+floors are the enforcing image's numbers (`(gk)`).
+
+The shipped route is the other one. `apply_metadata_edit` ensures a splice and passes
+`Splice::line_offsets()`, which builds the table once and memoizes it, so a caller editing a parsed
+document pays the scan for the document, not for the edit. The harness was pricing the tree-only
+route while its fixture - parse the document, then edit it - describes the parsed-document route. So
+the harness now computes the table beside the parse, hands `Some(&offsets)` to all three verbs, and
+lets `--setup-only` subtract it exactly as it subtracts the parse: the setup branch black-boxes it
+before returning, so nothing of the scan is left in the counted loop.
+
+What the three floors therefore price is "the first edit through a parsed document, plus the clone
+the harness must build". The clone stays - `(go)` sized it at 13.44% + 1.88% `CustomNode::clone`,
+8.45% `NodeMeta::clone` and three `drop_glue` rows, and an edit applied twice to the same tree is
+not the same edit, so removing it would mean either editing a tree twice or re-parsing per
+iteration, and both change what the scenario asserts. That half is still open.
+
+A harness change is a floor change, and the lower edge is a verdict too: on this host, on the
+baseline's own `rustc 1.97.1`, the three read **−24.45%** (`edit_set_nested` 48,288,771 →
+36,479,860), **−27.49%** (`edit_insert_sequence` 42,462,454 → 30,789,523) and **−27.87%**
+(`edit_delete_key` 42,392,088 → 30,579,126), each refused as `FLOOR_STALE` with three samples spread
+0.000%. The excess over the scan's own 20.9% share is that `Vec<usize>`'s allocation, append and
+free. The remedy is the refresh job rather than a local `--update`, which would move the line to
+this host. **Refresh run 81** on `ubuntu24, image 20261023.334.3` rewrote all forty-seven floors on
+this head and named nothing in `accept_drift`, because all three moves are toward less work: the
+committed floors are now **36,483,718**, **30,793,506** and **30,583,030**, which read −24.45%,
+−27.48% and −27.86% against the floors they replaced, each within **0.013%** of the host reading
+above. Of the other forty-four scenarios only `documents_short_strings` (+0.06%) and
+`documents_long_strings` (+0.04%) moved at all past 0.005%, both inside the 0.5% tolerance, and the
+engine harness's binary digest moved (`23c8626534a59962` to `6a8d700b8d8f8dfc`) while the binding's
+did not (`7c41f43104ee8b10`) - the same signature `(go)` records for a scenario change confined to
+one side.
+
+Reachability is a printed number here, not an assumption. Running the harness binary itself gives
+`mode=full iterations=2000 touched=4000` for each of the three, and the accumulator adds `eligible`
+to `comment().is_none()` per iteration, so 4000 means every iteration resolved and produced an
+applicable dirty unit. The second half must be read narrowly: `tree.comment()` asks the **root**
+node's own slot, so the counter cannot see a note parked on an inner node and does not mean "no
+comment anywhere". What shows the absence in this fixture is the text itself - `MEDIUM_YAML` holds
+zero `#`, zero `&` and zero `!`, which `(go)` counted - and that is the basis for the half this
+entry leaves open: the note carry-forward cannot run over an input that carries none, so these
+floors price the *decision* about metadata and never its work. Closing that needs a new fixture and
+new scenarios, not decorating `MEDIUM_YAML`, which `parse_medium`, the `serialize_*` rows and the
+dialect bridge rows all read. `--setup-only` prints `touched=0`, which is what makes the subtraction
+exact.
+
+Printing that counter was not enough, and the reason is the one this harness already refuses
+elsewhere: `eligible` was summed for the line to the human and never checked, so a change that made
+every iteration ineligible would have reported a smaller number and passed as a speedup. The loop
+now exits 4 naming the iteration when a resolved edit yields an ineligible unit - `exit 3` already
+refused a script that stopped resolving - so the floor's premise, that it measures the production of
+an applicable dirty unit, is enforced rather than observed.
+
+The guard reaches the merge verdict, which is the part worth checking rather than assuming:
+`valgrind --tool=callgrind` propagates the child's status (measured: a child exiting 4 gives the
+wrapper 4, a clean child 0), and `scripts/ir_gate.py` turns a non-zero run into `sys.exit`, so an
+ineligible edit fails the `Instruction-count baseline` leg on the enforcing image instead of being
+swallowed as a smaller number.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

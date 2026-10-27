@@ -131,6 +131,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The edit floors no longer price a scan the shipped caller does not run** — the three `edit_*`
+  scenarios handed the editing layer `line_offsets: None`, and that layer answers `None` by
+  rebuilding the document's line table, which is `scan_yaml(text).line_offsets`: a full pass over
+  the input that also decides `has_hash`, `has_amp` and `is_ascii`. Measured on the baseline's own
+  `rustc 1.97.1` the scan spent 10,104,000 counted instructions in every one of the three loops, and
+  the three counts are byte-identical because the work cannot depend on the edit. The binding
+  memoizes that table per document (`Splice::line_offsets`), so the harness was pricing the
+  tree-only route while its fixture parses a document and then edits it. The harness now builds the
+  table beside the parse, hands `Some(&offsets)` to all three verbs, and lets `--setup-only`
+  subtract it exactly as it subtracts the parse. Refresh run 81 on the enforcing image read −24.45%
+  (`edit_set_nested` 48,288,771 → 36,483,718), −27.48% (`edit_insert_sequence` 42,462,454 →
+  30,793,506) and −27.86% (`edit_delete_key` 42,392,088 → 30,583,030); the excess over the scan's
+  own 20.9% share is that `Vec`'s allocation, append and free traffic. The floors are that
+  run's numbers, not a local re-tune, and what the three now assert is the first edit
+  through a parsed document plus the per-iteration tree clone — the clone stays, because an edit
+  applied twice to the same tree is not the same edit.
 - **A note inside a complex key can no longer be lifted out of it** — `hoist_marker_note` writes a
   standalone note owned by a node inside a `? … :` block above the outermost `?`, because that is
   where a re-read reports it. Two keys that differed only by such a note therefore emitted as two
