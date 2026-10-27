@@ -97,6 +97,12 @@ nested:
 /// those five floors and the note machinery that change guards priced nothing. Every flow-marked
 /// container makes the parent and the child ask the same question, so nesting (`nest`, `nest2`) is
 /// what turns that walk into a measured cost rather than a constant.
+///
+/// It is the note fixture for the readers too. `parse_notes` and `stream_notes` run over these same
+/// bytes, which is where the reader's half of the note machinery - the `comment.rs` scan, the
+/// placement decision and the pending-note carriage - finally has a number: the five older `parse_*`
+/// rows and both `stream_*` rows read documents holding no `#` at all. One fixture for both sides, so
+/// the pair's difference is the route and not the text.
 pub const NOTE_FLOW_YAML: &str = r#"
 kept: [1, {b: 2}]  # fits
 nest: {a: {b: {c: 3}, d: [4, 5]}}

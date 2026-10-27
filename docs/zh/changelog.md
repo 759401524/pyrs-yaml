@@ -289,6 +289,20 @@ status: new
 
 #### 变更
 
+- **Ir 门禁为两条 YAML 读路径新增按注释定价的地板，此前只有写路径有** — `serialize_note_flow`
+  给写器必须发出的那条注释定价，可没有任何地板给读器解析一条注释定价：五条 `parse_*` 场景读
+  `SMALL_YAML`、`MEDIUM_YAML`、`BLOCK_STYLE_YAML`、`BLOCK_SCALAR_YAML`、`ANCHOR_YAML` 与
+  `MERGE_INLINE_YAML`，两条读文档的 `stream_*` 行读 `MEDIUM_YAML` 与生成的长记录文档，这些文本
+  里一个 `#` 也没有，于是 `parser/yaml/comment.rs` 的字节扫描、接收机对“这条注释归哪个节点”的
+  判定和待归位槽的携带，每条地板都在最便宜的答案上跑满 2,000 次迭代。`parse_notes` 701,017,318 与
+  `stream_notes` 579,067,612 读的就是写器那一行早已在写的同一个夹具，于是这两个新数字之间的差别
+  只有路线，没有别的；`crates/pyrs-yaml-core/tests/ir_fixtures.rs` 钉住两个读器各见十一条注释，
+  并钉住旧行所用的每个夹具一条也见不到。把同样 434 字节里的每一段注释换成等长的空格——两个锚点、
+  两个标签、每一对花括号都不动——十一条注释在建树路线上贵出 +16.30 %，在事件路线上贵出 +19.37 %，
+  其中 71 % 与 74 % 落在被锁定的解析器里（行级归因见 `docs/dev/perf.md`）。写出这一对地板的刷新
+  起初自己拒绝了一次：`pyrs-json` 一行未改、绑定二进制的摘要也没变，`from_json5_medium` 却
+  +0.55 %——动它的是场景集从四十九涨到五十一，于是这个名字被写进 `accept_drift`，
+  `tolerance_hint` 保持 0.5 %。
 - **Ir 门禁新增两条为编辑携带元数据定价的地板** — 每次替换都要问 `editing::metadata::merged_meta` 该
   带谁的注释、哪个锚点、哪个标签，`delete_path` 还要问 `extend_delete_over_comments` 把范围放宽到
   哪；可这些分支没有一条地板量到过：三个 `edit_*` 场景跑在 `MEDIUM_YAML` 上，那里零个 `#`、零个

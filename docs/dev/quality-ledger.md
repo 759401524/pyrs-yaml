@@ -9847,6 +9847,59 @@ What this does not claim: that the choice is right for every caller. The exit cr
 so that *closing* the residual - reproducing the blank at all eight positions - reddens the
 characterization test and forces the entry, the marker and the two documents out in the same change.
 
+### (gz) The comment scan had a floor on the way out and none on the way in
+
+(2026-10-27)
+
+`(go)`'s sibling gap, on the other side of the serializer. `serialize_note_flow` and the four
+dialect `*_notes` rows price what the writer does with a note; the reader's half of the same
+machinery had no row at all. Measured over `crates/pyrs-yaml-core/src/bench_inputs.rs` on this head:
+the five `parse_*` scenarios read `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`,
+`BLOCK_SCALAR_YAML`, `ANCHOR_YAML` and `MERGE_INLINE_YAML`, and the two document-carrying `stream_*`
+rows read `MEDIUM_YAML` and `long_string_yaml()` - text that holds zero `#` in every case,
+`long_value()` being `a..z` only. So `parser/yaml/comment.rs`'s byte scan, the receiver's decision
+about which node owns an incoming note and the pending-slot carriage ran 2,000 times per iteration
+on the cheapest possible answer: no note anywhere.
+
+`NOTE_FLOW_YAML` is the fixture `serialize_note_flow` already writes, so the pair costs the suite no
+new document and no new harness verb - `Work::Parse` and `Work::Stream` already existed, and the two
+rows differ only in which of the two readers resolves the same eleven notes.
+`tests/ir_fixtures.rs` ::`the_note_flow_fixture_reaches_both_readers_and_the_other_read_fixtures_do_not` pins the premise from both ends: eleven `#` runs in the text, eleven `StreamEventType::Comment` events through `parse_stream`, equal emission counts through the tree route and the event route, the document a fixed point, and zero for each of the six fixtures the existing rows use - so if one of those is ever decorated, the contrast that makes these two rows mean anything goes red rather than quietly eroding.
+
+Refresh run 86 wrote the floors on this head: `parse_notes` 701,017,318 and `stream_notes`
+579,067,612, `rustc 1.97.1` on `github-runner ubuntu24, image 20261023.334.3`, engine harness binary
+`bd86d040450fa543` (moved, as it must - the harness is what changed) and binding binary
+`7c41f43104ee8b10` (unchanged from the file it replaced). Run 85 refused to write that file at
+all: "`--update` would move 1 scenario(s) past the 0.5% line: `from_json5_medium`: 89,218,453 ->
+89,706,969 (+0.55%)". Nothing in `pyrs-json` changed on this branch and the binding binary's digest
+is the one the replaced file already recorded, so the move belongs to the set growing, not to the
+code - the same effect `AGENTS.md` names for PR #599, where taking the set from 22 to 26 put
+`stream_medium` at +0.01% then +0.63% with identical engine code. The name went into `accept_drift`;
+`tolerance_hint` stayed at 0.5 %. Run 86's file then moves that one floor past the line upward
+(+0.547 %) and one past it downward, where the gate warns only past 2 % and fails past 5 %
+(`from_json_medium` -1.294 %), and holds the other forty-seven shared scenarios inside ±0.480 % -
+`parse_block` +0.444 % and `from_jsonc_medium` +0.425 % being the two closest behind it. Four floors
+in that band moving at all, in a run whose engine sources are byte-identical to the ones they
+describe, is the reason the refresh is dispatched rather than typed.
+
+What a floor cannot say, the control said. `parse_notes` sits 2.18x `parse_medium`, but those two
+fixtures differ in the notes *and* in the flow spelling, so that ratio names neither. Blanking each
+note run from the `#` to the end of its line with the same number of spaces leaves a 434-byte,
+29-line document with both anchors, both tags and every brace untouched, and measures the notes
+alone: 98,408,046 loop instructions over 2,000 reads (+16.30 %, 4,473 a note) on the tree route and
+93,952,438 (+19.37 %, 4,271 a note) on the event route, of which `granit_parser`'s rows carry 71 %
+and 74 %. `docs/dev/perf.md` carries the row-level attribution. One method note worth keeping: the
+first pass subtracted across two `--top 40` tables and reported a row the *control* supposedly ran
+alone - a function can leave a truncated table without leaving the code path, so the cut produced
+the finding. At `--top 500` the tables are complete and the decomposition closes to 28 instructions.
+
+What this does not claim: that the read path got faster or slower. This change touches no parser, no
+receiver and no serializer source - the only `src/` file in its diff is the fixture module the two
+harnesses read their documents from - so the pair is a price that did not exist before, not a price
+that moved. And the control's numbers are shares, not levels: the binary holding it carries two
+scenarios the committed set does not, which is why its `parse_notes` reads 702,021,345 where the
+artifact records 701,017,318 - the same set-growth effect, one more time, in the other direction.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

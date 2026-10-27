@@ -368,6 +368,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The two YAML readers now carry a floor for a note, not only the writer** — `serialize_note_flow`
+  prices what the writer does with a note it has to emit, but nothing priced what a reader does to
+  resolve one: the five `parse_*` scenarios read `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`,
+  `BLOCK_SCALAR_YAML`, `ANCHOR_YAML` and `MERGE_INLINE_YAML` and the two document-carrying
+  `stream_*` rows read `MEDIUM_YAML` and the generated long-record document, all of which hold zero
+  `#`, so the byte scan in `parser/yaml/comment.rs`, the receiver's decision about which node owns
+  an incoming note and the pending-slot carriage ran 2,000 iterations per floor on the cheapest
+  answer available. `parse_notes` 701,017,318 and `stream_notes` 579,067,612 read the one fixture
+  the writer row already writes, so what separates the two new numbers is the route and nothing
+  else; `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins eleven notes through both readers and zero
+  through each fixture the older rows use. Against the same 434 bytes with every note run blanked to
+  the same number of spaces — both anchors, both tags and every brace untouched — the eleven notes
+  cost +16.30 % on the tree route and +19.37 % on the event route, 71 % and 74 % of it inside the
+  locked parser (`docs/dev/perf.md` carries the row-level attribution). The refresh that wrote the
+  pair refused itself first, at `from_json5_medium` +0.55 % with `pyrs-json` untouched and the
+  binding binary's digest unchanged: taking the set from forty-nine scenarios to fifty-one is what
+  moved it, so the name went into `accept_drift` and `tolerance_hint` stayed at 0.5 %.
 - **The Ir gate gained two floors that price metadata carriage on an edit** — every replacement asks
   `editing::metadata::merged_meta` whose note, whose anchor and whose tag to carry, and
   `delete_path` asks `extend_delete_over_comments` to widen its range, yet no floor reached any of
