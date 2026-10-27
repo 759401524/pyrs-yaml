@@ -378,3 +378,58 @@ def test_the_pinned_versions_and_the_plan_agree() -> None:
     assert pinned == [declared_versions()[0]], (
         f"the fan-in runs on {pinned}; the declared floor is {declared_versions()[0]}"
     )
+
+
+TIER_PAGES = (
+    "docs/en/contributing/tests.md",
+    "docs/ja/contributing/tests.md",
+    "docs/ko/contributing/tests.md",
+)
+
+
+def planned_tier() -> tuple:
+    """(interpreters, OSes, cells) the pull-request plan actually builds for the suite."""
+    suite = [leg for leg in pr_plan() if leg["suite"]]
+    return (
+        len({leg["python-version"] for leg in suite}),
+        len({leg["os"] for leg in suite}),
+        len(suite),
+    )
+
+
+def stated_tier(line: str) -> tuple:
+    """The three integers a page's Python-tier bullet states, in that order."""
+    numbers = tuple(int(text) for text in re.findall(r"\d+", line))
+    assert len(numbers) == 3, f"expected (interpreters, OSes, cells), read {numbers!r} from {line!r}"
+    return numbers
+
+
+def test_every_page_that_states_the_pytest_tier_states_the_planned_width():
+    """No page keeps a width of its own for a decision the planner makes.
+
+    Three pages still said "4 Python versions x 3 OSes" after the declared floor reached 8, and
+    `QUALITY_MATRIX.md` said 7 - hand-typed digits that rotted on two different axes, each invisible
+    to the other. The cell count is stated too because the tier is not a cross product: every
+    interpreter runs on one OS and only the boundary interpreters run everywhere, so multiplying the
+    first two factors describes legs that do not exist.
+    """
+    expected = planned_tier()
+    for name in TIER_PAGES:
+        text = (REPO_ROOT / name).read_text(encoding="utf-8")
+        bullet = next(
+            (line for line in text.splitlines() if line.startswith("- **Python**") and "pytest tests/" in line),
+            None,
+        )
+        assert bullet is not None, f"{name} no longer states the pytest tier where this can read it"
+        assert stated_tier(bullet) == expected, f"{name} reads {stated_tier(bullet)}, the plan builds {expected}"
+
+
+def test_a_stale_or_reworded_tier_bullet_is_named():
+    """Both failure directions: a wrong digit and a sentence that hides the numbers."""
+    expected = planned_tier()
+    stale = f"- **Python**: on {expected[0] - 1} Python versions x {expected[1]} OSes, {expected[2]} cells"
+    assert stated_tier(stale) != expected
+
+    reworded = "- **Python**: pytest across the supported interpreters on every OS"
+    with pytest.raises(AssertionError, match="expected \\(interpreters, OSes, cells\\)"):
+        stated_tier(reworded)

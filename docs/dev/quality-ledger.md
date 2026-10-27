@@ -10013,6 +10013,38 @@ structural
 resident-set number has no replacement here and why the two instruments are named separately instead
 of being described as one guarantee.
 
+### (hd) The tier's width was remembered by three pages and disagreed twice
+
+(2026-10-27)
+
+Three questions, one fact. `docs/{en,ja,ko}/contributing/tests.md` said the blocking Python tier
+runs "4 Python versions x 3 OSes", `QUALITY_MATRIX.md` said "3 OSes x 7 Python versions", and the
+declared interpreter floor in `pyproject.toml` is eight classifiers wide (3.8 through 3.15). Neither
+page was wrong in the same way: one had not heard that the floor moved twice, the other had
+multiplied two factors that the planner deliberately does not multiply.
+
+The tier is not a cross product. `scripts/ci_matrix_plan.py` builds 12 pull-request legs - every
+declared interpreter on ubuntu, and only the first and last interpreter on macOS and Windows -
+because the module's own measurements price a leg at 138 s on ubuntu against 186 s on macOS and 251
+s on Windows for the same assertions. So the honest sentence has three numbers, not two: 3 OSes, 8
+interpreters, 12 cells. Multiplying the first two describes 24 legs, 12 of which are never
+scheduled, and a reader who ran the full grid locally would be timing a plan CI does not run.
+
+What landed: `quality_matrix.py` gained a `pytest_tier()` probe that loads the planner the way it
+loads `check_changelog_mirrors.py` - by path, then asks it for the pull-request plan - and a
+`ROW_RULES` entry that rewrites the sentence, so `--write-rows` now maintains it and `--check-rows`
+judges it. The pattern accepts both the old and the new spelling, because a rule that only fits the
+prose it replaces would report "no sentence matches" forever after doing its job once. The three
+docs pages are judged by `tests/test_ci_matrix_plan.py`: it reads the integers out of each page's
+Python bullet and compares them to the same plan, refuses a bullet that no longer carries exactly
+three of them, and carries its own control for a stale digit and a reworded sentence. That second
+half matters more than the first: a comparison that silently finds nothing is the failure mode this
+file keeps being asked about.
+
+What this does not claim: that 12 cells is the only width. The scheduled event builds the full grid,
+so a sentence about the nightly tier would read differently on purpose - this rule is pinned to the
+pull-request plan, the one the merge verdict consumes.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

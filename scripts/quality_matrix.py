@@ -958,6 +958,30 @@ def python_test_functions() -> int:
     )
 
 
+def pytest_tier(root: Path | None = None) -> dict:
+    """How wide the blocking pytest tier actually is, asked of the module that builds the legs.
+
+    The page wrote both factors by hand - 3 OSes and 7 Python versions - and they rotted on two
+    different axes: the declared interpreter floor moved, and the tier is not a cross product at all,
+    because `ci_matrix_plan.py` runs every interpreter on one OS and only the boundary interpreters
+    everywhere, so multiplying them describes legs no workflow schedules. Asking the planner is the
+    only reading that cannot disagree with the file that builds the legs.
+    """
+    root = root or REPO
+    path = root / "scripts" / "ci_matrix_plan.py"
+    spec = importlib.util.spec_from_file_location("ci_matrix_plan", path)
+    assert spec is not None and spec.loader is not None, f"cannot load {path}"
+    planner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(planner)
+    versions = planner.supported_versions(read(root / "pyproject.toml"))
+    legs = [leg for leg in planner.plan("pull_request", versions) if leg["suite"]]
+    return {
+        "interpreters": len({leg["python-version"] for leg in legs}),
+        "oses": len({leg["os"] for leg in legs}),
+        "cells": len(legs),
+    }
+
+
 def _closing_brace(text: str, open_index: int) -> int:
     """The index of the brace that closes the one at `open_index`, or the end of the text."""
     depth = 0
@@ -1286,6 +1310,7 @@ def measure() -> dict:
     seeds = fuzz_seed_inventory()
     rust_tests = rust_test_count()
     python_tests = python_test_functions()
+    tier = pytest_tier()
 
     # The hook set runs in `ci.yml` because the merge verdict only consumes the jobs of the workflow
     # it lives in; reading the skip list from anywhere else would measure a gate the merge cannot see.
@@ -1570,6 +1595,9 @@ def measure() -> dict:
         "fuzz_former_crash_count": seeds["former_crash"],
         "rust_test_count": rust_tests,
         "python_test_function_count": python_tests,
+        "pytest_tier_interpreters": tier["interpreters"],
+        "pytest_tier_oses": tier["oses"],
+        "pytest_tier_cells": tier["cells"],
         "prek_hooks": hooks,
         "hooks_skipped_in_ci": skipped,
         "check_scripts": scripts,
@@ -1629,6 +1657,16 @@ ROW_RULES = (
         re.compile(r"^(\| unit / integration \| )([\d,]+) Rust `#\[test\]`, ([\d,]+) Python test functions( \|)", re.M),
         lambda data: "{:,} Rust `#[test]`, {:,} Python test functions".format(
             data["rust_test_count"], data["python_test_function_count"]
+        ),
+    ),
+    (
+        "blocking pytest tier sentence",
+        # Both spellings are matched so the rule can repair the stale hand-typed one and still find
+        # the sentence after its own rewrite - a pattern that only fits the old prose would report
+        # "no sentence matches" forever once it had done its job.
+        re.compile(r"(pytest on )(\d+ OSes × \d+ (?:Python versions|interpreters in \d+ cells))(,)"),  # noqa: RUF001 - the page's own glyph
+        lambda data: "{:d} OSes × {:d} interpreters in {:d} cells".format(  # noqa: RUF001 - ditto
+            data["pytest_tier_oses"], data["pytest_tier_interpreters"], data["pytest_tier_cells"]
         ),
     ),
     (
