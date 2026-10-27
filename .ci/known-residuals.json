@@ -30,6 +30,14 @@
       "opened": "2026-10-19",
       "exit": "set_comment(..., standalone=False) on a mapping or block sequence keeps the note on the container, at a position the reader reports back from, or refuses the call; the silent handoff to the last child ends",
       "why": "the writer parks a container's inline note on the last child's line, so the re-read gives the note a different owner; the edit fuzz tier withholds the ownership claim (ledger (ei), #113)"
+    },
+    {
+      "id": "engine:entry-blank-lines",
+      "repro": "tests/test_roundtrip.py::TestBlankLineFidelity::test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point",
+      "tier": "rust-core",
+      "opened": "2026-10-27",
+      "exit": "parse('a: 1' + blank + 'b: 2').to_yaml() reproduces the blank at each of the eight positions the repro walks (root, nested key, sequence item, before a note, consecutive, after a block scalar, leading, trailing) instead of emitting the compact form",
+      "why": "the reader records no empty line between entries and the writer emits one line break per item, so there is no slot a blank could be restored from; measured 2026-10-27 the edit route drops it too, so no shipped path keeps it. Values, key order, anchors and notes are lossless and the output is already a fixed point, which makes this layout rather than semantics. Filling the slot means per-container writer state, and the Ir gate prices what that costs on the serialize floors (docs/dev/perf.md), so it is registered and declined for now rather than silently absorbed"
     }
   ]
 }

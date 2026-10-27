@@ -39,6 +39,15 @@ forms are not reproducible.
   (`test_a_note_on_a_key_line_inside_a_section_body_survives`): the inline-table spelling settles in
   one round, the array spelling expands and moves the note onto the last element's line, settling
   there — a relocation, never a loss.
+- **Blank lines between entries.** The reader records no empty line and the writer emits one break
+  per item, so `a: 1` + blank + `b: 2` round-trips to the compact two lines — at every position
+  measured (root, nested key, sequence item, before a standalone note, consecutive, after a block
+  scalar, leading, trailing) and through the edit route too. Values, key order, anchors and notes
+  stay lossless and the output is already a fixed point, so what is unfaithful is a layout the node
+  model has no slot for, not a value. Registered as `engine:entry-blank-lines` and declined: giving
+  every container a "blank lines before me" field is per-container writer state, and the Ir floors
+  price that on every serialize scenario (`docs/dev/perf.md`). Pinned by
+  `TestBlankLineFidelity.test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point`.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful
