@@ -9954,6 +9954,65 @@ the same code without std from the start, and that is what the first step of the
 was untested was the *behaviour* under that configuration for three of the six crates, which is
 precisely the thing the second step existed to provide and did not.
 
+### (hc) The guard that bounded streaming memory skipped forever
+
+(2026-10-27)
+
+`tests/test_load_stream.py::test_memory_bound_load_stream_file` was the defence behind the claim
+that `load_stream_file` does not hold the document: 1,000,000 input lines, an RSS delta under 128
+MiB. It opened with `pytest.importorskip("psutil", reason="psutil provides RSS measurement")`, and
+psutil is declared nowhere - not in any `pyproject.toml` group, not in `.ci/requirements-test.txt` -
+so on every interpreter of every leg the run reported a skip. A guard that always skips is worse
+than no guard, because in the matrix it is indistinguishable from coverage. The sibling assertion in
+the same file (`f.read_calls < 100`) did run, which is why the streaming path itself was walked and
+only its memory half was dark.
+
+The replacement is a scaling invariant on the stdlib `tracemalloc`, which needs no dependency and no
+million-line fixture: consume a 2,000-line document and a 200,000-line one through the same route
+and the traced footprint left behind must not depend on the size. Measured on this host: 3,168 bytes
+at both sizes under 3.12 and 3,200 under 3.14t, in both cases 0 bytes apart. The control in the same
+file applies the same predicate to a reader that does accumulate - holding every event - and it
+grows by 199,854,440 bytes on 3.12 (1,995,530 at 1x, 201,849,970 at 100x) and 242,617,688 on 3.14t
+(2,423,458 and 245,041,146), so the predicate separates the two shapes by three orders of magnitude
+instead of accepting any number. A ceiling at a single size could not have made that separation: 200
+MB is a large number either way, and 0 bytes apart is the claim.
+
+The bound is then scaled by that reference rather than by a constant: the streaming walk may add at
+most 1/100 of what the buffering walk adds to itself over the same two documents, which across the
+400,006 events the 100x fixture emits is **5.0** bytes per event on 3.12 and **6.1** on 3.14t, and a
+second assertion pins that conversion so the fraction cannot go slack unnoticed. That shape is not a
+preference. The first version asserted an absolute 262,144-byte allowance instead, taken from a
+Windows reading, and the `test-freethreaded (3.14t)` leg on ubuntu-latest rejected it: the same 1x
+document left **292,544** traced bytes there against 3,168 here - a difference in how that build
+counts memory, not in what the route reads. An allowance copied from one host is a claim about that
+host; the growth comparison is the claim about `load_stream_file`.
+
+Where the fraction goes slack, the ratio assertion cannot say so by itself: the streaming delta is
+0, and `0 <= allowance` holds for any positive allowance. Measured 2026-10-27 with four mutations of
+the two constants, each naming the assertion it reddens and the file restored byte-exactly
+(`72d9da28`): `_GROWTH_SHARE = 4` and `_PER_EVENT_CEILING = 3` both fail at the tightness pin, which
+is the only thing that notices a loosened fraction; `_GROWTH_SHARE = 1` fails at the pin and at the
+control's own `growth > growth // share`; and replacing `100 * _SMALL_LINES` with `_SMALL_LINES`
+fails at the pairness premise and at the control, which then reads a *negative* growth. So the pin
+is load-bearing, not decoration, and the control is what keeps the reference honest.
+
+Why the instrument is `tracemalloc` and not the repository's own allocation gate: the engine crate
+carries a `#[global_allocator]` wrapper with committed `(allocations, bytes)` ceilings
+(`crates/pyrs-yaml-core/tests/alloc_gate.rs`), and it would measure the Rust side exactly. But the
+route under test is binding-side (`crates/pyrs-yaml/src/py/yaml_instance.rs` opens the file and
+hands `ChunkCharIter` a `BufReader`), and `crates/pyrs-yaml/Cargo.toml:20` sets `test = false` on
+purpose - the decoupling gate reads that declaration as the required state for the extension crate,
+so an allocator ceiling there is not available without undoing a settled decision.
+
+What this does not claim, stated rather than left implicit: `tracemalloc` counts the interpreter's
+domain, so the engine's read buffer is outside the measurement. The bound on that buffer is
+structural
+
+- one `DEFAULT_CHUNK_SIZE` window, reused - and for the file-object route it is measured by the
+`read_calls` guard beside this one; for the path route nothing measures it, which is why the old
+resident-set number has no replacement here and why the two instruments are named separately instead
+of being described as one guarantee.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
