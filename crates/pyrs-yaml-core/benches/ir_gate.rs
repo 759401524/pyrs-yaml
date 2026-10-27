@@ -523,16 +523,23 @@ fn main() {
             // no iteration at all, so what it subtracts is the parse and nothing else. The tree is
             // cloned per iteration because an edit applied twice to the same tree is not the same
             // edit - which means the floor prices that clone and its teardown too, not only the
-            // verb. `ir_gate.py --profile edit_set_nested` sizes it (the `CustomNode`/`NodeMeta`
-            // clone rows and their `drop_glue` pairs are a large share of the loop, and the parse's
-            // own line table is rebuilt inside the span because the verbs are handed `None`), so a
-            // reader should take these three numbers as "an edit through the API-shaped route the
-            // harness must build", not as the verb alone. Shrinking that span is a floor move on
-            // three scenarios and so a change of its own; `docs/dev/quality-ledger.md` `(go)` keeps
-            // the reading.
+            // verb. What the floor no longer prices is the line table: the binding hands the verbs a
+            // parsed document's cached offsets (`Splice::line_offsets` builds it once and memoizes
+            // it), and the harness now does the same. Handing `None` made every iteration pay a full
+            // `scan_yaml` pass - measured on the enforcing image at 10,104,000 instructions in all
+            // three loops, 20.92% of `edit_set_nested`, 23.80% of `edit_insert_sequence`, 23.83% of
+            // `edit_delete_key`, and identical to the last instruction because it never depends on
+            // the edit. The table is built here, beside the parse, so `--setup-only` subtracts it
+            // exactly as it subtracts the parse. What a reader takes from these three numbers is now
+            // "the first edit through a parsed document, plus the clone the harness must build": the
+            // clone stays, because undoing it would mean editing a tree twice.
+            // `docs/dev/quality-ledger.md` `(go)` keeps the older reading of the wider span, and
+            // `(gw)` records this change and the refresh that re-derived the three floors.
             let ast = parse(src, Schema::Core).expect("setup parse");
+            let offsets = pyrs_yaml_core::parser::yaml::comment::compute_line_offsets(src);
             if setup_only {
                 std::hint::black_box(&ast);
+                std::hint::black_box(&offsets);
                 0
             } else {
                 let mut acc = 0usize;
@@ -551,7 +558,7 @@ fn main() {
                             CustomNode::plain_scalar("9090"),
                             true,
                             src,
-                            None,
+                            Some(&offsets),
                             false,
                         ),
                         // `logging.outputs` index 1 <- stderr: a block sequence, so the line has to be
@@ -565,7 +572,7 @@ fn main() {
                             1,
                             CustomNode::plain_scalar("stderr"),
                             src,
-                            None,
+                            Some(&offsets),
                         ),
                         // `features.rate_limit` removed: a key of the last section, so the emit also
                         // decides what the document's trailing break becomes.
@@ -576,7 +583,7 @@ fn main() {
                                 Segment::Key(Cow::Borrowed("rate_limit")),
                             ],
                             src,
-                            None,
+                            Some(&offsets),
                         ),
                         _ => unreachable!("handled by the other arms"),
                     };
@@ -589,7 +596,19 @@ fn main() {
                         );
                         std::process::exit(3);
                     });
-                    acc += usize::from(std::hint::black_box(&unit).eligible)
+                    // The premise of these three floors is that the edit was *applicable*: the floor
+                    // measures producing a dirty unit, not discovering that one cannot be produced.
+                    // Until now that premise was only printed, so a change that made every iteration
+                    // ineligible would have reported a smaller number and passed as a speedup - the
+                    // one-sided rule this harness already refuses on the reader side.
+                    if !std::hint::black_box(&unit).eligible {
+                        eprintln!(
+                            "{name} iteration {index}: the edit resolved but produced an \
+                             ineligible unit - the floor would now be measuring a refusal"
+                        );
+                        std::process::exit(4);
+                    }
+                    acc += usize::from(unit.eligible)
                         + usize::from(std::hint::black_box(&tree).comment().is_none());
                 }
                 acc
