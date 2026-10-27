@@ -282,6 +282,18 @@ pass_filenames = false
 files = "^(QUALITY_MATRIX\\.md|\\.ci/ir-baseline\\.json)$"
 priority = "checks"
 
+# The ledger's `### (xy)` letters are how a citation resolves. The rule was judged only by the Python
+# tier until a head with one section placed a letter early reddened all twelve `test` legs while this
+# hook's own job stayed green (2026-10-26), so the cheapest gate that can see it now does.
+[[repos.hooks]]
+id = "ledger-order"
+name = "quality ledger sections run in letter order"
+language = "system"
+entry = "python scripts/check_ledger_order.py"
+pass_filenames = false
+files = "^docs/dev/quality-ledger\\.md$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
