@@ -19,6 +19,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ir-baseline.yml"
 BASELINE = REPO_ROOT / ".ci" / "ir-baseline.json"
@@ -72,6 +74,56 @@ def _load(rel):
     return module
 
 
+def _row_keys_agree_with_the_origin(data: dict) -> None:
+    """A floor row is keyed by runner image, so the file's origin is a row only if it names an image.
+
+    `ir_gate.py` merges a row for a run that named a runner image and for no other, so a baseline
+    re-baselined locally legitimately records a host and carries no row for it. Asserting membership
+    unconditionally would demand exactly the row the gate refuses to write - and would let a host string
+    sneak into the table, where it reads as image coverage that no enforcing leg can ever use.
+    """
+    origin = data["generated_by"]["environment"]
+    rows = data["image_floors"]
+    images = {key for key in rows if key.startswith("github-runner ")}
+    assert set(rows) == images, f"a row keyed by something that is not an image: {sorted(set(rows) - images)}"
+    if origin.startswith("github-runner "):
+        assert origin in rows, f"{origin} wrote this file and has no row for it"
+    else:
+        assert origin not in rows, "a host is not an image, so it has no floor row"
+
+
+def test_a_host_generated_file_is_a_valid_shape_and_a_host_row_is_not():
+    """Both directions of the rule, each with the payload that breaks it.
+
+    The committed file's origin is an image, so an unconditional membership assert would read green here
+    and red on the next locally re-baselined file. These two payloads are the pair that separates the
+    rule from the accident.
+    """
+    rows = {
+        "github-runner ubuntu24, image 20261026.354.1": {"load_toml_medium": 142_467_241},
+    }
+    host_generated = {
+        "generated_by": {"environment": "Windows 10 (AMD64)"},
+        "image_floors": rows,
+    }
+    _row_keys_agree_with_the_origin(host_generated)
+    _row_keys_agree_with_the_origin({"generated_by": {"environment": sorted(rows)[0]}, "image_floors": rows})
+    with pytest.raises(AssertionError, match="not an image"):
+        _row_keys_agree_with_the_origin(
+            {
+                "generated_by": {"environment": "Windows 10 (AMD64)"},
+                "image_floors": {**rows, "Windows 10 (AMD64)": {"load_toml_medium": 1}},
+            }
+        )
+    with pytest.raises(AssertionError, match="has no row for it"):
+        _row_keys_agree_with_the_origin(
+            {
+                "generated_by": {"environment": "github-runner ubuntu24, image 2026999.999.1"},
+                "image_floors": rows,
+            }
+        )
+
+
 def test_the_committed_baseline_is_exactly_what_the_job_writes():
     """No key of `.ci/ir-baseline.json` may be hand-written.
 
@@ -98,7 +150,18 @@ def test_the_committed_baseline_is_exactly_what_the_job_writes():
         "binaries",
         "tolerance_hint",
         "scenarios",
+        "image_floors",
     }, sorted(data)
+    rows = data["image_floors"]
+    assert rows, "an empty table would let the gate compare interpreter rows across images"
+    _row_keys_agree_with_the_origin(data)
+    for image, row in rows.items():
+        assert row, image
+        assert set(row) <= set(data["scenarios"]), (image, sorted(set(row) - set(data["scenarios"])))
+        assert all(isinstance(value, int) for value in row.values()), image
+    assert len({tuple(sorted(row)) for row in rows.values()}) == 1, (
+        "every image keys the same scenarios, or a refresh would silently narrow the coverage"
+    )
     assert set(data["binaries"]) == {f"{crate}/{bench}" for crate, bench in gate.HARNESSES}, (
         "the numbers are recorded without naming the bytes behind them"
     )

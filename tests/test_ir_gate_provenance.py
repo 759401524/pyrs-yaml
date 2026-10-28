@@ -129,3 +129,159 @@ def test_perf_md_no_longer_points_at_an_agents_claim_it_does_not_contain():
     ):
         assert phrase not in perf, f"{phrase!r} credits AGENTS.md with a sentence it does not contain"
     assert "hash seed" in perf, "the reason the wide reading had is named, not just un-cited"
+
+
+def test_only_the_interpreter_counting_harness_is_keyed_by_image():
+    """The engine rows do not move with the image, so keying them would state a claim nobody measured.
+
+    Measured at one tree with both harness digests equal across images `20261026.354.1` and
+    `20261023.334.3`: `load_toml_medium` read 142,467,241 on one and 144,904,012 on the other, while the
+    engine writer rows agreed to 120 instructions. The set is derived from the harness map the
+    measurement already builds, so a scenario that moves between harnesses re-classifies itself rather
+    than going stale in this file.
+    """
+    gate = _gate()
+    keyed = gate.keyed_by_image(
+        {
+            "to_python_medium": "pyrs-yaml/ir_gate",
+            "load_toml_medium": "pyrs-yaml/ir_gate",
+            "serialize_medium": "pyrs-yaml-core/ir_gate",
+            "parse_medium": "pyrs-yaml-core/ir_gate",
+        }
+    )
+    assert keyed == {"to_python_medium", "load_toml_medium"}, keyed
+
+
+def test_a_keyed_environment_compares_against_its_own_row_and_no_other_number():
+    gate = _gate()
+    ref = {
+        "scenarios": {"load_toml_medium": 144_946_295, "serialize_medium": 32_648_581},
+        "image_floors": {
+            "github-runner ubuntu24, image 20261023.334.3": {"load_toml_medium": 144_904_012},
+        },
+    }
+    floors, refusal = gate.image_floors(ref, "github-runner ubuntu24, image 20261023.334.3", {"load_toml_medium"})
+    assert refusal is None
+    assert floors["load_toml_medium"] == 144_904_012, "the row for this image is the floor"
+    assert floors["serialize_medium"] == 32_648_581, "an unkeyed scenario keeps its single floor"
+
+
+def test_a_row_that_never_measured_a_keyed_scenario_refuses_rather_than_borrowing_the_flat_number():
+    # A scenario the harness counts with an interpreter has no comparable number across images, so a row
+    # missing it cannot be judged by the flat table: that table belongs to whichever image refreshed it.
+    # Adding a scenario to the binding harness is therefore a refresh, not an edit of the baseline.
+    gate = _gate()
+    ref = {
+        "scenarios": {"load_toml_medium": 144_904_012, "to_python_medium": 386_743_139},
+        "image_floors": {
+            "github-runner ubuntu24, image 20261023.334.3": {"load_toml_medium": 144_904_012},
+        },
+    }
+    floors, refusal = gate.image_floors(
+        ref,
+        "github-runner ubuntu24, image 20261023.334.3",
+        {"load_toml_medium", "to_python_medium"},
+    )
+    assert refusal is not None, "the row does not carry every scenario this run keys"
+    assert "to_python_medium" in refusal, "the refusal names the scenario it cannot judge"
+    assert floors == ref["scenarios"], "a refusal returns the flat table, never a mixed floor"
+
+
+def test_a_host_that_names_no_image_keeps_its_flat_floor_instead_of_refusing_itself():
+    """Keying is a rule about runner images, not about every machine that ever runs the gate.
+
+    Refusing a local host would take away the cheapest reading of "did my change cost instructions",
+    including for the scenarios whose numbers do not depend on an image at all - and a row would be no
+    use to that host, since comparing a host against an image's number is the thing the key is for.
+    """
+    gate = _gate()
+    ref = {
+        "scenarios": {"load_toml_medium": 144_946_295},
+        "image_floors": {
+            "github-runner ubuntu24, image 20261026.354.1": {"load_toml_medium": 142_467_241},
+        },
+    }
+    floors, refusal = gate.image_floors(ref, "Linux 6.8.0-49-generic (x86_64)", {"load_toml_medium"}, on_image=False)
+    assert refusal is None, "a host outside the runner channel is judged, not refused"
+    assert floors == ref["scenarios"], "the flat table is the floor for a host with no image"
+    same_host_on_an_image = gate.image_floors(ref, "github-runner ubuntu24, image 20261012.334.1", {"load_toml_medium"})
+    assert same_host_on_an_image[1] is not None, "the same table still refuses an unknown image"
+
+
+def test_which_runs_are_keyed_is_decided_once(monkeypatch):
+    """`environment()` and the image test read one predicate, so they cannot disagree.
+
+    A second copy of the `ImageOS`/`ImageVersion` check is how a run ends up named as a runner image and
+    then told it is not on one.
+    """
+    gate = _gate()
+    for name in ("ImageOS", "ImageVersion"):
+        monkeypatch.delenv(name, raising=False)
+    assert gate.runner_image() is None
+    assert not gate.environment().startswith("github-runner")
+    monkeypatch.setenv("ImageOS", "ubuntu24")
+    monkeypatch.setenv("ImageVersion", "20261026.354.1")
+    assert gate.runner_image() == ("ubuntu24", "20261026.354.1")
+    assert gate.environment() == "github-runner ubuntu24, image 20261026.354.1"
+    monkeypatch.delenv("ImageVersion")
+    assert gate.runner_image() is None, "one identifier alone is not an image"
+
+
+def test_an_image_the_baseline_never_measured_refuses_rather_than_passing_or_failing():
+    gate = _gate()
+    ref = {
+        "scenarios": {"load_toml_medium": 144_946_295},
+        "image_floors": {
+            "github-runner ubuntu24, image 20261023.334.3": {"load_toml_medium": 144_904_012},
+        },
+    }
+    floors, refusal = gate.image_floors(ref, "github-runner ubuntu24, image 2026999.999.1", {"load_toml_medium"})
+    assert refusal is not None, "a number from one image compared to a floor from another is a verdict nobody drew"
+    assert "2026999.999.1" in refusal and "Ir baseline refresh" in refusal, refusal
+    assert "load_toml_medium" in refusal, "the message names what would have been keyed"
+    assert floors == ref["scenarios"], "the refusal carries no rewritten floors"
+
+
+def test_a_baseline_written_before_the_key_existed_is_still_judged_and_not_refused():
+    """The table is optional on purpose.
+
+    Refusing on an absent table would make the first run after this change red on every pull request,
+    because `Test matrix (all legs)` counts only `success`: the gate would have produced the deadlock it
+    exists to diagnose.
+    """
+    gate = _gate()
+    ref = {"scenarios": {"load_toml_medium": 144_946_295}}
+    floors, refusal = gate.image_floors(ref, "Linux 5.15.0 (x86_64)", {"load_toml_medium"})
+    assert refusal is None
+    assert floors == ref["scenarios"]
+
+
+def test_a_refresh_adds_its_image_without_withdrawing_the_ones_it_did_not_run_on():
+    """The table is merged, in both directions.
+
+    Replacing it would silently narrow coverage to one image, and then every other image's enforcing leg
+    reads a refusal it did not earn. Replacing the row under `--only` would do the same inside one image:
+    the scenarios that partial run never measured would lose their floors.
+    """
+    gate = _gate()
+    rows = {
+        "image-a": {"load_toml_medium": 100, "to_python_small": 200},
+        "image-b": {"load_toml_medium": 105, "to_python_small": 205},
+    }
+    merged = gate.merge_image_row(rows, "image-a", {"load_toml_medium": 110})
+    assert merged["image-a"] == {"load_toml_medium": 110, "to_python_small": 200}, merged["image-a"]
+    assert merged["image-b"] == rows["image-b"], "a refresh on one image says nothing about another"
+    assert rows["image-a"]["load_toml_medium"] == 100, "the caller's table is not mutated in place"
+
+
+def test_a_run_that_names_no_image_adds_no_row_to_the_table():
+    """A key in this table is a runner image, so a host that names none files nothing.
+
+    Writing the platform string would invent a key no enforcing leg can ever ask for, and the table
+    would read as coverage it does not have.
+    """
+    gate = _gate()
+    rows = {"github-runner ubuntu24, image 20261026.354.1": {"load_toml_medium": 100}}
+    merged = gate.merge_image_row(rows, "Windows 10 (AMD64)", {"load_toml_medium": 110}, on_image=False)
+    assert merged == rows, "the table keeps exactly its images"
+    assert all(not key.startswith("Windows") for key in merged)

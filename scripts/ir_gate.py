@@ -165,6 +165,19 @@ PROVENANCE_NOTE = (
 DEFAULT_REPEATS = 3
 
 
+def runner_image() -> tuple[str, str] | None:
+    """The runner's own two identifiers, or None when this run is not on a runner image.
+
+    One predicate decides both the environment string and whether the image key applies, so a local run
+    cannot be told "this is a runner" by one function and "no row for you" by the other.
+    """
+    image = os.environ.get("ImageOS")  # noqa: SIM112 - the name comes from the runner, not from us
+    version = os.environ.get("ImageVersion")  # noqa: SIM112 - ditto; uppercasing it reads a blank
+    if image and version:
+        return image, version
+    return None
+
+
 def environment() -> str:
     """A one-line description of where this measurement came from.
 
@@ -172,16 +185,95 @@ def environment() -> str:
     by GitHub Actions runners; a local run gets the host platform instead, which is how a WSL- or
     macOS-generated baseline becomes visible in the gate's own output rather than silently trusted.
     """
-    image = os.environ.get("ImageOS")  # noqa: SIM112 - the name comes from the runner, not from us
-    version = os.environ.get("ImageVersion")  # noqa: SIM112 - ditto; uppercasing it reads a blank
-    if image and version:
-        return f"github-runner {image}, image {version}"
-    return f"{platform.system()} {platform.release()} ({platform.machine()})"
+    if (image_version := runner_image()) is None:
+        return f"{platform.system()} {platform.release()} ({platform.machine()})"
+    return f"github-runner {image_version[0]}, image {image_version[1]}"
+
+
+def merge_image_row(rows: dict, here: str, measured_row: dict, *, on_image: bool = True) -> dict:
+    """Fold this run's numbers into its own image's row, leaving every other row alone.
+
+    Two properties, both measured failures of the alternative. A refresh on a new image adds coverage
+    rather than withdrawing the rows of the images it did not run on, so the table is merged and not
+    replaced. And under `--only` the row keeps the numbers this run did not measure, because a partial
+    re-measurement that rewrites the whole row would turn the scenarios it never ran into missing floors -
+    which is what the incomplete-baseline refusal exists to prevent.
+
+    A run that names no runner image adds no row: a key in this table is an image, and filing a platform
+    string there would create a key no enforcing leg can ever ask for.
+    """
+    if not on_image:
+        return {image: dict(row) for image, row in rows.items()}
+    merged = {image: dict(row) for image, row in rows.items()}
+    row = dict(merged.get(here) or {})
+    row.update(measured_row)
+    merged[here] = row
+    return merged
 
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     """Never `shell=True`: argument quoting has burned this project before."""
     return subprocess.run(cmd, check=False, text=True, **kw)
+
+
+def keyed_by_image(harness_of: dict[str, str]) -> set[str]:
+    """The scenarios whose counted region includes an interpreter, so the image is part of the number.
+
+    Measured at one tree with both harness digests equal (`3376c9d821eea00d`, `ce6804e2b95d37b1`) across
+    two GitHub runner images, `20261026.354.1` and `20261023.334.3`: the ten engine writer rows agreed to
+    at most 120 instructions against floors of 17-28 million, while `load_toml_medium` and
+    `load_toml_long_strings` read 1.71 % and 2.97 % apart. The pinned ISA mask reaches the string
+    routines an image selects by CPUID and does not reach the interpreter's allocator path, which is what
+    moved. The difference is therefore not a scenario name but a property of the harness, so the set is
+    read from the same mapping the measurement uses rather than written down twice.
+    """
+    return {name for name, harness in harness_of.items() if harness.startswith("pyrs-yaml/")}
+
+
+def image_floors(ref: dict, here: str, keyed: set[str], *, on_image: bool = True) -> tuple[dict, str | None]:
+    """The floors this run should compare against, or the reason it must not give a verdict.
+
+    `image_floors` is optional in the committed file on purpose: a baseline written before the key existed
+    is judged exactly as it always was. Treating an absent table as an unknown image would make the gate
+    refuse on the first run after this lands, which - with `Test matrix (all legs)` the one required name
+    and `check_matrix_verdict.py` accepting only `success` - is a red required check on every pull
+    request, not a refusal to answer.
+
+    Once a row exists, an environment with no row is a refusal rather than a pass or a regression, and it
+    exits 2: the convention this repository reserves for a check that could not run. The remedy is one
+    refresh dispatch, which is why the message names the key it wanted.
+
+    `on_image` is whether the host named a runner image at all. A local run never does, so keying would
+    refuse the very reading developers take to decide whether their own change cost instructions - and
+    the rows are no use to it, since the note that follows already says the host is not the recorded
+    environment. Off an image the flat table judges, exactly as before the key.
+    """
+    scenarios = dict(ref["scenarios"])
+    rows = ref.get("image_floors") or {}
+    if not rows or not on_image:
+        return scenarios, None
+    row = rows.get(here)
+    if row is None:
+        known = ", ".join(sorted(rows)) or "none"
+        return scenarios, (
+            f"REFUSED: no floor row for {here!r}. The committed baseline keys its interpreter-counting"
+            f" scenarios by runner image and carries rows for: {known}. This is not a regression and not"
+            " a pass - the comparison would be between numbers from different images. Refresh on this"
+            " image to add the row:\n  gh workflow run 'Ir baseline refresh' --ref <branch>\nScenarios"
+            f" that would have been keyed: {', '.join(sorted(keyed))}"
+        )
+    floors = dict(scenarios)
+    missing = sorted(keyed - set(row))
+    if missing:
+        return scenarios, (
+            f"REFUSED: the floor row for {here!r} does not carry {', '.join(missing)}. Each of those"
+            " counts an interpreter, so judging it against the flat table would compare this image's"
+            " measurement with a floor recorded on another one - the comparison the key exists to"
+            " prevent. Refresh on this image to extend the row:\n"
+            "  gh workflow run 'Ir baseline refresh' --ref <branch>"
+        )
+    floors.update({name: int(value) for name, value in row.items()})
+    return floors, None
 
 
 def build_diagnostics(stdout: str, stderr: str) -> str:
@@ -584,6 +676,7 @@ def main() -> int:
     # channel, so it is checked rather than assumed.
     exes: dict[str, str] = {}
     binaries: dict[str, str] = {}
+    harness_of: dict[str, str] = {}
     for crate, bench in HARNESSES:
         exe = build_exe(crate, bench)
         binaries[f"{crate}/{bench}"] = digest_of(exe)
@@ -602,6 +695,7 @@ def main() -> int:
             if name in exes:
                 sys.exit(f"scenario {name!r} is listed by two harnesses; the measurement would be ambiguous")
             exes[name] = exe
+            harness_of[name] = f"{crate}/{bench}"
     scenarios = select_scenarios(exes, args.only)
     toolchain = rustc_banner()
     env_note = ", ".join(f"{key}={value}" for key, value in sorted(MEASUREMENT_ENV.items()))
@@ -676,6 +770,19 @@ def main() -> int:
                 )
             for detail in moved:
                 print(f"accepted drift: {detail}")
+        # The interpreter-counting scenarios also get a row under the image this run measured on, merged
+        # rather than replacing the table: a refresh on a new image adds coverage, and never silently
+        # withdraws the rows of the images it did not run on. Under `--only` the new row keeps the numbers
+        # this run did not measure, because inventing them for a partial run is what the refusal above
+        # exists to stop.
+        rows: dict[str, dict] = {}
+        if BASELINE.exists():
+            try:
+                rows = dict(json.loads(BASELINE.read_text(encoding="utf-8")).get("image_floors") or {})
+            except (json.JSONDecodeError, OSError):
+                rows = {}
+        keyed_here = {name: measured[name] for name in sorted(keyed_by_image(harness_of) & set(measured))}
+        rows = merge_image_row(rows, environment(), keyed_here, on_image=runner_image() is not None)
         BASELINE.parent.mkdir(exist_ok=True)
         payload = {
             "toolchain": toolchain,
@@ -689,6 +796,7 @@ def main() -> int:
             "binaries": binaries,
             "tolerance_hint": args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE,
             "scenarios": final,
+            "image_floors": rows,
         }
         BASELINE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         print(f"wrote {BASELINE.relative_to(REPO)} ({len(final)} scenarios)")
@@ -711,6 +819,24 @@ def main() -> int:
     note = toolchain_note(ref.get("toolchain"), toolchain)
     if note:
         print(f"  note: {note}")
+    on_image = runner_image() is not None
+    floors, refusal = image_floors(ref, here, keyed_by_image(harness_of), on_image=on_image)
+    if not on_image and ref.get("image_floors"):
+        # A local reading is still the cheapest way to ask "did my change make the hot path work
+        # harder", so the key does not take it away - it only refuses to dress it up as an image's
+        # verdict, which is what comparing a host against a row would do.
+        print(
+            "  note: this host is not on a runner image, so the interpreter-counting floors come from"
+            " the flat table - the row for whichever image last refreshed it, not this host's."
+        )
+    if refusal and not args.report_only:
+        # `--report-only` exists to print the numbers the comparing path will not compare, so a missing
+        # row is shown there rather than acted on.
+        print(refusal)
+        return 2
+    if floors != ref["scenarios"]:
+        keyed_here = sorted(n for n, v in floors.items() if ref["scenarios"].get(n) != v)
+        print(f"  floors taken from the row for this image: {', '.join(keyed_here)}")
     if args.report_only:
         # The diagnostic mode prints the numbers the comparing path refuses to compare, so it prints
         # the two pairings too: without them a run on another toolchain or another build reads as a
@@ -733,7 +859,7 @@ def main() -> int:
         failures.append(f"toolchain changed: {note}")
     print(f"{'scenario':26} {'baseline':>13} {'now':>13} {'delta':>9}")
     for s, ir in measured.items():
-        base = ref["scenarios"].get(s)
+        base = floors.get(s)
         if base is None:
             failures.append(f"{s}: not in baseline (added without --update)")
             print(f"{s:26} {'-':>13} {ir:13,} {'new':>9}")
@@ -743,16 +869,16 @@ def main() -> int:
         if growth > tol:
             failures.append(f"{s}: +{growth:.2%} over baseline (tolerance {tol:.2%})")
 
-    warned, stale = floor_staleness(ref["scenarios"], measured)
+    warned, stale = floor_staleness(floors, measured)
     for s, below in warned:
         print(
             f"  warn: FLOOR_STALE {s}: {measured[s]:,} is {below:.2%} below the committed floor"
-            f" ({ref['scenarios'][s]:,}); the gate is accepting that much slack until a refresh"
+            f" ({floors[s]:,}); the gate is accepting that much slack until a refresh"
         )
     for s, below in stale:
         failures.append(
             f"FLOOR_STALE {s}: {measured[s]:,} is {below:.2%} below the committed floor"
-            f" ({ref['scenarios'][s]:,}), past the {STALE_FAIL:.0%} line - the baseline no longer"
+            f" ({floors[s]:,}), past the {STALE_FAIL:.0%} line - the baseline no longer"
             " describes this tree"
         )
 

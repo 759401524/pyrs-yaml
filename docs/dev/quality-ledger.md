@@ -10295,6 +10295,86 @@ image carries), and the six implementation rules with their falsification tests 
 floor has been measured. It has not been written yet, so the implementation PR brings its own
 readings from two images before the table holds two rows.
 
+### (hj) An interpreter-counting floor is now keyed by the image that measured it
+
+<!-- landed: scripts/ir_gate.py::keyed_by_image -->
+
+(2026-10-28)
+
+`(hi)` measured the fact; this is the shape built on it, and the shape changed once on the way. The
+first design said "record the image, and refuse when the enforcing job's image is not the recorded
+one". Read against the merge machinery that was the wrong verdict to offer:
+`check_matrix_verdict.py` accepts only `success` and `Test matrix (all legs)` is the repository's
+single required check name, so a refusal is a red required check, and the two jobs landing on
+different pool images is the normal case rather than the exception. What landed instead keys the
+floor by image and refuses only on an image the file has never measured, which one refresh dispatch
+closes.
+
+`.ci/ir-baseline.json` grows an `image_floors` table. `keyed_by_image()` decides its membership from
+the harness map the measurement already builds - the scenarios whose counted region includes
+CPython - so the engine rows keep one number each and never gain a key that could rot.
+`image_floors()` returns the floors to compare against plus, when the environment has no row, the
+message the gate prints before exiting 2; an absent table keeps the old behaviour, which is what
+stops this from redding the tree it lands on. `--update` folds numbers into its own row through
+`merge_image_row()`, so a refresh on a new image adds coverage and a `--only` refresh cannot narrow
+one row to the scenarios that run happened to measure.
+
+Two rows are in the file, each read out of a job log rather than typed. `20261026.354.1` carries
+what refresh run 87 measured; `20261023.334.3` carries the `now` column of PR #659's `ir` job on the
+same tree, both harness digests equal. `load_toml_medium` reads 142,467,241 and 144,904,012 between
+them, and the flat table still holds 144,946,295 - so the keyed floor is 1.71 % tighter on the first
+image rather than more forgiving, which is what making the key meant.
+
+A row is only a floor if it covers every scenario the harness keys, so a row that omits one is
+refused rather than letting that scenario fall back to the flat table - the cross-image comparison
+the key exists to prevent. The equality that keeps this rule silent on today's file was measured
+rather than assumed: the two rows and `scenarios()` in `crates/pyrs-yaml/benches/ir_gate.rs` name
+the same seven, both set differences empty, so the refusal fires only when a binding scenario is
+added without a refresh.
+
+Both refusals were then narrowed, because the first version refused a reading nobody meant to take
+away. Measured here: `environment()` reads `Windows 10 (AMD64)` off CI, and `image_floors()`
+returned a refusal against the committed file - so the bare `python3 scripts/ir_gate.py` that
+AGENTS.md tells a contributor to run to ask whether *their own* change cost instructions would have
+exited 2 before judging anything, including the scenarios no image affects. A row can only describe
+a runner image, so that is now the only environment the key refuses: `runner_image()` decides both
+the name and whether the key applies - one predicate, so a run cannot be called an image by one
+function and denied by the other - while a host naming none judges the flat table, prints that the
+interpreter rows are not its floor, and files no row of its own. AGENTS.md's Ir bullet states the
+same pair, since that is where the next reader looks.
+
+Readings: `uv run pytest tests/test_ir_gate_provenance.py tests/test_ir_baseline_workflow.py`
+
+- 45 passed. Nine mutations, each reddening exactly the one test that owns it: the refusal never
+  firing, the absent table refusing, the row being ignored in favour of the flat number, an
+  incomplete row comparing anyway, `--update` replacing the table rather than merging, a local host
+  refused, no host counting as an image, a non-image run filing its own row, and the file-shape
+  contract restored to the unconditional form it had before the narrowing - which reddens the one
+  test that reads a host-named baseline as valid, the contradiction the narrowing would otherwise
+  have left in the shape test. The gate file came back byte-for-byte, by sha256, after each. The
+  keyed comparison has now run on CI, on this change's own `ir` leg. It landed on `20261023.334.3`,
+  printed `floors taken from the row for this image:` naming all seven, and ended
+  `OK: every scenario within tolerance` - that log is kept as `target/ir662leg.log`. Against its own
+  row, `load_toml_medium`, `load_toml_long_strings` and `load_json_long_strings` read +0.000 %,
+  `to_python_medium` +0.03 %, `to_python_anchors` +0.04 %, `to_python_small` +0.06 %, and
+  `load_json_medium` +0.45 %: ninety per cent of the line, and the largest movement a keyed floor
+  has been asked to absorb. The host is not the explanation. Same image, runner `2.338.0`, valgrind
+  3.22.0, `rustc 1.97.1`, three identical repeats inside each run, and three sibling loader
+  scenarios reading exactly their own row. The only Rust between the two jobs is #660's 38-line
+  change in `crates/pyrs-yaml/src/py/convert.rs` - the conversion layer the JSON route shares - and
+  the JSON fixture reaches none of the new collision branches, so the shape is what
+  `docs/dev/perf.md` records as a move in a scenario that never enters the changed code. Where those
+  instructions land was not profiled here. Under the flat table the same reading was +0.38 % and
+  belonged to nothing; the key is what made a binding-side cost attributable to a tree. Paying that
+  row is a refresh that lands on `20261023.334.3` - not a hand-copied number, which is what `(he)`
+  and `(hi)` both refuse to do.
+
+What is not claimed: `scripts/check_ir_floor_quotes.py` still quotes the flat table, so a paragraph
+quoting an interpreter floor quotes the generating image, not whichever one is running; making that
+marker image-aware is the next change and is not described here as done. And one leg is not a
+distribution - a third image is still refused, and the +0.45 % reading says what the line absorbed
+once, not what it will keep absorbing.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
