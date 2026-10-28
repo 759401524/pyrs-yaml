@@ -1,5 +1,9 @@
 """Smoke tests for safe_dump and from_dict (identical implementations)."""
 
+import io
+
+import pytest
+
 import pyrs_yaml
 
 
@@ -221,3 +225,58 @@ class TestIntegersWiderThanI64:
         # Keys go through the same extractor, and a key silently re-typed to float would
         # collide with a different key on re-read.
         assert pyrs_yaml.safe_dump({self.HUGE: 1}) == f"{self.HUGE}: 1\n"
+
+
+class TestSharedObjectShape:
+    """What the Python-object routes do with a value two keys share.
+
+    `a: &x {b: 1}` plus `c: *x` is a graph: one node, two names. The object routes do not keep
+    that shape in either direction, and these tests pin the fact so it cannot drift silently. The
+    load half is a decided design (`tests/test_direct_load.py` names it: each expansion is a fresh
+    object), so `safe_load` cannot hand back a shared value to write. The write half is what this
+    class measures: given a genuinely shared object built in Python, both writers emit the subtree
+    twice rather than an anchor and an alias.
+
+    The values survive that — the re-read compares equal — so this is a shape loss, not a data
+    loss. It is also a divergence from both reference libraries, which were run against the same
+    graph here: PyYAML and ruamel each load the anchored document with `doc["a"] is doc["c"]` true
+    and re-emit it as `&id001`/`*id001`. Whether the object routes should grow anchor emission is
+    open, and it is not free: sharing is observable to callers, so a load that returns one object
+    for two keys makes mutating one key mutate the other.
+    """
+
+    def test_a_shared_value_is_written_twice_not_aliased(self):
+        shared = {"b": 1}
+        assert pyrs_yaml.safe_dump({"a": shared, "c": shared}) == "a:\n  b: 1\nc:\n  b: 1\n"
+
+    def test_the_stream_route_writes_the_same_shape(self):
+        # The two writers are a mirror pair; a shape only one of them loses would show up as a
+        # route disagreement in the parity table, so the equality is asserted here as well.
+        shared = [1, 2]
+        graph = {"a": shared, "c": shared}
+        buf = io.StringIO()
+        pyrs_yaml.YAML().dump_stream(buf, [graph])
+        assert buf.getvalue() == pyrs_yaml.safe_dump(graph)
+
+    def test_the_shared_graph_re_reads_equal_but_not_identical(self):
+        shared = {"b": 1}
+        back = pyrs_yaml.safe_load(pyrs_yaml.safe_dump({"a": shared, "c": shared}))
+        assert back == {"a": {"b": 1}, "c": {"b": 1}}
+        assert back["a"] is not back["c"]
+
+    def test_the_round_trip_route_does_keep_the_anchor(self):
+        # The route that owns anchors in the node model keeps them, which is what makes the object
+        # route's duplication a property of that route rather than of the serializer.
+        assert pyrs_yaml.parse("a: &x\n  b: 1\nc: *x\n").to_yaml() == "a: &x\n  b: 1\nc: *x\n"
+
+    def test_a_cyclic_graph_is_refused_rather_than_looked_at_forever(self):
+        # A cycle cannot be copied to completion, so the only answers are an anchor (which the
+        # object routes do not emit, see above) or a refusal. The refusal is the depth guard's,
+        # and it has to arrive as an exception: the same recursion at guard depth once killed the
+        # interpreter on a Windows main thread instead of raising (PR #665's frame fix).
+        cycle: dict = {}
+        cycle["self"] = cycle
+        with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+            pyrs_yaml.safe_dump(cycle)
+        with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+            pyrs_yaml.YAML().dump_stream(io.StringIO(), [cycle])

@@ -17,6 +17,17 @@ status: new
 
 #### 추가
 
+- **공유 Python 객체를 썼을 때의 모양이 검증된 사실로 고정되었다** —
+  `{"a": shared, "c": shared}`에 대해 두 기록 경로는
+  앵커와 별명이 아니라 부분 트리의 복사본을 두 번 출력하고,
+  다시 읽으면 값은 같지만 두 값은 같은 객체가 아니다.
+  왕복 경로는 `&x`/`*x`를 유지하므로 이 손실은 객체 경로 쪽 것이다.
+  `tests/test_safe_dump.py::TestSharedObjectShape`이 두 쪽과
+  순환 그래프가 받는 `YamlMaxDepthError` 거절을 고정한다.
+  같은 그래프에서 PyYAML과 ruamel을 실측하면 둘 다 공유를 유지하므로,
+  이는 조용히 넘어간 차이가 아니라 명시된 차이이며,
+  `docs/dev/boundaries.md`가 그 이유(메우는 것이 무료가 아님)를 적는다.
+  동작은 바뀌지 않았다.
 - **pytest 티어의 폭을 기억이 아니라 유도한다** — 세 개의 기여 문서는 차단형 Python 티어를 “4개
   Python 버전 × 3개 OS”로, `QUALITY_MATRIX.md`는 “3 OSes × 7 Python versions”로 적었다. 선언된
   인터프리터 하한은 8개(3.8~3.15)이고 이 티어는 직곱이 아니다. `scripts/ci_matrix_plan.py`는 모든
