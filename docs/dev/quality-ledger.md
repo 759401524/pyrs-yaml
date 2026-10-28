@@ -10407,6 +10407,38 @@ comparator that decided this file was safe to commit exits 1 on a withdrawn row,
 from a row, a changed flat scenario set, a host-filed row or an origin with no row, and each of
 those five refusals was forced before it was used.
 
+### (hl) A keyed floor quoted without its image was checked against a column no leg reads
+
+`QUALITY_MATRIX.md` declares which readings it means as current, and
+`scripts/check_ir_floor_quotes.py` compared every one of them with the flat `scenarios` table. That
+was right while each scenario had one floor. It stopped being right with `(hj)`: seven scenarios now
+carry one floor per runner image, an enforcing leg reads its own image's row and never the flat
+column, so a sentence about the leg on `20261023.334.3` could pass the gate while quoting the number
+measured on `20261026.354.1`. The committed file holds both — `load_toml_medium` at 144,902,515 on
+the first row and 142,467,241 on the second, 1.71 % apart — and which of them the flat column
+carries is a property of whichever image the last refresh happened to land on, not of the sentence
+quoting it.
+
+The mark now names its row: `load_toml_medium @ 20261023.334.3`. Four of the thirteen readings on
+the page are keyed and all four name `20261023.334.3`, whose row equals the flat column in today's
+file because the same run wrote both; the other nine keep the bare mark, because for an engine-only
+scenario the flat column is exactly what every leg compares against. Four refusals, no more than the
+rule needs: a keyed mark that names no image, a mark whose digits are the flat column's while naming
+an image whose row disagrees, an image the file has no row for, and an image attached to a scenario
+the file does not key. The second of those reads its pair out of the file instead of a hand-typed
+constant, so it cannot go vacuous without saying so.
+
+Readings: `python scripts/check_ir_floor_quotes.py` —
+`OK: 13 marked floor reading(s) across 1 page(s) equal the committed baseline (51 scenarios, 7 keyed by image in 2 row(s), 4 of them quoted from a row)`; against the page before it was re-marked the same command refused it four times, once per keyed mark. `uv run pytest tests/test_ir_floor_quote_gate.py` — 22 passed. Four mutations of the checker, each deleting one branch of the new rule, reddened exactly the owning test (one of them three, because comparing a keyed mark against the flat column breaks the positive control as well as the two refusals), and the file came back byte-for-byte at sha256 `8b58a754e095e683`.
+
+Two refreshes went out on this trunk after `(hk)` and neither touched the debt it named: run
+`40641008163` and run `40650772937` both landed on `20261023.334.3`, the enforcing image, and left
+the `20261026.354.1` row at 57,152,342. Each reproduced `load_json_medium` at 57,368,032 — the floor
+`(hk)` settled, from two independent jobs, byte-identical — while the flat table moved 22 and 23
+scenarios respectively by at most 0.001 %. Three consecutive dispatches on one image is the pool's
+choice, not a route: paying `354.1`'s row needs a refresh that lands on `354.1`, and until then an
+enforcing leg there keeps absorbing +0.378 % of a 0.50 % line.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

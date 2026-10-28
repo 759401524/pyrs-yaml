@@ -104,11 +104,17 @@ the refresh run `40636638961` whose artifact wrote the current floor, and `20261
 through that run from the job which last measured it. `load_toml_medium` reads 142,467,241 and
 144,902,515 between them, which is the 1.71 % a single floor could not hold.
 
-What is not done here: `scripts/check_ir_floor_quotes.py` and `QUALITY_MATRIX.md` section 2 still
-quote the flat `scenarios` values, so a paragraph that quotes an interpreter-counting floor quotes
-the one the file names as its generating environment rather than the row of whichever image is
-running. Making that marker image-aware is the next honest change, and it is not dressed up as
-finished.
+What the marker rule closes: `scripts/check_ir_floor_quotes.py` compares a marked reading against
+the row the mark names, so a paragraph quoting an interpreter-counting floor has to say which
+image's floor it means — `load_toml_medium @ 20261023.334.3` — and a keyed mark that names no image,
+or names an image the file has no row for, is refused instead of being resolved against the flat
+column. <!-- landed: scripts/check_ir_floor_quotes.py::version_of --> That distinction is not
+pedantry: which image the flat column describes is a property of whichever run the last refresh
+happened to land on, not of the sentence quoting it, and the two rows for `load_toml_medium` differ
+by 1.71 %. A scenario the file does not key keeps the bare mark, and giving it an image is a refusal
+too — there is no row to name. `tests/test_ir_floor_quote_gate.py` forces all four shapes, and the
+four mutations of the checker that would let each one through were run against the file to confirm
+the tests are sensitive to them.
 
 ## What this page does not claim
 

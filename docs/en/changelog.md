@@ -70,6 +70,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   refusal and proves the hook's `files:` pattern reaches the page and the baseline. An *unmarked*
   hand-copy stays invisible: absence of a marker reads as history, which only the author can claim
   wrongly.
+- **A keyed Ir floor is quoted with the image that measured it** — seven scenarios carry one floor
+  per runner image, and an enforcing leg compares against its own image's row, never the flat
+  `scenarios` column. The marks compared against that column, so a sentence about the leg on
+  `20261023.334.3` could pass the gate while quoting `20261026.354.1`'s number: the committed file
+  holds 144,902,515 and 142,467,241 for `load_toml_medium`, 1.71 % apart, and which one the flat
+  column carries depends on whichever image the last refresh happened to land on.
+  `scripts/check_ir_floor_quotes.py` now requires a keyed mark to name its row, written
+  `load_toml_medium @ 20261023.334.3`, and refuses four shapes: a keyed mark naming no image, digits
+  taken from the flat column under a named image, an image the file has no row for, and an image on
+  a scenario the file does not key. Four of the page's thirteen readings are keyed; the nine
+  engine-only readings keep the bare mark, because for those the flat column is what every leg
+  compares against. The checker refused the un-repointed page four times,
+  `uv run pytest tests/test_ir_floor_quote_gate.py` reads 22 passed, and four mutations — each
+  deleting one branch of the new rule — reddened exactly the owning test.
 - **`load_json_lines` reads a `.jsonl` stream as values, one line at a time** — the engine has
   described line-delimited JSON since #599 (`pyrs_json::parse_documents`), but nothing at the Python
   layer could read it: a caller split the text and called `load_json` per line, paying for a list of
