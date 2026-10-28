@@ -413,6 +413,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Ir floor for a scenario that counts an interpreter is keyed by runner image** —
+  `.ci/ir-baseline.json` gains an `image_floors` table, and `scripts/ir_gate.py` now compares an
+  enforcing run against the row for the image it is on, instead of asking one number to settle the
+  question on every host. Which scenarios get a key is derived from the harness map the measurement
+  builds, so only the ones that count CPython are keyed: at one tree with both harness digests
+  equal, `load_toml_medium` read 142,467,241 and 144,904,012 on two images, which is 1.71 % a single
+  floor cannot hold. An image with no row is refused (exit 2) rather than passed or failed; a
+  baseline with no table behaves as before.
 - **The `no_std` host tests now run on Windows as well as Ubuntu** — the job was pinned to one
   runner, so the evidence that a `#![no_std]` crate's logic survives without std came from one
   operating system while wheels are published for three. The bare-metal build is host-independent

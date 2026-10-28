@@ -54,34 +54,72 @@ red required check and no pull request merges until a refresh happens to run on 
 is handing out. This repository has already measured that shape and named it a deadlock rather than
 a pass.
 
-## The shape chosen
+## The shape, as it reads in the tree now
 
-The environment becomes part of the floor's key instead of a footnote next to it.
+<!-- landed: scripts/ir_gate.py::image_floors -->
 
-1. The baseline grows an `environments` table. Only scenarios whose counted region includes the
-   interpreter are keyed there; every other scenario keeps its single committed number, because a
-   key nobody needs is a key that can go stale on its own.
-2. The comparing path reads its own `environment()` string and takes the floor from that entry. An
-   entry for an image never measured is not a pass and not a regression: the gate exits 2, which
-   this repository already reserves for a check that could not run. The remedy is one refresh
-   dispatch, and the job prints which key it wanted.
-3. `--update` merges into the entry named by the environment it is running in rather than rewriting
-   the table, so a refresh on a new image adds coverage instead of silently withdrawing coverage
-   from the images it did not run on. The refusal of an incomplete baseline stays as it is.
-4. `--accept-drift` keeps naming scenarios, unchanged: drift is still judged within one image, which
-   is the only place the comparison means anything.
-5. `scripts/check_ir_floor_quotes.py` and `QUALITY_MATRIX.md` section 2 quote floor values, so the
-   quote check gains the image it is quoting from — a number lifted from one image and read against
-   another is the exact misreading that marker was written to stop.
-6. Each of those rules gets a falsification test in `tests/test_ir_gate_provenance.py`, in the house
-   style: a mutation per rule that names the assertion it reddens, and a clean file restored
-   byte-for-byte after.
+The environment is part of the floor's key rather than a footnote next to it.
+
+1. `.ci/ir-baseline.json` carries an `image_floors` table keyed by the string `environment()`
+   returns, holding only the scenarios whose counted region includes the interpreter — the set
+   `keyed_by_image()` derives from the harness map the measurement itself builds, so a scenario that
+   changes harness re-classifies itself instead of going stale in two places. Every other scenario
+   keeps its single committed number, because a key nobody needs is a key that can go stale on its
+   own.
+2. The comparing path takes its floor from the row named by its own environment (`image_floors()`)
+   and prints which scenarios it took from the row. A table with no row for this environment is
+   neither a pass nor a regression: the gate exits 2 and names the key it wanted, so one refresh
+   dispatch closes it. A row that exists but omits a scenario the harness keys refuses the same way
+   — that scenario would otherwise be judged against the flat table, which is a number from
+   whichever image last refreshed it, exactly the comparison the key exists to prevent.
+   Both refusals apply to a run that names a runner image, because that is the only thing a row can
+   describe. A host outside that channel — the WSL run a contributor uses to ask whether their own
+   change cost instructions — keeps judging the flat table and prints that the interpreter rows are
+   not its floor. Refusing there would take the reading away from the one place it was always
+   indicative, including for the scenarios whose numbers no image affects.
+3. `--update` folds its numbers into its own row through `merge_image_row()` instead of rewriting
+   the table, so a refresh on a new image adds coverage rather than withdrawing the rows of the
+   images it did not run on; under `--only` the row keeps the numbers that run did not measure. A
+   host that names no image writes no row at all — a row's key is an image, and filing a platform
+   string there would create a key no enforcing leg can ever ask for.
+4. A baseline with no table at all is judged exactly as it was before. That is deliberate: refusing
+   on an absent table would have made the first run after this red on every pull request, because a
+   refusal is not a `success` and `Test matrix (all legs)` is the one required name.
+5. `--accept-drift` still names scenarios and still judges drift within one image, which is the only
+   place that comparison means anything.
+6. The shape contract reads the key the same way: every row names a runner image, an origin naming
+   an image must carry its row, and an origin naming a host must not appear as one. The assertion
+   that opened this section - "the recorded environment is in the table" - was written before the
+   narrowing and would have demanded a row the gate now refuses to write, so a locally re-baselined
+   file would have failed a test that claims only to check the shape.
+7. Each rule has a falsification test in `tests/test_ir_gate_provenance.py` and the file shape is
+   asserted in `tests/test_ir_baseline_workflow.py`: nine mutations, each reddening exactly the one
+   test that owns it — the refusal never firing, the absent table refusing, the row being ignored,
+   an incomplete row comparing anyway, `--update` replacing the table, a local host refused, no host
+   counting as an image, a non-image run filing a row, and the shape contract restored to its
+   unconditional form — with the file under test restored byte-for-byte afterwards.
+
+Two rows are in the table today, both read out of job logs rather than typed: `20261026.354.1` from
+the refresh run whose artifact wrote the current floor, and `20261023.334.3` from the `ir` job of
+PR #659 on the same tree with both harness digests equal. `load_toml_medium` reads 142,467,241 and
+144,904,012 between them, which is the 1.71 % a single floor could not hold.
+
+What is not done here: `scripts/check_ir_floor_quotes.py` and `QUALITY_MATRIX.md` section 2 still
+quote the flat `scenarios` values, so a paragraph that quotes an interpreter-counting floor quotes
+the one the file names as its generating environment rather than the row of whichever image is
+running. Making that marker image-aware is the next honest change, and it is not dressed up as
+finished.
 
 ## What this page does not claim
 
-It does not claim a keyed floor has been measured: nothing has been run against a two-key baseline
-yet, so the first implementation PR must bring its own readings from two images before the table can
-hold two rows. It does not claim the pool has exactly two live images — the jobs sampled named two,
-which bounds only the sample. And it does not claim the binding rows will settle once keyed:
-the 2.97 % spread was one pair of images, and the tolerance stays at the committed `tolerance_hint`
-unless a measurement says otherwise.
+It does not claim the pool has exactly two live images — the jobs sampled named two, and a third
+image is refused until one refresh adds its row. Nor are the rows offered as an easier verdict: on
+`20261026.354.1` the row for `load_toml_medium` is 142,467,241 where the flat table carries
+144,946,295, so keying tightens that floor by 1.71 % rather than excusing it.
+
+What it does claim is measured: a CI leg has taken its floor from a row. PR #662's own `ir` leg ran
+on `20261023.334.3`, printed all seven keyed names and `OK: every scenario within tolerance`, with
+three loader scenarios at +0.000 % of their own row and `load_json_medium` at +0.45 % — inside the
+line, ninety per cent of it, and recorded with its attribution in the ledger rather than smoothed
+over. One leg is not a distribution: what the line will keep absorbing per image is still a question
+each refresh answers for itself.

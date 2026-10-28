@@ -10,6 +10,26 @@
     "rustc": "1.97.1",
     "tool": "callgrind"
   },
+  "image_floors": {
+    "github-runner ubuntu24, image 20261023.334.3": {
+      "load_json_long_strings": 94851535,
+      "load_json_medium": 57111529,
+      "load_toml_long_strings": 139465617,
+      "load_toml_medium": 144904012,
+      "to_python_anchors": 320457211,
+      "to_python_medium": 386743139,
+      "to_python_small": 56500286
+    },
+    "github-runner ubuntu24, image 20261026.354.1": {
+      "load_json_long_strings": 94891054,
+      "load_json_medium": 57152342,
+      "load_toml_long_strings": 135445412,
+      "load_toml_medium": 142467241,
+      "to_python_anchors": 320254606,
+      "to_python_medium": 386474972,
+      "to_python_small": 56541590
+    }
+  },
   "scenarios": {
     "documents_long_strings": 119408685,
     "documents_short_strings": 76838657,
