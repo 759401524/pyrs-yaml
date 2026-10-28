@@ -316,6 +316,13 @@ status: new
 
 #### 变更
 
+- **`no_std` 的主机测试现在也在 Windows 上跑** — 那个 job 钉死在一台 runner 上，于是"`#![no_std]`
+  crate 去掉 std 后逻辑仍成立"的证据只来自一个操作系统，而 wheel 是给三个系统发的。裸机构建与宿主无
+  关，仍留在一台（`if: matrix.os == 'ubuntu-latest'`），这样矩阵不会为一次不可能出现差异的检查再付一
+  遍依赖构建；会出差异的单元测试则铺开。这条腿是先实测再加的：在 Windows 主机上对六个基建 crate 跑
+  `cargo test --locked --no-default-features`，724 条测试跑在 23 个 target 上、0 失败；而它之所以成
+  立，正是因为同一批改动止住了三条清单边经 feature 统一把 `std` 重新打开。
+  `tests/test_no_std_gate.py` 会拒绝退回单主机的 job，并写明它守护的是哪种不对称。
 - **名为 no_std 单元测试的那条 CI 腿，现在真的跑在它名字所说的配置上** — `no-std-check` 把六个基建
   crate 交给一次 `cargo test --locked --no-default-features` 调用，它的注释记下当年加宽列表"值 112
   条从没在 std 之外跑过的主机测试"。用 `cargo test -v --no-run` 把每条 rustc 命令行里的

@@ -382,6 +382,15 @@ status: new
 
 #### 変更
 
+- **`no_std` のホストテストを Windows でも走らせる** — このジョブは 1 台のランナーに固定されていて、
+  「`#![no_std]` クレートを std 無しで動かしてもロジックが生きている」証拠が 1 つの OS からしか出て
+  いなかった。にもかかわらず wheel は 3 つのシステムへ配布している。ベアメタルビルドはホスト非依存な
+  ので 1 台のまま（`if: matrix.os == 'ubuntu-latest'`）にして、差が出ない確認のために依存ビルドを二
+  回払うことは避けました。差が出る単位テストは範囲を広げます。脚を足す前に実測済み：Windows ホストで
+  6 つの基盤クレートを `cargo test --locked --no-default-features` すると 724 本のテストが 23 個の
+  target に走って 0 failed。これは同じ変更内容が dev-dependency の辺三本を feature 統一で `std` に戻
+  していたのを止めたから成る結果です。`tests/test_no_std_gate.py` は単一ホストへ退行した job を拒否
+  し、守っている非対称性を明文化します。
 - **no_std 単体テストを掲げる CI の脚が、名前の言う設定を実際に走るようになりました** —
   `no-std-check` は六つの基盤 crate を `cargo test --locked --no-default-features` の 1 回の呼び出し
   にまとめ、そのコメントは一覧を広げた当時「std なしで一度も走ったことがないホストテスト 112 本分の

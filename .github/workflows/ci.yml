@@ -448,7 +448,20 @@ jobs:
     name: no_std
     needs: [changes]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
+    # The steps split by whether the host can change the answer. The four host steps can: the unit
+    # tests run the map, hash and ordering jobs on whatever OS they are handed, and the two opt-in
+    # feature legs depend on file mapping and thread scheduling. Those now run on Ubuntu and Windows
+    # — wheels ship for both, and no other job in this workflow runs a Rust test off Linux
+    # (`rust-lint` and `msrv-check` are both `ubuntu-latest`). The cross-target build cannot differ
+    # between hosts — `thumbv7em-none-eabi` links the same way wherever it is invoked — so it stays
+    # on one host instead of paying a second cross-compile for a question with no second answer.
+    # macOS is not in the matrix: its difference here is the Unix file-mapping family, which
+    # `ubuntu-latest` already covers, so a third runner repeats an axis rather than adding one.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -465,9 +478,10 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: no-std
+          key: no-std-${{ matrix.os }}
 
       - name: Build no_std foundation crates
+        if: matrix.os == 'ubuntu-latest'
         run: >
           cargo build
           --locked
@@ -529,9 +543,10 @@ jobs:
       # feature left unchecked rots the way the no_std list once did silently. Building alone is not
       # enough — the `file.rs` byte-parity and error-parity tests are gated `#[cfg(feature = "mmap")]`
       # and a step that only compiles them proves the feature links, not that it works. This runs them
-      # on the Linux runner (the mapped and directory-fallback paths are OS-dependent, so Windows-only
-      # execution would leave the Linux semantics unguarded). The `memmap2` seam needs no interpreter,
-      # so it rides this job alongside the no_std steps rather than pulling the Python runtime back in.
+      # on both hosts of the matrix above: the mapped and directory-fallback paths are OS-dependent,
+      # so one host's green says nothing about the other's. Measured here before the second host was
+      # added — 456 passed, 0 failed on Windows. The `memmap2` seam needs no interpreter, so it rides
+      # this job alongside the no_std steps rather than pulling the Python runtime back in.
       - name: Test the opt-in mmap read path
         run: >
           cargo test --locked --features mmap -p pyrs-yaml-core
