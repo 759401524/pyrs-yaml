@@ -13,7 +13,7 @@ use crate::parser::yaml::schema::resolve_core_type;
 use crate::parser::yaml::types::YamlType;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytesMethods, PyDict, PyInt, PyList, PyString, PyStringMethods};
+use pyo3::types::{PyBytesMethods, PyDict, PyInt, PyList, PyString, PyStringMethods, PyTuple};
 use std::sync::Arc;
 
 /// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
@@ -52,7 +52,30 @@ pub(crate) fn is_decimal_digits(text: &str) -> bool {
     !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
+/// Whether a mapping key has a form this project's reader can hand back.
+///
+/// The dict projection converts only the *outer* sequence of a YAML key to a tuple — `? [1, 2]`
+/// reads as `{(1, 2): …}`, while `? [[1], [2]]` raises Python's own `unhashable type: 'list'`,
+/// measured against ruamel's safe loader and recorded here as the documented divergence. A writer
+/// that accepted a tuple containing another sequence would therefore emit text the loader refuses,
+/// breaking the round trip in the direction that matters; the empty tuple is fine, because `? []`
+/// re-reads as `()`.
+pub(crate) fn key_is_readable_shape(obj: &Bound<'_, PyAny>) -> bool {
+    if let Ok(tuple) = obj.cast::<PyTuple>() {
+        return tuple.iter().all(|item| !has_structure(&item));
+    }
+    if let Ok(list) = obj.cast::<PyList>() {
+        return list.iter().all(|item| !has_structure(&item));
+    }
+    true
+}
+
+/// A dict, list or tuple — the shapes whose Python projection a key cannot be built from.
+fn has_structure(obj: &Bound<'_, PyAny>) -> bool {
+    obj.cast::<PyDict>().is_ok() || obj.cast::<PyList>().is_ok() || obj.cast::<PyTuple>().is_ok()
+}
+
+/// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/tuple/str/int/float/bool/None/ndarray。
 pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     let obj = obj.bind(py);
 
@@ -71,6 +94,12 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
                     CustomNode::plain_scalar(text)
                 }
             } else {
+                if !key_is_readable_shape(&key) {
+                    return Err(YamlTypeError::new_err(format_i18n_error(
+                        "unsupported-type",
+                        &[],
+                    )));
+                }
                 pyobject_to_node(py, &key.into_any().unbind())?
             };
             let value_node = pyobject_to_node(py, &value.into_any().unbind())?;
@@ -81,6 +110,17 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
 
     if let Ok(list) = obj.cast::<PyList>() {
         let items: Vec<CustomNode> = list
+            .iter()
+            .map(|item| pyobject_to_node(py, &item.into_any().unbind()))
+            .collect::<Result<_, _>>()?;
+        return Ok(CustomNode::plain_sequence(items));
+    }
+
+    // A tuple is a sequence here for one reason: the reader hands one back. `? [a, b]` projects to
+    // the Python key `("a", "b")` (an unhashable list cannot be a dict key), so a converter that
+    // refused tuples made `safe_dump(safe_load(text))` raise on a document the loader accepted.
+    if let Ok(tuple) = obj.cast::<PyTuple>() {
+        let items: Vec<CustomNode> = tuple
             .iter()
             .map(|item| pyobject_to_node(py, &item.into_any().unbind()))
             .collect::<Result<_, _>>()?;

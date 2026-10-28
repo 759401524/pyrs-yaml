@@ -15,21 +15,25 @@
 //! (`write_plain_scalar`, `write_mapping_pair`, `write_sequence_item`,
 //! `write_double_quoted_scalar`) restricted to nodes reachable from Python
 //! objects (plain scalars, nulls, block mappings/sequences; no comments,
-//! anchors, tags, flow style, or complex `? ` keys — dict/list keys are
-//! unhashable and cannot reach the converter).
+//! anchors, tags or flow style). A complex `? ` key is the one shape this writer
+//! does not spell at all: the loader projects a YAML sequence key to a Python
+//! tuple, so such a key really does reach the converter, and the pair is handed
+//! to the core serializer for that case rather than mirroring the spelling twice.
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString};
+use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 
-#[cfg(feature = "numpy")]
 use crate::YamlSerializeError;
+use crate::ast::{CustomNode, NodeMap};
 use crate::parser::yaml::schema::needs_quotes;
 use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
 use crate::py::ndarray::ndarray_to_node;
-use crate::py::python_types::{float_to_yaml_string, is_decimal_digits, py_string_to_arc};
+use crate::py::python_types::pyobject_to_node;
+use crate::py::python_types::{
+    float_to_yaml_string, is_decimal_digits, key_is_readable_shape, py_string_to_arc,
+};
 use crate::py::type_registry;
-#[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::serializer::{
     is_short_alphanumeric, is_yaml_noncharacter, write_double_quoted_scalar, write_plain_scalar,
@@ -43,13 +47,18 @@ const WIDTH: usize = 80;
 
 /// Coarse classification of a Python object's YAML node kind, used to decide
 /// inline-vs-block layout without allocating any string.
+#[derive(Debug, Clone, Copy)]
 enum Kind {
     /// `None` → null node.
     Null,
     /// bool / int / float / str → plain-or-quoted scalar.
     Scalar,
-    /// dict / list → block container.
+    /// dict → block mapping.
     Block,
+    /// list / tuple → block sequence. A tuple is the spelling the loader hands back for a YAML
+    /// sequence key, so refusing it here broke `safe_dump(safe_load(text))` on a document the
+    /// reader accepted.
+    Sequence,
     /// ndarray or an unsupported object (resolved at write time).
     Other,
 }
@@ -72,7 +81,8 @@ fn extract_scalar_value(obj: &Bound<'_, PyAny>) -> PyResult<Option<ScalarValue>>
     if obj.cast::<PyString>().is_ok() || obj.is_none() {
         return Ok(None);
     }
-    if obj.cast::<PyDict>().is_ok() || obj.cast::<PyList>().is_ok() {
+    if obj.cast::<PyDict>().is_ok() || obj.cast::<PyList>().is_ok() || obj.cast::<PyTuple>().is_ok()
+    {
         return Ok(None);
     }
     // bool is checked before PyInt because bool is a subclass of int; this
@@ -121,7 +131,7 @@ fn classify(obj: &Bound<'_, PyAny>) -> Kind {
         return Kind::Block;
     }
     if obj.cast::<PyList>().is_ok() {
-        return Kind::Block;
+        return Kind::Sequence;
     }
     // String case: cheap cast check.
     if obj.cast::<PyString>().is_ok() {
@@ -131,7 +141,24 @@ fn classify(obj: &Bound<'_, PyAny>) -> Kind {
     if extract_scalar_value(obj).ok().flatten().is_some() {
         return Kind::Scalar;
     }
+    // Checked after the scalars so a string or number never pays for the extra cast: a tuple is
+    // only ever the shape the loader hands back for a sequence key.
+    if obj.cast::<PyTuple>().is_ok() {
+        return Kind::Sequence;
+    }
     Kind::Other
+}
+
+/// Whether a key is a container and so cannot be spelled on the key's own line.
+///
+/// Three casts, never the full [`classify`]: this question sits on the recursive path, and an
+/// inlined `classify` brings `extract_scalar_value`'s locals into the caller's frame. `MAX_DEPTH`
+/// lets that frame repeat a thousand times, which is more stack than a Windows main thread
+/// commits, so the refusal a deep document should get arrives as a interpreter-killing overflow
+/// instead. Measured: the same 1,100-level document overflowed at the 891st level with `classify`
+/// here and reached the guard with this predicate.
+fn key_is_complex(obj: &Bound<'_, PyAny>) -> bool {
+    obj.cast::<PyDict>().is_ok() || obj.cast::<PyList>().is_ok() || obj.cast::<PyTuple>().is_ok()
 }
 
 /// Serialize a Python object to a YAML string (one document, no `---`).
@@ -229,10 +256,15 @@ impl DirectWriter {
             }
             Kind::Scalar => self.write_scalar_node(py, obj, indent_width)?,
             Kind::Block => {
-                if obj.is_instance_of::<PyDict>() {
-                    self.write_mapping(py, obj.cast().unwrap(), indent_width, depth)?;
-                } else {
-                    self.write_sequence(py, obj.cast().unwrap(), indent_width, depth)?;
+                if let Ok(dict) = obj.cast::<PyDict>() {
+                    self.write_mapping(py, dict, indent_width, depth)?;
+                }
+            }
+            Kind::Sequence => {
+                if let Ok(list) = obj.cast::<PyList>() {
+                    self.write_sequence(py, list, indent_width, depth)?;
+                } else if let Ok(tuple) = obj.cast::<PyTuple>() {
+                    self.write_tuple_sequence(py, tuple, indent_width, depth)?;
                 }
             }
             Kind::Other => self.write_other(py, obj, indent_width)?,
@@ -305,9 +337,57 @@ impl DirectWriter {
                 Some(ScalarValue::Float(f)) => self.output.push_str(&float_to_yaml_string(f)),
                 None => return Err(self.unsupported_type()),
             },
-            // dict/list keys are unhashable and can never reach the converter.
-            Kind::Block | Kind::Other => return Err(self.unsupported_type()),
+            // A dict key cannot exist in a Python mapping, and a sequence key (the tuple the
+            // loader hands back) is delegated before reaching here: `write_complex_pair`.
+            Kind::Sequence | Kind::Block | Kind::Other => return Err(self.unsupported_type()),
         }
+        Ok(())
+    }
+
+    /// One pair whose key is not a scalar, handed to the core serializer.
+    ///
+    /// A YAML sequence key reaches the writer as the tuple the reader projected (`? [a, b]` →
+    /// `("a", "b")`), and the explicit-key spelling — `?` on its own line, the key as a flow
+    /// body, then `:` — is the node serializer's, not this writer's. Mirroring it here would
+    /// put a second copy of that shape where the route-parity table has to keep them equal; the
+    /// delegation is the same move `write_other` already makes for an ndarray subtree, and it
+    /// buys byte-identity with `from_dict(...).to_yaml()` by construction.
+    ///
+    /// Out-of-line on purpose: its locals (a `NodeMap`, two `pyobject_to_node` results, a
+    /// serialized `String`) would otherwise join `write_mapping_pair`'s frame, and that frame is
+    /// live once per nesting level under the `MAX_DEPTH` guard. See [`key_is_complex`].
+    #[inline(never)]
+    fn write_complex_pair(
+        &mut self,
+        py: Python,
+        key: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+        indent_width: usize,
+    ) -> PyResult<()> {
+        let mut pairs = NodeMap::default();
+        pairs.insert(
+            pyobject_to_node(py, &key.clone().unbind())?,
+            pyobject_to_node(py, &value.clone().unbind())?,
+        );
+        let yaml = to_yaml_with_options(
+            &CustomNode::plain_mapping(pairs),
+            &SerializeOptions {
+                indent_offset: indent_width,
+                sort_keys: self.sort_keys,
+                ..Default::default()
+            },
+        )
+        .map_err(|e| {
+            if e.to_string().contains("max depth exceeded") {
+                self.depth_error()
+            } else {
+                YamlSerializeError::new_err(format_i18n_error(
+                    "yaml-serialize-error",
+                    &[("detail", &e.to_string())],
+                ))
+            }
+        })?;
+        self.output.push_str(&yaml);
         Ok(())
     }
 
@@ -325,6 +405,9 @@ impl DirectWriter {
         }
         if let Ok(list) = obj.cast::<PyList>() {
             return list.is_empty();
+        }
+        if let Ok(tuple) = obj.cast::<PyTuple>() {
+            return tuple.is_empty();
         }
         false
     }
@@ -368,6 +451,12 @@ impl DirectWriter {
         indent_width: usize,
         depth: usize,
     ) -> PyResult<()> {
+        if key_is_complex(key) {
+            if !key_is_readable_shape(key) {
+                return Err(self.unsupported_type());
+            }
+            return self.write_complex_pair(py, key, value, indent_width);
+        }
         self.write_indent(indent_width);
         self.write_key(key)?;
         self.output.push(':');
@@ -377,16 +466,16 @@ impl DirectWriter {
                 self.output.push(' ');
                 self.write_node_with_kind(py, value, vkind, 0, depth + 1)?;
             }
-            Kind::Block | Kind::Other => {
+            Kind::Block | Kind::Sequence | Kind::Other => {
                 if Self::is_empty_container(value) {
                     // An empty container rides the key's line, exactly as a scalar does;
                     // `write_node*` would indent it onto the next line, where it re-reads
                     // as flow and the following dump inlines it again.
                     self.output.push(' ');
-                    self.output.push_str(if value.cast::<PyList>().is_ok() {
-                        "[]\n"
-                    } else {
+                    self.output.push_str(if value.cast::<PyDict>().is_ok() {
                         "{}\n"
+                    } else {
+                        "[]\n"
                     });
                 } else {
                     self.output.push('\n');
@@ -425,8 +514,10 @@ impl DirectWriter {
                     Err(self.unsupported_type())
                 }
             }
-            // dict/list keys are unhashable and can never reach the converter.
-            Kind::Block | Kind::Other => Ok(String::new()),
+            // A complex key has no scalar text to sort on, which is what the node writer's
+            // comparator does for the same node (`_ => ""`), so a sequence key keeps the pair
+            // first among equals rather than the direct writer inventing an ordering.
+            Kind::Sequence | Kind::Block | Kind::Other => Ok(String::new()),
         }
     }
 
@@ -474,6 +565,13 @@ impl DirectWriter {
                     self.output.push('\n');
                     self.write_sequence(py, list, indent_width + 2, depth + 1)?;
                 }
+            } else if let Ok(tuple) = item.cast::<PyTuple>() {
+                if tuple.is_empty() {
+                    self.output.push_str("[]\n");
+                } else {
+                    self.output.push('\n');
+                    self.write_tuple_sequence(py, tuple, indent_width + 2, depth + 1)?;
+                }
             } else {
                 // Scalars and nulls stay on the dash line; ndarray (block) and
                 // unsupported objects go on their own indented block.
@@ -491,6 +589,24 @@ impl DirectWriter {
         Ok(())
     }
 
+    /// A tuple is written as the sequence the loader projected it from: borrow it into a list
+    /// once, then the same writer. The alternative was a second copy of the dash-line rules, and
+    /// tuples are the cold shape here — no fixture reaches them except through a complex key.
+    fn write_tuple_sequence(
+        &mut self,
+        py: Python,
+        tuple: &Bound<'_, PyTuple>,
+        indent_width: usize,
+        depth: usize,
+    ) -> PyResult<()> {
+        if tuple.is_empty() {
+            self.write_indent(indent_width);
+            self.output.push_str("[]\n");
+            return Ok(());
+        }
+        self.write_sequence(py, &tuple.to_list(), indent_width, depth)
+    }
+
     /// Mirror of `Serializer::is_compact_item` for Python-derived mappings:
     /// non-empty, no metadata, every value inlineable (scalar or null).
     /// ndarray values always produce a block sequence, so they are never
@@ -502,8 +618,13 @@ impl DirectWriter {
         if dict.is_empty() {
             return false;
         }
-        dict.iter().all(|(_, v)| {
-            matches!(classify(&v), Kind::Null | Kind::Scalar) || Self::is_empty_container(&v)
+        dict.iter().all(|(key, value)| {
+            // A sequence key is not inlineable: the pair goes through `write_complex_pair`, and
+            // that is the dash line's own shape, so the item cannot stay compact. Same cheap
+            // question as `write_mapping_pair` asks, for the same frame-size reason.
+            !key_is_complex(&key)
+                && (matches!(classify(&value), Kind::Null | Kind::Scalar)
+                    || Self::is_empty_container(&value))
         })
     }
 

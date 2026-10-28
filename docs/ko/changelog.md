@@ -86,6 +86,17 @@ status: new
   대상이기 때문입니다. 다시 쓰기 전 페이지는 이 검사기에 네 번 거부됐습니다.
   `uv run pytest tests/test_ir_floor_quote_gate.py`는 22 passed를 읽으며, 규칙의 가지를 하나씩 지운
   네 번의 변형은 각각 담당 테스트만 붉게 했습니다.
+- **읽기가 되돌려 주는 tuple 을 쓰기 쪽이 받습니다** — `? [a, b]` 는 Python 키 `("a", "b")` 로
+  투영되지만, 그동안 두 쓰기 경로는 어떤 위치의 tuple 이든 `Unsupported Python type` 으로
+  거부했습니다. 그래서 `safe_dump(safe_load(text))` 는 읽기가 받아들인 문서에서 예외를 냈고
+  `from_dict` 와 `_set_path` 도 같은 값을 거부했습니다. 이제 tuple 은 두 경로에서 순열로 적히고,
+  키로 쓰인 순열은 노드 직렬화기가 소유한 명시 키 형태로 나옵니다. 직접 쓰기 쪽은 그 한 쌍을 넘기고
+  `?` 표기를 다시 옮기지 않으므로 두 경로는 바이트 단위로 일치합니다. 하나 형태만 거부가 남고 그
+  이유는 읽기 쪽에 있습니다. 투영되는 것은 키의 *바깥* 순열뿐이라 `? [[1], [2]]` 는 Python 고유의
+  `unhashable type: 'list'` 를 던집니다(ruamel 로 실측). 안에 순열을 하나 더 담은 키에는 다시 읽히는
+  표기가 없습니다. `tests/test_route_parity.py` 에 아홉 줄을 더했고 각 줄은 두 글기와 고정점에서
+  검증합니다(182 passed). `tests/test_edit.py::test_set_tuple_value_raises` 는
+  `test_set_tuple_value_writes_a_sequence` 가 되었습니다.
 - **`load_json_lines` 가 `.jsonl` 스트림을 한 줄씩 값으로 읽습니다** — 엔진은 #599
   (`pyrs_json::parse_documents`) 이후 행 구분 JSON 을 기술할 수 있었지만 Python 계층에는 읽는
   창구가 없었습니다. 호출자가 스스로 줄을 갈라 줄마다 `load_json` 을 부르는 수밖에 없었고, 파싱

@@ -103,10 +103,11 @@ class TestSetPath:
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc._set_path(["arr", -4], 9)
 
-    def test_set_tuple_value_raises(self):
+    def test_set_tuple_value_writes_a_sequence(self):
         doc = pyrs_yaml.parse("a: 1\n")
-        with pytest.raises(pyrs_yaml.YamlTypeError):
-            doc._set_path(["a"], (1, 2))
+        doc._set_path(["a"], (1, 2))
+        assert doc.to_yaml() == "a:\n  - 1\n  - 2\n"
+        assert pyrs_yaml.safe_load(doc.to_yaml()) == {"a": [1, 2]}
 
     def test_set_nested_mapping(self):
         doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")

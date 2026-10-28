@@ -73,6 +73,15 @@ status: new
   引擎侧读数保留裸标记——对它们而言，平铺列正是每条腿比对的列。未重标的页面被这个检查器拒了四次；
   `uv run pytest tests/test_ir_floor_quote_gate.py` 读到 22 passed；四次突变各删掉规则的一个分支，
   每次都只让归属它的那条测试变红。
+- **写出器接住读入器交回的那个 tuple** — `? [a, b]` 在 Python 侧投影成键 `("a", "b")`，而此前两条写
+  出路线对任何位置的 tuple 都抛 `Unsupported Python type`，于是 `safe_dump(safe_load(text))` 在一份
+  读入器已经接受的文档上直接报错，`from_dict` 与 `_set_path` 也一样。现在 tuple 在两条路线都按序列写
+  出；被当作键的序列改用节点序列化器自己的显式键写法——直接写出器把这一对交出去，而不是再镜像一遍
+  `? `，两条路线因此逐字节相同。只有一种形状仍然拒绝，理由在读入器那边：被投影的只是键的*最外层*序
+  列，所以 `? [[1], [2]]` 抛出 Python 自己的 `unhashable type: 'list'`（对照 ruamel 实测），一个内部
+  还套着序列的键没有任何能读回来的写法。`tests/test_route_parity.py` 添了九行，每行都同时对两条写出
+  路线与不动点断言（182 passed），`tests/test_edit.py::test_set_tuple_value_raises` 改名为
+  `test_set_tuple_value_writes_a_sequence`。
 - **`load_json_lines` 按行读取 `.jsonl` 流的值** — 引擎自 #599（`pyrs_json::parse_documents`）就能
   描述行分隔 JSON，但 Python 层没有读取它的入口：调用方只能自己按行切分再逐行调用 `load_json`，在
   解析之外额外付出一份行列表和每条记录一棵树。`pyrs_yaml.load_json_lines(text)` 返回一个

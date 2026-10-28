@@ -430,6 +430,8 @@ def dump_file(data: "Any", path: "str") -> "None":
 def from_dict(data: "dict[str, Any] | list[Any]") -> "str":
     """
     Convert a Python dict/list to a YAML string (auto-selects block/flow style).
+
+    A tuple is read as a sequence; see [`safe_dump`].
     """
 
 def from_json(json_str: "str") -> "str":
@@ -660,6 +662,9 @@ def remove_type(name: "str") -> None:
 def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
     """
     Serialize a Python dict/list to a YAML string.
+
+    A tuple is read as a sequence, which is the shape the loader hands back for a YAML sequence
+    key: `safe_dump(safe_load(text))` has to accept what `safe_load` produced.
     """
 
 def safe_load(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "dict[Any, Any] | list[Any]":

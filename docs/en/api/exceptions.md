@@ -117,7 +117,7 @@ except pyrs_yaml.YamlValidateError as e:
 
 ### YamlEditError
 
-Raised when an in-place edit cannot be applied: unsupported value types (`tuple`), negative indices, edits through aliases, renaming the root or complex keys, navigation into a scalar, or out-of-bounds indices.
+Raised when an in-place edit cannot be applied: unsupported value types (`set`), negative indices, edits through aliases, renaming the root or complex keys, navigation into a scalar, or out-of-bounds indices.
 
 ```python
 class YamlEditError(ValueError):

@@ -84,6 +84,17 @@ status: new
   ます。そちらではフラット列こそが全てのレッグの比較先だからです。書き換える前のページはこの検査器に
   四回拒否され、`uv run pytest tests/test_ir_floor_quote_gate.py` は 22 passed を読み、規則の枝を一
   本ずつ消す四つの突然変異は、いずれも担当のテストだけを赤くしました。
+- **リーダーが返す tuple をライターが受け取ります** — `? [a, b]` は Python のキー `("a", "b")` に射
+  影されますが、これまで両方のライターはどの位置の tuple も `Unsupported Python type` で拒否していま
+  した。だから `safe_dump(safe_load(text))` はリーダーが受け入れた文書で例外になり、`from_dict` と
+  `_set_path` も同じ値を拒否ります。いまは tuple は両経路で列として書かれ、キーに使われた列はノード
+  側シリアライザが持つ明示キーの形になります。直接ライターはその 1 ペアを委譲して `?` の書き方を二
+  つ目に鏡書かないので、両経路はバイト単位で一致します。ひとつだけ拒否が残る形があり、理由はリーダー
+  側にあります。射影されるのはキーの*外側の*列だけなので、`? [[1], [2]]` は Python 自身の
+  `unhashable type: 'list'` を投げます（ruamel で実測）。内側に列をもうひとつ含むキーには、読み戻せ
+  る書き方がありません。`tests/test_route_parity.py` に 9 行を増やし、各行を両ライターと不動点で検証
+  しています（182 passed）。`tests/test_edit.py::test_set_tuple_value_raises` は
+  `test_set_tuple_value_writes_a_sequence` になりました。
 - **`load_json_lines` が `.jsonl` ストリームを 1 行ずつ値として読みます** — エンジンは #599
   （`pyrs_json::parse_documents`）以降、行区切り JSON を記述できますが、Python 層に読み口がありませ
   んでした。呼び出し側は行に分割して 1 行ずつ `load_json` を呼ぶしかなく、解析の外に行リストとレコー

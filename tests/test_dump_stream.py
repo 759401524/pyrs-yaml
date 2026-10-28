@@ -1,6 +1,8 @@
 """Streaming write tests: YAML.dump_stream / YAML.dump_file."""
 
 import io
+import subprocess
+import sys
 
 import pytest
 
@@ -76,6 +78,61 @@ def test_dump_stream_max_depth_error():
     buf = io.StringIO()
     with pytest.raises(pyrs_yaml.YamlMaxDepthError):
         pyrs_yaml.YAML().dump_stream(buf, [d])
+
+
+# The guard above answers at depth 1000, which means the writer needs a thousand of its own
+# stack frames in place before it can refuse. Whether it has them is a frame-size question, and
+# a frame-size question can only be asked against a stack of known size — so the child sets one.
+_SMALL_STACK_DUMP_CHILD = """
+import io, threading
+import pyrs_yaml
+
+threading.stack_size(256 * 1024)
+doc = {}
+cursor = doc
+for _ in range(1100):
+    cursor["x"] = {}
+    cursor = cursor["x"]
+outcome = []
+
+def run():
+    try:
+        pyrs_yaml.YAML().dump_stream(io.StringIO(), [doc])
+        outcome.append("WROTE")
+    except pyrs_yaml.YamlMaxDepthError:
+        outcome.append("MAXDEPTH")
+    except BaseException as exc:
+        outcome.append("OTHER " + type(exc).__name__)
+
+thread = threading.Thread(target=run)
+thread.start()
+thread.join()
+print(outcome[0] if outcome else "NO ANSWER", flush=True)
+"""
+
+
+def test_the_depth_guard_answers_on_a_small_thread_stack():
+    """A deep document is refused by the guard, not by killing the interpreter.
+
+    Measured on Windows 2026-10-28: a per-pair classification that pulls the scalar extractor and
+    the complex-key delegation into the mapping writer's frame put the 1,100-level dump of this
+    test's own fixture at 891 levels instead of a refusal, and it needed a 4 MB thread stack
+    before the guard answered at all — where the writer before it answered inside 64 KB. A stack
+    overflow is a fatal interpreter error, so the regression cannot be asserted in-process: it
+    aborts the whole pytest session (exit 127) and the rest of the suite never runs. The child
+    carries the small stack, and its death is an ordinary red.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-c", _SMALL_STACK_DUMP_CHILD],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, (
+        "the depth guard never answered: the writer overflowed the 256 KB thread stack "
+        f"(exit {proc.returncode})\n{proc.stderr[-400:]}"
+    )
+    assert proc.stdout.strip() == "MAXDEPTH", proc.stdout.strip()
 
 
 def test_dump_stream_object_without_write_raises_type_error():
