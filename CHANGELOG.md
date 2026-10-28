@@ -82,6 +82,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   compares against. The checker refused the un-repointed page four times,
   `uv run pytest tests/test_ir_floor_quote_gate.py` reads 22 passed, and four mutations — each
   deleting one branch of the new rule — reddened exactly the owning test.
+- **The dumpers accept the tuple the loader hands back** — `? [a, b]` projects to the Python key
+  `("a", "b")`, and both writers refused a tuple in any position with `Unsupported Python type`, so
+  `safe_dump(safe_load(text))` raised on a document `safe_load` had accepted, and `from_dict` and
+  `_set_path` refused the same value. A tuple is now a sequence on both routes; a sequence used as a
+  key is written in the explicit-key shape the node serializer owns, with the direct writer handing
+  that one pair over rather than mirroring the spelling, which is how the two routes stay
+  byte-identical. One shape stays refused and the reason is the reader's: only the *outer* sequence
+  of a key is projected, so `? [[1], [2]]` raises Python's own `unhashable type: 'list'` — measured
+  against ruamel — and a key holding another sequence has no text that re-reads. Nine rows joined
+  `tests/test_route_parity.py`, each asserted against both writers and as a fixed point (182
+  passed), and `tests/test_edit.py::test_set_tuple_value_raises` became
+  `test_set_tuple_value_writes_a_sequence`.
 - **`load_json_lines` reads a `.jsonl` stream as values, one line at a time** — the engine has
   described line-delimited JSON since #599 (`pyrs_json::parse_documents`), but nothing at the Python
   layer could read it: a caller split the text and called `load_json` per line, paying for a list of

@@ -61,6 +61,20 @@ PARITY_TABLE = [
     ("bool key", "true: a\n", {True: "a"}),
     ("null key", "null: 1\n", {None: 1}),
     ("deep mix", "a:\n  b:\n    c:\n      - 1\n      - d: {}\n", {"a": {"b": {"c": [1, {"d": {}}]}}}),
+    # A tuple is the shape the loader hands back for a YAML sequence key, so it is an input the
+    # writers have to accept: `safe_dump(safe_load("? [a, b]"))` raised until this row pair
+    # existed, which broke the round trip through the one object view the package sells. The texts
+    # are measured from the node route, and the explicit-key spelling is the node serializer's own
+    # - the direct writer hands a complex pair over rather than mirroring `? `.
+    ("tuple value", 'a:\n  - x\n  - "y"\n', {"a": ("x", "y")}),
+    ("empty tuple value", "a: []\n", {"a": ()}),
+    ("nested tuple value", 'a:\n  - \n    - x\n  - \n    - "y"\n', {"a": (("x",), ("y",))}),
+    ("tuple at top", "- a\n- 1\n", ("a", 1)),
+    ("tuple key", "?\n  - a\n  - b\n:\n  v\n", {("a", "b"): "v"}),
+    ("integer tuple key", "?\n  - 1\n  - 2\n:\n  v\n", {(1, 2): "v"}),
+    ("empty tuple key", "?\n  []\n:\n  1\n", {(): 1}),
+    ("tuple key among scalars", "?\n  - a\n:\n  1\nb: 2\n", {("a",): 1, "b": 2}),
+    ("tuple under a dash", "- \n  k:\n    - a\n    - b\n", [{"k": ("a", "b")}]),
 ]
 
 IDS = [label for label, _text, _obj in PARITY_TABLE]
@@ -133,6 +147,32 @@ def test_style_preservation_diverges_on_purpose(text, obj):
     assert pyrs_yaml.parse(text).to_yaml() == text
     assert pyrs_yaml.safe_dump(obj) != text
     assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(obj)) == obj
+
+
+def test_a_key_holding_another_sequence_is_refused_by_both_writers():
+    """The one shape the tuple support cannot promise, stated as a refusal on both routes.
+
+    The dict projection converts only the *outer* sequence of a key to a tuple — the assertion
+    below, on the loader's side, is what pins that. So `("a", ("b",))` has no text this project
+    can write and read back: whatever spelling is emitted, the inner sequence re-projects as a
+    list and Python raises before the pair lands. Refusing is the honest answer, and both writers
+    give it, because `from_dict` is the reference the direct route is checked against.
+    """
+    obj = {("a", ("b",)): 1}
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.safe_dump(obj)
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.from_dict(obj)
+
+
+def test_the_reader_projects_only_the_outer_sequence_of_a_key():
+    """The load-side fact the refusal above rests on, measured rather than asserted in a comment."""
+    assert pyrs_yaml.safe_load("? [a, b]\n: v\n") == {("a", "b"): "v"}
+    assert pyrs_yaml.safe_load("? []\n: 1\n") == {(): 1}
+    with pytest.raises(TypeError, match="unhashable type: 'list'"):
+        pyrs_yaml.safe_load("? [[a], [b]]\n: v\n")
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.safe_load("? {a: 1}\n: v\n")
 
 
 def test_non_string_keys_survive_the_object_view():

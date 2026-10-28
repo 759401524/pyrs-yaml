@@ -10439,6 +10439,59 @@ scenarios respectively by at most 0.001 %. Three consecutive dispatches on one i
 choice, not a route: paying `354.1`'s row needs a refresh that lands on `354.1`, and until then an
 enforcing leg there keeps absorbing +0.378 % of a 0.50 % line.
 
+### (hm) The reader hands back a tuple, so the writers had to accept one
+
+`? [a, b]` projects to the Python key `("a", "b")` — the outer-only sequence projection
+`(cp)`/`(eq)` settled for hashability. Both writers refused a tuple in *every* position with
+`unsupported-type`, so `safe_dump(safe_load(text))` raised on a document the reader had accepted,
+`from_dict` raised on the same object, and `tests/test_edit.py::test_set_tuple_value_raises` had
+pinned the refusal as intended behaviour. The round trip is this project's primary test pattern; a
+value the reader manufactures and the writer rejects is not a policy, it is a hole.
+
+A tuple is now a sequence on both routes. A sequence used as a key is not mirrored in the direct
+writer: the explicit-key shape (`?` alone on its line, the key as a body, then `:`) belongs to the
+node serializer, and the pair is delegated to `to_yaml_with_options` with the current indent — the
+same move `write_other` already makes for an ndarray subtree — so byte-identity between the routes
+is structural rather than a second spelling to keep in step. `Kind` split so a list or tuple is
+`Sequence` and only a dict is `Block`, the tuple cast sits after the scalar checks to keep it off
+the hot path, and the compact-dash test now declines an item whose key has structure, because that
+item's pair goes through the delegation too.
+
+One refusal stays, and the reason is on the reader's side. Only the outer sequence of a key is
+projected, so `? [[1], [2]]` raises Python's own `unhashable type: 'list'` — measured here against
+ruamel's safe loader and already documented in `convert.rs` — which means a key holding another
+sequence has no text that re-reads. `key_is_readable_shape` refuses it on both routes rather than
+emitting a document this project cannot load;
+`test_the_reader_projects_only_the_outer_sequence_of_a_key` asserts the load-side fact the refusal
+rests on, so the rule cannot outlive a change to the projection.
+
+A frame is the recursion's whole budget, and the first version of this change spent it.
+`MAX_DEPTH` answers at 1,000, which means the mapping writer needs a thousand of its own frames
+in place before it can refuse. Asking the key question with `classify` and putting the delegation
+body beside it in the same function inlined the scalar extractor and `pyobject_to_node` into
+`write_mapping_pair`. Measured here on 2026-10-28, same interpreter, same 1,100-level document:
+`tests/test_dump_stream.py::test_dump_stream_max_depth_error` died of a stack overflow instead of
+raising, and a depth sweep put the cliff at 891 levels — the guard could never answer. A thread
+stack sweep turns "how much headroom is left" into a number: the trunk build refuses inside a
+65,536-byte stack, the first version crashed at 2,097,152 and refused only at 4,194,304, and
+`key_is_complex` plus `#[inline(never)]` on `write_complex_pair` restores the 65,536-byte answer.
+`test_the_depth_guard_answers_on_a_small_thread_stack` holds that line in a child process, because
+a stack overflow is a fatal interpreter error that aborts the pytest session instead of reading
+red — the control was run: against the unslimmed writer the new test fails with the exit code.
+
+Readings: `tests/test_route_parity.py` 182 passed with nine new rows, each asserted against the node
+writer, the direct writer, the two agreeing, and a fixed point — e.g. `("a", "b")` as a key emits
+`'?\n  - a\n  - b\n:\n  v\n'` and re-reads as `('a', 'b')`. The tuple-value rows close as a fixed
+point with the value re-reading as a list, which is the same agreement PyYAML and ruamel reach.
+`tests/test_edit.py::test_set_tuple_value_writes_a_sequence` replaced the refusal test. The stub
+regained the two docstring lines through `maturin generate-stubs` plus
+`scripts/check_stub_drift.py --fix` and reads `matches the regeneration route`. What this does not
+settle: a `sort_keys` ordering for complex keys beyond the empty-string comparator the node writer
+already uses, and the price of the key question on the write route at all — the binding's counted
+scenarios (`to_python_*`) measure the loader, and the engine's `serialize_*` floors count `to_yaml`
+on a node AST, so no committed floor reaches `direct_dump`. The gate-visible risk is therefore code
+size inside the counted region, which the enforcing leg reads.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

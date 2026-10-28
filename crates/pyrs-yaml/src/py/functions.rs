@@ -555,6 +555,9 @@ pub(crate) fn parse_stream(
 #[pyfunction]
 #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
 /// Serialize a Python dict/list to a YAML string.
+///
+/// A tuple is read as a sequence, which is the shape the loader hands back for a YAML sequence
+/// key: `safe_dump(safe_load(text))` has to accept what `safe_load` produced.
 pub(crate) fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
     direct_dump(py, &data)
 }
@@ -562,6 +565,8 @@ pub(crate) fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
 /// Convert a Python dict/list to a YAML string (auto-selects block/flow style).
+///
+/// A tuple is read as a sequence; see [`safe_dump`].
 pub(crate) fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
     direct_dump(py, &data)
 }
