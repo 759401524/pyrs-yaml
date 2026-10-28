@@ -99,10 +99,10 @@ The environment is part of the floor's key rather than a footnote next to it.
    counting as an image, a non-image run filing a row, and the shape contract restored to its
    unconditional form — with the file under test restored byte-for-byte afterwards.
 
-Two rows are in the table today, both read out of job logs rather than typed: `20261026.354.1` from
-the refresh run whose artifact wrote the current floor, and `20261023.334.3` from the `ir` job of
-PR #659 on the same tree with both harness digests equal. `load_toml_medium` reads 142,467,241 and
-144,904,012 between them, which is the 1.71 % a single floor could not hold.
+Two rows are in the table today, both read out of job logs rather than typed: `20261023.334.3` from
+the refresh run `40636638961` whose artifact wrote the current floor, and `20261026.354.1` carried
+through that run from the job which last measured it. `load_toml_medium` reads 142,467,241 and
+144,902,515 between them, which is the 1.71 % a single floor could not hold.
 
 What is not done here: `scripts/check_ir_floor_quotes.py` and `QUALITY_MATRIX.md` section 2 still
 quote the flat `scenarios` values, so a paragraph that quotes an interpreter-counting floor quotes
@@ -114,12 +114,16 @@ finished.
 
 It does not claim the pool has exactly two live images — the jobs sampled named two, and a third
 image is refused until one refresh adds its row. Nor are the rows offered as an easier verdict: on
-`20261026.354.1` the row for `load_toml_medium` is 142,467,241 where the flat table carries
-144,946,295, so keying tightens that floor by 1.71 % rather than excusing it.
+`20261026.354.1` the row for `load_toml_medium` is 142,467,241 where the flat table now carries
+144,902,515 - the `334.3` number, because `334.3` is the image that wrote this file - so keying
+tightens the `354.1` floor by 1.71 % rather than excusing it.
 
 What it does claim is measured: a CI leg has taken its floor from a row. PR #662's own `ir` leg ran
 on `20261023.334.3`, printed all seven keyed names and `OK: every scenario within tolerance`, with
 three loader scenarios at +0.000 % of their own row and `load_json_medium` at +0.45 % — inside the
 line, ninety per cent of it, and recorded with its attribution in the ledger rather than smoothed
-over. One leg is not a distribution: what the line will keep absorbing per image is still a question
-each refresh answers for itself.
+over. That row has since been paid on the same image by the refresh named above
+(`57,111,529 → 57,368,032`), which leaves the enforcing reading 0.003 % from its floor; `(hk)` keeps
+both numbers and the fact that the sibling refresh on `354.1` is not in this file. One leg is not a
+distribution: what the line will keep absorbing per image is still a question each refresh answers
+for itself.

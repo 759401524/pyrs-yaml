@@ -10375,6 +10375,38 @@ marker image-aware is the next change and is not described here as done. And one
 distribution - a third image is still refused, and the +0.45 % reading says what the line absorbed
 once, not what it will keep absorbing.
 
+### (hk) A refresh pays only the row of the image it ran on, and two dispatches on one base are siblings
+
+`Ir baseline refresh` went out on `main` at `55040821` twice with every input empty, so each run
+measured with the compiler the baseline names and could only move numbers inside the line. Run
+`40635796896` landed on `20261026.354.1` and moved that image's row alone - `load_json_medium`
+57,152,342 → 57,368,098, +0.378 % against the floor that row carried. Run `40636638961` landed on
+`20261023.334.3`, the image this week's enforcing legs have chosen, and moved only that one:
+`load_json_medium` 57,111,529 → 57,368,032 (+0.449 %), `to_python_small` +0.057 %,
+`to_python_medium` +0.033 %, `to_python_anchors` +0.037 %, the two `load_toml_*` and
+`load_json_long_strings` each inside 0.001 %. This change lands the second artifact.
+
+Two readings fall out of the pair. The cost #660 left is the same class of movement on both pool
+members - +0.378 % on `354.1`, +0.449 % on `334.3` - which is what makes it the tree's and not a
+host's. And because each dispatch starts from the file on `main`, the two artifacts are siblings
+rather than cumulative: paying both rows takes two changes on two bases, and the `354.1` payment
+`ir-baseline-89` made is not in this file. What the enforcing leg now has is a `load_json_medium`
+floor 0.003 % from the reading it took on the same image an hour earlier (`57,369,972`, the number
+`(hj)` named and refused to hand-copy), which is the debt `(hj)` left open.
+
+`QUALITY_MATRIX.md` moved with the file rather than by hand: its thirteen `<!-- ir-floor: … -->`
+readings, and the ratios the same sentences name, were re-derived from the new baseline, and the
+pass is repeatable - running it again substitutes nothing. The ratios came back to 1.20x and 1.29x
+because the `334.3` flat numbers sit where the old ones were. The checker still compares those marks
+with the flat table, which is the gap `(hj)` names as the next change and nothing here closes.
+
+Readings: `python scripts/check_ir_floor_quotes.py` - `OK: 13 marked floor reading(s) across 1
+page(s) equal the committed baseline (51 scenarios)`.
+`uv run pytest tests/test_ir_gate_provenance.py tests/test_ir_baseline_workflow.py` - 45 passed. The
+comparator that decided this file was safe to commit exits 1 on a withdrawn row, a scenario dropped
+from a row, a changed flat scenario set, a host-filed row or an origin with no row, and each of
+those five refusals was forced before it was used.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
