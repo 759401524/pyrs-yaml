@@ -10478,7 +10478,8 @@ stack sweep turns "how much headroom is left" into a number: the trunk build ref
 The same build measured on Linux (WSL, the baseline's pinned `rustc 1.97.1`) answers inside
 1,572,864 bytes and crashes at 1,048,576 — 24 times its Windows reading, so the per-level cost is
 an operating-system quantity and a guard test may not name a byte budget: a first version that
-asserted 262,144 was red on all five Ubuntu legs while green here. What is portable is the claim
+asserted 262,144 was the only failure on all twelve test legs — eight Ubuntu, two macOS, two
+free-threaded — while green here. What is portable is the claim
 the caller actually has, so `test_the_depth_guard_answers_within_the_default_stack` asserts the
 refusal arrives on the interpreter's own default stack, in a child process, because a stack
 overflow is a fatal interpreter error that aborts the pytest session instead of reading red. The
