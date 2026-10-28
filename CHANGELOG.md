@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **What a shared Python object becomes when it is written is now a checked fact** — given
+  `{"a": shared, "c": shared}`, both writer routes emit two copies of the subtree rather than an
+  anchor and an alias, and the re-read compares equal but the two values are not one object; the
+  round-trip route keeps `&x`/`*x`, so the loss belongs to the object routes.
+  `tests/test_safe_dump.py::TestSharedObjectShape` pins both halves plus the
+  `YamlMaxDepthError` a cyclic graph gets, PyYAML and ruamel were measured against the same graph
+  (both keep the sharing), and `docs/dev/boundaries.md` names the divergence and why closing it is
+  not free. No behaviour changed here.
 - **The pytest tier's width is derived now, not remembered** — three contributing pages said the
   blocking Python tier runs "4 Python versions × 3 OSes" and `QUALITY_MATRIX.md` said "3 OSes × 7
   Python versions", while the declared interpreter floor is eight wide (3.8 through 3.15) and the

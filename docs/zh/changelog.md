@@ -19,6 +19,15 @@ status: new
 
 #### 新增
 
+- **共享 Python 对象写出后的形状现在是被校验的事实** —— 对
+  `{"a": shared, "c": shared}`，两条写出路线都输出子树的两份副本，
+  而不是锚点加别名；重新读取后值相等，但两个值并非同一对象。
+  往返路线仍保留 `&x`/`*x`，所以这层丢失属于对象路线。
+  `tests/test_safe_dump.py::TestSharedObjectShape` 把这两半，
+  以及环形图得到的 `YamlMaxDepthError` 拒绝，一起钉住；
+  PyYAML 与 ruamel 在同一张图上实测，两者都保留共享，
+  所以这是记名的分歧而非静默差异，`docs/dev/boundaries.md`
+  写下这一分歧以及为什么补它不免费。此处行为未变。
 - **pytest 档位的宽度改为派生，不再靠手抄** — 三份贡献文档写着阻断型 Python 档位是「4 个 Python 版本
   × 3 个 OS」，`QUALITY_MATRIX.md` 写的是「3 OSes × 7 Python versions」；而声明的解释器地板有 8 条
   （3.8 到 3.15），且这个档位根本不是笛卡尔积：`scripts/ci_matrix_plan.py` 让每个解释器都在 ubuntu

@@ -382,3 +382,32 @@ a default-off feature cannot rot the way the no_std crate list once did silently
 implies `std`, the `thumbv7em-none-eabi` build never enables it and the no_std foundation is
 unaffected. A measured instruction-count figure belongs in `perf.md` only once taken on the
 enforcing image; none is claimed here.
+
+## The Python-object routes carry values, not the graph (2026-10-28)
+
+`a: &x {b: 1}` plus `c: *x` is one node with two names. The round-trip route keeps that: the node
+model stores an anchor and an alias, and `parse(text).to_yaml()` re-emits both. The Python-object
+routes do not keep it in either direction, and the shape of the loss is worth stating exactly.
+Loading expands each alias into a fresh object — `tests/test_direct_load.py` names that as the
+intent, so `safe_load` never hands back one object under two names — and writing a genuinely
+shared object, the kind a caller builds in Python without thinking about it, emits the subtree
+twice rather than an anchor and an alias. `tests/test_safe_dump.py::TestSharedObjectShape` pins
+both halves: `{"a": shared, "c": shared}` becomes `a:\n  b: 1\nc:\n  b: 1\n` on each writer
+route, the re-read compares equal, and the two values are not the same object.
+
+So no value is lost and no document is refused; what is lost is the graph, and the next reader sees
+two independent copies. Both reference libraries were run against the same graph on this tree:
+PyYAML and ruamel each load it with `doc["a"] is doc["c"]` true and re-emit it as
+`&id001`/`*id001`. That makes the shape a divergence from both, not a house style. Closing it is
+not free on either side, which is why it stays open here: an identity-preserving loader makes
+mutation observable (writing through one key changes the other), and anchor emission from the
+writers needs a defined identity rule for a value the caller mutates between dump calls. What this
+section does is make the current behaviour a checked fact, so a change to either half has to be
+deliberate and cannot arrive as drift.
+
+The same class of shape is already gated on the other side of that boundary: a cyclic input cannot
+be copied to completion either, and the answer there is a refusal —
+`TestSharedObjectShape::test_a_cyclic_graph_is_refused_rather_than_looked_at_forever` pins
+`YamlMaxDepthError` on both routes. A refusal has to *arrive*: the same recursion at the guard's
+depth killed the interpreter on a Windows main thread before the frame fix described in
+`docs/dev/quality-ledger.md` `(hm)` made the guard reachable again.
