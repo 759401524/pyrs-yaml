@@ -585,10 +585,10 @@ which costs 8.26% more than `stream_medium` on the very same eight records), sin
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
 the same eight records at value widths of 9 and 256 - 76,838,657<!-- ir-floor: documents_short_strings --> against 119,408,685<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
-(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,946,295<!-- ir-floor: load_toml_medium --> and
-139,506,994<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.29x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
+(`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` at 144,902,515<!-- ir-floor: load_toml_medium --> and
+139,465,566<!-- ir-floor: load_toml_long_strings --> - 1.20x and 1.29x the tree that `from_toml_medium` and `from_toml_long_strings` stop at),
 since the JSON loader's fast route joined the same way (`load_json_medium` and `load_json_long_strings`
-through `bench_load_json` at 57,152,342<!-- ir-floor: load_json_medium --> and 94,891,054<!-- ir-floor: load_json_long_strings --> - 0.73x and 0.85x what `from_json_medium` and
+through `bench_load_json` at 57,368,032<!-- ir-floor: load_json_medium --> and 94,851,484<!-- ir-floor: load_json_long_strings --> - 0.73x and 0.85x what `from_json_medium` and
 `from_json_long_strings` pay to build the node model that route skips), and this row is shared by
 `load_jsonc` and
 `load_json5`, because for bytes the fast reader accepts all three call exactly the same code and
@@ -599,12 +599,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,809<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 18,004,974<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,122,974<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,725<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,725<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,742<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 18,005,150<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,087<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,879<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,879<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 701,023,651<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,479<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 701,021,059<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,598<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
