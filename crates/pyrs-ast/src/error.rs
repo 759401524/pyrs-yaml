@@ -44,6 +44,21 @@ pub enum ParseError {
     /// Recursion depth exceeded the configured maximum.
     #[error(transparent)]
     MaxDepthExceeded(DepthError),
+    /// The input carries a second document, but the caller asked for one.
+    ///
+    /// Not a syntax defect: each document here is well-formed, so what the call got wrong is
+    /// its arity. Deliberately not folded into [`ParseError::Syntax`], which means "this text
+    /// does not parse" - a reader who is told their valid input is malformed goes looking in
+    /// the wrong place. `line` and `col` locate the *second* document's start marker; naming
+    /// the routes that do accept a stream belongs to the layer above, which knows the caller's
+    /// vocabulary.
+    #[error("YAML parse error: expected a single document, found a second one")]
+    SingleDocumentExpected {
+        /// Line of the second document's start marker (0-indexed).
+        line: usize,
+        /// Column of the second document's start marker (0-indexed).
+        col: usize,
+    },
 }
 
 /// YAML serialization failures.

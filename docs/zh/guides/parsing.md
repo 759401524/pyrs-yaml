@@ -54,6 +54,14 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
+!!! note "一次调用只读一个文档"
+    `parse`、`parse_file` 和 `safe_load` 只读一个文档。输入里带着第二个文档时会被拒绝，抛出以
+    `multi-document-input` 开头的 `YamlParseError`，并给出那个文档的起始行列。此前的行为是返回
+    流中的某一个文档而丢弃其余：`a: 1\n---\nb: 2` 返回 `b: 2`，`a: 1\n---` 返回 `null`。
+    读整条流用上面的 `parse_all_docs` 和 `safe_loads`，读事件用 `parse_stream`；PyYAML 与
+    ruamel.yaml 在同样的单文档调用上也会拒绝这些输入。单独的 `---` 起始符、结尾的 `...` 和
+    `%YAML` 指令仍然各算一个文档。
+
 #### PyYAML 兼容解析
 
 !!! tip "PyYAML 兼容解析"

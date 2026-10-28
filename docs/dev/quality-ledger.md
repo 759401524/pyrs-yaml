@@ -10152,6 +10152,80 @@ step's name into a fact - so landed before it, this leg would have gone red on i
 bare-metal build must stay gated while the tests must not, and a synthetic job with no `os:` matrix
 is reported as "runs on exactly one OS" rather than read as a pass.
 
+### (hg) A stream reached through the single-document route answered its last document
+
+(2026-10-27)
+
+`(gy)` was the layout question; this is the value question, and it is worse: an input carrying two
+documents, asked of `parse`, returned the *second* one. Measured on the shipped extension before the
+change - `a: 1\n---\nb: 2\n` answered `b: 2`, three documents answered the third, `a: 1\n---\n`
+answered `null`, `a: 1\n---\n# just a note\n` answered `null`, `[1, 2]\n---\n[3]\n` answered `[3]` -
+and `safe_load` answered the same, because its P3 fast path `Bail`s on a stream and falls through to
+the very route. Nothing named which document was chosen; `receiver.result` was simply overwritten
+once per `DocumentStart`, so the caller got whatever the event walk ended on.
+
+The published contract already said otherwise: the stub's `parse` is "Parse a YAML string and return
+an editable `YamlDocument`", the engine's `parse_document` is "Parse one document", and a separate
+`parse_all_docs` / `safe_loads` pair exists for streams. So this is not a new ruling about fidelity
+but the contract being enforced, and the outside authorities agree on the verdict: PyYAML and
+ruamel.yaml both raise `ComposerError: expected a single document in the stream` on all ten stream
+shapes above, and both still accept a leading `---`, a trailing `...`, a bare `---` and an empty
+input - the four positive controls the guard must not over-fire on.
+
+`a: 1\n...\nb: 2\n` is in the table because the two readings of it split. The engine reads it as two
+documents and refuses on arity; PyYAML refuses it earlier, as a grammar error
+(`expected '<document start>', but found '<block mapping start>'`) because YAML 1.2 wants `---` to
+open a document after an end marker. Same verdict, different reason, so the strictness audit's
+`key_after_doc_end` probe - which pins that the reader *over-accepts* this shape - moved to
+`safe_loads`, the route that still shows the over-acceptance. Its coverage test now asserts the
+stream-probe set is a subset of the accepted set, so the relocation cannot silently empty.
+
+The anchor this reports is the separator, not the directive: `a: 1\n...\n%YAML 1.1\n---\nb: 2\n` is
+refused at line 4 column 1 (the `---`), where PyYAML marks line 3 (the directive). The verdict is
+the parity claim; the position is this reader's own, and the test says so rather than asserting a
+match that does not hold. granit's `Marker` counts lines from one and columns from zero, which is
+neither of the two conventions this tree already uses - `ParseError::Syntax` documents both as
+zero-based, and the JSON producers fill `line` from a `Lines` iterator numbered from zero - so the
+receiver subtracts one from the line and the message adds it back, leaving the engine's convention
+untouched.
+
+The harness defect this exposed is worth more than the fix. `pyrs_yaml.compliance.run_test` asked
+the *single-document* route for its `parse_ok` verdict while reading each suite case's `yaml` field,
+and 18 of the 351 suite files carry more than one document: nineteen valid cases turned into
+refusals the first time the contract was enforced. Those cases' JSON expectation is a list, so the
+harness already read them with `safe_loads` one document at a time - the parse verdict was the only
+half still on the wrong route, and its `dump` comparison was reading `parse(...)`'s answer, i.e. the
+last document of the stream against a whole-stream expectation. Now `parse_all_docs` answers both,
+and `dump_match` only claims a comparison for a case with exactly one document. Compliance stayed
+where it was: 405 of 406, one failure, the `%YAML 1.3` family `ZYU8` the standing ruling refuses on
+purpose - so the gate's three named-set floors all hold unchanged.
+
+The refusal is scoped to routes that read one document: `parse`, `parse_file`, `safe_load`,
+`to_toml`, and the instance's `parse` / `safe_load` / `parse_file`. `to_json()` and `validate()` are
+document methods, so they never see the input's arity. The CLI's default (no `-A`) is one of them
+too. The stream routes keep accepting separators, and one test asks the two answers in both
+directions - a stream `parse_all_documents` reads as exactly one document must be answered
+identically by the single-document route, and anything it reads as more must be refused there - so
+the guard cannot drift into a general rejection of `---`. `crates/pyrs-yaml-core/src/pbt.rs` and the
+`yaml_roundtrip` fuzz target are unchanged: `to_yaml` never emits a separator, so the re-parse side
+cannot hit the new error, and a fuzz input that does hit it is the target's documented "typed
+rejection is a pass". The committed seed corpus loses nothing either: of its 174 files 162 decode as
+UTF-8 and are read by the engine, and `parse_all_documents` answers one document for every one of
+them - zero streams; the remaining 12 are not valid UTF-8, so the fuzz target already returned
+before the reader ran.
+
+The cost is measured rather than assumed. On the conventions this tree pins - the baseline's
+`rustc 1.97.1`, `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,...` and `PYTHONHASHSEED=0`, three samples
+per scenario - all forty-nine floors read
+`OK: every scenario within tolerance of the committed baseline`. The YAML read rows are where the
+new branch lives, and they moved by `parse_medium` −0.0005%, `parse_small` +0.0004%, `parse_block`
++0.0003%, `parse_anchors` +0.0025% and `parse_inline_merge` +0.0031% - the last being the largest,
++11,094 counted instructions over the harness's 2,000 iterations, so 5.5 instructions per parse,
+against a row whose own three samples already span 1,856. `stream_medium` read 256,051,575 on all
+three samples and every `serialize_*` row moved within ±61: a branch taken once per document, not
+once per container, which is exactly the shape `(gy)` says is cheap and the shape the writer-state
+rows say is not.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

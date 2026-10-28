@@ -180,8 +180,12 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
         return result
 
     # Test 1: Parse the YAML
+    # The stream route asks this question, because a suite case's `yaml` field may carry several
+    # documents — 18 of the 351 files do — and a document is a stream of one. The single-document
+    # `parse` refuses those now by contract; before that contract it answered the *last* document,
+    # so `parse_ok` was true while the document read was not the one the case names.
     try:
-        doc = pyrs_yaml.parse(yaml_input)
+        parsed_docs = pyrs_yaml.parse_all_docs(yaml_input)
         result["parse_ok"] = True
     except Exception as e:
         result["error"] = f"Parse error: {str(e)[:100]}"
@@ -206,9 +210,13 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
             result["error"] = f"JSON comparison error: {str(e)[:100]}"
 
     # Test 3: Compare dump output (if expected)
-    if test["dump"]:
+    # Only a case whose input is one document has a one-document emission to put beside the
+    # `dump` field, and that is the comparison this makes. Streams keep the field false rather
+    # than answering it with one document of several; no gate reads it, so it reports what was
+    # actually compared instead of a near-miss on the last document.
+    if test["dump"] and len(parsed_docs) == 1:
         try:
-            actual_dump = doc.to_yaml().strip()
+            actual_dump = parsed_docs[0].to_yaml().strip()
             expected_dump = test["dump"].strip()
             result["dump_match"] = actual_dump == expected_dump
         except Exception as e:

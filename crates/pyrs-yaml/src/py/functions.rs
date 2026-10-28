@@ -24,6 +24,10 @@ use crate::YamlTypeError;
 #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
 /// Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
 ///
+/// One document, or `YamlParseError` with the reason key `multi-document-input` and the position
+/// of the second document: reading a stream here would answer one document of it and discard the
+/// rest, so `parse_all_docs` and `safe_loads` are the routes that take a stream.
+///
 /// With `honor_version_directive=True` a document that declares `%YAML 1.1` is
 /// resolved under the YAML 1.1 profile and re-emits the directive. An explicit
 /// `schema` always wins over the declaration.
@@ -50,6 +54,9 @@ pub(crate) fn parse(
 #[pyfunction]
 #[pyo3(signature = (path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
 /// Parse a YAML file and return an editable `YamlDocument`.
+///
+/// One document: a file carrying a second one is refused with the reason key
+/// `multi-document-input`, and `parse_all_docs` is the route that reads a stream.
 pub(crate) fn parse_file(
     py: Python,
     path: &str,
@@ -145,6 +152,9 @@ pub(crate) fn parse_all_docs(
 #[pyfunction]
 #[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "dict[Any, Any] | list[Any]")]
 /// Parse YAML into a Python dict/list, resolving anchors and merges.
+///
+/// One document: an input carrying a second is refused with the reason key
+/// `multi-document-input`, and `safe_loads` is the route that reads a stream.
 ///
 /// `honor_version_directive=True` lets an explicit `%YAML 1.1` declaration pick
 /// the resolution profile; an explicit `schema` still wins.

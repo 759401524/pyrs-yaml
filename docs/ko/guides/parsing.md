@@ -52,6 +52,15 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
+!!! note "한 번의 호출은 문서 하나"
+    `parse`, `parse_file`, `safe_load`는 문서 하나만 읽습니다. 두 번째 문서가 포함된 입력은
+    `multi-document-input`으로 시작하는 `YamlParseError`로 거부되고, 그 문서가 시작되는
+    위치가 메시지에 담깁니다. 이전에는 스트림 안의 하나를 반환하고 나머지를 버렸습니다.
+    즉 `a: 1\n---\nb: 2`는 `b: 2`를, `a: 1\n---`는 `null`을 반환했습니다. 스트림 전체를
+    읽으려면 `parse_all_docs`와 `safe_loads`를, 이벤트를 읽으려면 `parse_stream`을 사용합니다.
+    PyYAML과 ruamel.yaml도 같은 단일 문서 호출에서는 이 입력을 거부합니다. 앞의 `---`,
+    뒤의 `...`, `%YAML` 지시문은 각각 여전히 문서 하나로 읽힙니다.
+
 ## PyYAML 호환 파싱
 
 !!! tip "PyYAML 호환 파싱"

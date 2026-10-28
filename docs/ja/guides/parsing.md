@@ -52,6 +52,16 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
+!!! note "1 回の呼び出しは 1 ドキュメント"
+    `parse`、`parse_file`、`safe_load` は 1 つのドキュメントだけを読み込みます。2 つ目の
+    ドキュメントを含む入力は拒否され、`multi-document-input` で始まる `YamlParseError` が、
+    その開始位置を添えて送出されます。それまでの挙動は、ストリーム内の 1 つを返して残りを
+    捨てていました。`a: 1\n---\nb: 2` は `b: 2` を、`a: 1\n---` は `null` を返していました。
+    ストリーム全体を読むには `parse_all_docs` と `safe_loads`、イベントを読むには
+    `parse_stream` を使います。PyYAML と ruamel.yaml も、同じ 1 ドキュメント呼び出しでは
+    これらの入力を拒否します。先頭の `---`、末尾の `...`、`%YAML` ディレクティブは、
+    いずれも 1 ドキュメントとして読み込まれます。
+
 ## PyYAML 互換パース
 
 !!! tip "PyYAML 互換の解析"

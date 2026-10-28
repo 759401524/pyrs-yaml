@@ -396,6 +396,24 @@ def test_fmt_all_docs_inplace(tmp_path):
     assert src.read_text(encoding="utf-8") == "a: 1\n---\nb: 2\n"
 
 
+def test_fmt_without_all_docs_refuses_a_stream_and_names_the_flag(capsys, monkeypatch):
+    """The arity refusal reaches a shell caller in shell vocabulary.
+
+    The engine's message recommends the Python routes; the CLI reads a stream through `-A`, so the
+    position sentence travels and the recommendation is replaced — a `safe_loads()` hint here would
+    point at code the caller is not writing.
+    """
+    feed_stdin(monkeypatch, MULTI_DOC)
+    with pytest.raises(SystemExit) as exc:
+        run("fmt")
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "multi-document-input" in err
+    assert "second document at line 2, column 1" in err
+    assert "-A/--all-docs" in err
+    assert "safe_loads()" not in err
+
+
 def test_get_all_docs_across_documents(capsys, monkeypatch):
     feed_stdin(monkeypatch, "name: first\n---\nnested:\n  name: second\n")
     run("get", "-", "$..name", "--format", "text", "-A")

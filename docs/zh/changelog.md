@@ -351,6 +351,16 @@ status: new
   起初自己拒绝了一次：`pyrs-json` 一行未改、绑定二进制的摘要也没变，`from_json5_medium` 却
   +0.55 %——动它的是场景集从四十九涨到五十一，于是这个名字被写进 `accept_drift`，
   `tolerance_hint` 保持 0.5 %。
+- **多文档流交到单文档路由会被拒绝，而不是被择一返回** — `parse`、`parse_file`、`safe_load`、
+  `to_toml` 以及 `YAML()` 实例的对应方法都只读一个文档。此前把带着两个文档的输入交给它们，返回的是事
+  件遍历最后落脚的那一个：`a: 1\n---\nb: 2\n` 给出 `b: 2`，`a: 1\n---\n` 给出 `null`，而且没有任何信
+  号说明有文档被丢弃。现在它们抛出以 `multi-document-input` 起始的 `YamlParseError`，报出第二个文档
+  的行列，并指向 `parse_all_docs`、`safe_loads` 与 `parse_stream` —— 这三条仍然接受分隔符的路由，每
+  一条都在同样的十种输入上实测过。PyYAML 与 ruamel.yaml 对这十种全部报错，却仍然接受开头的 `---`、结
+  尾的 `...`、单独的 `---` 与空输入，这四种便被钉住作为守卫不得误伤的控制样本；CLI 的默认路由给出同
+  样的拒绝，指向 `-A/--all-docs`，而 `-A` 自己的行为没有改变。没有声称的一点：位置与参考库并不一致，
+  它们标记第二个文档的指令行，这里标记它的 `---`。此事连同它暴露出的合规性测试脚手架的路由错配，记入
+  `docs/dev/quality-ledger.md` 的 `(hg)`。
 - **Ir 门禁新增两条为编辑携带元数据定价的地板** — 每次替换都要问 `editing::metadata::merged_meta` 该
   带谁的注释、哪个锚点、哪个标签，`delete_path` 还要问 `extend_delete_over_comments` 把范围放宽到
   哪；可这些分支没有一条地板量到过：三个 `edit_*` 场景跑在 `MEDIUM_YAML` 上，那里零个 `#`、零个
