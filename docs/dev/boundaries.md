@@ -8,7 +8,8 @@ Not site content: `zensical.toml` builds `docs/en`, and `check_i18n.py` mirrors 
 it, so this file has no `zh`/`ja`/`ko` twin and is not in the published navigation. It is an
 engineering record, in the same category as `QUALITY_MATRIX.md` and `ROADMAP.md` at the root.
 
-Related documents: [quality ledger](quality-ledger.md), [performance status](perf.md).
+Related documents: [quality ledger](quality-ledger.md), [performance status](perf.md), [the Ir
+gate's environment](ir-environment.md).
 
 ## Known Engine Boundaries (2026-09-29)
 

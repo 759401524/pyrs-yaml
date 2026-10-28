@@ -10265,6 +10265,36 @@ What this does not claim: that the cost is known. No floor's fixture decorates a
 measured, so widening the hot guard should leave `to_python_*` where they stand — and that is the
 `Instruction-count baseline` leg's to decide, not a sentence to write in advance.
 
+### (hi) The Ir gate's environment field is a second name, and the shape that follows
+
+(2026-10-28)
+
+`(he)` recorded that the environment string the refresh job wrote into `.ci/ir-baseline.json`
+matched neither job's banner, and read that as a second defect. The logs say otherwise. Each job
+carries two identifiers for its runner image and they disagree *inside that job*: refresh run 87
+pairs the banner `20261025.353.1` with the `ImageVersion` its own `environment()` returned,
+`20261026.354.1`, and the enforcing leg of PR #659 pairs the banner `20261012.334.1` with
+`20261023.334.3`. So a same-source comparison is the only admissible one — and on that basis the
+refresh and the enforcement were on different pool images, which is the ordinary case in every pair
+sampled, not an accident.
+
+That reframes what the gate should do with the difference. Declining to answer when the recorded
+environment is not the current one would decline on almost every pull request, and a decline is not
+neutral here: `scripts/check_matrix_verdict.py` counts only `success`, and `Test matrix (all legs)`
+is the single required check name, so the required check reads red and nothing merges. The shape
+chosen instead keys the floor by image for exactly those scenarios whose counted region includes the
+interpreter — the two `load_toml_*` rows moved 1.71 % and 2.97 % between the two images with both
+binary digests equal, while the ten engine writer rows agreed to 120 instructions — keeps every
+other scenario single-valued, and reserves exit 2 for an image the baseline has never measured,
+where one refresh dispatch is the remedy.
+
+The readings, the mechanism still standing (the interpreter's own work sits inside the measured
+region of the binding harness, and the pinned ISA mask does not reach the allocator selection the
+image carries), and the six implementation rules with their falsification tests are written up in
+[the Ir gate's environment](ir-environment.md). What is not claimed here or there: that a keyed
+floor has been measured. It has not been written yet, so the implementation PR brings its own
+readings from two images before the table holds two rows.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
