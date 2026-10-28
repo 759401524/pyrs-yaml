@@ -10475,9 +10475,15 @@ raising, and a depth sweep put the cliff at 891 levels — the guard could never
 stack sweep turns "how much headroom is left" into a number: the trunk build refuses inside a
 65,536-byte stack, the first version crashed at 2,097,152 and refused only at 4,194,304, and
 `key_is_complex` plus `#[inline(never)]` on `write_complex_pair` restores the 65,536-byte answer.
-`test_the_depth_guard_answers_on_a_small_thread_stack` holds that line in a child process, because
-a stack overflow is a fatal interpreter error that aborts the pytest session instead of reading
-red — the control was run: against the unslimmed writer the new test fails with the exit code.
+The same build measured on Linux (WSL, the baseline's pinned `rustc 1.97.1`) answers inside
+1,572,864 bytes and crashes at 1,048,576 — 24 times its Windows reading, so the per-level cost is
+an operating-system quantity and a guard test may not name a byte budget: a first version that
+asserted 262,144 was red on all five Ubuntu legs while green here. What is portable is the claim
+the caller actually has, so `test_the_depth_guard_answers_within_the_default_stack` asserts the
+refusal arrives on the interpreter's own default stack, in a child process, because a stack
+overflow is a fatal interpreter error that aborts the pytest session instead of reading red. The
+Windows numbers above are where that assertion bites: the unslimmed writer died at exactly that
+depth on that host.
 
 Readings: `tests/test_route_parity.py` 182 passed with nine new rows, each asserted against the node
 writer, the direct writer, the two agreeing, and a fixed point — e.g. `("a", "b")` as a key emits

@@ -80,57 +80,55 @@ def test_dump_stream_max_depth_error():
         pyrs_yaml.YAML().dump_stream(buf, [d])
 
 
-# The guard above answers at depth 1000, which means the writer needs a thousand of its own
-# stack frames in place before it can refuse. Whether it has them is a frame-size question, and
-# a frame-size question can only be asked against a stack of known size — so the child sets one.
-_SMALL_STACK_DUMP_CHILD = """
-import io, threading
+# The guard above answers at depth 1000, which means the writer needs a thousand of its own stack
+# frames in place before it can refuse — so "the document is refused" is really a claim about frame
+# size, and it has to be measured against a stack the caller actually has. An invented byte budget
+# was tried and rejected: the same head build answers inside 65,536 bytes on Windows and needs
+# 1,572,864 on Linux (both built with the baseline's pinned `rustc 1.97.1`), a 24x gap, so any
+# number small enough to catch a regression on one is a false red on the other. What is asserted
+# here is the host-independent half: on the interpreter's own default stack the refusal arrives.
+_DEFAULT_STACK_DUMP_CHILD = """
+import io, sys
 import pyrs_yaml
 
-threading.stack_size(256 * 1024)
 doc = {}
 cursor = doc
 for _ in range(1100):
     cursor["x"] = {}
     cursor = cursor["x"]
-outcome = []
-
-def run():
-    try:
-        pyrs_yaml.YAML().dump_stream(io.StringIO(), [doc])
-        outcome.append("WROTE")
-    except pyrs_yaml.YamlMaxDepthError:
-        outcome.append("MAXDEPTH")
-    except BaseException as exc:
-        outcome.append("OTHER " + type(exc).__name__)
-
-thread = threading.Thread(target=run)
-thread.start()
-thread.join()
-print(outcome[0] if outcome else "NO ANSWER", flush=True)
+try:
+    pyrs_yaml.YAML().dump_stream(io.StringIO(), [doc])
+    print("WROTE")
+except pyrs_yaml.YamlMaxDepthError:
+    print("MAXDEPTH")
+except BaseException as exc:
+    print("OTHER " + type(exc).__name__)
 """
 
 
-def test_the_depth_guard_answers_on_a_small_thread_stack():
+def test_the_depth_guard_answers_within_the_default_stack():
     """A deep document is refused by the guard, not by killing the interpreter.
 
-    Measured on Windows 2026-10-28: a per-pair classification that pulls the scalar extractor and
-    the complex-key delegation into the mapping writer's frame put the 1,100-level dump of this
-    test's own fixture at 891 levels instead of a refusal, and it needed a 4 MB thread stack
-    before the guard answered at all — where the writer before it answered inside 64 KB. A stack
-    overflow is a fatal interpreter error, so the regression cannot be asserted in-process: it
-    aborts the whole pytest session (exit 127) and the rest of the suite never runs. The child
-    carries the small stack, and its death is an ordinary red.
+    Measured on Windows 2026-10-28: the first version of the tuple change asked the key question
+    with the full classification and put the complex-key delegation in the same function, which
+    inlined the scalar extractor and the node converter into the recursing frame. The 1,100-level
+    fixture then died of a stack overflow at the 891st level — before `MAX_DEPTH` could answer —
+    and the writer needed a 4 MB thread stack to refuse at all, where the trunk build refuses
+    inside the default one.
+
+    The assertion runs in a child process on purpose. A stack overflow is a fatal interpreter
+    error, so the same claim made in-process aborts the whole pytest session (exit 127) instead of
+    reading red, and every test after it never runs.
     """
     proc = subprocess.run(
-        [sys.executable, "-c", _SMALL_STACK_DUMP_CHILD],
+        [sys.executable, "-c", _DEFAULT_STACK_DUMP_CHILD],
         capture_output=True,
         text=True,
         timeout=180,
     )
     assert proc.returncode == 0, (
-        "the depth guard never answered: the writer overflowed the 256 KB thread stack "
-        f"(exit {proc.returncode})\n{proc.stderr[-400:]}"
+        "the depth guard never answered on the default stack: the writer overflowed it, so "
+        f"`MAX_DEPTH` is unreachable on this host (exit {proc.returncode})\n{proc.stderr[-400:]}"
     )
     assert proc.stdout.strip() == "MAXDEPTH", proc.stdout.strip()
 
