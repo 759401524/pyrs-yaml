@@ -136,6 +136,11 @@ status: new
   `toml-keys-collide-without-metadata` 与 `json-object-keys-collide-without-metadata`。检查只对着"键
   上带 tag、锚或注释"的映射跑，所以没有装饰的文档每个键只多一个布尔判断。发现方式是属性层的
   `prop_toml_writer_is_fixed_point` 随机抽到了这个形状。
+- **`to_dict` 与 `safe_load` 拒绝只有 YAML 能区分的键对** —— 写侧刚拒绝的那对键还有第三条路线，也是
+  最安静的一条：Python 的 dict 只按文本作键，所以 `c: 0` 与 `!A c: "!"` 得出 `{'c': '!'}`，第一项消
+  失且毫无提示。现在两条路线都点出撞车的文本并抛 `YamlTypeError`，形状与 `to_toml()`、`to_json*()`
+  的拒绝一致；AST 仍保留两个键，`to_yaml()` 不变，不撞车的装饰照常投影。与对手库对照：ruamel 两项都
+  留，PyYAML 在同一地点报错。
 - **三条编辑地板不再定价一次出货调用方不跑的扫描** — 三个 `edit_*` 场景把 `line_offsets` 交成
   `None`，而编辑层对 `None` 的答复是重建文档的行表，那一张表是 `scan_yaml(text).line_offsets`：一整
   趟全文扫描，顺带决定 `has_hash`、`has_amp` 与 `is_ascii`。在基线自带的 `rustc 1.97.1` 上实测，这趟

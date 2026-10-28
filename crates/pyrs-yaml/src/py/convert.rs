@@ -253,22 +253,22 @@ fn node_to_pyobject_inner<'a>(
                 // config keyed by an integer, bool or null could not be reached by lookup
                 // and disagreed with both reference libraries.
                 //
-                // Two arms, because the hot case deserves the direct route. An untagged
-                // scalar can only become str / int / float / bool / None, every one of
+                // Two arms, because the hot case deserves the direct route. A node with no tag, no
+                // anchor and no note can only become str / int / float / bool / None, every one of
                 // them hashable, so it is resolved inline: no alias wrapper and no error
                 // bookkeeping, which measured ~10 ns per key on a 120-pair mapping and is
-                // what a flagged `to_dict` regression came from. A tagged or aliased key
-                // can reach a custom `from_yaml` and return anything, so it keeps the
-                // shared path, and an unhashable result there falls back to the source
-                // text rather than dropping the pair.
+                // what a flagged `to_dict` regression came from. Anything decorated keeps the shared
+                // path below, where it is also asked the collision question: the decoration is what
+                // makes the reader treat it as a second key, and it is what the dict cannot carry.
                 match key {
-                    CustomNode::Scalar {
-                        value, style, meta, ..
-                    } if meta.tag().is_none() => {
+                    CustomNode::Scalar { value, style, .. } if key.is_identity_clean() => {
                         dict.set_item(scalar_to_pyobject(py, value, style, schema)?, &val)?;
                     }
                     CustomNode::Scalar { .. } | CustomNode::Null { .. } => {
                         let k = resolve_alias_target(key, py, anchors, in_progress, schema)?;
+                        if dict.contains(&k)? {
+                            return Err(projected_key_collision(key));
+                        }
                         if dict.set_item(k, &val).is_err() {
                             set_text_key(&dict, key, &val)?;
                         }
@@ -367,6 +367,26 @@ fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
         "found unhashable key: the YAML key is {shape}, which has no hashable Python form. \
          PyYAML and ruamel.yaml raise at this same point. Read the document with parse() and work \
          on the AST; to_json() and to_toml() refuse this key as well."
+    ))
+}
+
+/// Two keys the reader keeps apart can still land on one Python key, because what keeps them apart
+/// is a tag, an anchor or a note and a dict carries none of that. `c: 0` beside `!A c: "!"` is the
+/// shape: valid YAML, two entries in the tree, and the second used to overwrite the first with
+/// nothing to show it. ruamel keeps both (its key is a tagged object) and PyYAML refuses; silently
+/// dropping an entry is the one answer that cannot be defended, and `docs/dev/boundaries.md` promises
+/// values survive the projection. Refusing here matches the veto the same document now gets from
+/// `to_toml()` and `to_json*()`.
+fn projected_key_collision(key: &CustomNode) -> PyErr {
+    let text = match key {
+        CustomNode::Scalar { value, .. } => value.as_ref(),
+        _ => "",
+    };
+    YamlTypeError::new_err(format!(
+        "two distinct YAML keys project to the same Python key `{text}` once the tag, anchor or note \
+         that tells them apart is dropped, and a dict cannot hold both. The document is valid: \
+         parse() keeps both entries. Work on the AST, or register a tag handler that gives the key a \
+         distinct Python form - to_json() and to_toml() refuse at the same place."
     ))
 }
 

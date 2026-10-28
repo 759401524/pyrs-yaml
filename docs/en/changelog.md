@@ -179,6 +179,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `json-object-keys-collide-without-metadata`. The check runs only for a mapping whose keys carry a
   tag, an anchor or a note, so an undecorated document pays one boolean per key. Found by
   `prop_toml_writer_is_fixed_point` drawing the shape at random in the property tier.
+- **`to_dict` and `safe_load` refuse a key pair only YAML can tell apart** — the pair the writers
+  now reject had a third route, and the quietest one: a Python dict keys by text, so `c: 0` beside
+  `!A c: "!"` answered `{'c': '!'}` with the first entry gone and nothing reported. Both now raise
+  `YamlTypeError` naming the colliding text, the same shape `to_toml()` and `to_json*()` already
+  refuse with. The tree still holds both keys and `to_yaml()` is unchanged, and a decoration that
+  does not collide still projects. Against the counterparties: ruamel keeps both entries, PyYAML
+  raises at this point too.
 - **The edit floors no longer price a scan the shipped caller does not run** — the three `edit_*`
   scenarios handed the editing layer `line_offsets: None`, and that layer answers `None` by
   rebuilding the document's line table, which is `scan_yaml(text).line_offsets`: a full pass over
