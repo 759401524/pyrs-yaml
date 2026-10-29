@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 833 Rust `#[test]`, 2,071 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 833 Rust `#[test]`, 2,072 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -581,14 +581,14 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — fifty-one of them, since the binding harness joined, since each cross-format
+from — fifty-three of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 76,838,657<!-- ir-floor: documents_short_strings --> against 119,408,685<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 76,838,701<!-- ir-floor: documents_short_strings --> against 119,408,659<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` on the row the file
 keys `20261023.334.3` at 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 --> and
@@ -608,12 +608,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,742<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 18,005,150<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,087<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,879<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,879<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,813<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 18,005,116<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,121<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,825<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,825<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 701,021,059<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,598<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 701,023,164<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,599<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
@@ -623,7 +623,16 @@ run replaced by the same number of spaces - one byte and one line of the documen
 anchors and every brace left in place - reads 98,408,046 loop instructions cheaper on the AST route
 and 93,952,438 on the event route (+16.30 % and +19.37 %, which is 4,473 and 4,271 instructions per
 note), and 31,022,014 of the first and 33,738,000 of the second sit in eight functions the note-free
-control never enters at all; `docs/dev/perf.md` names them. Growing the set
+control never enters at all; `docs/dev/perf.md` names them. The Python-object write route joined too
+(`safe_dump_small` 13,296,320<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
+`safe_dump_medium` 110,613,010<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
+documents `to_python_small` and `to_python_medium` read, turned into objects by that channel's own
+body outside the counted loop and then written back by `safe_dump`) — 8.32x the instructions at the
+larger input. The route `safe_dump` and `from_dict` serve had moved no number since the harness
+existed, and the attribution now names its functions: `DirectWriter::write_key` 3.70% and
+`write_indent` 3.21% of `safe_dump_medium`, `needs_quotes` the largest non-allocator term at 5.45%,
+and no `type_registry` row among the twelve — the empty-handler fast path PR #672 could only assert,
+because nothing reached this route to price it. Growing the set
 moves its siblings, which is why the refresh ran on this head rather than locally. Against the file
 it replaced, the previous refresh's first dispatch refused to write over one upward move - `load_json_long_strings`
 +0.76 % - measured from a binding binary whose digest that file already recorded, so the runner had

@@ -1,4 +1,5 @@
-//! Instruction-count gate, binding side: the YAML AST-to-Python conversion and the TOML loader.
+//! Instruction-count gate, binding side: the loaders that answer with Python objects, and the writer
+//! that accepts them.
 //!
 //! # Why this target exists
 //!
@@ -50,9 +51,18 @@
 //! `load_jsonc` and `load_json5` share the row because the only thing that differs between them is
 //! that fallback. See `bench_load_json` and `json_route_is_fast` in `src/py/functions.rs`.
 //!
-//! Each iteration must convert one document or the binary exits 3. The seam returns its error rather
-//! than defaulting it, because the gate's tolerance only punishes growth: a harness that stopped doing
-//! the work would report a huge improvement and pass.
+//! Each iteration must convert one document or write one document, or the binary exits 3. The seams
+//! return their errors rather than defaulting them, because the gate's tolerance only punishes growth:
+//! a harness that stopped doing the work would report a huge improvement and pass.
+//!
+//! The write family exists because the two reader families only answer what a document *costs to
+//! reach*: `safe_dump` and `from_dict` serve Python objects through `direct_dump`, a writer the engine
+//! harness cannot see (its `serialize_*` scenarios stop at the node model, which the object routes no
+//! longer build). Until `safe_dump_*` existed, an allocation or a second pass inside that writer moved
+//! no committed number - the same shape of gap `perf-coverage:binding-layer` names for the read side.
+//! The object is built by the read channel's own conversion, in setup, on both passes, so the
+//! subtraction leaves the writer's price alone and keeps the loader's in `to_python_*`. See
+//! `bench_dump` and `bench_to_python_value` in `src/py/functions.rs`.
 //!
 //! Run through `scripts/ir_gate.py`, which builds both harnesses, does the subtraction per scenario,
 //! compares against `.ci/ir-baseline.json` and prints the table CI gates on.
@@ -74,7 +84,8 @@
 //! build/exec error rather than an empty scenario list, which would read as "no scenarios to measure"
 //! and pass.
 use pyrs_yaml::py::functions::{
-    bench_load_json, bench_load_toml, bench_to_python, json_route_is_fast, toml_route_is_direct,
+    bench_dump, bench_load_json, bench_load_toml, bench_to_python, bench_to_python_value,
+    json_route_is_fast, toml_route_is_direct,
 };
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, MEDIUM_JSON, MEDIUM_TOML, MEDIUM_YAML, SMALL_YAML, long_string_json,
@@ -99,8 +110,8 @@ static LONG_TOML: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_st
 /// `to_json_long_strings` measures one layer down.
 static LONG_JSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(long_string_json);
 
-/// Which loader the measured loop calls. One enum so the scenario list states in one column what each
-/// baseline row prices, and so a name cannot silently change what it measures.
+/// Which entry point the measured loop calls. One enum so the scenario list states in one column what
+/// each baseline row prices, and so a name cannot silently change what it measures.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum Channel {
     /// YAML text to Python objects through the AST.
@@ -109,6 +120,8 @@ enum Channel {
     LoadToml,
     /// JSON text to Python objects through the AST-free reader `load_json` prefers.
     LoadJson,
+    /// Python objects back to YAML text through `direct_dump`, the route `safe_dump` serves.
+    Dump,
 }
 
 /// Every scenario the binding-side gate measures. The `to_python_*` names mirror the engine harness so
@@ -121,6 +134,13 @@ fn scenarios() -> Vec<(&'static str, &'static str, Channel)> {
         // The one that resolves anchors instead of skipping them: `&` in the source switches the
         // conversion to the collecting path, so this is a different code path, not more of the same.
         ("to_python_anchors", ANCHOR_YAML, Channel::ToPython),
+        // The write twins of the two rows above. For this channel the second column is the document
+        // the *object* is built from, not what the measured loop parses: the loop calls the writer and
+        // the loader's price is subtracted out with the setup. `safe_dump_*` rather than `to_yaml_*`
+        // because `scripts/quality_matrix.py` pairs `to_<format>_*` with a `from_<format>_*` twin, and
+        // this is a language binding, not a format bridge - the same reason `to_python_*` escapes it.
+        ("safe_dump_small", SMALL_YAML, Channel::Dump),
+        ("safe_dump_medium", MEDIUM_YAML, Channel::Dump),
         // The route an ordinary TOML document serves since the reader stopped building the node
         // model: scan, intermediate tree, scalar projection and object construction in one number,
         // so a regression cannot hide in whichever half this row does not name.
@@ -192,8 +212,26 @@ fn main() {
         std::hint::black_box(&py);
     });
 
+    // The write channel's input is an object rather than text, so one is built here: outside the
+    // counted loop and in `--setup-only` too, which is what leaves the loader's price in `to_python_*`'s
+    // floor and out of `safe_dump_*`'s. The engine harness applies the same rule to the AST its writer
+    // scenarios share. A read channel gets Python's `None` and never reads it, so the loop below keeps
+    // the shape - and the codegen - the seven rows already priced had.
+    let object = pyo3::Python::attach(|py| match channel {
+        Channel::Dump => bench_to_python_value(py, std::hint::black_box(src)),
+        Channel::ToPython | Channel::LoadToml | Channel::LoadJson => Ok(py.None()),
+    })
+    .unwrap_or_else(|error| {
+        eprintln!(
+            "{name}: {error} - the writer's input comes from the read channel, so a document that \
+             cannot become an object leaves the write scenario measuring nothing"
+        );
+        std::process::exit(3);
+    });
+
     let measured = if setup_only {
         std::hint::black_box(src);
+        std::hint::black_box(&object);
         0
     } else {
         // Every iteration has to produce exactly one object. Both seams return their error instead of
@@ -206,12 +244,13 @@ fn main() {
                 Channel::ToPython => bench_to_python(std::hint::black_box(src)),
                 Channel::LoadToml => bench_load_toml(std::hint::black_box(src)),
                 Channel::LoadJson => bench_load_json(std::hint::black_box(src)),
+                Channel::Dump => bench_dump(std::hint::black_box(&object)),
             };
             match std::hint::black_box(converted) {
                 Ok(1) => acc += 1,
                 Ok(other) => {
                     eprintln!(
-                        "{name} iteration {index}: the conversion returned {other}, expected 1 - \
+                        "{name} iteration {index}: the seam returned {other}, expected 1 - \
                          the fixture no longer reaches the path being measured"
                     );
                     std::process::exit(3);

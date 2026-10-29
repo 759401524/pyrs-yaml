@@ -225,20 +225,62 @@ pub(crate) fn safe_load(
 #[doc(hidden)]
 pub fn bench_to_python(yaml: &str) -> Result<usize, pyo3::PyErr> {
     pyo3::Python::attach(|py| {
-        let schema = parse_schema("core")?;
-        let mut ast = crate::parser::parse_with_options(yaml, true, schema.clone(), 1000, false)
-            .map_err(|e| parse_error_to_py_err(e, yaml, 1000))?;
-        resolve_tags(&mut ast, py)?;
-        let value = crate::py::convert::node_to_pyobject_resolving_anchors(
-            &ast,
-            py,
-            &schema,
-            yaml.bytes().any(|b| b == b'&'),
-        )?;
+        let value = bench_to_python_value(py, yaml)?;
         // An opaque read that keeps the object alive past the call without adding allocator-visible
         // work; the harness counts one per iteration, so the conversion cannot be elided and cannot
         // silently stop happening.
         Ok(usize::from(!value.as_ptr().is_null()))
+    })
+}
+
+/// The conversion [`bench_to_python`] measures, with the object handed back instead of acknowledged.
+///
+/// The write seam below needs a Python object to write, and building one is the read channel's own
+/// work. Sharing this body is what keeps the two floors describing the same tree: an object fabricated
+/// by a different route would price a writer reading a different shape.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn bench_to_python_value(
+    py: pyo3::Python,
+    yaml: &str,
+) -> Result<pyo3::Py<pyo3::PyAny>, pyo3::PyErr> {
+    let schema = parse_schema("core")?;
+    let mut ast = crate::parser::parse_with_options(yaml, true, schema.clone(), 1000, false)
+        .map_err(|e| parse_error_to_py_err(e, yaml, 1000))?;
+    resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(
+        &ast,
+        py,
+        &schema,
+        yaml.bytes().any(|b| b == b'&'),
+    )
+}
+
+/// Feature-gated seam for the instruction-count harness (`crates/pyrs-yaml/benches/ir_gate.rs`):
+/// the Python-object write route, object to YAML text.
+///
+/// This is the route `safe_dump` and `from_dict` serve, and until now no committed floor reached it:
+/// the engine harness's `serialize_*` scenarios stop at the node model, so every allocation, scan and
+/// spelling decision the binding's own writer makes - `direct_dump`, a sibling of the serializer by
+/// `docs/dev/boundaries.md`'s own reading - moved no number. The name avoids `to_yaml_*` on purpose:
+/// `scripts/quality_matrix.py` pairs `to_<format>_*` with `from_<format>_*` as one bridge, and this is
+/// a language binding rather than a format conversion, exactly as `to_python_*` is on the read side.
+///
+/// The object arrives already built, by [`bench_to_python_value`], so the counted region is the writer
+/// alone; the harness builds it in setup for the measured *and* the setup-only pass, which is what
+/// makes the subtraction leave the read channel's price in `to_python_*`'s floor and out of this one.
+///
+/// The error is returned, never swallowed, for the same one-sided-tolerance reason as
+/// [`bench_to_python`]: a writer that quietly produced nothing would loop, count less work, and read
+/// as an enormous speedup.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn bench_dump(value: &pyo3::Py<pyo3::PyAny>) -> Result<usize, pyo3::PyErr> {
+    pyo3::Python::attach(|py| {
+        let text = direct_dump(py, value)?;
+        // The whole buffer moved through `black_box` before its length is read, so the writes into it
+        // are not observable only to the destructor that drops it.
+        Ok(std::hint::black_box(text).len().min(1))
     })
 }
 

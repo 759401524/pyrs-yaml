@@ -19,6 +19,21 @@ status: new
 
 #### 新增
 
+- **Python 对象写路径现在有了指令地板** —— `safe_dump` 与 `from_dict` 服务
+  `crates/pyrs-yaml/src/py/direct_dump.rs`，而没有任何已提交的数字到达过它：引擎 harness 的
+  `serialize_*` 场景止步于节点模型，而这两条对象路线根本不构造节点模型，于是绑定层自己写器做的每一次
+  分配、扫描与拼写决定都不带动任何地板。`crates/pyrs-yaml/benches/ir_gate.rs` 增加 `Channel::Dump`，
+  含 `safe_dump_small` 13,296,320 与 `safe_dump_medium` 110,613,010 —— 读的正是读通道已经在用的两份
+  文档（`SMALL_YAML` 与 `MEDIUM_YAML`），两者指令数相差 8.32 倍；对象由 `to_python_*` 自己的函数体在
+  计数环之外构造，并且在 `--setup-only` 里同样构造，所以加载器的价格留在 `to_python_*` 里、不进这两
+  条地板。数字来自在本 head 上派发的刷新工作流，在强制镜像上生成（`20261026.354.1`、`rustc 1.97.1`、
+  重复三次），并且既进平表也进该镜像的按键行，因为绑定 harness 的场景按测量它的镜像键化。这次派发没
+  在 `accept_drift` 里点名任何场景却仍然写成了，所以没有地板越过 0.5% 线；平表里四个绑定读数确实动了
+  （最多 1.68%，`load_toml_medium`），因为它们来自的那个文件是在 `20261023.334.3` 上生成的，而强制腿
+  现在读自己那一行，那一行没被动过 —— `QUALITY_MATRIX.md` 里九处被引用的地板读数由脚本重新对齐到本文
+  件，彼此差异最大的是 0.0003%。这条路线的第一次归因：`needs_quotes` 是 `safe_dump_medium` 里最大的
+  非分配器项，占 5.45%，`DirectWriter::write_key` 占 3.70%，而前十二名里没有 `type_registry` 函数 ——
+  这就是在一个什么都没注册的文档上，量出了 #672 只能断言的那条空处理器快路径。
 - **对标库的版本上限改为实测，并由门禁保持实测** —— 测试依赖组里九个 `python_version < 'X.Y'`
   上限中有五个仍写着 `< '3.14'`，而 `pyjson5`、`numpy`、`ujson` 与 `python-rapidjson` 都已发布
   3.14 的 wheel，于是 ≥3.14 的测试腿装到的对拍参照更少：PR #665 的十二条绿腿里 3.13 跑 4,433 条
