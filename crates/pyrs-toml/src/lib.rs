@@ -17,8 +17,11 @@
 //! additions land here:
 //!
 //! - **A1** Multi-line inline tables + trailing commas inside an
-//!   inline table. Interior comments are supported only via a
-//!   follow-up (see §Non-goals in the design doc).
+//!   inline table. A comment on its own line between the braces is read
+//!   by the parser and written back by `to_toml` (#119 for a member's,
+//!   and the table's own leading note beside it); a note that would land
+//!   after a separator comma is not written, because the reader hands
+//!   that text to the next member and the text would not settle.
 //! - **A2** `\xHH` byte escape in basic strings (codepoints ≤ 0xFF).
 //! - **A3** `\e` escape for U+001B (ESC).
 //! - **A4** Optional seconds in local-time and date-time values

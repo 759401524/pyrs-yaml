@@ -10919,6 +10919,121 @@ fixture with CRLF, the forty-six engine rows came out within 0.0015 % of their f
 `from_toml_notes` at -2,160 instructions, ten exact to the instruction — and the nine image-keyed
 binding rows, judged against their own image row, moved up to -0.074 %.
 
+### (hv) The note (hu) called a format limit was an unread writer slot (2026-10-29)
+
+`(hu)` recorded that a note above a key of a mapping TOML renders as an inline table "cannot
+survive, because an inline table holds neither a comment nor a line break — that is the format's own
+rule, not a defect of this writer". The tree contradicts that twice over: PR #119 demotes a
+decorated inline table to several lines precisely so a member's note can be written, and this
+crate's own 1.1 reader reads such a text back — `to_toml(from_toml(text)) == text` holds on what the
+writer emits. TOML 1.0 does keep half of the sentence: a `#` runs to end of line, so a note cannot
+live on the single-line form, and `from_toml_v1_0` refuses a multi-line inline table. The outside
+reader is not as stable a 1.0 judge as this entry first claimed: measured on 2026-10-29 in this
+repository's own resolved environments, CPython 3.11.17, 3.12.15, 3.13.16 and 3.14.8 `tomllib` all
+refuse the emitted text, **CPython 3.15.0's `tomllib` accepts it**, and **`tomli` 2.5.0 — the reader
+the `python_version < '3.11'` legs get — accepts it**. What was wrong is "not a defect of this
+writer". The hub hands the note over on the container node's own leading list; the arms read only
+what a member carries and never that one, so the note was dropped rather than relocated — and asking
+the same question one level down found the array arm losing `arr:` + `# note` + `- 1` exactly the
+same way, which no document had named at all.
+
+Both compact arms ask the container's list through one `container_leading_notes`, which is
+`CustomNode::leading_comments` — the same pair PR #114 reads for a section header, the leading list
+and the legacy standalone `comment` slot — so a note authored either way is written and the question
+costs one lookup per container. Guarding it with `has_notes()` first, the shape `element_has_note`
+uses, was the first version, and `to_toml_medium` priced it: two calls out of `pyrs-ast` for every
+container of a note-free document. When
+a note is present the container is demoted and the note takes its own line inside the braces or the
+brackets, which is where the reader reports it from, so the emission settles in one hop instead of
+moving on the second write. The layout lives in `write_notated_table` beside `write_notated_array`,
+for the reason that function records: a note layout does not belong in the one recursive writer
+every node passes through.
+
+Five tests, each answering a different question, plus two that name the exemption below.
+`crates/pyrs-toml/src/writer.rs::a_note_above_the_first_key_of_a_table_written_inline_is_written_inside_it` and `a_note_above_the_first_item_of_an_array_written_inline_is_written_inside_it` build the nodes and assert the exact bytes plus the fixed point — on the previous head the first failed with `nested = {inner = 1}` and the second with `arr = [1, 2]`, the note gone rather than moved. `the_legacy_own_line_note_on_an_inline_table_is_written_inside_it_too` covers the second slot, the one `set_comment` writes and `leading_comments` leaves empty. `tests/test_toml_writer_suite.py::test_a_note_above_a_nested_key_travels_the_route_into_the_inline_table` and `test_a_note_above_the_first_item_of_an_array_travels_the_route_inside_it` drive the shipped route from YAML text through the hub, so a hub that stopped handing the note over reddens there and not only inside the crate; the first also asks a parser the project does not own to say which side of 1.0 each text is on, and that ask is now keyed by reader and version rather than assumed, because the assumption was wrong on two bands at once (below). `crates/pyrs-yaml-core/tests/ir_fixtures.rs` now expects all six of `DIALECT_NOTES_YAML`'s notes and the fixed point, and keeps the pair's other half asserted absent: an own-line note after a file's last key still reaches no AST slot, because the parser hands it back as the second value of its pair.
+
+The first CI verdict on this change reddened two legs and both were the change's fault, which is the
+tier doing the job the paragraph above credits it. `prop_toml_writer_is_fixed_point` at 20,000 cases
+shrank to `Mapping { "A": Mapping { pairs: {}, comment: "a" } }` — an **empty** table carrying its
+own note — because the arm asked the fifth slot of every container, empty included, and wrote
+`A = {\n  # a\n}`. This crate's reader hands back no note at all from inside an empty table:
+measured, `to_toml(from_toml("A = {\n  # a\n}")) == "A = {}\n"`. So the note was not relocated but
+orphaned, the second emission moved, and the fixed point broke — the same orphaning the entry
+already names for a note after a file's last key, arriving from the other direction. Both arms now
+ask the slot only when the container has members, the seed is pinned in
+`crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt` (`cc 87565b80…`), and
+`a_note_on_an_empty_inline_table_keeps_the_compact_form_and_the_fixed_point` with its sequence twin
+name the shape that the property tier found. `no_std (windows-latest)` saw it too, because this
+crate's property tier runs as unit tests there. The eight interpreter legs failed for the second
+reason above: the test asked `tomllib`/`tomli` to refuse the demoted text on every leg, and on
+3.15.0 and on `tomli` 2.5.0 that reader no longer refuses; the expectation is a keyed table now, so
+a reader that moves out of it reddens instead of quietly weakening the gate — which is exactly how
+this was caught. Note the two claims stay separate: no property asks whether every note survived (a
+dropped note settles), but the fixed-point property does ask whether the text settles, and that
+second question is what caught an over-eager demotion.
+
+The reading is falsified as a set, not taken on faith: replacing `container_leading_notes`' body
+with an unconditional `&[]` reddened the table test and the array test together (exit 100, 72 passed
+/ 2 failed under the fail-fast plan), and restoring the file from the pre-mutation bytes brought the
+crate back to 116 passed on that shape; the crate answers 118 on this head, after the two exemption
+tests the property tier asked for. What the mutation does *not* reach is the pricing: the fixture
+carries a container-level note on the table side only, so `to_toml_notes` prices that half of the
+shared helper and the array half is held by the unit tier alone.
+
+The price is the question, not the note. Five shapes of this change were measured on this host with
+the baseline's pinned `rustc 1.97.1` (three repeats each, spread 0.000 %), reading `to_toml_medium`
+against the 27,708,605 floor this change replaced: the table arm alone guarded by `has_notes()` →
+27,756,584 (+0.17 %); the same with the layout extracted into `write_notated_table` → 27,750,584
+(+0.15 %); the array arm added, still guarded → 28,068,579 (+1.30 %); the guard dropped so the arm
+asks `leading_comments` once → 28,028,573 (+1.15 %); the shipped shape, which asks nothing of an
+empty container → 28,056,537 (+1.26 %). The last two differ by 27,964 loop instructions, which is 14
+per harness iteration — the two `is_empty()` tests the exemption added to the walk of every
+note-free document, and the price of the fixed point the property tier had just shown the eager
+demotion broke. The pair before that differ by 40,000 loop instructions, which is the
+2,000-iteration harness paying twenty instructions per container for a call it did not need to make,
+and the jump from +0.15 % to +1.30 % is the same one call charged to every array in the document.
+`to_toml_long_strings` reads +2.08 % and `to_toml_notes` 15,220,926 → 16,266,908 (+6.87 %), the
+intended price for writing a sixth note and demoting its table. The tempting cheaper guard —
+`is_identity_clean()`, which is `#[inline]` — was rejected as unsound: that predicate reads
+`comment`, `anchor` and `tag` and not the decor list, so it would answer "clean" for exactly the
+node this change exists to write, and the tests would have caught it. `load_toml_medium` and
+`load_toml_long_strings` read +1.86 % and +2.99 % (145,111,409 / 139,505,019) on a route that calls
+no writer. Four binaries now say so, and each reproduced its own number to the instruction across
+all three repeats: 145,112,102 for the three guarded shapes and 145,111,409 for the single-lookup
+shape and for the shipped one, so the two readings differ by 693 instructions and the
+empty-container exemption that moved `to_toml_medium` by 27,964 moved these by nothing. That is an
+observation about which step the read-route move tracks, not a mechanism; no host story explains it
+either, and those two floors are keyed by runner image, which is what the pull request's own `ir`
+leg measures and what decides what lands in `.ci/ir-baseline.json`.
+
+The `ir` leg answered that last sentence. The refresh ran on the enforcing image
+(`github-runner ubuntu24, image 20261026.354.1`, the baseline's pinned `rustc 1.97.1`, both harness
+binaries re-digested) and moved three floors past the line, all three on the writer:
+`to_toml_medium` 27,708,605 → 28,056,624 (+1.256 %), `to_toml_long_strings` 29,225,057 → 29,833,173
+(+2.081 %) and `to_toml_notes` 15,220,926 → 16,266,870 (+6.872 %). The other fifty-two of the
+fifty-five floors hold inside ±0.0039 %. `load_toml_medium` and `load_toml_long_strings`, which this
+host read +1.86 % and +2.99 % past their rows, moved +0.0014 % and -0.0007 % there: same pinned
+compiler, same engine source, different image. So the read-route movement above was the host — and
+the two image rows say *which side* of the image boundary this host tracks: `load_toml_medium` reads
+145,111,409 here, +0.144 % over the `20261023.334.3` row and +1.855 % over the enforcing
+`20261026.354.1` row, and `load_toml_long_strings` reads 139,505,019, +0.028 % and +2.989 % past the
+same pair, while those two rows differ from each other by +1.708 % and +2.960 %. The local box is
+not generically slower; it lands on the older image's side, which is also why the `(fd)` entry's
+local reading matched its then-committed floor to -0.054 %. A host reading of a keyed floor is
+comparable only to the row whose image matches the host's libc. Two of the five names put into
+`accept_drift` were floors that never crossed, measured now instead of assumed: an unused name there
+is a no-op, which is what lets one flag per scenario stay the cheap thing it is.
+
+The two core-harness note rows were re-profiled here afterwards, and they put a scope on that host
+story rather than dissolving it: `to_toml_notes` reads 16,266,871 in this run and 16,266,908 in the
+gate's run above — 37 instructions of local spread — against the image's 16,266,870, one instruction
+off, and `from_toml_notes` 148,383,991 against 148,375,267, +0.006 %. The pinned-ISA
+recipe therefore holds for the engine harness on this tree, and what moved with the image is the
+pair of binding rows, which is exactly the set `image_floors` keys. The re-profile moved the
+writer's own attribution, and `QUALITY_MATRIX.md` quotes the fresh pair: `push_note_text` went from
+13.35 % to 14.98 % of `to_toml_notes`' loop, because one more note per document leaves through that
+function, while `take_comment` stayed the largest single row on the reader at 9.70 %.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -21,23 +21,26 @@ status: new
 
 - **TOML 的注释机制两侧都有价格了** — 此前每条 TOML 地板跑的文档里都没有 `#`，所以
   `push_note_text`、解析器的 `take_comment`、以及解析器随表一起交回的那份注释清单，从不带动任何已提
-  交的数字。计指令数的场景集就此加入 `to_toml_notes` 15,220,926 与 `from_toml_notes` 148,379,310，数
-  字来自强制镜像上的测量（`20261026.354.1`、`rustc 1.97.1`、重复三次）：写侧用的是 `to_jsonc_notes`
+  交的数字。计指令数的场景集就此加入 `to_toml_notes` 与 `from_toml_notes`，数字来自强制镜像上的测量
+  （`20261026.354.1`、`rustc 1.97.1`、重复三次）：写侧用的是 `to_jsonc_notes`
   与 `to_json5_notes` 正在写的同一份六注释文档，读侧用的是一份装着 `MEDIUM_TOML` 全部取值、另加七条
-  注释的文档——于是读侧拿到的是一段实测对照，不是一个命名前提：对着 `from_toml_medium` 121,149,749，
-  这七条注释值 27,229,561 条指令，+22.48 %，把 harness 的 2,000 次迭代除掉即每条 1,945 条。两条地板
-  各自最大的一行正落在注释上：`pyrs_toml::writer::push_note_text` 占写侧循环的 13.35 %，
-  `<pyrs_toml::parser::Parser>::take_comment` 占读侧的 9.71 %。有两种形状留在价格之外，因为 TOML 无
-  处安放它们——渲染成内联表的映射里某个键上方的注释，以及最后一个键之后的独占一行注释，后者由解析器作
-  为它那对返回值的第二个交回、AST 没有槽位接住——所以 `crates/pyrs-yaml-core/tests/ir_fixtures.rs` 断
-  言两者都不出现在写出的文本里，将来给它们槽位会在那里读成一个决定，而不是一条自己动了的地板。定价过
-  程中量到、如今写成断言的一点：rustc 会把 raw string 里的 CRLF 归一化，所以没有夹具会编译出 CR 字
-  节，夹具*文件*存成哪种换行约定进不了地板——这是一条辅助脚本把 `bench_inputs.rs` 从历次十个提交都存
-  的 CRLF 改写成 LF、把 39 行改动放大成 919 行 diff 时学到的。一次派发就在 `accept_drift` 为空、无拒
-  绝的情况下写下基线：接过来的五十三条地板有四十七条动了，向上最宽 +0.385 %
-  （`from_json_long_strings`），向下越过 0.5 % 的只有 `from_json5_medium` -1.132 %、
-  `from_jsonc_medium` -1.130 % 与 `parse_inline_merge` -0.551 %，而门禁要到 2 % 之外才告警；这个
-  head 没有任何引擎路径改变，所以那些移动是 harness 自身代码尺寸带动的兄弟场景。
+  注释的文档——于是读侧拿到的是一段实测对照，不是一个命名前提：对着 `from_toml_medium`，
+  这七条注释把 harness 的 2,000 次迭代除掉后每条值 1,945 条指令。两条地板
+  各自最大的一行正落在注释上：写侧是 `pyrs_toml::writer::push_note_text`，
+  读侧是 `<pyrs_toml::parser::Parser>::take_comment`。度量时把两种形状留在价格之外，其中一
+  种后来查明是没被读到的写侧槽位、而非 TOML 的限制：渲染成内联表的映射里第一个键上方的注释，靠表自己
+  的领先注释清单到达 `crates/pyrs-toml/src/writer.rs`，而没有任何分支读它，于是注释被丢弃；下面的修
+  复分条给这个槽位配了读者，夹具测试如今期望它那六条注释全部到位。另一种仍是边界：文档最后一个键之后
+  的独占一行注释没有 AST 槽位——解析器把它作为那对返回值的第二个交回、写侧根本看不见——所以
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` 断言它不出现在写出的文本里，将来给它槽位会在那里读成
+  一个决定，而不是一条自己动了的地板。定价过程中量到、如今写成断言的一点：rustc 会把 raw string 里的
+  CRLF 归一化，所以没有夹具会编译出 CR 字节，夹具*文件*存成哪种换行约定进不了地板——这是一条辅助脚本
+  把 `bench_inputs.rs` 从历次十个提交都存的 CRLF 改写成 LF、把 39 行改动放大成 919 行 diff 时学到
+  的。一次派发就在 `accept_drift` 为空、无拒绝的情况下写下基线：接过来的五十三条地板有四十七条动了，
+  向上最宽 +0.385 %（`from_json_long_strings`），向下越过 0.5 % 的只有
+  `from_json5_medium` -1.132 %、`from_jsonc_medium` -1.130 % 与 `parse_inline_merge` -0.551 %，而门
+  禁要到 2 % 之外才告警；这个 head 没有任何引擎路径改变，所以那些移动是 harness 自身代码尺寸带动的兄
+  弟场景。
 - **Ir 计测工具现在受 lint 约束，并有规则让它一直受约束** — `crates/*/benches/ir_gate.rs` 两个文件都
   声明 `required-features = ["ir-gate"]`，而 cargo 对未开启所需 feature 的 target 是静默丢弃、不是检
   查，所以仓库那条 `cargo clippy --all --all-targets -- -D warnings`——CI 用的就是这个范围，当初采用
@@ -56,7 +59,7 @@ status: new
   `crates/pyrs-yaml/src/py/direct_dump.rs`，而没有任何已提交的数字到达过它：引擎 harness 的
   `serialize_*` 场景止步于节点模型，而这两条对象路线根本不构造节点模型，于是绑定层自己写器做的每一次
   分配、扫描与拼写决定都不带动任何地板。`crates/pyrs-yaml/benches/ir_gate.rs` 增加 `Channel::Dump`，
-  含 `safe_dump_small` 13,296,320 与 `safe_dump_medium` 110,613,010 —— 读的正是读通道已经在用的两份
+  含 `safe_dump_small` 与 `safe_dump_medium` —— 读的正是读通道已经在用的两份
   文档（`SMALL_YAML` 与 `MEDIUM_YAML`），两者指令数相差 8.32 倍；对象由 `to_python_*` 自己的函数体在
   计数环之外构造，并且在 `--setup-only` 里同样构造，所以加载器的价格留在 `to_python_*` 里、不进这两
   条地板。数字来自在本 head 上派发的刷新工作流，在强制镜像上生成（`20261026.354.1`、`rustc 1.97.1`、
@@ -206,6 +209,28 @@ status: new
 
 #### 修复
 
+- **容器第一个成员上方的注释被丢弃，而非挪走** —— `to_toml` 把
+  `nested:\n  # above the inner key\n  inner: 1` 写成 `nested = {inner = 1}`，把
+  `arr:\n  # above the first item\n  - 1` 写成 `arr = [1, 2]`。中枢把结束于成员上方那一行的注释安在
+  *容器*节点自己的领先注释清单上，而 `crates/pyrs-toml/src/writer.rs` 的两个紧凑分支只读成员携带的槽
+  位 ——键的领先清单、键的行内注释、值的行内注释、序列项自己的注释——于是容器算作未装饰、留在同一行，
+  注释无处可去。这是 PR #146 那个第五槽位问题高一层的样子。两个分支现在都经
+  `container_leading_notes` 问容器自己的清单，而那正是 PR #114 为节标题读的那一对槽位，所以这个问题
+  每个容器只花一次查找，不再是先立卫兵再查一次；同时把容器降级：注释取花括号或方括号内的独占一行，那
+  正是本 crate 的读器报告它的位置，所以文本一跳就回到自身。每一半都写成断言
+  ——`crates/pyrs-toml/src/writer.rs` 里表的领先清单、遗留的独占槽位与数组各自的精确字节加不动点，
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` 里夹具的全部六条注释，以及
+  `tests/test_toml_writer_suite.py` 里出厂的 YAML→中枢→TOML 路线。多行内联表与数组是 TOML 1.1 语法，
+  所以这笔代价只有注释能招来：把注释去掉，同一份文档仍写成 `nested = {inner = 1}` 与
+  `arr = [1, 2]`。哪些读者会拒读带注释的那份，是关乎版本的事实，2026-10-29 实测：CPython 3.11 至
+  3.14 的 `tomllib` 拒读；CPython 3.15.0 的 `tomllib` 与 `tomli` 2.5.0（3.11 以下各腿用的那份）都读
+  得动。所以这道门按读者与版本键控期望，而不再假定，1.0 的裁判仍是本 crate 自己的 `from_toml_v1_0`。
+  空容器是属性层在 20,000 例下找出的例外：自带注释的 `A = {}` 保持紧凑形，因为 `{ }` 里那行 `#` 落
+  不到任何成员上，而本 crate 的读者在这种位置不交回任何注释，降级它只会让文本在第二次写时移动。
+  `docs/dev/quality-ledger.md` 的 `(hu)` 把这个形状记成实测边界；`(hv)` 更正它。
+  代价落在写端，并在执法镜像上量得：`to_toml_medium` +1.256%、`to_toml_long_strings` +2.081% 与
+  `to_toml_notes` +6.872%；两个 TOML 读地板只动了 +0.0014% 与 -0.0007%，读路线从不查问的槽位没有让它
+  多付什么。
 - **注册的处理器接管它声称拥有的标量，也只接管标量** —— #671 留下的三种形状现在收成一条规则、
   一个答案，并且是在落下它的那棵树上量出来的。对一个只带 `__bool__` 的类（除处理器外没什么能替
   它说话），`safe_dump` 把 `{"m": Booly()}` 写成 `m:\n  !booly B\n`，而 AST 路线写成

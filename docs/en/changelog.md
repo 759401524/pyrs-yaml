@@ -21,28 +21,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **TOML's note machinery is priced on both sides now** — every TOML floor ran over documents
   holding no `#`, so `push_note_text`, the parser's `take_comment` and the note list it returns
-  alongside the table moved no committed number. `to_toml_notes` 15,220,926 and `from_toml_notes`
-  148,379,310 counted instructions join the set, measured on the enforcing image (`20261026.354.1`,
-  `rustc 1.97.1`, three repeats): the writer on the same six-note document `to_jsonc_notes` and
-  `to_json5_notes` write, the reader on a seven-comment document holding `MEDIUM_TOML`'s values and
-  nothing else, which gives the reader half a measured control instead of a named one — against
-  `from_toml_medium` 121,149,749 the seven comments cost 27,229,561 instructions, +22.48 % or
-  1,945 per comment once the harness's 2,000 iterations divide out. Each floor's largest single row
-  sits where the notes are: `pyrs_toml::writer::push_note_text` 13.35 % of the writer's loop and
-  `<pyrs_toml::parser::Parser>::take_comment` 9.71 % of the reader's. Two shapes stay outside the
-  price because TOML has nowhere to put them — a note above a key of a map rendered as an inline
-  table, and an own-line note after the last key, which the parser hands back as its second value
-  and no AST slot receives — and `crates/pyrs-yaml-core/tests/ir_fixtures.rs` asserts each absent
-  from the emitted text, so giving one a home reads as a decision there rather than as a floor that
-  moved on its own. Measured while pricing, and now asserted: rustc normalises CRLF inside raw
-  strings, so no fixture compiles to a CR byte and the newline convention a fixture *file* is stored
-  with cannot reach a floor — learned when a helper script rewrote `bench_inputs.rs` from the CRLF
-  all ten commits touching it stored to LF and turned a 39-line change into a 919-line diff. One
-  dispatch wrote the baseline with `accept_drift` empty and nothing refused: forty-seven of the
-  fifty-three floors it carried over moved, the widest upward +0.385 % (`from_json_long_strings`)
-  and only `from_json5_medium` -1.132 %, `from_jsonc_medium` -1.130 % and
-  `parse_inline_merge` -0.551 % past 0.5 % downward, where the gate warns beyond 2 %; no engine
-  route changed on this head, so those are the harness's own code size moving its siblings.
+  alongside the table moved no committed number. `to_toml_notes` and `from_toml_notes` joined the
+  set, measured on the enforcing image (`20261026.354.1`, `rustc 1.97.1`, three repeats): the writer
+  on the same six-note document `to_jsonc_notes` and `to_json5_notes` write, the reader on a
+  seven-comment document holding `MEDIUM_TOML`'s values and nothing else, which gives the reader
+  half a measured control instead of a named one — against `from_toml_medium` the seven comments
+  cost 1,945 instructions each once the harness's 2,000 iterations divide out. Each floor's largest
+  single row sits where the notes are: `pyrs_toml::writer::push_note_text` on the writer,
+  `<pyrs_toml::parser::Parser>::take_comment` on the reader. Two shapes sat outside the price when
+  this was measured, and one of them turned out to be an unread writer slot rather than a limit: a
+  note above the first key of a map rendered as an inline table reached
+  `crates/pyrs-toml/src/writer.rs` on the table's own leading list and no arm read it, so the note
+  was dropped; the Fixed bullet below gives that slot a reader, and the fixture test now expects all
+  six of its notes to arrive. The other shape stays: an own-line note after the document's last key
+  has no AST slot, because the parser hands it back as its pair's second value and the writer never
+  sees it, so `crates/pyrs-yaml-core/tests/ir_fixtures.rs` asserts it absent from the emitted text —
+  giving it a home reads as a decision there rather than as a floor that moved on its own. Measured
+  while pricing, and now asserted: rustc normalises CRLF inside raw strings, so no fixture compiles
+  to a CR byte and the newline convention a fixture *file* is stored with cannot reach a floor —
+  learned when a helper script rewrote `bench_inputs.rs` from the CRLF all ten commits touching it
+  stored to LF and turned a 39-line change into a 919-line diff. One dispatch wrote the baseline
+  with `accept_drift` empty and nothing refused: forty-seven of the fifty-three floors it carried
+  over moved, the widest upward +0.385 % (`from_json_long_strings`) and only
+  `from_json5_medium` -1.132 %, `from_jsonc_medium` -1.130 % and `parse_inline_merge` -0.551 % past
+  0.5 % downward, where the gate warns beyond 2 %; no engine route changed on this head, so those
+  are the harness's own code size moving its siblings.
 - **The Ir harnesses are linted now, and a rule keeps them linted** — both
   `crates/*/benches/ir_gate.rs` files declare `required-features = ["ir-gate"]`, and cargo drops a
   target whose required features are off instead of checking it, so the repository's
@@ -65,8 +68,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `crates/pyrs-yaml/src/py/direct_dump.rs`, and no committed number reached it: the engine harness's
   `serialize_*` scenarios stop at the node model those routes never build, so every allocation, scan
   and spelling decision the binding's own writer makes moved no floor.
-  `crates/pyrs-yaml/benches/ir_gate.rs` gains `Channel::Dump` with `safe_dump_small` 13,296,320 and
-  `safe_dump_medium` 110,613,010 — 8.32x the instructions between the two documents the read channel
+  `crates/pyrs-yaml/benches/ir_gate.rs` gains `Channel::Dump` with `safe_dump_small` and
+  `safe_dump_medium` — 8.32x the instructions between the two documents the read channel
   already uses (`SMALL_YAML` and `MEDIUM_YAML`), with the object built by `to_python_*`'s own body
   outside the counted loop and in `--setup-only` as well, so the loader's price stays in
   `to_python_*` and out of these. The numbers came off the enforcing image (`20261026.354.1`,
@@ -264,6 +267,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A note above a container's first member was dropped, not moved** — `to_toml` wrote
+  `nested:\n  # above the inner key\n  inner: 1` as `nested = {inner = 1}` and
+  `arr:\n  # above the first item\n  - 1` as `arr = [1, 2]`. The hub homes a note that ends the line
+  above a member on the *container* node's own leading list, and both compact arms of
+  `crates/pyrs-toml/src/writer.rs` read only what a member carries — a key's leading list, a key's
+  inline note, a value's inline note, an element's own note — so the container counted as
+  undecorated, stayed on one line, and the note had nowhere to go. That is PR #146's fifth-slot
+  class one level up. Both arms now ask the container's list through one `container_leading_notes`,
+  which is the pair PR #114 already reads for a section header, so the question costs one lookup per
+  container rather than a guard plus a lookup, and demote: the note takes its own line inside the
+  braces or the brackets, which is where this crate's reader reports it from, so the text re-reads
+  to itself in one hop. Every half is asserted — the exact bytes and the fixed point for a table's
+  leading list, for the legacy standalone slot, and for an array in
+  `crates/pyrs-toml/src/writer.rs`; all six notes of the fixture plus the fixed point in
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs`; the shipped YAML→hub→TOML route in
+  `tests/test_toml_writer_suite.py`. A multi-line inline table or array is TOML 1.1 syntax, so the
+  note is the only thing that can incur this: the same documents with the note removed still write
+  `nested = {inner = 1}` and `arr = [1, 2]`. Which readers refuse the noted text is a fact about the
+  reader's version, measured on 2026-10-29: CPython 3.11 through 3.14 `tomllib` do, CPython 3.15.0's
+  `tomllib` and `tomli` 2.5.0 — the reader below 3.11 — do not, so the gate keys the expectation
+  instead of assuming it and this crate's own `from_toml_v1_0` stays the 1.0 judge. An empty
+  container is the exception the property tier found at 20,000 cases: `A = {}` carrying its own note
+  keeps the compact form, because a `#` line inside `{ }` reaches no member and this crate's reader
+  hands back no note for it, so demoting it moved the text on the second write.
+  `docs/dev/quality-ledger.md` `(hu)` recorded the shape as a measured boundary; `(hv)` corrects it.
+  The price is on the writer and was measured on the enforcing image: `to_toml_medium` +1.256%,
+  `to_toml_long_strings` +2.081% and `to_toml_notes` +6.872%, while the two TOML read floors moved
+  +0.0014% and -0.0007% — a slot the read route never consults costs it nothing.
 - **A registered handler owns the scalar it claims, and nothing else** — the three shapes #671 left
   open are now one rule with one answer, measured on the tree that landed it. `safe_dump` of
   `{"m": Booly()}` — a class carrying only `__bool__`, so nothing but a handler has anything to say
