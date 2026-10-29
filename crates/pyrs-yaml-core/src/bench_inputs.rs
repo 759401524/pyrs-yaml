@@ -295,6 +295,45 @@ cache = true
 rate_limit = false
 "#;
 
+/// [`MEDIUM_TOML`] with seven comments, in the positions the TOML reader's note stack and the TOML
+/// writer's note slots each decide separately: one above the first header (the document-leading
+/// slot), one trailing a key line, one standalone above a key inside a section, one trailing a
+/// number, one standalone above a later header, one trailing an array line, and one at the end of
+/// the file where no key is left to claim it.
+///
+/// This is the gap the two TOML floors could not see. `MEDIUM_TOML` and [`long_string_toml`] hold no
+/// `#` at all, so `from_toml_medium` and `to_toml_medium` - and the `pending_leading` /
+/// `pending_inline_comment` carriage the parser keeps per line - ran at no measured price, exactly
+/// the reader-side shape the YAML note fixture closed for `parse_notes`. The dialect pair already
+/// exists ([`NOTES_JSON`] feeds `from_jsonc_notes` and `from_json5_notes`); this is TOML's twin, so
+/// what separates `from_toml_notes` from `from_toml_medium` is the note machinery and nothing else.
+///
+/// The values are `MEDIUM_TOML`'s byte for byte: `tests/ir_fixtures.rs` requires the two to parse to
+/// the same tree, so a comment that changed a value would price a different document.
+pub const NOTES_TOML: &str = r#"# boot order is fixed by the entrypoint
+[server]
+host = "localhost"  # the loopback name, not an address
+# the pool size is checked against the container image
+port = 8080
+timeout = 30
+[database]
+driver = "postgres"
+host = "db.example.com"
+port = 5432
+name = "myapp"
+pool_size = 10  # five workers, two spare
+# logging format is fixed by the collector
+[logging]
+level = "info"
+format = "json"
+outputs = ["stdout", "file:/var/log/app.log"]  # both sinks stay unrotated
+[features]
+auth = true
+cache = true
+rate_limit = false
+# toggled by ops, last so no key is left to claim it
+"#;
+
 // ---------------------------------------------------------------------------
 // The long-string pair
 //

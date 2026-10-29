@@ -9,6 +9,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **TOML's note machinery is priced on both sides now** — every TOML floor ran over documents
+  holding no `#`, so `push_note_text`, the parser's `take_comment` and the note list it returns
+  alongside the table moved no committed number. `to_toml_notes` 15,220,926 and `from_toml_notes`
+  148,379,310 counted instructions join the set, measured on the enforcing image (`20261026.354.1`,
+  `rustc 1.97.1`, three repeats): the writer on the same six-note document `to_jsonc_notes` and
+  `to_json5_notes` write, the reader on a seven-comment document holding `MEDIUM_TOML`'s values and
+  nothing else, which gives the reader half a measured control instead of a named one — against
+  `from_toml_medium` 121,149,749 the seven comments cost 27,229,561 instructions, +22.48 % or
+  1,945 per comment once the harness's 2,000 iterations divide out. Each floor's largest single row
+  sits where the notes are: `pyrs_toml::writer::push_note_text` 13.35 % of the writer's loop and
+  `<pyrs_toml::parser::Parser>::take_comment` 9.71 % of the reader's. Two shapes stay outside the
+  price because TOML has nowhere to put them — a note above a key of a map rendered as an inline
+  table, and an own-line note after the last key, which the parser hands back as its second value
+  and no AST slot receives — and `crates/pyrs-yaml-core/tests/ir_fixtures.rs` asserts each absent
+  from the emitted text, so giving one a home reads as a decision there rather than as a floor that
+  moved on its own. Measured while pricing, and now asserted: rustc normalises CRLF inside raw
+  strings, so no fixture compiles to a CR byte and the newline convention a fixture *file* is stored
+  with cannot reach a floor — learned when a helper script rewrote `bench_inputs.rs` from the CRLF
+  all ten commits touching it stored to LF and turned a 39-line change into a 919-line diff. One
+  dispatch wrote the baseline with `accept_drift` empty and nothing refused: forty-seven of the
+  fifty-three floors it carried over moved, the widest upward +0.385 % (`from_json_long_strings`)
+  and only `from_json5_medium` -1.132 %, `from_jsonc_medium` -1.130 % and
+  `parse_inline_merge` -0.551 % past 0.5 % downward, where the gate warns beyond 2 %; no engine
+  route changed on this head, so those are the harness's own code size moving its siblings.
 - **The Ir harnesses are linted now, and a rule keeps them linted** — both
   `crates/*/benches/ir_gate.rs` files declare `required-features = ["ir-gate"]`, and cargo drops a
   target whose required features are off instead of checking it, so the repository's

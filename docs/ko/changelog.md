@@ -17,6 +17,29 @@ status: new
 
 #### 추가
 
+- **TOML 주석 기관은 양쪽에 값이 매겨졌다** — 그때까지 TOML floor는 `#`를 하나도 갖지 않은 문서를
+  돌았다. 그래서 `push_note_text`, 파서의 `take_comment`, 표와 함께 돌려주는 주석 목록이 확정된
+  숫자를 움직이지 않았다. 명령어 시나리오 집합에 `to_toml_notes` 15,220,926과 `from_toml_notes`
+  148,379,310이 들어갔고, 값은 강제 이미지에서 쟀다(`20261026.354.1`, `rustc 1.97.1`, 3회 반복).
+  기록 쪽은 `to_jsonc_notes`와 `to_json5_notes`가 쓰는 것과 같은 여섯 주석 문서를 쓰고, 읽기 쪽은
+  `MEDIUM_TOML`의 값을 그대로 두면서 주석 일곱 개를 얹은 문서를 읽는다. 그래서 읽기 쪽은 이름만 붙은
+  전제가 아니라 실측된 대조쌍을 갖는다 — `from_toml_medium` 121,149,749에 견주면 그 일곱 개는
+  27,229,561명령, +22.48 %이고 harness의 2,000 반복을 나누면 주석에 1,945다. 두 floor에서 가장 큰 한
+  줄은 둘 다 주석 쪽에 놓인다: `pyrs_toml::writer::push_note_text`가 기록 루프의 13.35 %,
+  `<pyrs_toml::parser::Parser>::take_comment`가 읽기의 9.71 %. TOML이 둘 곳을 없는 두 모양은 값
+  바깥에 남는다 — 인라인 표로 찍히는 맵의 키 위에 붙은 주석, 마지막 키 뒤의 혼자 한 줄 주석이며,
+  나중 것은 파서가 짝의 두 번째 값으로 돌려주지만 AST에 자리가 없다 — 그래서
+  `crates/pyrs-yaml-core/tests/ir_fixtures.rs`는 둘 다 찍은 텍스트에 나타나지 않는다고 단정한다.
+  자리를 만드는 변경은 그 파일에서 결정으로 읽히지, 저절로 움직인 floor로 읽히지 않는다. 값 매기는
+  김에 재고 이제 단정으로 바뀐 것: rustc는 raw string 안의 CRLF를 정규화하므로 어떤 픽스처도 CR
+  바이트로 컴파일되지 않고, 픽스처 *파일이* 저장된 개행 규약은 floor에 닿지 않는다 — 보조 스크립트가
+  `bench_inputs.rs`를 그것을 건드린 열 커밋 모두가 저장한 CRLF에서 LF로 다시 써서 39줄 변경을 919줄
+  diff로 만든 끝에 밝혀졌다. 한 차례 실행이 `accept_drift`를 비운 채 거부 없이 기준선을 기록했다 —
+  이어받은 쉰세 개 floor 중 마흔일곱이 움직였고, 위쪽 가장 큰 폭은
+  +0.385 %(`from_json_long_strings`)이며 0.5 %를 아래로 넘은 것은 `from_json5_medium` -1.132 %,
+  `from_jsonc_medium` -1.130 %, `parse_inline_merge` -0.551 % 셋뿐이고, 게이트는 2 %를 넘어야
+  경고한다. 이 head에서는 어떤 엔진 경로도 바뀌지 않았으니, 그 움직임은 harness 자기 코드 크기가
+  형제 시나리오를 밀어난 것이다.
 - **Ir 계측 하나스에 lint가 걸리고, 그것을 유지하는 규칙이 생겼다** —
   `crates/*/benches/ir_gate.rs` 두 파일 모두 `required-features = ["ir-gate"]`를 선언하는데,
   cargo는 필수 feature가 꺼진 target을 검사 대신 조용히 넘기므로, CI가 쓰는

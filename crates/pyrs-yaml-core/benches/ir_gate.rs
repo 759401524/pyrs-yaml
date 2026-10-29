@@ -44,8 +44,8 @@ use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, DIALECT_NOTES_YAML, MEDIUM_JSON,
     MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, METADATA_EDIT_YAML,
-    NOTE_FLOW_YAML, NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
-    long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
+    NOTE_FLOW_YAML, NOTES_JSON, NOTES_TOML, SMALL_YAML, long_string_json, long_string_json5,
+    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
@@ -238,6 +238,7 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // above never reach `emit_root_leading`, `emit_standalone_comment` or the trailing-note
         // sites - the reader fixtures of these bridges are authored with comments for that reason,
         // and the writers had no twin of that care. Gate-only, as the rows above.
+        ("to_toml_notes", DIALECT_NOTES_YAML, Work::ToToml),
         ("to_jsonc_notes", DIALECT_NOTES_YAML, Work::ToJsonc),
         ("to_json5_notes", DIALECT_NOTES_YAML, Work::ToJson5),
         // Their reader twins. `quality_matrix.py`'s pairing rule is the pair rather than the name -
@@ -245,6 +246,7 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // #292's cost sat exactly in the missing half - so the two floors above earn these two. They
         // are also the price of resolving seven comments, in both spellings, onto the nodes that own
         // them, which `from_jsonc_medium` and `from_json5_medium` measure at three comments each.
+        ("from_toml_notes", NOTES_TOML, Work::FromToml),
         ("from_jsonc_notes", NOTES_JSON, Work::FromJsonc),
         ("from_json5_notes", NOTES_JSON, Work::FromJson5),
         // The event path over the same fixture the AST scenarios read, so the two are comparable:

@@ -24,8 +24,8 @@ use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_STYLE_YAML, DIALECT_NOTES_YAML, LONG_RECORDS, LONG_VALUE, MEDIUM_JSON,
     MEDIUM_JSON5, MEDIUM_JSONC, MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, METADATA_EDIT_YAML,
-    NOTE_FLOW_YAML, NOTES_JSON, SMALL_YAML, long_string_json, long_string_json5, long_string_jsonc,
-    long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
+    NOTE_FLOW_YAML, NOTES_JSON, NOTES_TOML, SMALL_YAML, long_string_json, long_string_json5,
+    long_string_jsonc, long_string_ndjson, long_string_toml, long_string_yaml, short_string_ndjson,
 };
 use pyrs_yaml_core::editing::navigate::Segment;
 use pyrs_yaml_core::editing::plan::{delete_path, insert_path, set_path};
@@ -521,6 +521,86 @@ fn the_metadata_edit_fixture_reaches_every_carriage_branch() {
     );
 }
 
+/// The TOML note floors' premise, in both directions.
+///
+/// `from_toml_notes` reads this document and `to_toml_notes` writes the dialect-note document out as
+/// TOML. Neither floor measures anything if the note machinery is handed nothing to do, and a reader
+/// that stopped collecting comments would keep returning `Ok`, keep looping and keep printing a
+/// number - so the check is the fixed point the dialect note tests already demand: read it, write it
+/// back, and every note text must return.
+#[test]
+fn the_toml_note_fixture_carries_its_comments_and_the_values_of_the_plain_one() {
+    let notes = [
+        "boot order is fixed by the entrypoint",
+        "the loopback name, not an address",
+        "the pool size is checked against the container image",
+        "five workers, two spare",
+        "logging format is fixed by the collector",
+        "both sinks stay unrotated",
+        "toggled by ops, last so no key is left to claim it",
+    ];
+    assert_eq!(
+        NOTES_TOML.matches('#').count(),
+        notes.len(),
+        "the fixture's comment count and the note list no longer agree"
+    );
+    let read = from_toml(NOTES_TOML).expect("the TOML reader fixture parses");
+    let written = to_toml(&read).expect("TOML writes what its reader built");
+    // Six of the seven come back. The seventh is the file's last line - an own-note no key or header
+    // follows - and `pyrs_toml` names that at its own boundary: the pair it hands back is
+    // `(table, every own-line note no key or header claimed)`, because the AST has no slot for those.
+    // The fixture keeps the line anyway, since the reader still walks it and the leftover still has to
+    // be collected, and the assert below pins the shape so that giving the tail a slot shows up as a
+    // decision here rather than as a floor that moved on its own.
+    for note in &notes[..notes.len() - 1] {
+        assert!(
+            written.contains(note),
+            "the TOML round trip lost {note:?}:\n{written}"
+        );
+    }
+    assert!(
+        !written.contains(notes[notes.len() - 1]),
+        "the trailing own-note found an AST slot, so this premise changed shape:\n{written}"
+    );
+    // The comments are the only difference from `MEDIUM_TOML`, and JSON has nowhere to put a
+    // comment, so comparing the JSON renderings compares the values and nothing else.
+    assert_eq!(
+        to_json_text(&read).expect("json writes the commented tree"),
+        to_json_text(&from_toml(MEDIUM_TOML).expect("plain TOML parses"))
+            .expect("json writes the plain tree"),
+        "NOTES_TOML no longer means what MEDIUM_TOML means"
+    );
+}
+
+/// `to_toml_notes` writes the note-bearing YAML document out as TOML. The TOML writer has a slot for
+/// a document note, a pair note, a section-header note and an item note, and `DIALECT_NOTES_YAML`
+/// carries one of each - plus a standalone note above a key of a nested map, which has no TOML
+/// spelling at all: that map is emitted as an inline table, and an inline table can hold neither a
+/// comment nor a line break. Five of the six arrive; the sixth is asserted absent so that a future
+/// demotion of a note-carrying map to a `[table]` header has to be decided here rather than land as a
+/// silent change to what this fixture expects.
+#[test]
+fn the_dialect_note_fixture_reaches_the_toml_writer_where_toml_has_a_line_for_it() {
+    let ast = parse(DIALECT_NOTES_YAML, Schema::Core).expect("the note fixture parses as YAML");
+    let written = to_toml(&ast).expect("TOML writes the hub AST");
+    for note in [
+        "root leading note",
+        "trailing on a pair",
+        "note on the pair the value follows",
+        "item note",
+        "note on a flow value",
+    ] {
+        assert!(
+            written.contains(note),
+            "toml dropped the note {note:?}:\n{written}"
+        );
+    }
+    assert!(
+        !written.contains("above the inner key"),
+        "toml found a line for the inline-table note, so this premise changed shape:\n{written}"
+    );
+}
+
 #[test]
 fn the_json_stream_stop_leaves_a_tail_to_skip_and_skips_it() {
     // `stream_json_stop` asks the sink to stop at a quarter of the events this document emits, so
@@ -739,5 +819,47 @@ fn the_dialect_note_reader_fixture_reaches_both_dialect_readers() {
                 "{dialect} reading lost the note {note:?}:\n{written}"
             );
         }
+    }
+}
+
+/// How a fixture file is stored is not part of what the gate measures.
+///
+/// `crates/pyrs-yaml-core/src/bench_inputs.rs` is declared `-text` and all ten commits that touched it
+/// stored it with CRLF, while the other `-text` path, `benches/ir_gate.rs`, is stored with LF - so a
+/// helper script that rewrites one of them changes every line of its diff without intending to, and
+/// `.gitattributes` leaves open whether that moves a measurement. For these fixtures it cannot, and
+/// this is the measurement rather than the inference: rustc normalises CRLF inside raw strings, so no
+/// fixture compiles to a CR byte and both trees hand the engines the same input. Without it, the
+/// floors would describe whichever checkout the last author happened to commit.
+#[test]
+fn no_benchmark_fixture_compiles_to_a_carriage_return() {
+    for (name, text) in [
+        ("SMALL_YAML", SMALL_YAML),
+        ("MEDIUM_YAML", MEDIUM_YAML),
+        ("ANCHOR_YAML", ANCHOR_YAML),
+        ("BLOCK_STYLE_YAML", BLOCK_STYLE_YAML),
+        ("MERGE_INLINE_YAML", MERGE_INLINE_YAML),
+        ("METADATA_EDIT_YAML", METADATA_EDIT_YAML),
+        ("NOTE_FLOW_YAML", NOTE_FLOW_YAML),
+        ("DIALECT_NOTES_YAML", DIALECT_NOTES_YAML),
+        ("NOTES_JSON", NOTES_JSON),
+        ("NOTES_TOML", NOTES_TOML),
+        ("MEDIUM_JSON", MEDIUM_JSON),
+        ("MEDIUM_JSONC", MEDIUM_JSONC),
+        ("MEDIUM_JSON5", MEDIUM_JSON5),
+        ("MEDIUM_TOML", MEDIUM_TOML),
+        ("long_string_yaml", long_string_yaml().as_str()),
+        ("long_string_toml", long_string_toml().as_str()),
+        ("long_string_json", long_string_json().as_str()),
+        ("long_string_jsonc", long_string_jsonc().as_str()),
+        ("long_string_json5", long_string_json5().as_str()),
+        ("long_string_ndjson", long_string_ndjson().as_str()),
+        ("short_string_ndjson", short_string_ndjson().as_str()),
+    ] {
+        assert!(
+            !text.contains('\r'),
+            "{name} compiled to a CR byte, so a fixture file's stored line endings would be part of \
+             the measured input"
+        );
     }
 }

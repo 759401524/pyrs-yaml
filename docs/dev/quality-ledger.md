@@ -10864,6 +10864,61 @@ One paragraph of `QUALITY_MATRIX.md` was stale in a second way and is corrected 
 `crates/pyrs-yaml/benches/ir_gate.rs` as the three `to_python_*` scenarios, which is what the file
 was before #673 added `safe_dump_small` and `safe_dump_medium` to the same harness.
 
+### (hu) TOML's note stack got a price, and two shapes turned out to have no slot (2026-10-29)
+
+No TOML floor had ever read or wrote a comment. `MEDIUM_TOML`, `LONG_TOML` and the YAML documents
+fed to `to_toml_medium` hold zero `#`, so `pyrs_toml::writer::push_note_text`, the parser's
+`take_comment` and the own-line note list the parser returns beside its table moved no committed
+number — the same blind spot `QUALITY_MATRIX.md` had already named for the YAML and dialect routes,
+on the third format nobody had checked. The scenario set went from fifty-three to fifty-five:
+`to_toml_notes` 15,220,926 and `from_toml_notes` 148,379,310, both from the enforcing image
+(`20261026.354.1`, `rustc 1.97.1`, three repeats) by one dispatch with `accept_drift` empty.
+
+The reader's half came with a control rather than a name. `NOTES_TOML` is `MEDIUM_TOML`'s values
+with seven comments added and nothing else, and `crates/pyrs-yaml-core/tests/ir_fixtures.rs`
+requires the two to render identical JSON, so `from_toml_notes` against `from_toml_medium`
+121,149,749 is 27,229,561 counted instructions for seven comments (+22.48 %, 1,945 per comment after
+the harness's `ITERATIONS = 2_000`), comment bytes included. The writer's half has no such twin by
+design: `to_toml_notes` runs the same `DIALECT_NOTES_YAML` as `to_jsonc_notes` and `to_json5_notes`,
+so its number reads across three dialect writers of one document, not against a note-free input.
+Both floors' largest single attribution row sits on the note path — `push_note_text` 13.35 % of the
+writer's loop, `take_comment` 9.71 % of the reader's.
+
+Two boundaries showed up while building the fixtures, and the ruling on this change was to price
+them and leave emission alone. A note above a key of a mapping that TOML renders as an inline table
+cannot survive, because an inline table holds neither a comment nor a line break — that is the
+format's own rule, not a defect of this writer; and an own-line comment after the last key of a file
+has no AST slot at all, since `pyrs_toml`'s parser hands those back as the second element of its
+`(table, notes)` pair. `crates/pyrs-yaml-core/tests/ir_fixtures.rs` now asserts each absence by name
+rather than letting the floor quietly stop paying for a note nobody claimed, so giving either shape
+a home is a decision that reddens that file first. Neither is registered in
+`.ci/quality-holes.json`: the first is a spec limit and the second is unpriced work, and a registry
+entry asserting a fixed exit criterion would state more than this measurement supports.
+
+A fixture file's stored line endings turned out not to be part of any measurement, and that is now
+asserted. `crates/pyrs-yaml-core/src/bench_inputs.rs` is declared `-text` and all ten commits that
+touched it stored it with CRLF, while `benches/ir_gate.rs` — the other `-text` path — is stored with
+LF; a helper script on this change rewrote the first to LF, which inflated a 39-line addition into a
+919-line diff. `.gitattributes` records the open question whether that matters to a floor. It does
+not, and the reason is measurable: rustc normalises CRLF inside raw string literals, so no fixture
+compiles to a CR byte, and `to_toml`'s output already equals `MEDIUM_TOML` byte for byte from a file
+that stores CRLF. `no_benchmark_fixture_compiles_to_a_carriage_return` states that for every fixture
+both harnesses read, and it bites: planting `\r\n` in `BLOCK_STYLE_YAML` failed it by naming that
+constant (exit 100), and the file came back byte-identical. The fuzz corpora keep their `-text`
+meaning because their CR bytes are the input; these two files' bytes are only the container.
+
+Forty-seven of the fifty-three carried floors moved on this refresh — the widest upward +0.385 %
+(`from_json_long_strings`), three past 0.5 % downward (`from_json5_medium` -1.132 %,
+`from_jsonc_medium` -1.130 %, `parse_inline_merge` -0.551 %), the other forty-three inside ±0.352 %.
+No engine route changed between the baseline's head and this one, so the movement is the harness's
+own code size, which is what `AGENTS.md` says a growth of the scenario set buys; the two new floors
+are the only numbers this change intends. The pull request's own `ir` leg is the check that they
+transfer, and it read closer than the tolerance asks: both harness binaries hashed identical to the
+digests the baseline records (`f8598b2a4ff89477`, `0f21057f01fcb1fc`) from a tree that stores the
+fixture with CRLF, the forty-six engine rows came out within 0.0015 % of their floors — largest
+`from_toml_notes` at -2,160 instructions, ten exact to the instruction — and the nine image-keyed
+binding rows, judged against their own image row, moved up to -0.074 %.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

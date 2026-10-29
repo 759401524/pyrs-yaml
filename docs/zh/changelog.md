@@ -19,6 +19,25 @@ status: new
 
 #### 新增
 
+- **TOML 的注释机制两侧都有价格了** — 此前每条 TOML 地板跑的文档里都没有 `#`，所以
+  `push_note_text`、解析器的 `take_comment`、以及解析器随表一起交回的那份注释清单，从不带动任何已提
+  交的数字。计指令数的场景集就此加入 `to_toml_notes` 15,220,926 与 `from_toml_notes` 148,379,310，数
+  字来自强制镜像上的测量（`20261026.354.1`、`rustc 1.97.1`、重复三次）：写侧用的是 `to_jsonc_notes`
+  与 `to_json5_notes` 正在写的同一份六注释文档，读侧用的是一份装着 `MEDIUM_TOML` 全部取值、另加七条
+  注释的文档——于是读侧拿到的是一段实测对照，不是一个命名前提：对着 `from_toml_medium` 121,149,749，
+  这七条注释值 27,229,561 条指令，+22.48 %，把 harness 的 2,000 次迭代除掉即每条 1,945 条。两条地板
+  各自最大的一行正落在注释上：`pyrs_toml::writer::push_note_text` 占写侧循环的 13.35 %，
+  `<pyrs_toml::parser::Parser>::take_comment` 占读侧的 9.71 %。有两种形状留在价格之外，因为 TOML 无
+  处安放它们——渲染成内联表的映射里某个键上方的注释，以及最后一个键之后的独占一行注释，后者由解析器作
+  为它那对返回值的第二个交回、AST 没有槽位接住——所以 `crates/pyrs-yaml-core/tests/ir_fixtures.rs` 断
+  言两者都不出现在写出的文本里，将来给它们槽位会在那里读成一个决定，而不是一条自己动了的地板。定价过
+  程中量到、如今写成断言的一点：rustc 会把 raw string 里的 CRLF 归一化，所以没有夹具会编译出 CR 字
+  节，夹具*文件*存成哪种换行约定进不了地板——这是一条辅助脚本把 `bench_inputs.rs` 从历次十个提交都存
+  的 CRLF 改写成 LF、把 39 行改动放大成 919 行 diff 时学到的。一次派发就在 `accept_drift` 为空、无拒
+  绝的情况下写下基线：接过来的五十三条地板有四十七条动了，向上最宽 +0.385 %
+  （`from_json_long_strings`），向下越过 0.5 % 的只有 `from_json5_medium` -1.132 %、
+  `from_jsonc_medium` -1.130 % 与 `parse_inline_merge` -0.551 %，而门禁要到 2 % 之外才告警；这个
+  head 没有任何引擎路径改变，所以那些移动是 harness 自身代码尺寸带动的兄弟场景。
 - **Ir 计测工具现在受 lint 约束，并有规则让它一直受约束** — `crates/*/benches/ir_gate.rs` 两个文件都
   声明 `required-features = ["ir-gate"]`，而 cargo 对未开启所需 feature 的 target 是静默丢弃、不是检
   查，所以仓库那条 `cargo clippy --all --all-targets -- -D warnings`——CI 用的就是这个范围，当初采用
