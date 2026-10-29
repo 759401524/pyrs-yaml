@@ -10816,6 +10816,54 @@ and returns exit 2 instead of falling back to the flat table.
 `test_a_row_may_predate_a_scenario_but_never_invent_one` carries the four payloads, and it reddens
 with either direction neutered in turn — both mutations run, each alone.
 
+### (ht) The lint scope silently skipped the two files every floor is measured from (2026-10-29)
+
+`QUALITY_MATRIX.md` recorded the limit in the present tense and nothing read it as an open hole:
+`cargo clippy --all --all-targets -- -D warnings` does not compile a bench target that declares
+`required-features`, because cargo drops the target instead of checking it, and both
+`benches/ir_gate.rs` files declare `ir-gate`. So the scope the repository adopted to stop `tests/`
+and `benches/` going unlinted - `lint-scope:clippy-all-targets`, closed by that very flag - skipped
+the one surface the instruction floors are made of. The `ir` job builds the harness, which is why no
+compile error ever walked past and why the gap survived being noticed: the limit was written as
+"checked by building it, not by the lint job", and building is not linting.
+
+The measurement is the injection, on head 1351ada9. A
+`let probe_of_lint_reach: u32 = "not a number"` planted in
+`crates/pyrs-yaml-core/benches/ir_gate.rs` left `cargo clippy --all --all-targets -- -D warnings` at
+exit 0; the same payload planted in `crates/pyrs-yaml/benches/ir_gate.rs` did too.
+`cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate -- -D warnings`
+exited 101 in both cases, naming `crates/pyrs-yaml-core/benches/ir_gate.rs:325` and
+`crates/pyrs-yaml/benches/ir_gate.rs:147`, and returned to exit 0 once both files were restored -
+`jj restore` per path, byte-checked after each round. An earlier probe of the same shape used an
+`unused_mut` lint and read green on the narrow command too, which is the other half of the lesson: a
+lint that does not fire proves nothing about the target being skipped, so the control has to be a
+diagnostic the compiler cannot decline.
+
+The narrow command is the fix because the gate cannot be removed. `docs/dev/boundaries.md` rule R5
+forbids the extension crate from holding an ungated `[[bench]]` target - an ungated bench there
+would make every workspace bench command build an interpreter probe - so the feature stays and the
+lint has to name it. `rust-lint` gained the step; `prek.toml` gained the same command as a hook
+scoped to `^crates/[a-z-]+/benches/ir_gate\.rs$`, the way `cargo-fmt-fuzz` scopes the second fmt
+workspace, and `hooks`' `SKIP` became `cargo-clippy,cargo-clippy-ir-harness` because that job
+installs no `clippy` component and would fail on the tool rather than the code. The hook's own
+credit is the planted error again: `prek run cargo-clippy-ir-harness --all-files` reported `Failed`
+with each harness broken in turn and `Passed` once restored, which is what separates a scoped hook
+from one whose `files` pattern matches nothing.
+
+`tests/test_ci_ir_harness_lint.py` keeps the three lists from drifting apart without naming any of
+them twice: the gated crate set comes from each manifest's `[[bench]]` block, the clippy hook ids
+from `prek.toml`, and the workflow's commands from `ci.yml` parsed as YAML. Two probe bugs were
+found while writing it and are now the docstrings. A `[^\[]*` span for a bench block stops inside
+`required-features = ["ir-gate"]` and reports the target as ungated, so blocks are split on their
+headers; and `-p pyrs-yaml` is a substring of `-p pyrs-yaml-core`, so the coverage test tokenises
+the command instead of matching text - the same trap `tests/test_ci_rust_leg_exclusion.py` records
+for `--exclude`. Four mutations on the real workflow each redden exactly one test: remove the step,
+drop `--features ir-gate`, drop one `-p`, leave `SKIP` at the old single id.
+
+One paragraph of `QUALITY_MATRIX.md` was stale in a second way and is corrected here: it enumerated
+`crates/pyrs-yaml/benches/ir_gate.rs` as the three `to_python_*` scenarios, which is what the file
+was before #673 added `safe_dump_small` and `safe_dump_medium` to the same harness.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -94,6 +94,24 @@ files = "\\.(rs|toml|lock)$"
 pass_filenames = false
 priority = "checks"
 
+# The hook above compiles neither Ir harness, and neither does CI's wider `--all-targets`: both
+# `benches/ir_gate.rs` files sit behind `required-features = ["ir-gate"]`, and cargo drops a target
+# whose required features are off instead of checking it. Measured 2026-10-29 by planting a type
+# error in each harness in turn - the plain and the `--all-targets` commands both reported a clean
+# tree, this command exited 101 naming the planted line. Scoped to the two harnesses the way
+# `cargo-fmt-fuzz` scopes the fuzz workspace, so a commit touching anything else pays one narrow
+# check rather than a second full-tree lint. `ci.yml`'s `hooks` job skips both clippy hooks: its
+# toolchain installs no `clippy` component, and `rust-lint` runs the same two commands with a warm
+# build cache.
+[[repos.hooks]]
+id = "cargo-clippy-ir-harness"
+name = "cargo clippy (Ir harnesses)"
+language = "system"
+entry = "cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate -- -D warnings"
+files = "^crates/[a-z-]+/benches/ir_gate\\.rs$"
+pass_filenames = false
+priority = "checks"
+
 # The absolute line-ending rule, which `mixed-line-ending` does not express: it reports a
 # file that mixes endings and stays quiet on one that is entirely CRLF - the shape this
 # repository actually accumulated. Measured before adopting: an injected all-CRLF file

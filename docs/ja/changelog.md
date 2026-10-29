@@ -17,6 +17,22 @@ status: new
 
 #### 追加
 
+- **Ir 計測ハーネスが lint の対象になり、それを保つ規則も加わった** — `crates/*/benches/ir_gate.rs`
+  の 2 ファイルはいずれも `required-features = ["ir-gate"]` を宣言し、cargo は要求 feature がオフの
+  target を検査せず黙って落とすため、CI が使う `cargo clippy --all --all-targets -- -D warnings`
+  ——`tests/` と `benches/` を無検査にしないために採られた範囲——は、指令フロア測定の基となるこの 2 フ
+  ァイルを一度もコンパイルしていなかった。実測：2 つのハーネスに型エラーを一つずつ仕込むと、広い方は
+  2 回ともツリー健全と答え、
+  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate` は 101 で終わり、
+  `crates/pyrs-yaml-core/benches/ir_gate.rs:325` と `crates/pyrs-yaml/benches/ir_gate.rs:147` を順に
+  名乗った。`ir` ジョブはハーネスを*ビルド*済みなのでコンパイルエラーは通らない——誰も読まなかったの
+  は lint だ。いまこのコマンドは `rust-lint` の手順になり、この 2 ファイルに作用域を絞った `prek` フ
+  ックにもなった。ただし `hooks` ジョブのツールチェーンは `clippy` を入れないので、両 clippy フック
+  はスキップ一覧に入れてある。`tests/test_ci_ir_harness_lint.py` は対象 crate の集合を各 manifest か
+  ら、clippy フックを `prek.toml` から読むから、どちらも二度手入力は不要で、4 とおりの変異——手順を除
+  く、feature を除く、crate を除く、スキップ一覧を忘れる——はそれぞれテスト 1 件を赤くする。
+  `QUALITY_MATRIX.md` が「ビルドで検査、lint ジョブではない」と記録した制限はこれで閉じ、同じ段落の
+  シナリオ一覧には #673 が加えた 2 行の `safe_dump_*` も入った。
 - **Python オブジェクトの書き出し経路に命令フロアができた** —— `safe_dump` と `from_dict` が
   `crates/pyrs-yaml/src/py/direct_dump.rs` を受け持つ経路ですが、確定済みの数値はそこに一度も到達し
   ていませんでした。エンジン側 harness の `serialize_*` はノードモデルで止まり、この二つのオブジェク

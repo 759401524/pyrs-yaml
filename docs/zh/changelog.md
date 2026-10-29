@@ -19,6 +19,20 @@ status: new
 
 #### 新增
 
+- **Ir 计测工具现在受 lint 约束，并有规则让它一直受约束** — `crates/*/benches/ir_gate.rs` 两个文件都
+  声明 `required-features = ["ir-gate"]`，而 cargo 对未开启所需 feature 的 target 是静默丢弃、不是检
+  查，所以仓库那条 `cargo clippy --all --all-targets -- -D warnings`——CI 用的就是这个范围，当初采用
+  它正是为了让 `tests/` 与 `benches/` 无处漏过 lint——从未编译这两份指令地板赖以测量的文件。实测：朝
+  两个 harness 逐个植入类型错误，宽范围两次都报告树干净，而
+  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate` 以 101 退出，先后
+  点名 `crates/pyrs-yaml-core/benches/ir_gate.rs:325` 和 `crates/pyrs-yaml/benches/ir_gate.rs:147`。
+  `ir` 作业本来就*构建*过 harness，所以编译错误过不去—— 没人读的是 lint。如今这条命令是 `rust-lint`
+  的一个步骤，同时是按这两个文件划定作用域的 `prek` 钩子，且两个 clippy 钩子都列进 hooks 作业的跳过
+  清单，因为那个作业的工具链没装 `clippy` 组件；`tests/test_ci_ir_harness_lint.py` 从各 crate 的
+  manifest 读出被 feature 门控的集合、从 `prek.toml` 读出 clippy 钩子，两份清单都不必第二次手写；四
+  种突变——去掉步骤、去掉 feature、去掉 crate、跳过清单忘改——各自打红一条测试。`QUALITY_MATRIX.md` 记
+  作"靠构建检查、而非靠 lint 作业"的那条限制就此关闭，同段的场景清单也补上 #673 给该 harness 加的两
+  行 `safe_dump_*`。
 - **Python 对象写路径现在有了指令地板** —— `safe_dump` 与 `from_dict` 服务
   `crates/pyrs-yaml/src/py/direct_dump.rs`，而没有任何已提交的数字到达过它：引擎 harness 的
   `serialize_*` 场景止步于节点模型，而这两条对象路线根本不构造节点模型，于是绑定层自己写器做的每一次

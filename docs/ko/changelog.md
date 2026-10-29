@@ -17,6 +17,22 @@ status: new
 
 #### 추가
 
+- **Ir 계측 하나스에 lint가 걸리고, 그것을 유지하는 규칙이 생겼다** —
+  `crates/*/benches/ir_gate.rs` 두 파일 모두 `required-features = ["ir-gate"]`를 선언하는데,
+  cargo는 필수 feature가 꺼진 target을 검사 대신 조용히 넘기므로, CI가 쓰는
+  `cargo clippy --all --all-targets -- -D warnings`——`tests/`와 `benches/`가 lint를 피해가지 못하게
+  채택된 범위——는 명령 floor의 측대상이 되는 이 두 파일을 한 번도 컴파일하지 않았다. 실측: 두
+  하나스에 타입 오류를 하나씩 심으면 넓은 쪽은 두 번 모두 트리 정상이라 답하고,
+  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate`는 101로 끝나며
+  `crates/pyrs-yaml-core/benches/ir_gate.rs:325`와 `crates/pyrs-yaml/benches/ir_gate.rs:147`를
+  차례로 지목한다. `ir` 잡은 이미 하나스를 *빌드*하므로 컴파일 오류는 통과하지 못한다 — 아무도
+  보지 못한 것은 lint다. 이제 이 명령은 `rust-lint`의 단계가 되고, 두 파일에만 작용역을 둔 `prek`
+  훅이 되며, `hooks` 잡의 툴체인에 `clippy` 컴포넌트가 없으므로 두 clippy 훅 모두 건너뛰기 목록에
+  들어간다. `tests/test_ci_ir_harness_lint.py`는 대상 crate 집합을 각 manifest에서, clippy 훅을
+  `prek.toml`에서 읽으니 두 목록 모두 손으로 두 번 적지 않고, 네 종류의 변형 — 단계 제거, feature
+  제거, crate 제거, 건너뛰기 목록 미갱신 — 각각 테스트 하나를 실패시킨다.
+  `QUALITY_MATRIX.md`가 "빌드로 검사, lint 잡 아님"이라 적어둔 제한은 이로써 닫혔고, 같은 절의
+  시나리오 목록에는 #673이 추가한 두 줄의 `safe_dump_*`도 들어갔다.
 - **Python 객체 기록 경로에 명령어 플로어가 생겼다** — `safe_dump`과 `from_dict`이
   `crates/pyrs-yaml/src/py/direct_dump.rs`를 담당하는데, 확정된 숫자는 그곳에 한 번도 닿지 않았다.
   엔진 harness의 `serialize_*`는 노드 모델에서 멈추는데 두 객체 경로는 그 모델을 만들지 않으므로,
