@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **对标库的版本上限改为实测，并由门禁保持实测** —— 测试依赖组里九个 `python_version < 'X.Y'`
+  上限中有五个仍写着 `< '3.14'`，而 `pyjson5`、`numpy`、`ujson` 与 `python-rapidjson` 都已发布
+  3.14 的 wheel，于是 ≥3.14 的测试腿装到的对拍参照更少：PR #665 的十二条绿腿里 3.13 跑 4,433 条
+  断言，3.14 只剩 4,197，3.15 只剩 4,196；逐个把某个对标库设为不可导入可以定位这 236 条的归属：
+  141 条属 `pyjson5`，31 条属 `orjson`，54 条属 `numpy`，其余在普通腿上是 0。`pyjson5` 抬到 `<
+  '3.15'`，`numpy`/`ujson`/`python-rapidjson`/`yaml-rs` 抬到 `< '3.16'`，因为它们新覆盖的每一条
+  腿（含两条 free-threaded 腿）都有 wheel；`orjson` 与 `rtoml` 仍留在 3.14 之下，因为 PEP 508 没
+  有free-threading 标记，二者都不发布 3.14t 的 wheel，放入 3.14 就等于放入 3.14t，那条腿会装不上
+  整个测试组。`scripts/counterparty_wheels.py` 用真实解释器按 OS 与 band 记录可得性，
+  `scripts/check_counterparty_caps.py`（已挂成 hook）既拒绝把没有 wheel 的 band 放进上限，也拒绝
+  把每条相关腿都有 wheel 的 band 排除在外。从此一个陈旧的上限是一次指名依赖包的红色运行，而不是
+  一次相当于整个 JSON5 规范表规模的静默跳过。
 - **共享 Python 对象写出后的形状现在是被校验的事实** —— 对
   `{"a": shared, "c": shared}`，两条写出路线都输出子树的两份副本，
   而不是锚点加别名；重新读取后值相等，但两个值并非同一对象。

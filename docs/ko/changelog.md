@@ -17,6 +17,20 @@ status: new
 
 #### 추가
 
+- **대항 라이브 버전 상한은 실측으로 바뀌고, 게이트가 실측을 유지한다** — 테스트 그룹의 아홉
+  개 `python_version < 'X.Y'` 상한 중 다섯 개가 여전히 `< '3.14'` 였지만 `pyjson5`, `numpy`,
+  `ujson`, `python-rapidjson` 은 이미 3.14 wheel 을 배포하고 있었다. 그래서 ≥3.14 레그는 참조를
+  덜 설치했다: PR #665 의 12 개 초록 레그에서 3.13 은 4,433 개, 3.14 는 4,197 개, 3.15 는 4,196
+  개 어서션을 돌렸고, 대항 라이브를 하나씩 가져올 수 없게 만들면 236 개 중 141 개가 `pyjson5`,
+  31 개가 `orjson`, 54 개가 `numpy` 에 귀속되며 나머지는 일반 레그에서 0 개임을 알 수 있다.
+  `pyjson5` 는 `< '3.15'` 로, `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` 는 `< '3.16'` 로 올린
+  다. 새로 커버하는 모든 레그 — free-threaded 두 개 포함 — 에 wheel 이 있기 때문이다. `orjson`
+  과 `rtoml` 은 3.14 아래에 둔다. PEP 508 에 free-threading 마커가 없고 두 모두 3.14t wheel 을
+  내지 않으므로, 3.14 를 들이면 3.14t 도 들여서 그 레그는 그룹을 설치하지 못한다.
+  `scripts/counterparty_wheels.py` 가 실제 인터프리터로 OS 와 band 별 가용성을 기록하고,
+  `scripts/check_counterparty_caps.py` (hook 으로 배선) 는 wheel 없는 band 를 들이는 상한과 관련
+   레그 모두에 wheel 있는 band 를 밖으로 미는 상한 모두를 거절한다. 이제 낡은 상한은 패키지를 지
+  목한 빨간 실행이지, JSON5 사양 표 한 통 크기의 조용한 스킵이 아니다.
 - **공유 Python 객체를 썼을 때의 모양이 검증된 사실로 고정되었다** —
   `{"a": shared, "c": shared}`에 대해 두 기록 경로는
   앵커와 별명이 아니라 부분 트리의 복사본을 두 번 출력하고,

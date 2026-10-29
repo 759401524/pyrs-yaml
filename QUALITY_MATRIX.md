@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 833 Rust `#[test]`, 2,059 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 833 Rust `#[test]`, 2,065 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -204,20 +204,25 @@ every leg read `yes` no matter what its file ran: a `test_*_crosslib.py` whose e
 installs removes one way to lose a comparison, not the requirement that a comparison exist.
 
 Two things bound a reader and only one of them is a dependency declaration. `pyproject.toml` keeps
-`pyjson5` and `orjson` off the floor and off 3.14+; the interpreter keeps `tomllib` off every leg below
-3.11, and no requirement can install it there. That second bound was read off the tree's own skip
-counts before it was encoded: CI's floor leg ran 13 of `tests/test_toml_crosslib.py`'s comparisons and
-skipped 11 while the cell named a single reader, and the same held on 3.9 and 3.10. The file now asks
-the backport `tomli`, declared for `python_version < '3.11'` with no skip to fall back on, so the eleven
-three-way comparisons run on every leg - `tomllib` above the line and `tomli` below it, each reported
-with the bound that applies to it. `tomlkit` is declared with no marker and measured to reach every
-leg, so TOML reads `yes`, and that file imports it outright, since a guard nothing bounds is dead code
-while it is green and a silent skip the moment it is not. The version a stdlib reader arrives in is
-compared against the floor the project states in `requires-python`, so moving the floor moves the
-answer rather than leaving a remembered one.
+`orjson` off the floor and off 3.14+, and `pyjson5` off the floor and off 3.15+; each cap is the band
+where that vendor's wheel stops, and `scripts/check_counterparty_caps.py` refuses a cap that
+disagrees with the measurement recorded in `.ci/counterparty-wheels.json`; the interpreter keeps
+`tomllib` off every leg below 3.11, and no requirement can install it there. That second bound was
+read off the tree's own skip counts before it was encoded: CI's floor leg ran 13 of
+`tests/test_toml_crosslib.py`'s comparisons and skipped 11 while the cell named a single reader, and
+the same held on 3.9 and 3.10. The file now asks the backport `tomli`, declared for
+`python_version < '3.11'` with no skip to fall back on, so the eleven three-way comparisons run on
+every leg - `tomllib` above the line and `tomli` below it, each reported with the bound that applies
+to it. `tomlkit` is declared with no marker and measured to reach every leg, so TOML reads `yes`, and
+that file imports it outright, since a guard nothing bounds is dead code while it is green and a
+silent skip the moment it is not. The version a stdlib reader arrives in is compared against the
+floor the project states in `requires-python`, so moving the floor moves the answer rather than
+leaving a remembered one.
 
-The JSON family is why the question had to be per dialect. `pyjson5` and `orjson` both carry
-`python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, so
+The JSON family is why the question had to be per dialect. `orjson` carries
+`python_version >= '3.9' and python_version < '3.14'` and `pyjson5` the same comparison with
+`< '3.15'`: the difference is the free-threaded 3.14, whose wheel `orjson` does not publish while
+`pyjson5` does, and PEP 508 has no way to name it. Both exclude armv7l, s390x and ppc64le, so
 neither can be the only reference for a leg this package promises. Strict JSON reads as covered
 everywhere:
 stdlib `json` is an RFC 8259 reader this repository does not own and no dependency declaration bounds,
