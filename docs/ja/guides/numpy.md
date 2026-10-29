@@ -115,10 +115,10 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 
 ## パフォーマンス
 
-- :material-bolt: `PyUntypedArray` を使用したゼロコピー dtype ディスパッチ
-- :material-bolt: `PyArrayDyn<T>` を使用したゼロコピー切片反復
-- :material-bolt: 切片イテレーション中の Python GIL リリース
-- :material-bolt: 任意次元を追加割り当てなしでサポート
+- :material-bolt: 配列ごとに `tobytes()` を 1 回だけ、GIL を保持したまま取得
+- :material-bolt: 要素は GIL を解放した後に Rust でデコード
+- :material-bolt: 転置・Fortran 順・ストライド配列も論理順序で出力
+- :material-bolt: 任意次元に対応
 
 ---
 

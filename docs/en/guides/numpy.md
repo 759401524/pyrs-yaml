@@ -101,9 +101,9 @@ assert data == 42
 
 !!! warning "0-D bool arrays"
 
-    Due to a rust-numpy dtype-matching quirk, a 0-D `bool` array may serialize
-    as `1.0`/`0.0` (a float) rather than `true`/`false`. Use a 1-element 1-D
-    array (`np.array([True])`) when you need an explicit boolean round-trip.
+    A 0-D `bool` array is recognised as a number before the array route ever sees
+    it, so it serializes as `1.0`/`0.0` (a float) rather than `true`/`false`. Use
+    a 1-element 1-D array (`np.array([True])`) for an explicit boolean round-trip.
 
 ### Nested in Containers
 
@@ -127,10 +127,10 @@ The following types raise `YamlTypeError`:
 
 ### Performance
 
-- :material-bolt: Zero-copy dtype dispatch via `PyUntypedArray`
-- :material-bolt: Zero-copy slice iteration via `PyArrayDyn<T>`
-- :material-bolt: Python GIL released during slice traversal
-- :material-bolt: Arbitrary dimensions supported with no extra allocation
+- :material-bolt: One `tobytes()` snapshot per array, taken with the GIL held
+- :material-bolt: Elements decoded in Rust with the GIL released
+- :material-bolt: Transposed, Fortran-ordered and strided arrays emit what they mean
+- :material-bolt: Arbitrary dimensions supported
 
 ---
 

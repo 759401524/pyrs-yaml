@@ -198,13 +198,16 @@ class TestNumpyEdgeCases:
         assert data == []
 
     def test_single_element(self):
-        """1-D single-element arrays round-trip correctly."""
+        """A 1-D single-element array keeps its dimension.
+
+        It used to answer `42` on one numpy and `[42]` on another: Python's number protocol
+        converts a one-element array (a warning until numpy 2.2, an error from 2.3 on), and that
+        conversion ran ahead of the array route. See `TestNumpyBufferRoute`.
+        """
         arr = numpy.array([42], dtype="int32")
         yaml_str = pyrs_yaml.safe_dump(arr)
-        data = pyrs_yaml.safe_load(yaml_str)
-        # Some NumPy/Python combos serialize a 1-element 1-D array
-        # as a scalar; the test validates round-trip consistency.
-        assert data == 42 or data == [42], f"Expected [42], got {data!r}"
+        assert yaml_str == "- 42\n"
+        assert pyrs_yaml.safe_load(yaml_str) == [42]
 
     def test_unsupported_dtype_raises(self):
         """Unsupported dtypes (e.g., string) should raise YamlTypeError."""
@@ -344,3 +347,99 @@ class TestNumpyConcurrency:
         assert tail == 0, "serialization observed a write made after releasing the GIL"
         # The writer did run (the race window was exercised).
         assert array[-1] == 123
+
+
+class TestNumpyBufferRoute:
+    """The route reads the array's own ``tobytes()`` instead of its C API.
+
+    The typed route cast the object and sliced its memory, which is not sound in the limited-ABI
+    artifact the cp315 wheel is (0.18.3 died with ``Fatal Python error: Segmentation fault`` on
+    ``safe_dump(numpy.arange(8))`` under 3.15 GIL) and, separately, read memory order rather than
+    logical order. These rows pin what the buffer route must keep: the widths, the spellings, and
+    the shape a non-contiguous array means.
+    """
+
+    def test_transposed_array_writes_what_it_means(self):
+        arr = numpy.arange(4, dtype="int32").reshape(2, 2).T
+        data = pyrs_yaml.safe_load(pyrs_yaml.safe_dump(arr))
+        # The memory holds 0,1,2,3; the array says [[0, 2], [1, 3]].
+        assert data == [[0, 2], [1, 3]]
+
+    def test_fortran_ordered_array_writes_what_it_means(self):
+        arr = numpy.asfortranarray(numpy.array([[1, 2], [3, 4]], dtype="int32"))
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(arr)) == [[1, 2], [3, 4]]
+
+    def test_strided_array_is_dumped_not_refused(self):
+        arr = numpy.arange(10, dtype="int64")[::2]
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(arr)) == [0, 2, 4, 6, 8]
+
+    def test_one_element_array_is_not_read_as_a_number(self):
+        """Python's number protocol must not be asked of an array carrying a dimension.
+
+        `float(numpy.array([1.5]))` answers 1.5 on every numpy up to 2.2 and raises from 2.3 on
+        ("only 0-dimensional arrays can be converted to Python scalars"), so a dump that let it
+        through produced a scalar on one install and a sequence on another - and a `float32`
+        element left as the double widened from it. These are the rows that went red on the
+        3.8-3.10 legs of PR #669 for exactly that reason.
+        """
+        assert pyrs_yaml.safe_dump(numpy.array([1.5])) == "- 1.5\n"
+        assert pyrs_yaml.safe_dump(numpy.array([True])) == "- true\n"
+        assert pyrs_yaml.safe_dump(numpy.array([255], dtype="uint8")) == "- 255\n"
+
+    def test_zero_dimensional_array_keeps_the_protocol_answer(self):
+        """The other side of that boundary, stated so it cannot move unnoticed.
+
+        A 0-D array is converted by the protocol on every numpy version, so it stays a scalar here
+        - the spelling `docs/en/guides/numpy.md` documents. A 0-D *complex* has no protocol
+        conversion at all and reaches the route, which is why it is the one 0-D shape that arrives
+        as a sequence (`test_zero_dimensional_complex_is_a_one_item_sequence`).
+        """
+        assert pyrs_yaml.safe_dump(numpy.array(1.5)) == "1.5\n"
+        assert pyrs_yaml.safe_dump(numpy.array(42, dtype="int32")) == "42\n"
+
+    def test_both_writer_routes_agree_on_the_one_element_shape(self):
+        """The direct writer and the AST conversion answer with the same shape.
+
+        `safe_dump` walks Python objects into the text; a document edit converts through a
+        `CustomNode` first. Both handed a one-element array to Python's number protocol on the
+        numpy versions that still answer it, so this row is the parity claim between the two writer
+        routes rather than a second copy of the rows above. `1.5` is exact in `float32`, so the
+        projection is a float rather than the text the loader answers past its integer bound.
+        """
+        array = numpy.array([1.5], dtype="float32")
+        doc = pyrs_yaml.parse("value: 0\n")
+        doc.set("$.value", array)
+        assert pyrs_yaml.safe_load(doc.to_yaml()) == {"value": [1.5]}
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(array)) == [1.5]
+
+    def test_float32_keeps_its_own_decimal(self):
+        # The f32 rendering, not the decimal of the double it widens to: 1e30 stored as float32 is
+        # 1000000015047466200000000000000 as a double, and the typed route printed the f32's shortest
+        # round-tripping form.
+        yaml_str = pyrs_yaml.safe_dump(numpy.array([1e30], dtype="float32"))
+        assert yaml_str == "- 1000000000000000000000000000000\n"
+
+    def test_integer_widths_are_read_at_their_full_extent(self):
+        # Every width decodes whole: 64-bit unsigned keeps all twenty digits, and a negative 8-bit
+        # value stays -1 rather than widening to 255.
+        assert pyrs_yaml.safe_dump(numpy.array([2**64 - 1], dtype="uint64")) == ("- 18446744073709551615\n")
+        assert pyrs_yaml.safe_dump(numpy.array([-(2**63)], dtype="int64")) == "- -9223372036854775808\n"
+        assert pyrs_yaml.safe_dump(numpy.array([-1], dtype="int8")) == "- -1\n"
+        assert pyrs_yaml.safe_dump(numpy.array([255], dtype="uint8")) == "- 255\n"
+        # Past i64 the loader answers with text - the reader's own integer bound, not this route's
+        # doing. The digits it is handed are already the whole 64-bit value.
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(numpy.array([2**64 - 1], dtype="uint64"))) == [
+            "18446744073709551615"
+        ]
+
+    def test_zero_dimensional_complex_is_a_one_item_sequence(self):
+        # The generic scalar paths take 0-d int and float; a complex reaches this route and keeps the
+        # one-item sequence the typed route reshaped it into.
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(numpy.array(1.0 + 2.0j))) == ["(1+2j)"]
+
+    def test_negative_imaginary_keeps_the_pairs_spelling(self):
+        assert "(-1.25+-0.5j)" in pyrs_yaml.safe_dump(numpy.array([-1.25 - 0.5j]))
+
+    def test_float16_is_still_outside_the_accepted_dtypes(self):
+        with pytest.raises(pyrs_yaml.YamlTypeError):
+            pyrs_yaml.safe_dump(numpy.array([1.5], dtype="float16"))

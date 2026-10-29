@@ -24,7 +24,6 @@ pyrs-yaml-core = { path = "../pyrs-yaml-core" }
 pyrs-json = { path = "../pyrs-json" }
 pyrs-toml = { path = "../pyrs-toml" }
 pyo3 = { version = "0.29.2", features = ["experimental-inspect", "abi3-py38", "abi3t", "abi3t-py315"] }
-numpy = { version = "0.29", optional = true }
 indexmap = "2.7"
 granit-parser = "2.0"
 
@@ -33,7 +32,11 @@ pyo3-build-config = "0.29.2"
 
 [features]
 default = ["numpy"]
-numpy = ["dep:numpy"]
+# Compile the ndarray route. It gates no dependency: `py/ndarray.rs` asks the array for its own
+# `dtype`, `shape` and `tobytes()` instead of linking `rust-numpy`, because the C-API route is not
+# sound in the limited-ABI artifact the `abi3t` wheel is (see that module). The switch stays so a
+# build can still drop the capability, which is what `--no-default-features` meant here before.
+numpy = []
 # Memory-map a regular file on `parse_file`'s read path. Passthrough to the
 # engine's `mmap` feature; off by default, so the wheel that ships reads files
 # exactly as it always did and only an opt-in rebuild turns the map on.

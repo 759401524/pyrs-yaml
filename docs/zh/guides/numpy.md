@@ -115,10 +115,10 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 
 ## 性能
 
-- :material-bolt: 使用 `PyUntypedArray` 进行零拷贝 dtype 分派
-- :material-bolt: 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代
-- :material-bolt: 遍历切片时释放 Python GIL
-- :material-bolt: 支持任意维度无需额外分配
+- :material-bolt: 每个数组一次 `tobytes()` 快照，于持有 GIL 时完成
+- :material-bolt: 元素在释放 GIL 之后由 Rust 解码
+- :material-bolt: 转置、Fortran 序与跨步数组都按其逻辑顺序写出
+- :material-bolt: 支持任意维度
 
 ---
 

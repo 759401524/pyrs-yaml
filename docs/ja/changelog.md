@@ -177,6 +177,31 @@ status: new
 
 #### 修正
 
+- **3.15 で NumPy 配列のダンプがプロセスを殺さなくなった** —— 配列ルートはオブジェクトを
+  `rust-numpy` にキャストしてそのメモリを読んでいたが、`cp315-abi3t` ホイールではそれを安全に行えな
+  い。公開済み 0.18.3 で実測：3.15 GIL では `safe_dump(numpy.arange(8))` が
+  `Fatal Python error: Segmentation fault` で死ぬ（exit 139、Windows レッグでは
+  `Windows fatal exception: access violation`）。同じバイナリの 3.15t は `YamlTypeError` で答え、
+  3.12、3.14、3.14t はいずれも正しくダンプする。決定論的でシングルスレッド、`numpy.zeros((0,))` もク
+  ラッシュするので、障害は競合ではなく配列内部の最初の読み出しに座っている。
+  `crates/pyrs-yaml/src/py/ndarray.rs` は配列自身に `dtype`、`shape`、`tobytes()` を求め、そのバッフ
+  ァを Rust で復号する。どのアーティファクトでも numpy の C API に触れないため、`numpy` Cargo 機能は
+  依存ではなくルートをゲートする。ほかの二つの欠陥も同時に倒れた。第一のものはあらゆる interpreter
+  で見えていた。旧ルートはメモリ順を読み論理形でネストしていたので、
+  `safe_dump(numpy.arange(4).reshape(2, 2).T)` は配列が `[[0, 2], [1, 3]]` と言う箇所へ
+  `[[0, 1], [2, 3]]` を書いていた——Fortran 順とストライド配列は意味する値を出力し、ストライドは拒否
+  されない。第二のものはインストール済みの numpy が決めていた。二つの書き手ルートとも配列ルートに聞
+  く前に Python の数値プロトコルに問い、そのプロトコルが要素 1 個の配列の*代わりに*答えるからだ：
+  `float(numpy.array([1e30], dtype="float32"))` は拡幅後の double
+  `1000000015047466200000000000000.0` で次元は失われ、numpy は 2.3 でようやくこれをエラーにした。そ
+  こで一方の環境は `1.5`、もう一方は `- 1.5` を書き、`docs/en/guides/numpy.md` が明示的な bool ラウ
+  ンドトリップに勧める `numpy.array([True])` は `1` と答えた。次元を持つ配列は現在このプロトコルを拒
+  否され、0-D 配列は同じページが述べるスカラーの綴りを保ち、受け入れる dtype とスカラーの綴りは不変
+  のままだ。`tests/test_numpy.py::TestNumpyBufferRoute` は 11 本を留め、うち 3 本は numpy 2.2.6 を入
+  れた公開済みホイールで赤になりこのツリーでは通る。同じ再ビルドホイールひとつで 54 本のモジュール全
+  体が通る——3.8 に numpy 1.24.4、3.10 に 2.2.6、3.12 と 3.15 に 2.5.4、3.15t では設計上スキップの
+  GIL 並行 1 本を除く 53 本合格——これまでこのモジュールが一度も実行できなかった二つの interpreter で
+  ある。
 - **`load_stream_file` のメモリ上限がついに測定される — 永久スキップの代わりに** — これを守るテスト
   は `pytest.importorskip` で `psutil` を要求したが、そのパッケージを宣言した依存一覧は存在しない
   （`pyproject.toml` にも `.ci/requirements-test.txt` にもない）。だからあらゆるレグのあらゆるインタ

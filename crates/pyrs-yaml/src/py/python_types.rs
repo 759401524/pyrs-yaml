@@ -5,7 +5,7 @@ use super::convert::format_i18n_error;
 use super::type_registry;
 
 #[cfg(feature = "numpy")]
-use super::ndarray::ndarray_to_node;
+use super::ndarray::{is_dimensioned_array, ndarray_to_node};
 use crate::ast::{CustomNode, NodeMap};
 
 use crate::parser::yaml::schema::needs_quotes;
@@ -14,6 +14,10 @@ use crate::parser::yaml::types::YamlType;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytesMethods, PyDict, PyInt, PyList, PyString, PyStringMethods, PyTuple};
+// Only the NumPy veto reads a float's exact type: it is the cheap question that keeps a plain
+// Python float from paying for the import.
+#[cfg(feature = "numpy")]
+use pyo3::types::PyFloat;
 use std::sync::Arc;
 
 /// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
@@ -127,11 +131,26 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
         return Ok(CustomNode::plain_sequence(items));
     }
 
+    // Whether the number protocol may answer for this object at all. A dimensional NumPy array has
+    // `__index__` and `__float__`, and on the numpy versions up to 2.2 they succeed for a
+    // one-element array: `numpy.array([42])` became the scalar `42` here and
+    // `numpy.array([1e30], dtype="float32")` became the f64 widening of the element, so the emitted
+    // shape depended on which numpy the caller had installed. An array is therefore read by the
+    // route below or not at all; a 0-D array keeps the protocol's scalar answer, which is the
+    // spelling `docs/en/guides/numpy.md` states. Guarded by two pointer compares so a native int or
+    // float never pays for the numpy import.
+    #[cfg(feature = "numpy")]
+    let shaped_array = obj.cast::<PyInt>().is_err()
+        && obj.cast::<PyFloat>().is_err()
+        && is_dimensioned_array(py, obj);
+    #[cfg(not(feature = "numpy"))]
+    let shaped_array = false;
+
     if let Ok(b) = obj.extract::<bool>() {
         return Ok(CustomNode::plain_scalar(if b { "true" } else { "false" }));
     }
 
-    if let Ok(n) = obj.extract::<i64>() {
+    if !shaped_array && let Ok(n) = obj.extract::<i64>() {
         return Ok(CustomNode::plain_scalar(n.to_string()));
     }
 
@@ -163,7 +182,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
         }
     }
 
-    if let Ok(f) = obj.extract::<f64>() {
+    if !shaped_array && let Ok(f) = obj.extract::<f64>() {
         return Ok(CustomNode::plain_scalar(float_to_yaml_string(f)));
     }
 
@@ -177,13 +196,8 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
     }
 
     #[cfg(feature = "numpy")]
-    if py.import("numpy").is_ok() {
-        // numpy is only probed at runtime: free-threaded (Py_GIL_DISABLED)
-        // builds compile with the default "numpy" feature but ship without
-        // the module installed, and numpy's capsule access would panic.
-        if let Some(node) = ndarray_to_node(py, obj) {
-            return Ok(node);
-        }
+    if let Some(node) = ndarray_to_node(py, obj) {
+        return Ok(node);
     }
 
     // Check registered CustomTypes for serialization

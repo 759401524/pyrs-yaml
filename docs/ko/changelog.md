@@ -178,6 +178,31 @@ status: new
 
 #### 수정
 
+- **3.15에서 NumPy 배열 덤프가 프로세스를 끝내지 않는다** — 배열 경로는 객체를 `rust-numpy`에
+  캐스트해 그 메모리를 읽었지만, `cp315-abi3t` 휠에서는 그것을 안전하게 할 수 없다. 배포된
+  0.18.3에서 실측한 결과: 3.15 GIL에서는 `safe_dump(numpy.arange(8))`가
+  `Fatal Python error: Segmentation fault`로 죽었다(exit 139, Windows 각에서는
+  `Windows fatal exception: access violation`). 같은 바이너리의 3.15t는 `YamlTypeError`로 답했고,
+  3.12, 3.14, 3.14t는 모두 올바르게 덤프했다. 결정적이고 단일 스레드였으며 `numpy.zeros((0,))`도
+  죽었으므로, 결함은 경합이 아니라 배열 내부를 처음 읽는 지점에 있었다.
+  `crates/pyrs-yaml/src/py/ndarray.rs`는 이제 배열에게 `dtype`, `shape`, `tobytes()`를 묻고 그
+  버퍼를 Rust에서 디코딩한다: 어떤 산출물도 numpy C API에 닿지 않으므로, `numpy` Cargo 기능은
+  의존성이 아니라 경로를 게이트한다. 다른 두 결함도 함께 쓰러졌다. 첫 번째는 모든 인터프리터에서
+  보였다. 구 경로는 메모리 순서를 읽고 논리 형태로 중첩했기 때문에,
+  `safe_dump(numpy.arange(4).reshape(2, 2).T)`가 배열이 `[[0, 2], [1, 3]]`이라 말하는 곳에서
+  `[[0, 1], [2, 3]]`을 썼다 — Fortran 순서와 스트라이드 배열은 이제 의미하는 것을 출력하고,
+  스트라이드도 거절되지 않는다. 두 번째는 설치된 numpy가 결정했다. 두 작성 경로 모두 배열 경로에
+  묻기 전에 Python의 숫자 프로토콜에 물었고, 그 프로토콜이 요소 하나짜리 배열*대신* 답하기 때문이다:
+  `float(numpy.array([1e30], dtype="float32"))`는 넓힌 뒤의 double
+  `1000000015047466200000000000000.0`이고 차원은 사라지며, numpy는 2.3에서야 이것을 오류로 바꿨다.
+  그러므로 한 환경은 `1.5`를, 다른 환경은 `- 1.5`를 썼고, `docs/en/guides/numpy.md`가 명시적 불린
+  왕복에 권하는 `numpy.array([True])`는 `1`로 답했다. 차원을 가진 배열은 이제 그 프로토콜을
+  거부당하고, 0-D 배열은 같은 페이지가 적어 둔 스칼라 표기를 유지하며, 허용하는 dtype과 모든
+  스칼라의 표기는 그대로다. `tests/test_numpy.py::TestNumpyBufferRoute`가 열하나를 고정하고, 그중
+  셋은 numpy 2.2.6을 넣은 배포 휠에서 실패하고 이 작업 트리에서 통과한다. 다시 빌드한 휠 하나로 54개
+  테스트 모듈 전체가 통과한다: 3.8에 numpy 1.24.4, 3.10에 2.2.6, 3.12와 3.15에 2.5.4, 그리고
+  3.15t에서는 설계상 건너뛰는 GIL 경합 한 개를 뺀 53개 통과 — 이전에 이 모듈을 단 한 번도 돌릴 수
+  없던 두 인터프리터다.
 - **`load_stream_file`의 메모리 상한이 이제 실제로 측정된다 — 영구 스킵 대신** — 이를 지키던
   테스트는 `pytest.importorskip`으로 `psutil`을 요구했지만 그 패키지를 선언한 요구 사항 파일은
   어디에도 없다. `pyproject.toml`에도 `.ci/requirements-test.txt`에도 그 이름은 없다. 그래서 모든
