@@ -10576,6 +10576,26 @@ a blind fold over the one interpreter new enough to break - and the version band
 dependency selects can equally decide *which shape a dump produces*, which is what the three red
 legs found here.
 
+### (hp) A dependency removal leaves numbers in a live design document (2026-10-29)
+
+The rewrite in PR 669 deleted the last Rust-side dependency on the NumPy C API, and
+`docs/dev/boundaries.md` went on naming `numpy` in four present-tense sentences about what the
+binding's graph contains. Nothing read it: the doc gates check hole ids, landed-claim headings and
+quoted Ir floors, and a dependency enumeration is none of those. Measured on this host on both sides
+of that PR with one command - `cargo test --workspace --no-run --message-format=json`, counted as
+`compiler-artifact` messages over distinct packages - the workspace resolved 153 packages and 216
+artefacts before and 146 and 205 after, while the same command with `--exclude pyrs-yaml` reads 139
+and 194 on both, which is the paragraph's whole argument and is now stated with the numbers that
+show it. `numpy` and `ndarray` left together with `matrixmultiply`, `num-complex`, `num-integer`,
+`portable-atomic-util`, `rawpointer` and `rustc-hash`.
+
+The same sentence carried an error this change did not cause: it listed `pyo3-build-config` among
+the crates `cargo tree -p pyrs-yaml -e normal` names, measured on the pre-#669 tree in an isolated
+clone, where that command names four crates and `pyo3-build-config` arrives only through `pyo3`'s
+own build edge (`-e build`). So the enumeration read six where the graph held five, and it still
+read `-e normal` as if it were a closure over every edge kind. Both are corrected here rather than
+one, because a sentence can only be re-measured as a whole.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

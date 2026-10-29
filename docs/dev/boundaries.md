@@ -272,8 +272,10 @@ instead of what was assumed. The measurement: build every test artifact
 The linker prunes a dependency no symbol references, so a crate that compiles `pyo3` but never
 calls into it links no interpreter. The coupling that survives is a *build-graph* coupling, not a
 link one: `cargo tree -p pyrs-yaml -e normal --prefix none` still names `pyo3`, `pyo3-ffi`,
-`pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and `numpy`, so a consumer of the binding
-crate builds a Python runtime's worth of crates whether or not it links one.
+`pyo3-macros` and `pyo3-macros-backend` — four, where this paragraph named six until the ndarray
+rewrite took `numpy` out of the graph, and without `pyo3-build-config`, which reaches a build only
+through `pyo3`'s own build edge and so appears under `-e build` rather than here — so a consumer of
+the binding crate builds a Python runtime's worth of crates whether or not it links one.
 
 **What moved, and why it was movable.** The binding crate held exactly two `#[cfg(test)]` tests,
 both in `crates/pyrs-yaml/src/py/direct_load.rs`, and they pinned one decision: whether a document
@@ -297,7 +299,12 @@ that makes a raw `sort -u` report 76 is `granit-parser` appearing at two version
 the compile-time-only 1.3.0 described above.
 
 **What is not claimed.** The extension cdylib still links `python3.dll`, by definition: it is the
-Python extension. The binding crate's package closure still carries the six Python-runtime crates.
+Python extension. The binding crate's package closure still carries the five Python-runtime crates
+`cargo tree -e all` names — the sixth, `numpy`, left with `ndarray` in #669's rewrite, which decodes
+`tobytes()` in Rust instead of casting through the crate, and it took `matrixmultiply`,
+`num-complex`, `num-integer`, `portable-atomic-util`, `rawpointer` and `rustc-hash` out of the
+lockfile with it: the workspace closure measured 153 packages and 216 `compiler-artifact` messages
+before that change, 146 and 205 after, counted the same way on the same host.
 And the binding crate's `ir_gate` bench harness uses `pyo3/auto-initialize`, so a build that selects
 it starts CPython to measure instruction counts - the one Rust target in this repository that
 genuinely needs an interpreter. That is what it measures, not a coupling to remove, and it is
@@ -336,10 +343,14 @@ any one of the 8 rule bodies blinds exactly the controls that body stands behind
 fewer - which is the only evidence that a passing control means anything.
 
 **Where the coupling is actually felt, and what CI does about it.** The graph, not the binaries:
-`cargo test --workspace --no-run` resolves 250 compilation units over 153 packages and names `pyo3`,
-`pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend`, `pyo3-build-config` and `numpy`, while the same
-command with `--exclude pyrs-yaml` resolves 220 units over 139 packages and names none of them. Both
-run the same 748 Rust tests, and `cargo test -p pyrs-yaml --doc` reports 0, so the exclusion gives
+`cargo test --workspace --no-run` resolves 146 packages and reports 205 `compiler-artifact` messages
+on this tree, naming `pyo3`, `pyo3-ffi`, `pyo3-macros`, `pyo3-macros-backend` and
+`pyo3-build-config`, while the same command with `--exclude pyrs-yaml` resolves 139 packages over
+194 messages and names none of them. The excluded side is the unchanged half — it read 139 and 194
+before #669 removed `numpy` from the binding's dependencies and 139 and 194 after — so the whole
+delta sits in the one member. Both run the same Rust tests, 820 `cargo nextest run --all` instances
+as measured here, and they are the same because the excluded crate carries no Rust test tier at all;
+`cargo test -p pyrs-yaml --doc` reports 0, so the exclusion gives
 up nothing - which is a licence, not a proof, and the proof is the pairing
 `tests/test_ci_rust_leg_exclusion.py` enforces: an engine leg that stops excluding the crate the
 gate names as the extension reddens, and so does the MSRV leg if it ever starts, because that job's
@@ -347,7 +358,7 @@ purpose is the declared floor for every crate, the shipped one included.
 
 **What this gate does not see.** The closure follows the workspace's `path` edges, so a
 Python-runtime crate reached only through a registry dependency's own dependency tree is outside its
-view; the direct `pyo3`/`numpy` edges it does see are the ones this repository controls. And R2
+view; the direct `pyo3` edges it does see are the ones this repository controls. And R2
 covers the Rust test tier alone: the extension's `ir_gate` harness needs an interpreter when a build
 selects it, because measuring `to_python_*` instruction counts is the point of that target.
 
