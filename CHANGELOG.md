@@ -9,6 +9,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Python-object write route has an instruction floor now** — `safe_dump` and `from_dict` serve
+  `crates/pyrs-yaml/src/py/direct_dump.rs`, and no committed number reached it: the engine harness's
+  `serialize_*` scenarios stop at the node model those routes never build, so every allocation, scan
+  and spelling decision the binding's own writer makes moved no floor.
+  `crates/pyrs-yaml/benches/ir_gate.rs` gains `Channel::Dump` with `safe_dump_small` 13,296,320 and
+  `safe_dump_medium` 110,613,010 — 8.32x the instructions between the two documents the read channel
+  already uses (`SMALL_YAML` and `MEDIUM_YAML`), with the object built by `to_python_*`'s own body
+  outside the counted loop and in `--setup-only` as well, so the loader's price stays in
+  `to_python_*` and out of these. The numbers came off the enforcing image (`20261026.354.1`,
+  `rustc 1.97.1`, three repeats) from the refresh workflow dispatched on this head, and they joined
+  that image's keyed row as well as the flat table, because a binding-harness scenario is keyed by
+  the image that measured it. The dispatch named nothing in `accept_drift` and still wrote, so no
+  floor crossed the 0.5% line; the flat table's four binding readings do move (by up to 1.68%,
+  `load_toml_medium`), because the file they came from was generated on `20261023.334.3` and an
+  enforcing leg reads its own row now, and that row is untouched — nine quoted readings in
+  `QUALITY_MATRIX.md` re-pointed at this file, every one of them inside 0.001%. The route's first
+  attribution: `needs_quotes` is the largest non-allocator term at 5.45% of `safe_dump_medium` and
+  `DirectWriter::write_key` 3.70%, with no `type_registry` function among the twelve — which
+  measures, on a document registering nothing, the empty-handler fast path #672 could only assert.
 - **The counterparty version caps are measured, and a gate keeps them measured** — five of
   the nine `python_version < 'X.Y'` caps in the test group still read `< '3.14'` while
   `pyjson5`, `numpy`, `ujson` and `python-rapidjson` each ship a 3.14 wheel, so the ≥3.14 legs

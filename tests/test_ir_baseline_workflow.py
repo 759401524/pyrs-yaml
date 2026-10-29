@@ -124,6 +124,62 @@ def test_a_host_generated_file_is_a_valid_shape_and_a_host_row_is_not():
         )
 
 
+def _row_coverage(data: dict, keyed=None) -> None:
+    """Rows may key different scenarios, and the difference has to point the right way.
+
+    `merge_image_row` folds a refresh into its own image's row and copies the others unchanged, so the
+    row of the image that generated the file is the only one that can key a scenario joined after the
+    others were measured. The committed file is exactly that shape: `20261026.354.1` keys
+    `safe_dump_small` and `safe_dump_medium` and `20261023.334.3` predates them. The uniformity this
+    replaced was a demand no dispatch can satisfy — every image re-measured after every scenario joins —
+    and it reddened the first PR that grew the keyed set.
+
+    Two directions survive, and they are different claims. A row keying what its own run never measured
+    is a hand-typed number, so every other row must sit inside the origin row. And the origin row must
+    key every scenario the interpreter-counting harness declares, which is where the coverage half of
+    the old uniformity assertion actually lives: read against another row it could only notice a
+    narrowing by luck of a second row holding the key, while `keyed` comes from the bench source. A
+    historic row that is narrower is answered at run time rather than guessed, because `image_floors`
+    names the scenarios a row lacks and exits 2 instead of falling back to the flat table.
+    """
+    origin = data["generated_by"]["environment"]
+    rows = data["image_floors"]
+    if origin not in rows:
+        return
+    measured = set(rows[origin])
+    for image, row in rows.items():
+        if image == origin:
+            continue
+        extra = sorted(set(row) - measured)
+        assert not extra, f"{image} keys {extra}, which {origin} did not measure"
+    if keyed is not None:
+        missing = sorted(set(keyed) - measured)
+        assert not missing, f"{origin} wrote this file but its row has no {missing}"
+
+
+def test_a_row_may_predate_a_scenario_but_never_invent_one():
+    """Four payloads, because the two directions are different claims.
+
+    The shape the committed file has — one row narrower than the origin row — has to pass, or the rule
+    is a demand that every image be re-measured after every scenario joins, which no dispatch can do.
+    Growing the older row is the fabrication half, shrinking the origin row past what the harness
+    declares is the coverage half, and a host-generated file has no origin row for either to read.
+    """
+    newest = "github-runner ubuntu24, image 20261026.354.1"
+    older = "github-runner ubuntu24, image 20261023.334.3"
+    both = ["load_toml_medium", "safe_dump_small"]
+
+    def wrap(rows, origin=newest):
+        return {"generated_by": {"environment": origin}, "image_floors": rows}
+
+    _row_coverage(wrap({newest: dict.fromkeys(both, 1), older: {"load_toml_medium": 1}}), both)
+    with pytest.raises(AssertionError, match="did not measure"):
+        _row_coverage(wrap({newest: dict.fromkeys(both, 1), older: dict.fromkeys([*both, "to_python_x"], 1)}), both)
+    with pytest.raises(AssertionError, match=r"has no \['safe_dump_small'\]"):
+        _row_coverage(wrap({newest: {"load_toml_medium": 1}, older: {"load_toml_medium": 1}}), both)
+    _row_coverage(wrap({older: {"load_toml_medium": 1}}, "Windows 10 (AMD64)"), both)
+
+
 def test_the_committed_baseline_is_exactly_what_the_job_writes():
     """No key of `.ci/ir-baseline.json` may be hand-written.
 
@@ -159,9 +215,7 @@ def test_the_committed_baseline_is_exactly_what_the_job_writes():
         assert row, image
         assert set(row) <= set(data["scenarios"]), (image, sorted(set(row) - set(data["scenarios"])))
         assert all(isinstance(value, int) for value in row.values()), image
-    assert len({tuple(sorted(row)) for row in rows.values()}) == 1, (
-        "every image keys the same scenarios, or a refresh would silently narrow the coverage"
-    )
+    _row_coverage(data, _load(Path("scripts") / "quality_matrix.py").ir_harness_channels()["pyrs-yaml"])
     assert set(data["binaries"]) == {f"{crate}/{bench}" for crate, bench in gate.HARNESSES}, (
         "the numbers are recorded without naming the bytes behind them"
     )
