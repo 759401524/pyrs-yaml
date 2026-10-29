@@ -1,6 +1,10 @@
 """Test Community Plugins (Spiral 3)."""
 
+import decimal
+import io
 from datetime import datetime, timezone
+
+import pytest
 
 import pyrs_yaml
 
@@ -164,3 +168,171 @@ class TestBindingCoverageGaps:
         pyrs_yaml.remove_type("!m")
         # After removal the tagged scalar is no longer converted.
         assert pyrs_yaml.safe_load("x: !m v\n")["x"] == "v"
+
+
+class _IndexMoney:
+    """A value type that answers the number protocol without being an integer."""
+
+    def __init__(self, cents):
+        self.cents = cents
+
+    def __index__(self):
+        return self.cents
+
+    def __int__(self):
+        return self.cents
+
+    def __hash__(self):
+        return hash(self.cents)
+
+    def __eq__(self, other):
+        return isinstance(other, _IndexMoney) and other.cents == self.cents
+
+
+class _SubMoney(int):
+    """The other side of that boundary: an object that really is an integer."""
+
+    def __new__(cls, cents):
+        return super().__new__(cls, cents)
+
+
+class _MoneyType(pyrs_yaml.CustomType):
+    python_type = _IndexMoney
+
+    def to_yaml(self, obj):
+        return f"{obj.cents}c"
+
+    def from_yaml(self, value):
+        return _IndexMoney(int(value[:-1]))
+
+
+class _SubMoneyType(pyrs_yaml.CustomType):
+    python_type = _SubMoney
+
+    def to_yaml(self, obj):
+        return f"{obj.cents}c"
+
+
+class _DecimalType(pyrs_yaml.CustomType):
+    python_type = decimal.Decimal
+
+    def to_yaml(self, obj):
+        return str(obj)
+
+
+class _BoolType(pyrs_yaml.CustomType):
+    python_type = bool
+
+    def to_yaml(self, obj):
+        return "yes"
+
+
+def _node_route(value):
+    """The same object carried by `pyobject_to_node` and written by the node serializer."""
+    doc = pyrs_yaml.parse("holder: 0\n")
+    doc.set("$.holder", value)
+    return doc.to_yaml()
+
+
+def _node_route_sorted(value):
+    doc = pyrs_yaml.parse("holder: 0\n")
+    doc.set("$.holder", value)
+    doc.sort_keys("$.holder")
+    return doc.to_yaml()
+
+
+def _direct_route_sorted(value):
+    buf = io.StringIO()
+    pyrs_yaml.YAML("safe").dump_stream(buf, [value], sort_keys=True)
+    return buf.getvalue()
+
+
+# (position, the object the direct writer is given, its text, the object the node writer is given,
+# its text) — every text here is measured output, and the `holder:` wrapper is the only difference
+# between the two halves of a row.
+POSITIONS = [
+    ("value", {"m": _IndexMoney(500)}, "m: !money 500c\n", _IndexMoney(500), "holder: !money 500c\n"),
+    ("key", {_IndexMoney(500): 1}, "!money 500c: 1\n", {_IndexMoney(500): 1}, "holder:\n  !money 500c: 1\n"),
+    ("item", [_IndexMoney(500)], "- !money 500c\n", [_IndexMoney(500)], "holder:\n  - !money 500c\n"),
+]
+
+
+class TestHandlerBeatsTheNumberProtocol:
+    """A registered `CustomType` owns its class, so it is asked before `__index__`/`__float__`.
+
+    Both writers carried the ordering defect, in different shapes: `direct_dump` asked the registry
+    only inside the branch the `f64` extraction landed in, and `pyobject_to_node` asked it after
+    `extract::<i64>()` had already answered for the object. A class carrying `__index__` therefore
+    left as the integer its protocol handed back - which is how `Decimal` reached the float-shaped
+    check in the first place, and why that check never covered the integer one.
+    """
+
+    def setup_method(self):
+        pyrs_yaml.clear_type_handlers()
+
+    @pytest.mark.parametrize(
+        "position,direct_obj,direct_text,node_obj,node_text",
+        POSITIONS,
+        ids=[row[0] for row in POSITIONS],
+    )
+    def test_the_handler_wins_in_every_position(self, position, direct_obj, direct_text, node_obj, node_text):
+        pyrs_yaml.register_type("!money", _MoneyType())
+        assert pyrs_yaml.safe_dump(direct_obj) == direct_text
+        assert _node_route(node_obj) == node_text
+
+    def test_the_tagged_key_round_trips_back_through_the_handler(self):
+        pyrs_yaml.register_type("!money", _MoneyType())
+        once = pyrs_yaml.safe_dump({_IndexMoney(500): 1})
+        assert pyrs_yaml.safe_load(once) == {_IndexMoney(500): 1}
+        assert pyrs_yaml.safe_dump(pyrs_yaml.safe_load(once)) == once
+
+    def test_an_integer_and_a_bool_keep_their_own_spellings(self):
+        """The guard is "int or int subclass", and it is the same guard on both routes.
+
+        A registered handler for `int` or `bool` therefore does not re-spell a native integer, which
+        is what keeps the common value in a real document off the registry path. `_SubMoney` is the
+        boundary stated so it cannot move unnoticed: an `int` subclass is read as the integer a
+        reader resolves, not as its handler's text.
+        """
+        pyrs_yaml.register_type("!smoney", _SubMoneyType())
+        pyrs_yaml.register_type("!b", _BoolType())
+        assert pyrs_yaml.safe_dump({"m": _SubMoney(500)}) == "m: 500\n"
+        assert _node_route(_SubMoney(500)) == "holder: 500\n"
+        assert pyrs_yaml.safe_dump({_SubMoney(500): 1}) == "500: 1\n"
+        assert _node_route({_SubMoney(500): 1}) == "holder:\n  500: 1\n"
+        assert pyrs_yaml.safe_dump({"m": True}) == "m: true\n"
+        assert _node_route(True) == "holder: true\n"
+        assert pyrs_yaml.safe_dump({True: 1}) == "true: 1\n"
+
+    def test_decimal_keeps_its_own_text_on_both_routes(self):
+        """The shape the float-only check used to be the only answer for, still honoured."""
+        pyrs_yaml.register_type("!dec", _DecimalType())
+        value = decimal.Decimal("1.100")
+        assert pyrs_yaml.safe_dump({"m": value}) == "m: !dec 1.100\n"
+        assert _node_route(value) == "holder: !dec 1.100\n"
+
+    def test_without_a_handler_the_protocol_answer_is_unchanged(self):
+        assert pyrs_yaml.safe_dump({"m": _IndexMoney(500)}) == "m: 500\n"
+        assert _node_route(_IndexMoney(500)) == "holder: 500\n"
+
+    def test_sorted_keys_order_on_the_handlers_text_on_both_routes(self):
+        """`Money(5)`/`Money(50)` is the pair where the two readings of "sort the key" fork.
+
+        The serializer's comparator reads the key node's scalar value, which is the handler's text
+        once a registered type owns the key, so `50c` sorts before `5c`. Sorting the direct writer's
+        keys on the protocol's integer instead would order the same mapping the other way.
+        """
+        pyrs_yaml.register_type("!money", _MoneyType())
+        obj = {_IndexMoney(5): "a", _IndexMoney(50): "b"}
+        assert _direct_route_sorted(obj) == "!money 50c: b\n!money 5c: a\n"
+        assert _node_route_sorted(obj) == "holder:\n  !money 50c: b\n  !money 5c: a\n"
+
+    def test_a_native_integer_still_sorts_on_its_digits(self):
+        assert _direct_route_sorted({5: "a", 50: "b"}) == "5: a\n50: b\n"
+        assert _node_route_sorted({5: "a", 50: "b"}) == "holder:\n  5: a\n  50: b\n"
+
+    def test_a_tagged_key_and_a_plain_key_sort_in_the_same_order_on_both_routes(self):
+        pyrs_yaml.register_type("!dec", _DecimalType())
+        obj = {True: 1, decimal.Decimal("2"): 3}
+        assert _direct_route_sorted(obj) == "!dec 2: 3\ntrue: 1\n"
+        assert _node_route_sorted(obj) == "holder:\n  !dec 2: 3\n  true: 1\n"

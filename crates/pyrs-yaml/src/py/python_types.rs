@@ -146,17 +146,14 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
     #[cfg(not(feature = "numpy"))]
     let shaped_array = false;
 
-    if let Ok(b) = obj.extract::<bool>() {
-        return Ok(CustomNode::plain_scalar(if b { "true" } else { "false" }));
-    }
-
-    if !shaped_array && let Ok(n) = obj.extract::<i64>() {
-        return Ok(CustomNode::plain_scalar(n.to_string()));
-    }
-
-    // Check CustomType for types that would be extracted as f64
-    // (e.g. Decimal) before the float fallback.
-    if !type_registry::is_empty()
+    // A registered `CustomType` is asked before Python's number protocol, for every shape except an
+    // `int` or `int` subclass: a class that only *answers* as a number (`Decimal`, a money type
+    // carrying `__index__`) belongs to its handler, and an extraction that succeeds is not a claim
+    // of ownership. Integers keep their own spelling because that is what a reader resolves, and
+    // the one cast is what keeps the common value in a real document off the registry path, which
+    // snapshots the handlers and calls `isinstance` per entry.
+    if obj.cast::<PyInt>().is_err()
+        && !type_registry::is_empty()
         && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
     {
         let (tag_name, yaml_str) = result?;
@@ -168,6 +165,14 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
             block_indent: None,
             meta: crate::ast::NodeMeta::with_tag(tag),
         });
+    }
+
+    if let Ok(b) = obj.extract::<bool>() {
+        return Ok(CustomNode::plain_scalar(if b { "true" } else { "false" }));
+    }
+
+    if !shaped_array && let Ok(n) = obj.extract::<i64>() {
+        return Ok(CustomNode::plain_scalar(n.to_string()));
     }
 
     // A Python int wider than `i64` has to be caught before the `f64` extraction below: that one

@@ -187,6 +187,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A registered `CustomType` answers for the value it claims** — `register_type("!money", ...)`
+  whose `python_type` is a class carrying `__index__` was bypassed by both YAML writers:
+  `safe_dump({"m": Money(500)})` emitted `m: 500`, the integer Python's number protocol hands back,
+  and the handler's text appeared only for a class the `f64` extraction happened to catch. That is
+  why `Decimal` was honoured and an integer-shaped value type never was — the one registry check
+  each writer carried had been written for the float shape alone, the same ordering the array route
+  needed in the row above. `crates/pyrs-yaml/src/py/direct_dump.rs` and
+  `crates/pyrs-yaml/src/py/python_types.rs` now ask the registry before the protocol, in value, key
+  and sequence-item position, and the one exclusion is named the same way on both sides: an `int` or
+  `int` subclass — and a `bool`, which is one — keeps the integer spelling a reader resolves.
+  Measured on this build, all three positions emit `!money 500c` on both writers and
+  `{Money(500): 1}` round-trips through `from_yaml`. The direct writer's `sort_keys` text moved with
+  the spelling, because the serializer's comparator reads the key node's scalar value: a
+  `Money(5)`/`Money(50)` pair sorts on `5c` and `50c` there, so keeping the protocol's `5` and `50`
+  would have ordered the same mapping the other way on one writer. Eight test functions (nine cases)
+  joined `tests/test_community_plugins.py`, and four falsification controls — one per registry call
+  site — redden 6, 5, 4 and 1 of them; the `direct_dump` value site also carries the two
+  pre-existing float rows, which is the measurement that the new question is a superset of the one
+  it replaced. `docs/en/guides/plugin-development.md` states the rule. No instruction floor reaches
+  this route, so the extra type compare per scalar is unpriced by the gate
+  (`docs/dev/quality-ledger.md` (hq)).
 - **Dumping a NumPy array no longer ends the process on Python 3.15** — the array route cast the
   object through `rust-numpy` and read its memory, which the `cp315-abi3t` wheel cannot do soundly.
   Measured on the published 0.18.3: `safe_dump(numpy.arange(8))` under 3.15 GIL died with

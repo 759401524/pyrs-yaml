@@ -10596,6 +10596,56 @@ own build edge (`-e build`). So the enumeration read six where the graph held fi
 read `-e normal` as if it were a closure over every edge kind. Both are corrected here rather than
 one, because a sentence can only be re-measured as a whole.
 
+### (hq) A registered handler lost the argument to Python's number protocol (2026-10-29)
+
+The rule the plugin layer sells is `isinstance(obj, python_type)` — register a class and its
+`to_yaml()` answers for it. Neither writer honoured it, in two different shapes, and the two shapes
+are why one test could not have found both: `direct_dump::write_scalar_node` asked the registry only
+inside the branch the `f64` extraction landed in, and `pyobject_to_node` asked it after
+`extract::<i64>()` had already returned. `Decimal` has no `__index__`, so it always fell to the
+float branch and was honoured; a class that answers `__index__` never reached the question. Measured
+before the change on the merged #669 build: a `Money` carrying `__index__` left as `m: 500` on
+*both* routes while its sibling with only `__float__` left as `m: !fmoney 500c` — the handler
+winning exactly where the protocol was weaker.
+
+The fix is one predicate in each writer, asked before the protocol and worded identically:
+`obj.cast::<PyInt>().is_err()`. That cast is the exclusion, and it is a boundary rather than an
+accident — an `int` or an `int` subclass keeps the integer spelling, because an integer is what a
+YAML reader resolves and `IntEnum`-shaped keys are data, not a claim of ownership. A float subclass
+was already handed to its handler, since the float branch asked, so the rule now reads the same for
+both number families.
+
+The sort text had to move with the spelling. The serializer's comparator for a block mapping reads
+the key node's `value`, which after the fix is the handler's text, so `Money(5)` and `Money(50)`
+sort on `5c` and `50c`; `direct_dump::key_sort_string` still answered with `extract::<i64>()`'s
+digits, which sorts `5` before `50` — the same mapping in opposite order on the two writers, which
+is exactly the class of byte-level divergence `tests/test_route_parity.py` was written to catch. It
+asks the same registry question now and sorts on the handler's text.
+
+Four falsification controls, one per site, and their red sets are what says each site is
+load-bearing rather than the change as a whole: removing the `python_types` ask reddens 6 rows (all
+three positions' node half, the `Decimal` row, both sorted rows); removing the `write_scalar_node`
+ask reddens 5, *including the two pre-existing float rows* — the measurement that the new question
+is a superset of the one it replaced, not a third ask beside two; removing `write_key`'s reddens 4
+with value and item green; removing `key_sort_string`'s reddens exactly 1. Nine cases across eight
+functions joined `tests/test_community_plugins.py`, and `docs/en/guides/plugin-development.md` now
+states the rule the code implements.
+
+What this did not close, measured on the same probe run and left for a ruling because each half is a
+public-behaviour choice: a class the protocol cannot answer for at all emits `m:\n  !booly B\n` on
+the direct route and `m: !booly B\n` on the node route, because the first reaches the registry
+through `write_other`, which writes the indent itself; a `str` subclass with a handler is written
+plain by the direct route and tagged by the node route, because the string branch answers first
+there and last here; and a dimensional array with a handler registered for `numpy.ndarray` is a
+sequence on the direct route and `!nd ND` on the node route. Moving the question did close one of
+those: a 0-D array now answers `!nd ND` on both, where the direct route used to print the protocol's
+integer.
+
+Unpriced, and named here rather than assumed: no committed floor reaches `direct_dump` — the
+binding's counted `to_python_*` scenarios measure the loader and the engine's `serialize_*` floors
+count `to_yaml` on a node AST, as (hm) records — so the one extra type compare per scalar this
+change adds is not read by the Ir gate.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

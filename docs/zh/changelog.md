@@ -146,6 +146,21 @@ status: new
 
 #### 修复
 
+- **注册的 `CustomType` 会接管它声称拥有的值** —— 当 `python_type` 是带 `__index__` 的类时，
+  `register_type("!money", ...)` 被两条 YAML 写路径绕过：`safe_dump({"m": Money(500)})` 输出
+  `m: 500`，也就是 Python 数值协议交回的整数，处理器的文本只在 `f64` 提取恰好接住的那个类上出现。这
+  就是 `Decimal` 一直被尊重、整数形态的值类型却从来没有的原因——两条写路径各自唯一的那次注册表查询是
+  为浮点形态写的，与上面一行里数组路由需要修正的是同一个顺序问题。
+  `crates/pyrs-yaml/src/py/direct_dump.rs` 与 `crates/pyrs-yaml/src/py/python_types.rs` 现在都在数值
+  协议之前询问注册表，覆盖值、键与序列元素三个位置；唯一的例外在两侧写法一致：`int` 或 `int` 子类——
+  以及属于它的 `bool`——保留读者会解析出的整数拼写。本机实测：三个位置在两条写路径上都输出
+  `!money 500c`，且 `{Money(500): 1}` 能经 `from_yaml` 往返。直接写路径的 `sort_keys` 文本随之改动，
+  因为序列化器的比较器读取键节点的标量值：`Money(5)`/`Money(50)` 在那里按 `5c` 与 `50c` 排序，若继续
+  用协议的 `5` 与 `50`，同一条映射就会在一条写路径上排出相反的顺序。
+  `tests/test_community_plugins.py` 新增八个测试函数（九个用例），四个反证控制——每个注册表调用点一个
+  ——分别令 6、5、4、1 个用例变红；`direct_dump` 的值位置还承接了原有两个浮点行，这正是“新问句是被替
+  换者的超集”的度量。`docs/en/guides/plugin-development.md` 写明了该规则。没有指令计数地板覆盖这条路
+  径，所以每个标量多出的一次类型比较不受门禁定价（`docs/dev/quality-ledger.md` (hq)）。
 - **3.15 上转储 NumPy 数组不再终结进程** —— 数组路由把对象交给 `rust-numpy` 强转后再读它的内存，而
   `cp315-abi3t` 轮子这样做并不安全。在已发布的 0.18.3 上实测：3.15 GIL 下
   `safe_dump(numpy.arange(8))` 以 `Fatal Python error: Segmentation fault` 死亡（退出码 139，Windows
