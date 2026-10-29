@@ -22,7 +22,11 @@
 - Build + install: `uv run maturin develop --release`
 - Run tests: `uv run pytest tests/ -v`
 - Rust fmt: `cargo fmt`
-- Rust lint: `cargo clippy --all --all-targets -- -D warnings` (CI runs the same scope)
+- Rust lint: `cargo clippy --all --all-targets -- -D warnings` (CI runs the same scope), **plus**
+  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate -- -D warnings`:
+  both Ir harnesses declare `required-features = ["ir-gate"]`, and cargo silently drops a target whose
+  required features are off, so the wide scope never compiles them. `tests/test_ci_ir_harness_lint.py`
+  derives the gated crate set from the manifests and refuses when a harness leaves the narrow scope.
 - Rust tests: `cargo nextest run --all` (preferred over `cargo test`)
 - Pure Rust tests (no Python runtime): `cargo test --all --no-default-features`
 - Python lint: `uv run ruff check . && uv run ruff format .`

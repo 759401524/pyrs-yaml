@@ -232,13 +232,17 @@ jobs:
     # Deliberately no `paths:` filter and no `if:`: a full-tree check that only runs when someone
     # touches the checked files is the same hole with a new name, and the verdict refuses a `skipped`
     # leg, so a conditional here would need the change classification to explain its absence.
-    # `cargo clippy` is the one hook skipped, because `rust-lint` above runs it with a warm build
-    # cache; `cargo fmt` is NOT skipped, because measuring the matrix showed no workflow anywhere ran
+    # Both clippy hooks are the ones skipped, because `rust-lint` above runs the same two commands
+    # with a warm build cache - and this job's toolchain installs no `clippy` component at all, so a
+    # clippy hook here would fail on the missing component rather than on the code;
+    # `tests/test_ci_ir_harness_lint.py` requires the skip list to name every hook whose entry runs
+    # clippy, so a third clippy hook cannot arrive skipped-by-accident or unskipped-by-surprise.
+    # `cargo fmt` is NOT skipped, because measuring the matrix showed no workflow anywhere ran
     # it - `--check` only parses, so the whole Rust formatting gate costs seconds.
     runs-on: ubuntu-latest
     env:
-      # ci.yml's rust-lint owns clippy; re-running it here would add a full compile.
-      SKIP: cargo-clippy
+      # ci.yml's rust-lint owns clippy; re-running either hook here would add a full compile.
+      SKIP: cargo-clippy,cargo-clippy-ir-harness
     steps:
       - uses: actions/checkout@v7
         with:
@@ -329,6 +333,21 @@ jobs:
       # against the whole tree, so this closes a registered blind spot without trading a red.
       - name: Run cargo clippy
         run: cargo clippy --all --all-targets -- -D warnings
+
+      # The one lint surface the scope above cannot reach by construction. Both Ir harnesses
+      # declare `required-features = ["ir-gate"]` on their `ir_gate` bench - for the extension
+      # crate that gate is mandatory, `docs/dev/boundaries.md` rule R5 - and cargo drops a target
+      # whose required features are not enabled instead of checking it. Measured 2026-10-29 by
+      # planting a type error in each harness in turn: the command above reported exit 0 both
+      # times, this one exited 101 naming `crates/pyrs-yaml-core/benches/ir_gate.rs:325` and
+      # `crates/pyrs-yaml/benches/ir_gate.rs:147`. The `ir` job already *builds* the harness, so
+      # a compile error never walked past - what nothing read was a lint, which is exactly what
+      # `QUALITY_MATRIX.md` recorded as "checked by building it, not by the lint job" until now.
+      # `tests/test_ci_ir_harness_lint.py` derives the crate list from the manifests, so a third
+      # gated harness cannot join the tree unlinted and this command cannot name a crate that no
+      # longer has the target.
+      - name: Run cargo clippy on the feature-gated Ir harnesses
+        run: cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate -- -D warnings
 
       # The dialect tier compares `pyq` against the real `jq` and mikefarah `yq` and
       # skips when the host has neither, which made the whole claim host-dependent:

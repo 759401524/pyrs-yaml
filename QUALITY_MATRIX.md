@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 833 Rust `#[test]`, 2,072 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 833 Rust `#[test]`, 2,077 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -807,21 +807,25 @@ that seven properties are silent on most of what they generate, which is the sha
 that let a lost key read as a passing round trip.
 
 `crates/pyrs-yaml/benches/ir_gate.rs` is that artefact: `to_python_small`, `to_python_medium` and
-`to_python_anchors` — the same fixture bytes as the engine harness, measured one layer higher,
-reaching the conversion through a `#[cfg(feature = "ir-gate")]` seam (`bench_to_python`) that
+`to_python_anchors` on the read side, joined by `safe_dump_small` and `safe_dump_medium` on the write
+side — the same fixture bytes as the engine harness, measured one layer higher, reaching the
+conversion through a `#[cfg(feature = "ir-gate")]` seam (`bench_to_python`, whose body
+`bench_to_python_value` hands back for the write pair) that
 mirrors `safe_load`'s AST path and skips the P3 direct-load shortcut deliberately, because an
 anchor-free fixture would have reported the shortcut, which is a different quantity than the one
 tag- and anchor-bearing data pays for. The entry left the registry because the derived graph gained
 `pyrs-yaml`, which is the registry working as designed: the deletion is enforced by the same test
-that would have caught an unregistered hole. Three limits are recorded rather than smoothed over:
+that would have caught an unregistered hole. Three limits were recorded rather than smoothed over:
 this binary links CPython, so it builds anywhere and runs only on Linux (measured on Windows —
 `cargo bench --no-run` succeeds, then the exe dies at start-up with `0xC000021A`);
 `cargo clippy --all --all-targets` does not compile a `required-features` bench target, so the new
-file is checked by building it, not by the lint job; and a third was found by running it on the
-enforcing image — the harness is a standalone executable that must bring CPython up itself, so the
-same feature turns on `pyo3/auto-initialize`, because the first refresh run built both harnesses, read
-both scenario lists, and only then failed in the measured loop with "The Python interpreter is not
-initialized".
+file was checked by building it, not by the lint job — that one is closed, by a step in `rust-lint`
+with the feature on and the target named, and `tests/test_ci_ir_harness_lint.py` reads the gated crate
+set out of the manifests so a third gated harness cannot join unlinted; and a third was found by
+running it on the enforcing image — the harness is a standalone executable that must bring CPython up
+itself, so the same feature turns on `pyo3/auto-initialize`, because the first refresh run built both
+harnesses, read both scenario lists, and only then failed in the measured loop with "The Python
+interpreter is not initialized".
 
 Closing a hole with a second harness is also how a third defect of a familiar class turned up: a
 reader that stops early passes silently, which is exactly what #303's graph probe had done. The

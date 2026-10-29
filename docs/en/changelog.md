@@ -19,6 +19,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The Ir harnesses are linted now, and a rule keeps them linted** — both
+  `crates/*/benches/ir_gate.rs` files declare `required-features = ["ir-gate"]`, and cargo drops a
+  target whose required features are off instead of checking it, so the repository's
+  `cargo clippy --all --all-targets -- -D warnings` — the scope CI runs, adopted so that `tests/`
+  and `benches/` could not go unlinted — never compiled the two files every instruction floor is
+  measured from. Measured by planting a type error in each harness in turn: the wide scope reported
+  a clean tree twice, while
+  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate` exited 101 naming
+  `crates/pyrs-yaml-core/benches/ir_gate.rs:325` and then `crates/pyrs-yaml/benches/ir_gate.rs:147`.
+  The `ir` job already *built* the harness, so a compile error could not walk past — what nothing
+  read was a lint. That command is a `rust-lint` step now, and a `prek` hook scoped to the two
+  harness files, with both clippy hooks in the hooks job's skip list because its toolchain installs
+  no `clippy` component; `tests/test_ci_ir_harness_lint.py` reads the gated crate set out of the
+  manifests and the clippy hooks out of `prek.toml`, so neither list is typed twice, and each of the
+  four mutations — step dropped, feature dropped, crate dropped, skip list left behind — reddens one
+  test. The limit `QUALITY_MATRIX.md` recorded as "checked by building it, not by the lint job" is
+  closed, and the same paragraph's scenario list gains the two `safe_dump_*` rows #673 added to that
+  harness.
 - **The Python-object write route has an instruction floor now** — `safe_dump` and `from_dict` serve
   `crates/pyrs-yaml/src/py/direct_dump.rs`, and no committed number reached it: the engine harness's
   `serialize_*` scenarios stop at the node model those routes never build, so every allocation, scan
