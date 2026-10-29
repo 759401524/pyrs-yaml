@@ -28,7 +28,7 @@ use crate::ast::{CustomNode, NodeMap};
 use crate::parser::yaml::schema::needs_quotes;
 use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
-use crate::py::ndarray::ndarray_to_node;
+use crate::py::ndarray::{is_dimensioned_array, ndarray_to_node};
 use crate::py::python_types::pyobject_to_node;
 use crate::py::python_types::{
     float_to_yaml_string, is_decimal_digits, key_is_readable_shape, py_string_to_arc,
@@ -112,6 +112,17 @@ fn extract_scalar_value(obj: &Bound<'_, PyAny>) -> PyResult<Option<ScalarValue>>
             return Ok(Some(ScalarValue::BigInt(digits)));
         }
     }
+    // A dimensional NumPy array is a shape, not a number, and the protocol calls below answer *for*
+    // one: `float(numpy.array([1e30], dtype="float32"))` succeeds on every numpy up to 2.2 and
+    // returns the double widened from the float with the dimension dropped. Declining here leaves
+    // the classification as `Kind::Other`, which is the branch that asks the array route and either
+    // emits the sequence or refuses. Placed after the exact-type casts so no native int, float or
+    // bool pays for the import.
+    #[cfg(feature = "numpy")]
+    if is_dimensioned_array(obj.py(), obj) {
+        return Ok(None);
+    }
+
     // Fallback via extract for protocol-convertible types (numpy scalars,
     // Python big ints that overflow i64, etc.).
     if let Ok(n) = obj.extract::<i64>() {
@@ -639,12 +650,9 @@ impl DirectWriter {
     ) -> PyResult<()> {
         #[cfg(feature = "numpy")]
         {
-            // numpy is only probed at runtime: free-threaded (Py_GIL_DISABLED)
-            // builds compile with the default "numpy" feature but ship without
-            // the module installed, and numpy's capsule access would panic.
-            if py.import("numpy").is_ok()
-                && let Some(node) = ndarray_to_node(py, obj)
-            {
+            // The route itself answers `None` when numpy is not installed or the object is not an
+            // array of a dtype it emits, so an array of strings still reaches the refusal below.
+            if let Some(node) = ndarray_to_node(py, obj) {
                 let yaml = to_yaml_with_options(
                     &node,
                     &SerializeOptions {

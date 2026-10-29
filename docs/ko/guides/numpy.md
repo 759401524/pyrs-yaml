@@ -115,10 +115,10 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 
 ## 성능
 
-- :material-bolt: `PyUntypedArray`를 사용한 제로 복사 dtype 디스패치
-- :material-bolt: `PyArrayDyn<T>`를 사용한 제로 복사 슬라이스 반복
-- :material-bolt: 슬라이스 이터레이션 중 Python GIL 해제
-- :material-bolt: 추가 할당 없이 모든 차원 지원
+- :material-bolt: 배열당 `tobytes()` 스냅샷 한 번, GIL을 유지한 상태에서
+- :material-bolt: 요소는 GIL을 놓은 뒤 Rust에서 디코딩
+- :material-bolt: 전치·Fortran 순서·스트라이드 배열도 논리 순서대로 출력
+- :material-bolt: 모든 차원 지원
 
 ---
 

@@ -146,6 +146,26 @@ status: new
 
 #### 修复
 
+- **3.15 上转储 NumPy 数组不再终结进程** —— 数组路由把对象交给 `rust-numpy` 强转后再读它的内存，而
+  `cp315-abi3t` 轮子这样做并不安全。在已发布的 0.18.3 上实测：3.15 GIL 下
+  `safe_dump(numpy.arange(8))` 以 `Fatal Python error: Segmentation fault` 死亡（退出码 139，Windows
+  那条腿报 `Windows fatal exception: access violation`），同一份二进制在 3.15t 下回答
+  `YamlTypeError`，而 3.12、3.14 与 3.14t 都转储正确。它是确定性的、单线程的，`numpy.zeros((0,))` 同
+  样会崩，所以故障落在第一次读取数组内部数据之处，而不在任何竞态里。
+  `crates/pyrs-yaml/src/py/ndarray.rs` 现在向数组本身索取 `dtype`、`shape` 与 `tobytes()`，再在 Rust
+  里解码这块缓冲区：任何产物都不再触及 numpy 的 C API，`numpy` 这个 Cargo 特性门控的因此是路由而不是
+  依赖。另有两处缺陷随之倒下。第一处在每个解释器上都看得见：旧路由读的是内存顺序、嵌套却按逻辑形状，
+  于是 `safe_dump(numpy.arange(4).reshape(2, 2).T)` 写出 `[[0, 1], [2, 3]]`，而数组说的是
+  `[[0, 2], [1, 3]]`——Fortran 序与跨步数组现在按逻辑值写出，跨步的也不再被拒绝。第二处由装着的 numpy
+  版本决定，因为两条写器路由都在问数组路由之前先问了 Python 的数值协议，而这个协议会*替*一个单元素数
+  组回答：`float(numpy.array([1e30], dtype="float32"))` 是拓宽成 double 后的
+  `1000000015047466200000000000000.0`，维度随之丢掉，而 numpy 直到 2.3 才把这个行为改成报错。于是一
+  台机器写 `1.5`，另一台写 `- 1.5`；`docs/en/guides/numpy.md` 为显式布尔往返推荐的那个写法
+  `numpy.array([True])` 回答的是 `1`。现在带维度的数组被拒绝进入该协议，0-D 数组保留同一页所声明的标
+  量拼写，接受的 dtype 与每个标量的拼写都不变。`tests/test_numpy.py::TestNumpyBufferRoute` 钉住十一
+  条，其中三条在装有 numpy 2.2.6 的已发布轮子上判红、在这个工作区上通过；随后同一只重建的轮子承载整
+  个 54 条模块通过——3.8 配 numpy 1.24.4、3.10 配 2.2.6、3.12 与 3.15 配 2.5.4，3.15t 上是 53 条通过
+  加一条按设计跳过的 GIL 并发——那正是此前根本没法运行这个模块的两个解释器。
 - **`load_stream_file` 的内存上界现在真的被度量，而不是永远跳过** — 守着这条承诺的测试用
   `pytest.importorskip` 索要 `psutil`，可没有任何依赖清单声明这个包：`pyproject.toml` 与
   `.ci/requirements-test.txt` 都没有。于是在每一条腿的每个解释器上它只报一个 skip——看着像覆盖，实际

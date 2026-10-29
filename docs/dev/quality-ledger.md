@@ -10499,6 +10499,83 @@ scenarios (`to_python_*`) measure the loader, and the engine's `serialize_*` flo
 on a node AST, so no committed floor reaches `direct_dump`. The gate-visible risk is therefore code
 size inside the counted region, which the enforcing leg reads.
 
+### (hn) A crash in a shipped wheel, found by a version cap that stopped lying (2026-10-29)
+
+PR #667 moved the NumPy test dependency from `python_version < '3.14'` to `< '3.16'`. Its three 3.15
+legs then died in the same place on all three OSes - `tests/test_concurrency.py:162`,
+`Fatal Python error: Segmentation fault` (exit 139 on Linux,
+`Windows fatal exception: access violation` on Windows), with the C stack inside
+`pyrs_yaml.abi3t.so` - and the free-threaded 3.15t leg, which did not crash, failed 37
+`tests/test_numpy.py` comparisons with `YamlTypeError: Unsupported Python type for YAML conversion`.
+One wheel, two symptoms: the cp315 artifact carries the tags `cp315-abi3` *and* `cp315-abi3t`, so
+the same bytes serve the GIL and the free-threaded interpreter.
+
+The attribution had to be made against the published artifact, not a local build, and
+`uv pip install pyrs-yaml==0.18.3` into a 3.15 venv does that in one line. On 3.15.0:
+`safe_dump({"a": 1})` fine, `safe_dump(numpy.arange(8, dtype="float64"))` exit 139. On 3.12.15 and
+on free-threaded 3.14.8 (installing the interpreter-specific `cp314-cp314t` wheel) the same call
+returns `- 0\n- 1\n- 2\n...`. So this is not a race, not the array, and not a regression from this
+branch: it is the `abi3t` build. The route cast the object with `rust-numpy` and read the array
+through typed slices, which is numpy's C API reached from a stable-ABI extension; the earlier
+interpreters install artifacts where that combination holds.
+
+Three probes were chosen because each separates two readings. Single-threaded, because the test that
+crashed was written for the #165 GIL race and a regression of that fix would need a second thread -
+it crashed alone, which refutes that story. `numpy.zeros((0,))`, because the empty array returns
+before any dtype dispatch - it crashed too, so the fault sits at the first read of array internals,
+not in the element loop. `numpy.float64(3.5)`, because a numpy *scalar* never enters the branch - it
+dumped, so the `py.import("numpy")` probe and the module import are sound.
+
+A second defect came out of the same function, visible on every interpreter and never recorded: it
+read the buffer in memory order and nested the result by the logical shape. Measured on 3.12 before
+the fix, `safe_dump(numpy.arange(4).reshape(2, 2).T)` wrote `[[0, 1], [2, 3]]` where the array says
+`[[0, 2], [1, 3]]`, `numpy.asfortranarray([[1, 2], [3, 4]])` wrote `[[1, 3], [2, 4]]`, and
+`numpy.arange(10)[::2]` raised `YamlTypeError` where its values are plainly readable.
+
+The third was only visible on half the matrix, and the CI legs found it:
+`test (ubuntu-latest, 3.8/3.9/3.10)` went red on three rows the 3.11+ legs passed on the same wheel.
+The routes did not differ - the installed numpy did. Both writers asked Python's number protocol
+before asking the array route, and that protocol answers *for* a one-element array on every numpy up
+to 2.2 and raises from 2.3 on (`float(array)` →
+`TypeError: only 0-dimensional arrays can be converted to Python scalars`, both spellings measured).
+So on the old side `safe_dump(numpy.array([1e30], dtype="float32"))` produced the scalar
+`1000000015047466200000000000000.0` - the double widened from the float, with the dimension
+dropped - where the new side produced the sequence `- 1000000000000000000000000000000`, and a
+one-element `float16` array dumped instead of refusing. The guide sentence this exposes is the one
+`docs/en/guides/numpy.md` still recommends for an explicit boolean round-trip,
+`numpy.array([True])`, which answered `1` on the old side. The veto is
+`ndarray::is_dimensioned_array`, asked before the protocol in both
+`direct_dump::extract_scalar_value` and `pyobject_to_node`, guarded by the native `PyInt`/`PyFloat`
+casts so a plain number never pays for the import. A 0-D array keeps the protocol's answer, which is
+the spelling that same page documents, and the asymmetry is now pinned on both sides
+(`test_zero_dimensional_array_keeps_the_protocol_answer` next to
+`test_zero_dimensional_complex_is_a_one_item_sequence`, whose complex value has no protocol
+conversion in any numpy version).
+
+`crates/pyrs-yaml/src/py/ndarray.rs` now asks the array itself - `dtype.kind`, `dtype.itemsize`,
+`shape`, `tobytes()` - and decodes that buffer in Rust, so no numpy C API is reached in any artifact
+and the transposition bug cannot come back: `tobytes()` emits logical C order. Accepted dtypes are
+the same set by (kind, width), and the spellings are held where they were: `NaN` for a NaN,
+`(1+-2j)` for a complex with a negative imaginary part, and the `f32` decimal for a 32-bit float -
+1e30 stored as `float32` prints `1000000000000000000000000000000`, while widening first would print
+`1000000015047466200000000000000`. `rust-numpy` left the dependency tree, so the `numpy` Cargo
+feature now gates the route rather than a crate; `scripts/check_rust_python_decoupling.py` keeps
+this crate free of a Rust test tier, which is why the pins are Python-level.
+
+Readings, from `target/verify295.log`, `target/verify295b.log` and `target/verify295c.log`:
+`tests/test_numpy.py` is 54 comparisons (43 before, 11 new in `TestNumpyBufferRoute`). One wheel
+built from this tree - the `cp315-abi3` artifact, whose `abi3t` twin is the one that segfaulted -
+passes all 54 under 3.8 with numpy 1.24.4, 3.10 with 2.2.6, 3.15 with 2.5.4 and 3.15t with 2.5.4 as
+53 passed plus the one GIL-contention row skipped by design; the host (3.12.15, numpy 2.5.4) passes
+the same 54 against the develop build. As the falsification control, the published 0.18.3 wheel
+under numpy 2.2.6 fails all three rows that name the protocol boundary - the one-element dimension,
+the `float32` decimal and the two-writer parity claim - with the other 51 deselected rather than
+judged. The cap that hid the crash for three releases (0.18.1, 0.18.2, 0.18.3 all ship cp315 wheels)
+was itself the finding PR #667 registered: a stale upper bound is not only lost coverage, it is also
+a blind fold over the one interpreter new enough to break - and the version band that a test
+dependency selects can equally decide *which shape a dump produces*, which is what the three red
+legs found here.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

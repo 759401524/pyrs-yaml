@@ -177,6 +177,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Dumping a NumPy array no longer ends the process on Python 3.15** — the array route cast the
+  object through `rust-numpy` and read its memory, which the `cp315-abi3t` wheel cannot do soundly.
+  Measured on the published 0.18.3: `safe_dump(numpy.arange(8))` under 3.15 GIL died with
+  `Fatal Python error: Segmentation fault` (exit 139; `Windows fatal exception: access violation` on
+  the Windows leg), the same bytes under 3.15t answered `YamlTypeError`, and 3.12, 3.14 and 3.14t
+  all dumped it correctly. It was deterministic and single-threaded and `numpy.zeros((0,))` crashed
+  too, so the fault sat at the first read of array internals rather than in any race.
+  `crates/pyrs-yaml/src/py/ndarray.rs` now asks the array for its own `dtype`, `shape` and
+  `tobytes()` and decodes that buffer in Rust: no numpy C API is reached in any artifact, and the
+  `numpy` Cargo feature gates the route instead of a dependency. Two more defects fell with it. The
+  first is visible on every interpreter: the old route read memory order and nested by logical
+  shape, so `safe_dump(numpy.arange(4).reshape(2, 2).T)` wrote `[[0, 1], [2, 3]]` where the array
+  says `[[0, 2], [1, 3]]` - Fortran-ordered and strided arrays now emit what they mean, and strided
+  ones are dumped where they were refused. The second was decided by the installed numpy, because
+  both writer routes asked Python's number protocol before asking the array route, and that protocol
+  answers *for* a one-element array: `float(numpy.array([1e30], dtype="float32"))` is the widened
+  double `1000000015047466200000000000000.0` with the dimension dropped, and numpy only turned that
+  into an error in 2.3. One install therefore wrote `1.5` where another wrote `- 1.5`, and the
+  spelling `docs/en/guides/numpy.md` recommends for an explicit boolean round-trip,
+  `numpy.array([True])`, answered `1`. An array carrying a dimension is now refused that protocol, a
+  0-D array keeps the scalar spelling the same page states, and the accepted dtypes and every scalar
+  spelling are unchanged. `tests/test_numpy.py::TestNumpyBufferRoute` pins eleven rows, three of
+  which fail on the published wheel with numpy 2.2.6 and pass on this tree; one rebuilt wheel then
+  carries the whole 54-test module - on 3.8 with numpy 1.24.4, on 3.10 with 2.2.6, on 3.12 and 3.15
+  with 2.5.4, and on 3.15t as 53 passed with the one GIL-contention row skipped by design - which
+  are the two interpreters on which that module could not run at all before.
 - **The memory bound on `load_stream_file` is measured now instead of skipped forever** — the test
   that guarded it asked for `psutil` through `pytest.importorskip`, and no requirement file names
   that package: neither `pyproject.toml` nor `.ci/requirements-test.txt`, so on every interpreter of
