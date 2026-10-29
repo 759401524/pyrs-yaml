@@ -293,13 +293,45 @@ fn element_has_note(item: &CustomNode) -> bool {
         && (!item.leading_comments().is_empty() || item.comment().is_some_and(|c| !c.standalone))
 }
 
+/// The container node's own leading notes - the fifth slot, and the one no member carries.
+///
+/// `nested:` with a note above its first key, or `arr:` with one above its first item, reaches
+/// [`write_value`] with that note on the *container* and on no member, so a predicate that asked only
+/// the members called the container undecorated, kept it on one line, and the note vanished rather
+/// than moved.
+///
+/// The answer comes from [`CustomNode::leading_comments`], which is already the pair this writer
+/// needs - the leading list, else the legacy standalone `comment` slot (#114 reads the same pair for
+/// a section header) - so one lookup per *non-empty* container is all the question costs; the two
+/// arms ask nothing of an empty one, whose note has no line to be written on. Prefixing it with
+/// [`CustomNode::has_notes`] was the first version, and the floor priced that: two calls out of the
+/// crate per container, +1.30 % on `to_toml_medium` on this host (28,068,579 against the 27,708,605
+/// floor this change replaced, about eighteen instructions per container) — the reading this gate
+/// exists to catch. The shipped shape costs +1.256 % where the gate measures it, on the enforcing
+/// image.
+fn container_leading_notes(node: &CustomNode) -> &[pyrs_ast::ast::Comment] {
+    node.leading_comments()
+}
+
 /// Append a noted array as one element per line.
 ///
 /// Its own fn because it is the rare shape of a hot branch: [`write_value`] already carries the
 /// scalar, inline-table and compact-array arms, and a forty-line note layout does not belong in the
 /// one recursive writer every node passes through.
-fn write_notated_array(out: &mut String, items: &[CustomNode]) -> Result<(), SerializeError> {
+fn write_notated_array(
+    out: &mut String,
+    items: &[CustomNode],
+    leading: &[pyrs_ast::ast::Comment],
+) -> Result<(), SerializeError> {
     out.push_str("[\n");
+    // Inside the brackets is where a `# ` line can live at all, and where this crate's reader reports
+    // a note carried by the array back from - so the second emission finds it in the slot its own
+    // first emission chose.
+    for c in leading {
+        out.push_str("  # ");
+        push_note_text(out, &c.text);
+        out.push('\n');
+    }
     for (i, it) in items.iter().enumerate() {
         for c in it.leading_comments() {
             out.push_str("  # ");
@@ -331,6 +363,77 @@ fn write_notated_array(out: &mut String, items: &[CustomNode]) -> Result<(), Ser
         out.push('\n');
     }
     out.push(']');
+    Ok(())
+}
+
+/// Append a noted table as one member per line.
+///
+/// Its own fn for the reason [`write_notated_array`] gives: [`write_value`] is the one recursive
+/// writer every node passes through, and a note layout does not belong inside it.
+fn write_notated_table(
+    out: &mut String,
+    pairs: &NodeMap<CustomNode, CustomNode>,
+    leading: &[pyrs_ast::ast::Comment],
+) -> Result<(), SerializeError> {
+    // A note's own line inside the braces is where this crate's reader reports a table-interior
+    // leading note from - the same answer #146 gave for a member's key-line note.
+    out.push_str("{\n");
+    for c in leading {
+        out.push_str("  # ");
+        push_note_text(out, &c.text);
+        out.push('\n');
+    }
+    let count = pairs.len();
+    let mut unscanned = true;
+    for (idx, (k, v)) in pairs.iter().enumerate() {
+        if unscanned && !k.is_identity_clean() {
+            unscanned = false;
+            reject_colliding_texts(pairs)?;
+        }
+        for c in k.leading_comments() {
+            out.push_str("  # ");
+            push_note_text(out, &c.text);
+            out.push('\n');
+        }
+        // A note that ended its key's line reaches this writer on the key's *inline* slot - that is
+        // how the hub hands it over, because there a note finishing the key's line belongs to the
+        // key. TOML has no slot that reports a key's inline note back, so the note takes its own line
+        // above the member: the position the TOML reader reports a note from. Measured, the second
+        // emission is identical.
+        if let Some(c) = k.comment().filter(|c| !c.standalone) {
+            out.push_str("  # ");
+            push_note_text(out, &c.text);
+            out.push('\n');
+        }
+        let last = idx + 1 == count;
+        out.push_str("  ");
+        push_scalar_key(out, k)?;
+        out.push_str(" = ");
+        write_value(out, v)?;
+        // A `#` runs to end of line, so the only member line a note can legitimately finish is the
+        // document's last one: `a = 1 # n,` is not TOML at all (measured: the reader rejects it), and
+        // writing the note *after* the comma - which is what this branch used to do - hands it to the
+        // next key on re-read, so the next emission moved it and the text never settled (proptest
+        // `prop_toml_writer_is_fixed_point`, 20 000 cases). Anywhere but last, the note gets its own
+        // line after the member, which is the position the reader reports it from.
+        match v.comment().filter(|c| !c.standalone) {
+            Some(c) if last => {
+                out.push_str(" # ");
+                push_note_text(out, &c.text);
+            }
+            Some(c) => {
+                out.push_str(",\n  # ");
+                push_note_text(out, &c.text);
+            }
+            None => {
+                if !last {
+                    out.push(',');
+                }
+            }
+        }
+        out.push('\n');
+    }
+    out.push('}');
     Ok(())
 }
 
@@ -449,9 +552,16 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
         CustomNode::Sequence { items, .. } => {
             // An element carrying a note forces the array onto several lines, for the reason #119
             // recorded for inline tables: `#` runs to end of line, so a comment cannot live inside
-            // `[1, 2]`. Undecorated arrays keep the compact form, so 1.0 output is unchanged.
-            if items.iter().any(element_has_note) {
-                return write_notated_array(out, items);
+            // `[1, 2]`. The array's own note joins that test through the same fifth slot the inline
+            // table reads. Undecorated arrays keep the compact form, so 1.0 output is unchanged.
+            // An empty array is asked nothing at all: its own note would have no element to sit
+            // beside, and a `# ` line inside `[]` re-reads as no note (measured), which moved the
+            // text on the second write.
+            if !items.is_empty() {
+                let leading = container_leading_notes(node);
+                if !leading.is_empty() || items.iter().any(element_has_note) {
+                    return write_notated_array(out, items, leading);
+                }
             }
             out.push('[');
             for (i, it) in items.iter().enumerate() {
@@ -464,89 +574,45 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             Ok(())
         }
         CustomNode::Mapping { pairs, .. } => {
-            let mut unscanned = true;
             // PR #119: an inline table whose members carry interior
             // comments (a key leading note or a value trailing note)
             // must be rendered multi-line, because a `# ...` comment
             // runs to end-of-line and cannot live inside a single-line
             // `{ a = 1, b = 2 }`. Undecorated inline tables keep the
             // compact single-line form so 1.0-compatible output is
-            // unchanged.
-            let decorated = pairs.iter().any(|(k, v)| {
-                !k.leading_comments().is_empty()
-                    || k.comment().is_some_and(|c| !c.standalone)
-                    || v.comment().is_some_and(|c| !c.standalone)
-            });
-            if decorated {
-                out.push_str("{\n");
-                let count = pairs.len();
-                for (idx, (k, v)) in pairs.iter().enumerate() {
-                    if unscanned && !k.is_identity_clean() {
-                        unscanned = false;
-                        reject_colliding_texts(pairs)?;
-                    }
-                    for c in k.leading_comments() {
-                        out.push_str("  # ");
-                        push_note_text(out, &c.text);
-                        out.push('\n');
-                    }
-                    // A note that ended its key's line reaches this writer on the key's *inline*
-                    // slot - that is how the hub hands it over, because there a note finishing the
-                    // key's line belongs to the key. TOML has no slot that reports a key's inline
-                    // note back, so the note takes its own line above the member: the position the
-                    // TOML reader reports a note from. Measured, the second emission is identical.
-                    if let Some(c) = k.comment().filter(|c| !c.standalone) {
-                        out.push_str("  # ");
-                        push_note_text(out, &c.text);
-                        out.push('\n');
-                    }
-                    let last = idx + 1 == count;
-                    out.push_str("  ");
-                    push_scalar_key(out, k)?;
-                    out.push_str(" = ");
-                    write_value(out, v)?;
-                    // A `#` runs to end of line, so the only member line a note can
-                    // legitimately finish is the document's last one: `a = 1 # n,` is not
-                    // TOML at all (measured: the reader rejects it), and writing the note
-                    // *after* the comma - which is what this branch used to do - hands it to
-                    // the next key on re-read, so the next emission moved it and the text
-                    // never settled (proptest `prop_toml_writer_is_fixed_point`, 20 000
-                    // cases). Anywhere but last, the note gets its own line after the
-                    // member, which is the position the reader reports it from.
-                    match v.comment().filter(|c| !c.standalone) {
-                        Some(c) if last => {
-                            out.push_str(" # ");
-                            push_note_text(out, &c.text);
-                        }
-                        Some(c) => {
-                            out.push_str(",\n  # ");
-                            push_note_text(out, &c.text);
-                        }
-                        None => {
-                            if !last {
-                                out.push(',');
-                            }
-                        }
-                    }
-                    out.push('\n');
+            // unchanged. The table's own note reads through the same
+            // fifth slot the array arm uses, and the layout lives in
+            // `write_notated_table`. An empty table is asked nothing, for
+            // the array arm's reason: `# a` inside `{ }` reaches no member
+            // and this crate's reader hands back no note for it, so the
+            // demoted text moved on the second write.
+            if !pairs.is_empty() {
+                let leading = container_leading_notes(node);
+                if !leading.is_empty()
+                    || pairs.iter().any(|(k, v)| {
+                        !k.leading_comments().is_empty()
+                            || k.comment().is_some_and(|c| !c.standalone)
+                            || v.comment().is_some_and(|c| !c.standalone)
+                    })
+                {
+                    return write_notated_table(out, pairs, leading);
                 }
-                out.push('}');
-            } else {
-                out.push('{');
-                for (i, (k, v)) in pairs.iter().enumerate() {
-                    if unscanned && !k.is_identity_clean() {
-                        unscanned = false;
-                        reject_colliding_texts(pairs)?;
-                    }
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    push_scalar_key(out, k)?;
-                    out.push_str(" = ");
-                    write_value(out, v)?;
-                }
-                out.push('}');
             }
+            let mut unscanned = true;
+            out.push('{');
+            for (i, (k, v)) in pairs.iter().enumerate() {
+                if unscanned && !k.is_identity_clean() {
+                    unscanned = false;
+                    reject_colliding_texts(pairs)?;
+                }
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                push_scalar_key(out, k)?;
+                out.push_str(" = ");
+                write_value(out, v)?;
+            }
+            out.push('}');
             Ok(())
         }
         CustomNode::Null { .. } => Err(SerializeError::UnsupportedValue(
@@ -1636,6 +1702,168 @@ mod tests {
         let out = to_toml(&root).unwrap();
         assert_eq!(
             out, "t = [{\n  # n\n  a = 1\n}]\n",
+            "the note did not survive: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_above_the_first_key_of_a_table_written_inline_is_written_inside_it() {
+        // The YAML shape `nested:` / `  # n` / `  inner: 1` beside a later root pair, which TOML has
+        // to write as an inline table. The hub homes `n` on the *mapping node's* leading list, and this
+        // arm looked only at what a member carries - so the table stayed single-line and
+        // `to_toml` gave back `nested = {inner = 1}` with the note gone, not moved. A note's own line
+        // inside the braces is where this crate's reader reports it from, which is the slot #119 and
+        // #146 already serve for a member's note; an undecorated table still owes the compact form.
+        let mut table = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("inner"),
+                CustomNode::plain_scalar("1"),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        table.push_leading_comment(Comment {
+            text: "n".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [
+                (CustomNode::plain_scalar("nested"), table),
+                (
+                    CustomNode::plain_scalar("tail"),
+                    CustomNode::plain_scalar("2"),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "nested = {\n  # n\n  inner = 1\n}\ntail = 2\n",
+            "the note did not survive: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn the_legacy_own_line_note_on_an_inline_table_is_written_inside_it_too() {
+        // #114 reads both shapes for a section header because a hand-built node can still carry its
+        // own-line note in the older `comment` slot with an empty leading list (`set_comment` writes
+        // only that slot), and the inline-table arm takes the same fallback: a note authored the
+        // pre-#117 way owes the same demotion, or it disappears exactly as the other one did.
+        let mut table = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("inner"),
+                CustomNode::plain_scalar("1"),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        table.set_comment(Comment {
+            text: "n".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [
+                (CustomNode::plain_scalar("nested"), table),
+                (
+                    CustomNode::plain_scalar("tail"),
+                    CustomNode::plain_scalar("2"),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "nested = {\n  # n\n  inner = 1\n}\ntail = 2\n",
+            "the legacy note did not survive: {out}"
+        );
+    }
+
+    #[test]
+    fn a_note_on_an_empty_inline_table_keeps_the_compact_form_and_the_fixed_point() {
+        // Pinned from `prop_toml_writer_is_fixed_point` at 20,000 cases (seed 87565b80, saved by
+        // that run in `proptest-regressions/fmt_pbt.txt`): an *empty* mapping carrying its own note.
+        // The demotion a non-empty table gets has nothing to write beside here, and a `# ` line
+        // inside `{ }` reaches no member — measured through this crate's own reader,
+        // `to_toml(from_toml("A = {\n  # a\n}"))` gives back `A = {}`, no note anywhere. So the
+        // demoted text moved on the second write and the fixed point broke. A note owned by an
+        // empty container is the boundary's other half, beside an own-line note after a file's
+        // last key: TOML has no line that can report it back.
+        let mut empty = CustomNode::plain_mapping(Default::default());
+        empty.push_leading_comment(Comment {
+            text: "a".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("A"), empty)]
+                .into_iter()
+                .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(out, "A = {}\n", "an empty table was demoted: {out}");
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_on_an_empty_inline_array_keeps_the_compact_form_and_the_fixed_point() {
+        // The sequence twin of the pinned counterexample, because the two arms are one rule and the
+        // array half of a shared helper is the half a fixture tends not to reach.
+        let mut empty = CustomNode::plain_sequence(Vec::new());
+        empty.push_leading_comment(Comment {
+            text: "a".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("A"), empty)]
+                .into_iter()
+                .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(out, "A = []\n", "an empty array was demoted: {out}");
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_above_the_first_item_of_an_array_written_inline_is_written_inside_it() {
+        // The same fifth slot one level down. `arr:` with `# n` above its first item reaches this
+        // writer with the note on the sequence node, and `element_has_note` asks only the elements,
+        // so the array stayed `arr = [1, 2]` and the note was gone - measured on the head before
+        // this test. The brackets are where a `# ` line can live, and the reader hands the note back
+        // from there, so the emission settles.
+        let mut arr = CustomNode::plain_sequence(vec![
+            CustomNode::plain_scalar("1"),
+            CustomNode::plain_scalar("2"),
+        ]);
+        arr.push_leading_comment(Comment {
+            text: "n".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [
+                (CustomNode::plain_scalar("arr"), arr),
+                (
+                    CustomNode::plain_scalar("tail"),
+                    CustomNode::plain_scalar("2"),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "arr = [\n  # n\n  1,\n  2\n]\ntail = 2\n",
             "the note did not survive: {out}"
         );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();

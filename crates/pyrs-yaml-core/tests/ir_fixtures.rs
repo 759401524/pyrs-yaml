@@ -574,11 +574,12 @@ fn the_toml_note_fixture_carries_its_comments_and_the_values_of_the_plain_one() 
 
 /// `to_toml_notes` writes the note-bearing YAML document out as TOML. The TOML writer has a slot for
 /// a document note, a pair note, a section-header note and an item note, and `DIALECT_NOTES_YAML`
-/// carries one of each - plus a standalone note above a key of a nested map, which has no TOML
-/// spelling at all: that map is emitted as an inline table, and an inline table can hold neither a
-/// comment nor a line break. Five of the six arrive; the sixth is asserted absent so that a future
-/// demotion of a note-carrying map to a `[table]` header has to be decided here rather than land as a
-/// silent change to what this fixture expects.
+/// carries one of each - plus a standalone note above a key of a nested map, which TOML has to write as
+/// an inline table. That one used to be dropped outright: the hub homes it on the mapping node and the
+/// inline-table arm looked only at what a member carries, so the table stayed on one line and the
+/// note had nowhere to be written. All six arrive now, and they arrive at a text that re-reads to
+/// itself - which is the property a demotion owes, since a multi-line inline table is 1.1 syntax and
+/// only a note is allowed to take a table there.
 #[test]
 fn the_dialect_note_fixture_reaches_the_toml_writer_where_toml_has_a_line_for_it() {
     let ast = parse(DIALECT_NOTES_YAML, Schema::Core).expect("the note fixture parses as YAML");
@@ -587,6 +588,7 @@ fn the_dialect_note_fixture_reaches_the_toml_writer_where_toml_has_a_line_for_it
         "root leading note",
         "trailing on a pair",
         "note on the pair the value follows",
+        "above the inner key",
         "item note",
         "note on a flow value",
     ] {
@@ -595,9 +597,18 @@ fn the_dialect_note_fixture_reaches_the_toml_writer_where_toml_has_a_line_for_it
             "toml dropped the note {note:?}:\n{written}"
         );
     }
+    // The note that forces the demotion sits inside the braces, which is where this crate's reader
+    // reports a table-interior leading note from - so the second emission finds it in the slot its
+    // own first emission chose, and the text settles in one hop.
     assert!(
-        !written.contains("above the inner key"),
-        "toml found a line for the inline-table note, so this premise changed shape:\n{written}"
+        written.contains("nested = {\n  # above the inner key\n"),
+        "the inline-table note landed somewhere else, so the fixture's premise moved:\n{written}"
+    );
+    let again = to_toml(&from_toml(&written).expect("the emitted TOML reads back"))
+        .expect("and writes back out");
+    assert_eq!(
+        written, again,
+        "the note's placement is not a fixed point:\n{again}"
     );
 }
 

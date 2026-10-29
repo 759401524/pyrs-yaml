@@ -29,6 +29,7 @@ The last test asserts that minimum is non-empty, because a gate that skips entir
 import datetime as dt
 import math
 import random
+import sys
 
 import pytest
 import tomlkit
@@ -143,6 +144,56 @@ def test_an_integer_beyond_i64_is_the_string_the_hub_calls_it_everywhere():
     for name, read in READERS.items():
         assert read(document)["k"] == big, f"{name} read {document!r} as not-a-string"
     assert pyrs_yaml.load_toml(document) == {"k": big}
+
+
+def test_a_note_above_a_nested_key_travels_the_route_into_the_inline_table():
+    # The crate's own writer test builds this AST in Rust; this one proves the shipped route hands
+    # the note over in the slot the writer reads — YAML text, hub AST, TOML — and that the demotion
+    # settles: re-reading the emitted TOML lands the note in the same place, so a second emission
+    # is byte-identical.
+    noted = pyrs_yaml.to_toml("top: 1\nnested:\n  # above the inner key\n  inner: 1\ntail: 2\n")
+    assert noted == "top = 1\nnested = {\n  # above the inner key\n  inner = 1\n}\ntail = 2\n"
+    assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(noted)) == noted
+    assert pyrs_yaml.load_toml(noted) == {"top": 1, "nested": {"inner": 1}, "tail": 2}
+    # The note is the only reason the table left the compact form: undecorated output is unchanged,
+    # so the 1.0 promise this file's other gates rest on keeps holding for documents with no note.
+    bare = pyrs_yaml.to_toml("top: 1\nnested:\n  inner: 1\ntail: 2\n")
+    assert bare == "top = 1\nnested = {inner = 1}\ntail = 2\n"
+    # Which side of 1.0 each text is on is asked of a parser the project does not own — and the answer
+    # is a fact about that parser's version, measured on 2026-10-29: CPython 3.11-3.14 `tomllib` refuses
+    # a multi-line inline table, CPython 3.15.0's `tomllib` accepts it, and `tomli` 2.5.0 (the reader the
+    # legs below 3.11 get) accepts it too. So the expectation is keyed rather than assumed: a leg whose
+    # reader moved out of this table reddens instead of quietly dropping its claim. The refusal that
+    # does not move is this crate's own 1.0 gate, `crates/pyrs-toml`'s `from_toml_v1_0`, pinned with
+    # its 1.1 half by `the_1_0_reader_refuses_the_1_1_inline_table_freedom`.
+    if sys.version_info >= (3, 11):
+        import tomllib as _reader
+
+        _refuses_multiline_inline_table = sys.version_info < (3, 15)
+    else:
+        import tomli as _reader
+
+        _refuses_multiline_inline_table = False
+
+    assert _reader.loads(bare) == {"top": 1, "nested": {"inner": 1}, "tail": 2}
+    if _refuses_multiline_inline_table:
+        with pytest.raises(_reader.TOMLDecodeError):
+            _reader.loads(noted)
+    else:
+        assert _reader.loads(noted) == {"top": 1, "nested": {"inner": 1}, "tail": 2}, (
+            f"{_reader.__name__} read the noted text as something else"
+        )
+
+
+def test_a_note_above_the_first_item_of_an_array_travels_the_route_inside_it():
+    # The same fifth slot one level down, and the reason the rule says "container" rather than
+    # "table": `arr:` with a note above its first item reaches the writer on the sequence node, which
+    # the element checks never ask.
+    noted = pyrs_yaml.to_toml("top: 1\narr:\n  # above the first item\n  - 1\n  - 2\ntail: 2\n")
+    assert noted == "top = 1\narr = [\n  # above the first item\n  1,\n  2\n]\ntail = 2\n"
+    assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(noted)) == noted
+    assert pyrs_yaml.load_toml(noted) == {"top": 1, "arr": [1, 2], "tail": 2}
+    assert pyrs_yaml.to_toml("top: 1\narr:\n  - 1\n  - 2\ntail: 2\n") == "top = 1\narr = [1, 2]\ntail = 2\n"
 
 
 def test_the_gate_cannot_silently_skip_every_reader():

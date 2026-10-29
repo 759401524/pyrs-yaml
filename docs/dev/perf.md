@@ -1450,8 +1450,8 @@ pass a floor set against it.
 
 What was still open when that was written has since been measured rather than argued.
 `scripts/ir_gate.py --profile`, on the `rustc 1.97.1` the baseline pins, ranks the loader route
-`load_toml_medium` - loop 144,813,562 counted instructions, −0.054% against the committed floor of
-144,891,981, so this reading and the gate describe the same build. Its two
+`load_toml_medium` - loop 144,813,562 counted instructions, −0.054% against the then-committed floor
+of 144,891,981, so this reading and the gate describe the same build. Its two
 `IndexMap<Arc<str>, TomlTable>` insertion rows carry 5,902,000 and 5,828,000: 8.10% of the loop. The
 identical pair appears in the engine route `from_toml_medium` (loop 121,169,608) at 9.68%, which is
 the evidence that the IR is one tree both consumers read rather than two costs. The second tree the
