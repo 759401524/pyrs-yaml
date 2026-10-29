@@ -282,6 +282,20 @@ pass_filenames = false
 files = "^(QUALITY_MATRIX\\.md|\\.ci/ir-baseline\\.json)$"
 priority = "checks"
 
+# A `python_version` cap on a counterparty library is a claim about what PyPI publishes, and five of
+# the nine sat a whole band below their wheels while the ≥3.14 legs silently ran 236 fewer
+# cross-library assertions (2026-10-28, measured from PR #665's per-leg summaries). The checker reads
+# the wheel record against the legs CI actually schedules, so a cap that is too low or too high is a
+# red hook rather than a coverage hole nobody counts.
+[[repos.hooks]]
+id = "counterparty-caps"
+name = "counterparty version caps equal the recorded wheel availability"
+language = "system"
+entry = "python scripts/check_counterparty_caps.py"
+pass_filenames = false
+files = "^(pyproject\\.toml|uv\\.lock|\\.ci/counterparty-wheels\\.json|scripts/ci_matrix_plan\\.py|scripts/check_counterparty_caps\\.py|\\.github/workflows/ci\\.yml)$"
+priority = "checks"
+
 # The ledger's `### (xy)` letters are how a citation resolves. The rule was judged only by the Python
 # tier until a head with one section placed a letter early reddened all twelve `test` legs while this
 # hook's own job stayed green (2026-10-26), so the cheapest gate that can see it now does.

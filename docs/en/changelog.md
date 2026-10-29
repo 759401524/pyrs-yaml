@@ -19,6 +19,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The counterparty version caps are measured, and a gate keeps them measured** — five of
+  the nine `python_version < 'X.Y'` caps in the test group still read `< '3.14'` while
+  `pyjson5`, `numpy`, `ujson` and `python-rapidjson` each ship a 3.14 wheel, so the ≥3.14 legs
+  install fewer oracles: the twelve green legs of PR #665 read 4,433 assertions on 3.13 against
+  4,197 on 3.14 and 4,196 on 3.15, and making one counterparty unimportable at a time
+  attributes 141 of the 236 to `pyjson5`, 31 to `orjson` and 54 to `numpy`, none to the others
+  on an ordinary leg. `pyjson5` moves to `< '3.15'` and
+  `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` to `< '3.16'`, because a wheel exists on every
+  leg each now covers, both free-threaded ones included; `orjson` and `rtoml` stay below 3.14
+  because PEP 508 has no free-threading marker, neither publishes a 3.14t wheel, and admitting
+  3.14 admits 3.14t and leaves that leg unable to install the group.
+  `scripts/counterparty_wheels.py` records the availability per OS and band from real
+  interpreters, and `scripts/check_counterparty_caps.py` — wired as a hook — refuses a cap that
+  admits a band with no wheel *and* a cap that excludes a band with wheels on every leg of it.
+  A stale cap is a red run naming the package now, not a silent skip the size of the whole
+  JSON5 spec table.
 - **What a shared Python object becomes when it is written is now a checked fact** — given
   `{"a": shared, "c": shared}`, both writer routes emit two copies of the subtree rather than an
   anchor and an alias, and the re-read compares equal but the two values are not one object; the

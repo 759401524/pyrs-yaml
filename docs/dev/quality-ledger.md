@@ -10576,6 +10576,58 @@ a blind fold over the one interpreter new enough to break - and the version band
 dependency selects can equally decide *which shape a dump produces*, which is what the three red
 legs found here.
 
+### (ho) A version cap on a counterparty is a claim about PyPI, and now something reads it
+
+The test group caps nine cross-library readers with `python_version < 'X.Y'`. Five of the
+nine still read `< '3.14'` on 2026-10-28 while `pyjson5`, `numpy`, `ujson` and
+`python-rapidjson` each publish a 3.14 wheel. The cost is invisible in the verdict because
+the skips are correct ones: the twelve green legs of PR #665 read 4,433 passed / 5 skipped on
+ubuntu 3.13, 4,197 / 200 on ubuntu 3.14, 4,196 / 201 on ubuntu 3.15, and the two
+free-threaded legs inherit the same 236 — the ≥3.14 band simply does not install the oracles,
+and `importorskip` skips what is absent.
+
+Attributing the 236 needs an instrument that can make a package absent on a leg that has it.
+Setting `sys.modules[name] = None` in a pytest plugin, over the eight counterparty-gated
+files (518 collected with nothing blocked), says: `pyjson5` 141, `orjson` 31, `numpy` 54, and
+`ujson`, `python-rapidjson`, `rtoml`, `ryaml`, `yaml-edit`, `yaml-rs` 0 each on an ordinary
+leg — those six are read only by the CodSpeed benchmark files, which ordinary legs never run.
+The numpy figure carries an instrument artifact: blocking it also breaks the ten files that
+import `numpy` at module scope, because the local run does not apply the legs' `-k "not
+numpy"` alongside the block, so 54 is read as the share and not as a clean skip count.
+
+Raising a cap is not one character in each direction. PEP 508 has no free-threading marker,
+so `python_version` cannot admit 3.14 while refusing 3.14t, and `orjson`/`rtoml` publish no
+3.14t wheel at all — a cap of `< '3.15'` for either leaves the ubuntu `test-freethreaded` leg
+unable to install the group. So `pyjson5` moves to `< '3.15'` (its 3.14t wheel exists on
+every OS asked) and `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` to `< '3.16'`, which is the
+shape of the caps as they now stand; `orjson` and `rtoml` stay below 3.14, and recovering
+their 31 and 0 assertions would mean passing `--no-install-package` on the free-threaded legs
+— a change to the test command rather than to the manifest, and not taken here.
+
+Three instrument lessons, each of which produced a wrong sentence before it was caught. (1)
+`uv pip compile --python-version 3.14t` resolves the GIL bands and reports no wheel for
+*every* package at a free-threaded band; it never constructs that environment, so the uniform
+negative is the instrument, not the vendor — free-threaded rows must be asked of a real
+interpreter. (2) The same compile probe for linux 3.15 named four missing wheels and missed
+`rtoml`, which the real linux 3.15 interpreter does not have either. (3) `--no-build` proves
+that a wheel exists, which is not CI's predicate — CI builds sdists, so the same probe
+refuses linux 3.15 outright because `pyyaml` has no 3.15 wheel, while the leg installs it
+from source. Availability and installability are different questions, and the committed
+record answers the first.
+
+Readings: `python scripts/check_counterparty_caps.py` — `OK: 10 capped requirement(s) match
+the record on 10 scheduled band(s) x 3 OS(es); 6 note(s)`; `prek run counterparty-caps
+--all-files` — Passed; `uv run pytest tests/test_counterparty_caps_gate.py` — 6 passed, and
+three of them are mutations: `orjson` at `< '3.15'` reddens naming `linux 3.14t`, `pyjson5`
+at `< '3.14'` reddens as "throwing away coverage", a new capped requirement with no row
+reddens, and a record with no rows exits 2 rather than 0. `uv pip install --dry-run
+--no-build --group test` against real interpreters on linux answers nine counterparties on
+3.13 and seven on 3.14 and 3.14t; with source builds allowed the group resolves on 3.15 and
+3.15t too, pulling four counterparties there where before the caps left zero.
+`scripts/quality_matrix.py` caught the new checker before it was wired — it publishes
+`orphan-gate:check_counterparty_caps.py` for any checker no hook and no workflow invokes —
+which is why the hook entry in `prek.toml` is part of this change rather than a follow-up.
+
 ### (hp) A dependency removal leaves numbers in a live design document (2026-10-29)
 
 The rewrite in PR 669 deleted the last Rust-side dependency on the NumPy C API, and

@@ -1,0 +1,550 @@
+{
+  "measured_by": {
+    "linux": "scripts/counterparty_wheels.py",
+    "macos": "scripts/counterparty_wheels.py",
+    "windows": "scripts/counterparty_wheels.py"
+  },
+  "not_wheel_bounded": {
+    "tomli": "it is the reader the standard library gains as tomllib in 3.11, so the cap retires a fallback rather than avoiding a missing wheel"
+  },
+  "rows": {
+    "linux": {
+      "3.13": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.14": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.14t": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.15": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "pyjson5": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.15t": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "pyjson5": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.8": {
+        "numpy": {
+          "detail": "numpy==1.24.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.10.15",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.20",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==5.10.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        }
+      }
+    },
+    "macos": {
+      "3.15": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.8": {
+        "numpy": {
+          "detail": "numpy==1.24.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.10.15",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.20",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==5.10.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "no wheel for that platform and band",
+          "state": "no-wheel"
+        }
+      }
+    },
+    "windows": {
+      "3.13": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.14": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.14t": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "ryaml==0.5.1",
+          "state": "wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "yaml-edit==0.2.0",
+          "state": "wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.15": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.13.0",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "rtoml==0.14.0",
+          "state": "wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.15t": {
+        "numpy": {
+          "detail": "numpy==2.5.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "pyjson5": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.25",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==6.0.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "yaml-rs==0.1.6",
+          "state": "wheel"
+        }
+      },
+      "3.8": {
+        "numpy": {
+          "detail": "numpy==1.24.4",
+          "state": "wheel"
+        },
+        "orjson": {
+          "detail": "orjson==3.10.15",
+          "state": "wheel"
+        },
+        "pyjson5": {
+          "detail": "pyjson5==2.0.1",
+          "state": "wheel"
+        },
+        "python-rapidjson": {
+          "detail": "python-rapidjson==1.20",
+          "state": "wheel"
+        },
+        "rtoml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ryaml": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "ujson": {
+          "detail": "ujson==5.10.0",
+          "state": "wheel"
+        },
+        "yaml-edit": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        },
+        "yaml-rs": {
+          "detail": "no wheel for this interpreter",
+          "state": "no-wheel"
+        }
+      }
+    }
+  }
+}
