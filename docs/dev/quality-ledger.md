@@ -10698,6 +10698,69 @@ binding's counted `to_python_*` scenarios measure the loader and the engine's `s
 count `to_yaml` on a node AST, as (hm) records — so the one extra type compare per scalar this
 change adds is not read by the Ir gate.
 
+### (hr) A handler owns the scalar it claims, and nothing else (2026-10-29)
+
+(hq) closed with three shapes left open "because each half is a public-behaviour choice". The ruling
+came back as a boundary rather than a tie-break: a registered handler owns a dump-side scalar — as a
+value, as a key, as a sequence item — and owns neither a container nor a native string. The two
+halves move in opposite directions, which is why they were measured as one question rather than
+shipped as two.
+
+Toward the handler. Four rows moved the *direct* writer to where the AST writer already was, each
+measured on the tree (hq) landed on: `safe_dump({"m": Booly()})` wrote `m:\n  !booly B\n`, because
+the direct route reached the registry through `write_other`, which emits its own indent, while the
+node route wrote `m: !booly B\n`; the same class inside a sequence item cost the item its dash
+(`- \n  a:\n    !booly B\n  b: 1` against the node route's compact spelling) for the same reason;
+`safe_dump({Booly(): 1})` was a refusal (`YamlTypeError`) where the node route wrote `!booly B: 1`;
+and an array whose class a handler claims
+reached the buffer route first, so the direct writer emitted `m:\n  - 0\n  - 1\n  - 2\n  - 3\n` for
+`numpy.arange(4)` while the node route emitted `holder: !nd ND\n`. `Booly` is the probe's name for a
+class carrying only `__bool__`: no protocol answer exists for it, so nothing but the handler has
+anything to say, and that is what makes it the sample the two readings fork on.
+
+Away from the handler. A handler registered for `str` rewrote every string on the AST route
+(`holder: !s <abc>` where the direct route wrote `holder: abc`), because that route asked the
+registry before its own string branch and the direct writer asks after its own. This one moves the
+*node* route to the direct route's answer, deliberately: a string is YAML's own scalar and what a
+reader resolves is the text, so `python_type = str` is a load-side concern and cannot rewrite text
+on the way out. Containers keep their shape for the same reason — the registry is asked about
+scalars only, so `{"m": {"a": 1}}` is still a mapping and `[1]` still a sequence on both writers.
+That row passes before the change as well as after it, which is the point: it is the boundary, not
+the fix.
+
+`type_registry::claims` is new because a writer answers a layout question before it writes anything:
+deciding whether an item stays compact must not call `to_yaml()` to find out whether a handler owns
+a value, since a handler is allowed side effects. The matching rule that `try_to_yaml` used to
+inline now lives in one function both callers share.
+
+Seven sites, each made inert on its own, rebuilt, and named by the rows that turned red: the node
+route's registry ask reddens 10 (three positions, both sort rows, the `Decimal` row, the array row),
+the direct route's mapping-value ask 2, `write_other`'s ask 1 (the compact item only — the value
+position never reaches it once the pair asks first), the dash's ask 1, the compactness question 1,
+the key's ask 1, and the string branch's position 1. No site is inert-and-green, so none of the
+seven is decoration. Six functions joined two modules: five in
+`tests/test_community_plugins.py::TestHandlerOwnsTheScalarNotTheString` and one array row in
+`tests/test_numpy.py::TestNumpyBufferRoute`; five of the six fail on the tree this lands on, and the
+sixth is the container control.
+
+The price is a registry question per scalar the direct writer already asks twice, plus one
+`is_empty` read and one `PyInt` cast on the path a real document takes — the same shape (hq) priced.
+It stays unpriced by the gate for the same reason: no committed floor reaches `direct_dump`.
+
+Two things this opened rather than closed, both measured on the rebuilt tree. The first is a public
+byte change the ruling had to produce: `!time` is a registered handler like any other, so
+`safe_dump({"v": datetime.time(9, 30)})` moved from the block spelling `v:\n  !time 09:30:00\n` to
+`v: !time 09:30:00\n` once the value position asked the handler first. One row in the suite pinned
+the old shape (`test_the_bare_time_stays_the_local_extension_it_admits_being`), and it now pins the
+inline spelling plus the reading that must not move: both writers re-read the same time. The second
+is a divergence this change did not decide. The AST route *quotes* a handler's text
+(`v: !time "09:30:00"`, and the same for a `datetime` carrying an offset) while the direct route
+emits it exactly as `to_yaml()` wrote it, because the node form passes the text back through the
+emitter's quoting rule and the object form does not. A `date` is where the two agree, and it is
+where no colon sits in the text. Settling that is a decision about who owns the quoting of a
+handler's scalar, and it reaches the engine writer the floors price, so it is named rather than
+absorbed here.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

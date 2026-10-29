@@ -146,12 +146,25 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
     #[cfg(not(feature = "numpy"))]
     let shaped_array = false;
 
-    // A registered `CustomType` is asked before Python's number protocol, for every shape except an
-    // `int` or `int` subclass: a class that only *answers* as a number (`Decimal`, a money type
-    // carrying `__index__`) belongs to its handler, and an extraction that succeeds is not a claim
-    // of ownership. Integers keep their own spelling because that is what a reader resolves, and
-    // the one cast is what keeps the common value in a real document off the registry path, which
-    // snapshots the handlers and calls `isinstance` per entry.
+    // A string is YAML's own scalar and its spelling wins: a handler registered for `str`, or for a
+    // `str` subclass, is a load-side concern and does not rewrite strings on the way out. Asked
+    // ahead of everything below because nothing that answers as a number or an array is a string.
+    if let Ok(s) = obj.cast::<PyString>() {
+        let text = py_string_to_arc(s)?;
+        return Ok(if needs_quotes(&text) {
+            CustomNode::double_quoted_scalar(text)
+        } else {
+            CustomNode::plain_scalar(text)
+        });
+    }
+
+    // A registered `CustomType` is asked before Python's number protocol and before the array
+    // route, for every shape except an `int` or `int` subclass: a class that only *answers* as a
+    // number (`Decimal`, a money type carrying `__index__`), or that carries a buffer the route
+    // below would read, belongs to its handler, and a fallback representation that succeeds is not
+    // a claim of ownership. Integers keep their own spelling because that is what a reader
+    // resolves, and the one cast is what keeps the common value in a real document off the registry
+    // path, which snapshots the handlers and calls `isinstance` per entry.
     if obj.cast::<PyInt>().is_err()
         && !type_registry::is_empty()
         && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
@@ -191,34 +204,9 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
         return Ok(CustomNode::plain_scalar(float_to_yaml_string(f)));
     }
 
-    if let Ok(s) = obj.cast::<PyString>() {
-        let text = py_string_to_arc(s)?;
-        return Ok(if needs_quotes(&text) {
-            CustomNode::double_quoted_scalar(text)
-        } else {
-            CustomNode::plain_scalar(text)
-        });
-    }
-
     #[cfg(feature = "numpy")]
     if let Some(node) = ndarray_to_node(py, obj) {
         return Ok(node);
-    }
-
-    // Check registered CustomTypes for serialization
-    if let Some(result) = {
-        let obj_ref = obj.clone().unbind();
-        type_registry::try_to_yaml(py, &obj_ref)
-    } {
-        let (tag_name, yaml_str) = result?;
-        let tag = crate::py::tags::tag_of(&tag_name);
-        return Ok(CustomNode::Scalar {
-            value: std::sync::Arc::from(yaml_str),
-            style: crate::ast::ScalarStyle::Plain,
-            chomping: crate::ast::Chomping::Clip,
-            block_indent: None,
-            meta: crate::ast::NodeMeta::with_tag(tag),
-        });
     }
 
     Err(YamlTypeError::new_err(format_i18n_error(

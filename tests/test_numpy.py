@@ -443,3 +443,31 @@ class TestNumpyBufferRoute:
     def test_float16_is_still_outside_the_accepted_dtypes(self):
         with pytest.raises(pyrs_yaml.YamlTypeError):
             pyrs_yaml.safe_dump(numpy.array([1.5], dtype="float16"))
+
+    def test_a_registered_handler_is_asked_before_the_buffer_route(self):
+        """An array a handler claims is the handler's scalar, on both writers.
+
+        The buffer route reads the object's own ``dtype``/``shape``/``tobytes()``, so it used to be
+        reached before the registry and answer with a sequence even though the caller had registered
+        a class for it. A handler is the caller's own statement about a class, and the node route has
+        always converted a value before asking any layout question - so both now ask the registry
+        first. Without the handler, these rows are the buffer route's ordinary output.
+        """
+
+        class NdType(pyrs_yaml.CustomType):
+            python_type = numpy.ndarray
+
+            def to_yaml(self, obj):
+                return "ND"
+
+        pyrs_yaml.clear_type_handlers()
+        try:
+            pyrs_yaml.register_type("!nd", NdType())
+            array = numpy.arange(4, dtype="int32")
+            assert pyrs_yaml.safe_dump({"m": array}) == "m: !nd ND\n"
+            doc = pyrs_yaml.parse("value: 0\n")
+            doc.set("$.value", array)
+            assert doc.to_yaml() == "value: !nd ND\n"
+        finally:
+            pyrs_yaml.clear_type_handlers()
+        assert pyrs_yaml.safe_dump({"m": numpy.arange(4, dtype="int32")}) == "m:\n  - 0\n  - 1\n  - 2\n  - 3\n"

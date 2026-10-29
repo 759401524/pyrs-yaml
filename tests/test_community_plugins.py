@@ -336,3 +336,100 @@ class TestHandlerBeatsTheNumberProtocol:
         obj = {True: 1, decimal.Decimal("2"): 3}
         assert _direct_route_sorted(obj) == "!dec 2: 3\ntrue: 1\n"
         assert _node_route_sorted(obj) == "holder:\n  !dec 2: 3\n  true: 1\n"
+
+
+class _Booly:
+    """No `__index__` and no `__float__`: only a handler has anything to say about this one."""
+
+    def __bool__(self):
+        return True
+
+
+class _MyStr(str):
+    pass
+
+
+class _BoolyType(pyrs_yaml.CustomType):
+    python_type = _Booly
+
+    def to_yaml(self, obj):
+        return "B"
+
+    def from_yaml(self, value):
+        return _Booly()
+
+
+class _MyStrType(pyrs_yaml.CustomType):
+    python_type = _MyStr
+
+    def to_yaml(self, obj):
+        return "S"
+
+
+class _WholeStrType(pyrs_yaml.CustomType):
+    python_type = str
+
+    def to_yaml(self, obj):
+        return f"<{obj}>"
+
+
+class TestHandlerOwnsTheScalarNotTheString:
+    """Where the registry sits against the shapes the language already spells (#298).
+
+    A handler owns its scalar - so a value only a handler can spell is written inline, on the line
+    its key or dash already opened, and a class whose buffer the array route would read is the
+    handler's business too. What it does not own is a value with a YAML-native spelling: a `str`
+    (or a `str` subclass) is written as a string, and a container as a container, because that is
+    what the caller's data says and what a reader resolves.
+    """
+
+    def setup_method(self):
+        pyrs_yaml.clear_type_handlers()
+
+    def teardown_method(self):
+        pyrs_yaml.clear_type_handlers()
+
+    def test_a_value_only_a_handler_can_spell_stays_on_its_line(self):
+        pyrs_yaml.register_type("!booly", _BoolyType())
+        assert pyrs_yaml.safe_dump({"m": _Booly()}) == "m: !booly B\n"
+        assert _node_route(_Booly()) == "holder: !booly B\n"
+        assert pyrs_yaml.safe_dump([_Booly()]) == "- !booly B\n"
+        assert _node_route([_Booly()]) == "holder:\n  - !booly B\n"
+
+    def test_a_compact_item_survives_a_handler_spelled_value(self):
+        """The dash line is decided by what the value becomes, not by how it was classified.
+
+        `{"a": Booly(), "b": 1}` was `-\n  a:\n    !booly B\n  b: 1` where the node route wrote
+        `- a: !booly B\n    b: 1`, because the compactness test asked a class question and the
+        handler had not been consulted yet.
+        """
+        pyrs_yaml.register_type("!booly", _BoolyType())
+        item = [{"a": _Booly(), "b": 1}]
+        assert pyrs_yaml.safe_dump(item) == "- a: !booly B\n  b: 1\n"
+        assert _node_route(item) == "holder:\n  - a: !booly B\n    b: 1\n"
+
+    def test_a_handler_spelled_key_is_written_by_both_writers(self):
+        pyrs_yaml.register_type("!booly", _BoolyType())
+        assert pyrs_yaml.safe_dump({_Booly(): 1}) == "!booly B: 1\n"
+        assert _node_route({_Booly(): 1}) == "holder:\n  !booly B: 1\n"
+        # ...and it reads back through the handler, so the key that comes out is the class again
+        # rather than a number or a string coerced into one.
+        loaded = pyrs_yaml.safe_load(pyrs_yaml.safe_dump({_Booly(): 1}))
+        assert [type(k) for k in loaded] == [_Booly]
+        assert list(loaded.values()) == [1]
+
+    def test_a_string_and_a_string_subclass_are_not_rewritten_by_a_handler(self):
+        pyrs_yaml.register_type("!s", _WholeStrType())
+        pyrs_yaml.register_type("!mystr", _MyStrType())
+        assert pyrs_yaml.safe_dump({"m": "abc"}) == "m: abc\n"
+        assert _node_route("abc") == "holder: abc\n"
+        assert pyrs_yaml.safe_dump({"m": _MyStr("abc")}) == "m: abc\n"
+        assert _node_route(_MyStr("abc")) == "holder: abc\n"
+        assert pyrs_yaml.safe_dump([_MyStr("abc")]) == "- abc\n"
+        # The text a `str` handler would have produced is not in any of those bytes.
+        assert "<abc>" not in _node_route("abc") + pyrs_yaml.safe_dump({"m": "abc"})
+
+    def test_a_container_is_still_written_as_a_container(self):
+        pyrs_yaml.register_type("!s", _WholeStrType())
+        assert pyrs_yaml.safe_dump({"m": {"a": 1}}) == "m:\n  a: 1\n"
+        assert pyrs_yaml.safe_dump({"m": [1]}) == "m:\n  - 1\n"
