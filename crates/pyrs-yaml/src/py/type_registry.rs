@@ -42,16 +42,12 @@ pub(crate) fn get(name: &str, py: Python<'_>) -> Option<Py<PyAny>> {
     guard.get(name).map(|h| h.clone_ref(py))
 }
 
-/// Try to serialize a Python object using a registered CustomType.
-/// Returns `(tag_name, yaml_string)` if a match is found.
+/// The handler that claims this object, with the tag it is registered under.
 ///
-/// Types are checked in reverse registration order: later-registered types
-/// take priority over earlier ones. This ensures user-registered types
-/// override built-in plugins when both match the same `python_type`.
-///
-/// The lock is released before calling any Python method to avoid deadlock
-/// if a `to_yaml` or `isinstance` re-enters the registry.
-pub(crate) fn try_to_yaml(py: Python<'_>, obj: &Py<PyAny>) -> Option<PyResult<(String, String)>> {
+/// The one place the registry's matching rule lives: a caller that only needs to know whether
+/// *some* handler owns the object must not call `to_yaml()` to find out, because a handler is
+/// allowed to have side effects.
+fn matching(py: Python<'_>, obj: &Bound<'_, PyAny>) -> Option<(String, Py<PyAny>)> {
     let snapshot: Vec<(String, Py<PyAny>)> = {
         let Ok(guard) = TYPE_REGISTRY.lock() else {
             return None;
@@ -65,8 +61,7 @@ pub(crate) fn try_to_yaml(py: Python<'_>, obj: &Py<PyAny>) -> Option<PyResult<(S
             .map(|(k, v)| (k.clone(), v.clone_ref(py)))
             .collect()
     };
-    let obj_ref = obj.bind(py);
-    for (tag_name, handler) in &snapshot {
+    for (tag_name, handler) in snapshot {
         let handler_ref = handler.bind(py);
         if let Ok(py_type) = handler_ref.getattr("python_type")
             && !py_type.is_none()
@@ -75,23 +70,42 @@ pub(crate) fn try_to_yaml(py: Python<'_>, obj: &Py<PyAny>) -> Option<PyResult<(S
             let is_match = (|| -> PyResult<bool> {
                 let builtins = py.import("builtins")?;
                 let isinstance_fn = builtins.getattr("isinstance")?;
-                let result = isinstance_fn.call1((obj_ref, py_type))?;
+                let result = isinstance_fn.call1((obj, py_type))?;
                 result.extract()
             })();
-            if let Ok(true) = is_match {
-                // Call to_yaml on the handler
-                let result = handler_ref.call_method1("to_yaml", (obj_ref,));
-                return match result {
-                    Ok(yaml_str) => {
-                        let s = yaml_str.extract::<String>().ok()?;
-                        Some(Ok((tag_name.clone(), s)))
-                    }
-                    Err(e) => Some(Err(e)),
-                };
+            if matches!(is_match, Ok(true)) {
+                return Some((tag_name, handler));
             }
         }
     }
     None
+}
+
+/// Whether any registered handler owns this object. The layout decision of a writer needs that
+/// answer before it decides where the value goes, and asking it must not run a handler.
+pub(crate) fn claims(py: Python<'_>, obj: &Bound<'_, PyAny>) -> bool {
+    matching(py, obj).is_some()
+}
+
+/// Try to serialize a Python object using a registered CustomType.
+/// Returns `(tag_name, yaml_string)` if a match is found.
+///
+/// Types are checked in reverse registration order: later-registered types
+/// take priority over earlier ones. This ensures user-registered types
+/// override built-in plugins when both match the same `python_type`.
+///
+/// The lock is released before calling any Python method to avoid deadlock
+/// if a `to_yaml` or `isinstance` re-enters the registry.
+pub(crate) fn try_to_yaml(py: Python<'_>, obj: &Py<PyAny>) -> Option<PyResult<(String, String)>> {
+    let (tag_name, handler) = matching(py, obj.bind(py))?;
+    let yaml_str = match handler.bind(py).call_method1("to_yaml", (obj.bind(py),)) {
+        Ok(value) => value,
+        Err(err) => return Some(Err(err)),
+    };
+    // A handler that answers with something other than a text is not a match, which is what the
+    // single loop used to do with it: the object falls through to the writer's own rules.
+    let text = yaml_str.extract::<String>().ok()?;
+    Some(Ok((tag_name, text)))
 }
 
 pub(crate) fn clear_all() {

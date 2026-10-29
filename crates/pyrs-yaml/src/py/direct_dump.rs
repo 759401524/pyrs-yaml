@@ -302,6 +302,14 @@ impl DirectWriter {
         }
     }
 
+    /// The tag a registered name spells, pushed as the writer's own text: `handle + suffix`, with
+    /// the value's text left to the caller because the two sites differ only in that.
+    fn push_tag(&mut self, tag_name: &str) {
+        let tag = crate::py::tags::tag_of(tag_name);
+        self.output.push_str(&tag.handle);
+        self.output.push_str(&tag.suffix);
+    }
+
     /// A registered `CustomType` spells this scalar if one claims its class. `false` means nothing
     /// is registered or nothing matched, which is every native value.
     ///
@@ -311,11 +319,32 @@ impl DirectWriter {
         let Some((tag_name, yaml_str)) = self.registered_scalar(py, obj)? else {
             return Ok(false);
         };
-        let tag = crate::py::tags::tag_of(&tag_name);
-        self.output.push_str(&tag.handle);
-        self.output.push_str(&tag.suffix);
+        self.push_tag(&tag_name);
         self.output.push(' ');
         self.output.push_str(&yaml_str);
+        Ok(true)
+    }
+
+    /// A registered handler owns this value, so it is a scalar for layout purposes: its tag and
+    /// text go on the line the caller has already opened (`key:` or `- `), which is what the node
+    /// route emits because it converts the value to a tagged scalar before it ever asks a layout
+    /// question. `false` means nothing claims it, and the caller keeps its own answer.
+    fn write_registered_body(
+        &mut self,
+        py: Python,
+        value: &Bound<'_, PyAny>,
+        leading_space: bool,
+    ) -> PyResult<bool> {
+        let Some((tag_name, yaml_str)) = self.registered_scalar(py, value)? else {
+            return Ok(false);
+        };
+        if leading_space {
+            self.output.push(' ');
+        }
+        self.push_tag(&tag_name);
+        self.output.push(' ');
+        self.output.push_str(&yaml_str);
+        self.output.push('\n');
         Ok(true)
     }
 
@@ -395,7 +424,17 @@ impl DirectWriter {
             }
             // A dict key cannot exist in a Python mapping, and a sequence key (the tuple the
             // loader hands back) is delegated before reaching here: `write_complex_pair`.
-            Kind::Sequence | Kind::Block | Kind::Other => return Err(self.unsupported_type()),
+            Kind::Other => {
+                // The owner question the value positions ask, asked of the key too: the node route
+                // converts a key before it writes anything, so a class its handler claims is a
+                // tagged scalar key there and cannot be a refusal here.
+                return if self.write_registered_scalar(py, key)? {
+                    Ok(())
+                } else {
+                    Err(self.unsupported_type())
+                };
+            }
+            Kind::Sequence | Kind::Block => return Err(self.unsupported_type()),
         }
         Ok(())
     }
@@ -523,6 +562,11 @@ impl DirectWriter {
                 self.write_node_with_kind(py, value, vkind, 0, depth + 1)?;
             }
             Kind::Block | Kind::Sequence | Kind::Other => {
+                if matches!(vkind, Kind::Other) && self.write_registered_body(py, value, true)? {
+                    // The handler was asked here, so `write_other` never runs for this value: the
+                    // one ask is the one `to_yaml()` call.
+                    return Ok(());
+                }
                 if Self::is_empty_container(value) {
                     // An empty container rides the key's line, exactly as a scalar does;
                     // `write_node*` would indent it onto the next line, where it re-reads
@@ -608,7 +652,7 @@ impl DirectWriter {
                     // putting it on a line of its own re-reads as a flow node and the next
                     // dump inlines it — the dash line is where the text stops moving.
                     self.output.push_str("{}\n");
-                } else if self.is_compact_mapping(dict) {
+                } else if self.is_compact_mapping(py, dict) {
                     for (pi, (key, value)) in dict.iter().enumerate() {
                         if pi > 0 {
                             self.write_indent(indent_width + 2);
@@ -644,9 +688,15 @@ impl DirectWriter {
                     Kind::Scalar | Kind::Null => {
                         self.write_node(py, &item, 0, depth + 1)?;
                     }
-                    _ => {
-                        self.output.push('\n');
-                        self.write_node(py, &item, indent_width + 2, depth + 1)?;
+                    kind => {
+                        // A handler's text is a scalar, so it rides the dash line the same way a
+                        // number does; only an unclaimed object has a block body to indent.
+                        let inline = matches!(kind, Kind::Other)
+                            && self.write_registered_body(py, &item, false)?;
+                        if !inline {
+                            self.output.push('\n');
+                            self.write_node(py, &item, indent_width + 2, depth + 1)?;
+                        }
                     }
                 }
             }
@@ -673,13 +723,14 @@ impl DirectWriter {
     }
 
     /// Mirror of `Serializer::is_compact_item` for Python-derived mappings:
-    /// non-empty, no metadata, every value inlineable (scalar or null).
-    /// ndarray values always produce a block sequence, so they are never
-    /// compact — matching `inlineable_value` on the node form. An empty container is
+    /// non-empty, no metadata, every value inlineable (scalar, null, empty container, or a
+    /// registered handler's text). An ndarray no handler claims produces a block sequence, so it is
+    /// never compact — matching `inlineable_value` on the node form, which turns the claimed ones
+    /// into a tagged scalar and the rest into a sequence. An empty container is
     /// inlineable too (`{}` / `[]` have no block spelling), and without that the whole
     /// item loses its compact form as well: `{"a": {}, "b": 1}` was spelled
     /// `-\n  a:\n    {}\n  b: 1` where the node writer emits `- a: {}\n  b: 1`.
-    fn is_compact_mapping(&self, dict: &Bound<'_, PyDict>) -> bool {
+    fn is_compact_mapping(&self, py: Python, dict: &Bound<'_, PyDict>) -> bool {
         if dict.is_empty() {
             return false;
         }
@@ -688,13 +739,20 @@ impl DirectWriter {
             // that is the dash line's own shape, so the item cannot stay compact. Same cheap
             // question as `write_mapping_pair` asks, for the same frame-size reason.
             !key_is_complex(&key)
-                && (matches!(classify(&value), Kind::Null | Kind::Scalar)
-                    || Self::is_empty_container(&value))
+                && (match classify(&value) {
+                    Kind::Null | Kind::Scalar => true,
+                    // The handler's text is a scalar for the node writer, which converts before it
+                    // lays out, so it is inlineable here too. Asked as ownership only — this
+                    // question runs over every value of every item before any of them is written,
+                    // and a handler may have side effects.
+                    Kind::Other => type_registry::claims(py, &value),
+                    Kind::Block | Kind::Sequence => Self::is_empty_container(&value),
+                })
         })
     }
 
-    /// ndarray subtree (serialized via the core serializer with the current
-    /// indent spliced in) or an unsupported Python type.
+    /// A registered handler's text, then the ndarray subtree (serialized via the core serializer
+    /// with the current indent spliced in), then the refusal.
     #[cfg_attr(not(feature = "numpy"), allow(unused_variables))]
     fn write_other(
         &mut self,
@@ -702,6 +760,18 @@ impl DirectWriter {
         obj: &Bound<'_, PyAny>,
         indent_width: usize,
     ) -> PyResult<()> {
+        // Asked before the array route reads anything, because the handler is the caller's own
+        // statement about its class: `register_type("!nd", ...)` on `numpy.ndarray` says "write
+        // this as text", and the node route answers that way since it converts a value before it
+        // ever asks a layout question.
+        if let Some((tag_name, yaml_str)) = self.registered_scalar(py, obj)? {
+            self.write_indent(indent_width);
+            self.push_tag(&tag_name);
+            self.output.push(' ');
+            self.output.push_str(&yaml_str);
+            self.output.push('\n');
+            return Ok(());
+        }
         #[cfg(feature = "numpy")]
         {
             // The route itself answers `None` when numpy is not installed or the object is not an
@@ -727,17 +797,6 @@ impl DirectWriter {
                 self.output.push_str(&yaml);
                 return Ok(());
             }
-        }
-        // Check registered CustomTypes for serialization
-        if let Some((tag_name, yaml_str)) = self.registered_scalar(py, obj)? {
-            self.write_indent(indent_width);
-            let tag = crate::py::tags::tag_of(&tag_name);
-            self.output.push_str(&tag.handle);
-            self.output.push_str(&tag.suffix);
-            self.output.push(' ');
-            self.output.push_str(&yaml_str);
-            self.output.push('\n');
-            return Ok(());
         }
         Err(self.unsupported_type())
     }

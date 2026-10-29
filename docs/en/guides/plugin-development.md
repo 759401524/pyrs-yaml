@@ -79,6 +79,14 @@ sequence item. One family is exempt, and the exemption is the same on both write
 subclass — and a `bool`, which is one — keeps the integer spelling a reader resolves. So a money type
 carrying `__index__` reaches the handler, while `42` and `True` never do.
 
+**What the handler owns is a scalar.** The registry is asked before either writer reaches its own
+spelling rules, so a value only `to_yaml()` can spell keeps the line opened for it — under a key,
+under a dash, and inside a compact sequence item — and an object a handler claims reaches the
+handler before the array route asks it for a buffer. Two families keep their own spelling under the
+same rule, because they already have one a reader resolves: a `str`, or a subclass of it, is written
+as a string, so a handler registered for `str` shapes the reading side and does not rewrite text on
+the way out; and a `dict` or a `list` is written as the container the caller's data says it is.
+
 ### Example: UUID Plugin
 
 ```python title="uuid_plugin.py"

@@ -301,10 +301,16 @@ def test_a_toml_document_written_back_as_yaml_is_still_readable_by_a_stranger():
 
 def test_the_bare_time_stays_the_local_extension_it_admits_being():
     # YAML defines no tag for a time of day - PyYAML cannot even represent one, so `!time` is written
-    # as what it is instead of dressed up as a standard tag no reader would resolve.
+    # as what it is instead of dressed up as a standard tag no reader would resolve. The text now
+    # rides the key's line, because the direct writer asks the handler before it lays a value out
+    # (`docs/dev/quality-ledger.md` (hr)); the AST route puts the same text in quotes, so what these
+    # two rows hold is the one thing that must not move - both spellings re-read as the same time.
     document = pyrs_yaml.safe_dump({"v": dt.time(9, 30)})
-    assert document == "v:\n  !time 09:30:00\n"
+    assert document == "v: !time 09:30:00\n"
     assert pyrs_yaml.safe_load(document) == {"v": dt.time(9, 30)}
+    doc = pyrs_yaml.parse("v: 0\n")
+    doc.set("$.v", dt.time(9, 30))
+    assert pyrs_yaml.safe_load(doc.to_yaml()) == {"v": dt.time(9, 30)}
 
 
 def test_a_tag_a_document_arrived_with_is_not_rewritten_on_the_way_out():

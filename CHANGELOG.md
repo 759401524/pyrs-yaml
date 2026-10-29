@@ -193,6 +193,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A registered handler owns the scalar it claims, and nothing else** — the three shapes #671 left
+  open are now one rule with one answer, measured on the tree that landed it. `safe_dump` of
+  `{"m": Booly()}` — a class carrying only `__bool__`, so nothing but a handler has anything to say
+  for it — emitted `m:\n  !booly B\n` where the AST route emitted `m: !booly B\n`, because the
+  direct writer reached the registry through `write_other`, which emits its own indent; the same
+  class inside a sequence item cost the item its dash line, and as a key it raised `YamlTypeError`
+  where the AST route wrote `!booly B: 1`. The array route sat on the other side of the same
+  ordering: with a handler registered for `numpy.ndarray`, the direct writer let the buffer route
+  read the array first, so `safe_dump({"m": numpy.arange(4)})` answered the array's own
+  `m:\n  - 0\n  - 1\n  - 2\n  - 3\n` while the AST route answered `!nd ND`. Both writers now ask the
+  handler before the array, before the number protocol, and before their own spelling rules, in
+  value, key, item and compact-item position. Two families keep their own spelling, and that half of
+  the ruling moves the AST route back: a handler registered for `str` used to rewrite text there
+  (`holder: !s <abc>` where the direct writer wrote `holder: abc`), because a string is YAML's own
+  scalar and what a reader resolves is the text, so `python_type` is a load-side concern; and a
+  `dict` or a `list` is still written as the container the caller's data says it is — the row that
+  passes before this change as well as after, which is what makes it the boundary rather than the
+  fix. `type_registry::claims` is new because whether an item stays compact is a layout question,
+  and a layout question must not run a handler to answer it. Six test functions joined the two
+  modules that own these rows (five in
+  `tests/test_community_plugins.py::TestHandlerOwnsTheScalarNotTheString`, one in
+  `tests/test_numpy.py::TestNumpyBufferRoute`); five of the six fail on the tree this lands on, and
+  every one of the seven changed sites was made inert alone and is named by the rows that turn red —
+  10, 2, 1, 1, 1, 1 and 1 — so none of them is decoration. One row the ruling had to move: `!time`
+  is a registered handler too, so `safe_dump({"v": datetime.time(9, 30)})` left the block spelling
+  `v:\n  !time 09:30:00\n` for `v: !time 09:30:00\n`; it was the only row in the suite pinning that
+  shape, and it now pins the inline one plus the half that must not move — both writers re-read the
+  same time. What the ruling did not decide is stated rather than absorbed: the AST route still
+  quotes a handler's text (`v: !time "09:30:00"`) where the direct route emits it as `to_yaml()`
+  wrote it, and a `date` agrees only because no colon sits in its text.
+  `docs/en/guides/plugin-development.md` states the rule. No instruction floor reaches
+  `direct_dump`, so the extra type compare per scalar is unpriced by the gate
+  (`docs/dev/quality-ledger.md` (hr)).
 - **A registered `CustomType` answers for the value it claims** — `register_type("!money", ...)`
   whose `python_type` is a class carrying `__index__` was bypassed by both YAML writers:
   `safe_dump({"m": Money(500)})` emitted `m: 500`, the integer Python's number protocol hands back,
