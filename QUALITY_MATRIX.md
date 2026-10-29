@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 833 Rust `#[test]`, 2,077 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 836 Rust `#[test]`, 2,077 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -581,14 +581,14 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — fifty-three of them, since the binding harness joined, since each cross-format
+from — fifty-five of them, since the binding harness joined, since each cross-format
 bridge grew its reader, since the event path got a number of its own (`stream_medium`, added to
 price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), since
 those bridges grew a long-value twin at both ends, since the long-value shape then reached the
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 76,838,701<!-- ir-floor: documents_short_strings --> against 119,408,659<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 76,854,831<!-- ir-floor: documents_short_strings --> against 119,424,789<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` on the row the file
 keys `20261023.334.3` at 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 --> and
@@ -608,12 +608,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,813<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 18,005,116<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,121<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,676,825<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,856,825<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,652<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 18,005,138<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,138<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,678,067<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,858,067<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 701,023,164<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,599<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 702,015,286<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,562<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
@@ -623,9 +623,26 @@ run replaced by the same number of spaces - one byte and one line of the documen
 anchors and every brace left in place - reads 98,408,046 loop instructions cheaper on the AST route
 and 93,952,438 on the event route (+16.30 % and +19.37 %, which is 4,473 and 4,271 instructions per
 note), and 31,022,014 of the first and 33,738,000 of the second sit in eight functions the note-free
-control never enters at all; `docs/dev/perf.md` names them. The Python-object write route joined too
+control never enters at all; `docs/dev/perf.md` names them. TOML grew both halves of the same pair on
+a fixture of its own, because a note there has a shape neither bridge shows:
+`to_toml_notes` 15,220,926<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
+dialect writers write, so its number sits beside `to_jsonc_notes` and `to_json5_notes` as the same
+document through a third writer, and `from_toml_notes` 148,379,310<!-- ir-floor: from_toml_notes -->
+reads a seven-comment TOML document holding `MEDIUM_TOML`'s values and nothing else
+(`crates/pyrs-yaml-core/tests/ir_fixtures.rs` requires the two to render identical JSON), so that half is a measured pair
+rather than a named one: against `from_toml_medium` 121,149,749<!-- ir-floor: from_toml_medium --> the
+seven comments cost 27,229,561 loop instructions, +22.48 % or 1,945 per comment once the harness's
+2,000 iterations are divided out, the comment bytes included. The attribution names where each half
+goes: `pyrs_toml::writer::push_note_text` 13.35 % of the writer's loop and
+`<pyrs_toml::parser::Parser>::take_comment` 9.71 % of the reader's - the largest single row in either.
+Both floors price only the notes TOML can carry. A note above a key of a map that TOML renders as an
+inline table has nowhere to go, and an own-line note after the last key has no AST slot - the parser
+hands it back as the second value of its pair and the writer never sees it - so
+`crates/pyrs-yaml-core/tests/ir_fixtures.rs` asserts both absent from the emitted text instead of letting a floor fall by
+dropping a note nobody claimed. `docs/dev/quality-ledger.md` `(hu)` records them as measured
+boundaries, priced and left alone. The Python-object write route joined too
 (`safe_dump_small` 13,296,320<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
-`safe_dump_medium` 110,613,010<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
+`safe_dump_medium` 110,613,015<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
 documents `to_python_small` and `to_python_medium` read, turned into objects by that channel's own
 body outside the counted loop and then written back by `safe_dump`) — 8.32x the instructions at the
 larger input. The route `safe_dump` and `from_dict` serve had moved no number since the harness
@@ -640,13 +657,26 @@ moved and the code had not; it was named in `accept_drift` and `tolerance_hint` 
 file that second dispatch wrote carries four floors past the line in the direction the gate does not
 police (`from_json5_long_strings` -0.65 %, `from_toml_long_strings` -0.642 %, `from_json5_medium`
 -0.549 %, `from_jsonc_medium` -0.525 %) and holds the other thirty-six inside ±0.466 %.
-This head's refresh crossed the same line one level smaller: its first dispatch refused
+The refresh that landed `safe_dump` crossed the same line one level smaller: its first dispatch refused
 `from_json5_medium`, the scenario those four readings already had as the widest mover of the other
 direction, at +0.55 % with `pyrs-json` untouched and the binding binary's digest unchanged from the
 one the replaced file recorded; named in `accept_drift`, the artifact the second dispatch wrote moves
 that one floor past the line upward (+0.547 %) and one past it downward, where the gate warns only
 past 2 % (`from_json_medium` -1.294 %), and holds the other forty-seven of the shared scenarios
 inside ±0.480 %.
+This head's pair was written by one dispatch with `accept_drift` empty and nothing refused: of the
+fifty-three floors it carried over forty-seven moved, the widest upward +0.385 %
+(`from_json_long_strings`) short of the line the gate polices, and only `from_json5_medium` -1.132 %,
+`from_jsonc_medium` -1.130 % and `parse_inline_merge` -0.551 % past 0.5 % in the direction that warns
+only beyond 2 %; the remaining forty-three hold inside ±0.352 %. No engine route changed on this head,
+so those are the harness's own code size moving its siblings - the effect named above after PR #599 -
+and the two new floors are the only numbers the change intends. One provenance fact the job cannot
+record: the dispatch measured a head whose `bench_inputs.rs` a helper script had rewritten with LF
+endings, while the head that lands stores it with CRLF as all ten commits touching that file did. That
+is not a change of measured input, and it is now asserted instead of inferred - rustc normalises CRLF
+inside raw strings, so `crates/pyrs-yaml-core/tests/ir_fixtures.rs` fails if any fixture compiles to a CR byte, which keeps a
+fixture file's stored line endings out of the bytes the gate measures; this page's own pull request
+then reads the transferred floors against a CRLF tree.
 `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
 them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
@@ -657,8 +687,9 @@ the bullet above), and `--update` writes no prose at all. The explanation lives 
 keys are pinned by `tests/test_ir_baseline_workflow.py` to exactly what the job writes.
 
 **A floor quoted in prose is a second copy of a number that moves.** The paragraph above carries
-eleven of them, and the refresh that wrote this file moved nine of the eleven while leaving the two
-the same PR re-pointed: `serialize_note_flow` drifted by 15 instructions, `documents_short_strings`
+eighteen of them, and a count of its own is the first thing a refresh can falsify: the drift this
+sentence was written to describe was nine moved readings out of the eleven that paragraph then held —
+`serialize_note_flow` drifted by 15 instructions, `documents_short_strings`
 and `documents_long_strings` by 31,977 each, four `load_*` and `from_*_notes` readings by hundreds to
 thousands, and every gate stayed green because nothing read prose against the file. The rule now is a
 declaration, not a parser: a reading quoted as *current* is followed by an HTML comment naming its
