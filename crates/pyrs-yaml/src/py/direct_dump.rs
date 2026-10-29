@@ -283,6 +283,42 @@ impl DirectWriter {
         Ok(())
     }
 
+    /// The tag name and text a registered `CustomType` produces for this object. `None` means
+    /// nothing is registered or nothing claims its class, which is every native value.
+    ///
+    /// The text is what the node route puts in the key node's scalar slot, so `key_sort_string`
+    /// sorts on it: the serializer's comparator reads that slot and nothing else.
+    fn registered_scalar(
+        &self,
+        py: Python,
+        obj: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<(String, String)>> {
+        if type_registry::is_empty() {
+            return Ok(None);
+        }
+        match type_registry::try_to_yaml(py, &obj.clone().unbind()) {
+            Some(result) => result.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// A registered `CustomType` spells this scalar if one claims its class. `false` means nothing
+    /// is registered or nothing matched, which is every native value.
+    ///
+    /// The caller keeps the indentation it already wrote; this appends the tag handle and the
+    /// handler's text only.
+    fn write_registered_scalar(&mut self, py: Python, obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let Some((tag_name, yaml_str)) = self.registered_scalar(py, obj)? else {
+            return Ok(false);
+        };
+        let tag = crate::py::tags::tag_of(&tag_name);
+        self.output.push_str(&tag.handle);
+        self.output.push_str(&tag.suffix);
+        self.output.push(' ');
+        self.output.push_str(&yaml_str);
+        Ok(true)
+    }
+
     /// Mirror of the serializer's plain/`DoubleQuoted` scalar branches plus the
     /// conversion-layer `needs_quotes` guard.
     fn write_scalar_node(
@@ -300,24 +336,22 @@ impl DirectWriter {
                 self.write_plain_scalar(&text, WIDTH);
             }
         } else if let Some(v) = extract_scalar_value(obj)? {
+            // Asked for every scalar shape, not just the float one: a registered handler used to
+            // lose to Python's number protocol for any class carrying `__index__`, which is what
+            // Decimal always escaped. An `int` or `int` subclass keeps the integer spelling - that
+            // is what a reader resolves - and the one cast is what keeps the common value in a real
+            // document off the registry path, which snapshots the handlers and calls `isinstance`
+            // per entry. Same predicate as `python_types::pyobject_to_node`, where the routes have
+            // to agree.
+            if obj.cast::<pyo3::types::PyInt>().is_err() && self.write_registered_scalar(py, obj)? {
+                self.output.push('\n');
+                return Ok(());
+            }
             match v {
                 ScalarValue::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
                 ScalarValue::Int(n) => self.output.push_str(&n.to_string()),
                 ScalarValue::BigInt(digits) => self.output.push_str(&digits),
-                ScalarValue::Float(f) => {
-                    if !type_registry::is_empty()
-                        && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
-                    {
-                        let (tag_name, yaml_str) = result?;
-                        let tag = crate::py::tags::tag_of(&tag_name);
-                        self.output.push_str(&tag.handle);
-                        self.output.push_str(&tag.suffix);
-                        self.output.push(' ');
-                        self.output.push_str(&yaml_str);
-                    } else {
-                        self.output.push_str(&float_to_yaml_string(f));
-                    }
-                }
+                ScalarValue::Float(f) => self.output.push_str(&float_to_yaml_string(f)),
             }
         } else {
             return Err(self.unsupported_type());
@@ -327,7 +361,7 @@ impl DirectWriter {
     }
 
     /// Mirror of `Serializer::write_scalar_for_key` (keys never wrap).
-    fn write_key(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn write_key(&mut self, py: Python, key: &Bound<'_, PyAny>) -> PyResult<()> {
         if let Ok(s) = key.cast::<PyString>() {
             let text = py_string_to_arc(s)?;
             if needs_quotes(&text) {
@@ -339,15 +373,26 @@ impl DirectWriter {
         }
         match classify(key) {
             Kind::Null => self.output.push_str("null"),
-            Kind::Scalar => match extract_scalar_value(key)? {
-                Some(ScalarValue::Bool(b)) => {
-                    self.output.push_str(if b { "true" } else { "false" })
+            Kind::Scalar => {
+                // The same question `write_scalar_node` asks, asked here too: a key whose class a
+                // handler claims would otherwise be spelled as the integer its protocol answers
+                // with, while the route a key takes through `pyobject_to_node` spells it as the
+                // tagged text.
+                if key.cast::<pyo3::types::PyInt>().is_err()
+                    && self.write_registered_scalar(py, key)?
+                {
+                    return Ok(());
                 }
-                Some(ScalarValue::Int(n)) => self.output.push_str(&n.to_string()),
-                Some(ScalarValue::BigInt(digits)) => self.output.push_str(&digits),
-                Some(ScalarValue::Float(f)) => self.output.push_str(&float_to_yaml_string(f)),
-                None => return Err(self.unsupported_type()),
-            },
+                match extract_scalar_value(key)? {
+                    Some(ScalarValue::Bool(b)) => {
+                        self.output.push_str(if b { "true" } else { "false" })
+                    }
+                    Some(ScalarValue::Int(n)) => self.output.push_str(&n.to_string()),
+                    Some(ScalarValue::BigInt(digits)) => self.output.push_str(&digits),
+                    Some(ScalarValue::Float(f)) => self.output.push_str(&float_to_yaml_string(f)),
+                    None => return Err(self.unsupported_type()),
+                }
+            }
             // A dict key cannot exist in a Python mapping, and a sequence key (the tuple the
             // loader hands back) is delegated before reaching here: `write_complex_pair`.
             Kind::Sequence | Kind::Block | Kind::Other => return Err(self.unsupported_type()),
@@ -439,7 +484,7 @@ impl DirectWriter {
         if self.sort_keys {
             let mut pairs: Vec<(String, Bound<'_, PyAny>, Bound<'_, PyAny>)> = dict
                 .iter()
-                .map(|(key, value)| Ok((self.key_sort_string(&key)?, key, value)))
+                .map(|(key, value)| Ok((self.key_sort_string(py, &key)?, key, value)))
                 .collect::<PyResult<_>>()?;
             pairs.sort_by(|a, b| a.0.cmp(&b.0));
             for (_, key, value) in pairs {
@@ -469,7 +514,7 @@ impl DirectWriter {
             return self.write_complex_pair(py, key, value, indent_width);
         }
         self.write_indent(indent_width);
-        self.write_key(key)?;
+        self.write_key(py, key)?;
         self.output.push(':');
         let vkind = classify(value);
         match vkind {
@@ -499,13 +544,22 @@ impl DirectWriter {
 
     /// Raw key content used for `sort_keys`, mirroring the serializer's
     /// comparator (the unquoted scalar value of the key node).
-    fn key_sort_string(&self, key: &Bound<'_, PyAny>) -> PyResult<String> {
+    fn key_sort_string(&self, py: Python, key: &Bound<'_, PyAny>) -> PyResult<String> {
         if let Ok(s) = key.cast::<PyString>() {
             return py_string_to_arc(s).map(|a| a.to_string());
         }
         match classify(key) {
             Kind::Null => Ok("null".to_string()),
             Kind::Scalar => {
+                // The handler's text, not the number the protocol answers with, because that text
+                // is the key node's scalar value on the route this mirrors: two `Money` keys sort
+                // `5c` against `500c` there, and sorting `5` against `500` here would order the
+                // same mapping the other way.
+                if key.cast::<pyo3::types::PyInt>().is_err()
+                    && let Some((_tag, text)) = self.registered_scalar(py, key)?
+                {
+                    return Ok(text);
+                }
                 if let Ok(b) = key.extract::<bool>() {
                     Ok(if b { "true" } else { "false" }.to_string())
                 } else if let Ok(n) = key.extract::<i64>() {
@@ -559,7 +613,7 @@ impl DirectWriter {
                         if pi > 0 {
                             self.write_indent(indent_width + 2);
                         }
-                        self.write_key(&key)?;
+                        self.write_key(py, &key)?;
                         self.output.push(':');
                         self.output.push(' ');
                         self.write_node(py, &value, 0, depth + 1)?;
@@ -675,8 +729,7 @@ impl DirectWriter {
             }
         }
         // Check registered CustomTypes for serialization
-        if let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind()) {
-            let (tag_name, yaml_str) = result?;
+        if let Some((tag_name, yaml_str)) = self.registered_scalar(py, obj)? {
             self.write_indent(indent_width);
             let tag = crate::py::tags::tag_of(&tag_name);
             self.output.push_str(&tag.handle);

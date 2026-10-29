@@ -73,6 +73,12 @@ The `CustomType` base class provides four methods:
 `isinstance(obj, python_type)` to detect objects that should be serialized
 with this type's `to_yaml()` method.
 
+**The handler is asked before the object is read as a number.** A class that answers Python's number
+protocol (`__index__`, `__float__`) still reaches its own `to_yaml()`, as a value, as a key and as a
+sequence item. One family is exempt, and the exemption is the same on both writers: an `int` or `int`
+subclass — and a `bool`, which is one — keeps the integer spelling a reader resolves. So a money type
+carrying `__index__` reaches the handler, while `42` and `True` never do.
+
 ### Example: UUID Plugin
 
 ```python title="uuid_plugin.py"
