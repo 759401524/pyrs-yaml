@@ -11103,6 +11103,90 @@ it is the two-round family one step from the pair-emitter this entry touched.
 the generator does not reach that slot combination, and the conservation property does not ask it
 either: it asks the first emission. Naming which of the two should answer is the next decision.
 
+### (hx) A leaf census found the Python fuzz tier was drawing one subset (2026-10-30)
+
+`(hw)` put a conservation oracle on the Rust property tier. The mirror question on the Python side
+was never asked: `tests/strategies.py` built `arbitrary_json` from capped leaves — `None`, `bool`,
+an `int` inside ±10^12, a finite `float`, `str` — and `test_dump_never_raises` only asserted that
+the dump step returns. Counting the leaves that generator actually produces is the question that has
+an answer, so a probe drew 25,000 examples and tallied every leaf by type: 270,602 leaves, split
+58,064 `None`, 53,396 `str`, 53,251 finite `float`, 52,978 `bool`, 52,913 in-range `int`, and
+**zero** of anything else. The cap is why, not rarity: the binding's number protocol, its type
+registry, its `!!binary` and `!!timestamp` writers had never been drawn by the tier that exists to
+reach what the named tests do not.
+
+`hard_leaf` adds the ten families that subset excludes — an unbounded integer, the non-finite
+floats, tuples, `bytes`, `date`, `time`, `datetime`, `Decimal`, and `set`, `frozenset`, `complex`,
+an unregistered class — and the same census over 20,000 draws of the widened generator reads 229,798
+leaves, 134,145 of them outside the old set: roughly 10,000 per new family, 22,108 past i64 and
+10,470 non-finite.
+`arbitrary_json` is the only consumer, so the exact-equality strategies keep their JSON shape and
+the byte-for-byte claims built on them are untouched.
+
+The invariant had to widen with the domain or the extra draws would prove nothing. Two changes, each
+falsified on the tree that carries it:
+
+- `test_dump_never_raises` now accepts text or `pyrs_yaml.YamlTypeError` and nothing else — the tier
+  can refuse, but only with the binding's own typed refusal. Mutation: replace the handler with
+  `except ValueError` and the property reddens with `pyrs_yaml.YamlTypeError` escaping on a `set`
+  draw. Before this change any exception type passed.
+- `test_each_widened_family_is_text_or_the_typed_refusal` pins the seventeen measured outcomes one
+  row at a time, and each row that reaches text also re-dumps to the same bytes. Mutation: change
+  one expected read-back type — `("tuple", (1, 2), dict)` — and that row alone reddens, reporting
+  the `list` the loader hands back.
+- `test_the_widened_leaves_reach_every_family_they_were_added_for` guards the strategy rather than
+  the engine: 400 draws, then a failure naming any family that never arrived. Mutation: drop
+  `hard_leaf` from the leaf set and it names all twelve widened families. Without this test the
+  tier can narrow back to its old subset by editing one line and stay green.
+
+What the rows found, measured on this host's build: an out-of-range integer is emitted as bare
+digits and read back as `str` — the hub's own spelling — and a tuple is the `list` its sequence form
+reads as, while `set`, `frozenset`, `complex` and an unregistered class all raise `YamlTypeError`.
+Nothing in the engine moved for this entry; the table records what the routes already did.
+
+One row does not settle, and the tier found it because the settle half of each assertion is new.
+`safe_dump(2**63)` → `'9223372036854775808\n'` → `str` → re-dump `'9223372036854775808\n'`: fixed
+point. `safe_dump(-(2**64))` → `'-18446744073709551616\n'` → `str` → re-dump
+`'"-18446744073709551616"\n'`: the quotes appear on the second emission, so one hub decision about a
+digits-too-wide integer is quoted on one sign and bare on the other. `-(2**63)`, which fits i64,
+reads back as `int` and settles, so the disagreement is between the two out-of-range spellings and
+not between signed and unsigned. The row stays in the table with its measured second emission in
+`NON_SETTLING` rather than being dropped — a pinned deviation that reddens if it changes silently is
+evidence, an omitted row is a gap. Fixing it is a public-behaviour change: which side is wrong, the
+bare first emission or the quoted second one, is a ruling this entry does not make.
+
+The rows then failed in the full suite and passed alone, and that is the third thing this entry
+records. `tests/test_concurrency.py` ends on `clear_type_handlers()`, and running that module first
+made four of the families raise `YamlTypeError` while `Decimal` silently wrote `1.5` and read back
+as a `float` — the same call, two different shapes of damage. The cause is a docstring that does not
+match the route: `clear_type_handlers()` is declared as clearing all *custom* type handlers, and
+what it empties is the registry `pyrs_yaml.plugins._builtin._register_builtins()` fills at import,
+so the shipped binary and temporal writers go with the user's. Nothing public puts them back. The
+suite already knows this — `tests/test_toml.py` and `tests/test_standard_tags.py` each carry an
+autouse `_register_builtins()` guard for exactly that reason — so `tests/test_property_roundtrip.py`
+now carries the same one, and the three orderings were re-run: leaker first (29 passed), leaker last
+(29 passed), `tests/test_community_plugins.py` first (49 passed). Two readings of the leak stay
+open, and they are the same fork the wide-int pair above names, in a different place: the
+word "custom" in the stub is either the contract, in which case clearing is a documented way to lose
+the shipped families, or it is a bug in the function, which should drop only user registrations.
+Which one is wrong is a public-behaviour decision this entry records without making.
+
+A third red came from CI rather than from this host, and it named the guard's own weakness. That
+first leaf set asked 400 draws for an `int past i64` and a `non-finite float` while both were only
+the tail of an unbounded `st.integers()` or `st.floats()` — 1,667 and 382 leaves per 20,000 draws at
+those rates. Two interpreter legs reddened, each naming a different family: the 3.10 leg reported
+"the widened leaves never drew ['non-finite float']" and the 3.8 leg `['int past i64']`, with
+everything else in both legs green. A presence check that can miss is a coin flip wearing a test
+name, and it is the same class the Rust tier closed by asking a table instead of a draw. So both
+shapes now hold a branch of their own in `hard_leaf`, which is what moved the census to 22,108 and
+10,470 leaves; the guard then saw all twelve families in ten consecutive 400-draw runs on this host,
+and it still bites — take those two branches out and it reddens by naming `non-finite float`.
+
+What still stays blind: the tier asserts the dump route, not that the text re-reads to the same
+Python value, because for these ten families the binding's answer is deliberately lossy — digits
+become a string. The exact-equality claim still belongs to `roundtrip_safe_json`, which is JSON
+shaped by design, and the widened domain deliberately does not join it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
