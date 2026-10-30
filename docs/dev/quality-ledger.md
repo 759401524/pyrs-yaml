@@ -11034,6 +11034,75 @@ writer's own attribution, and `QUALITY_MATRIX.md` quotes the fresh pair: `push_n
 13.35 % to 14.98 % of `to_toml_notes`' loop, because one more note per document leaves through that
 function, while `take_comment` stayed the largest single row on the reader at 9.70 %.
 
+### (hw) A conservation property found five unread note slots, and priced them (2026-10-29)
+
+`prop_toml_writer_carries_every_note` joined the TOML tier in
+`crates/pyrs-yaml-core/src/fmt_pbt.rs`. It asks one question the other three properties cannot:
+whether every note the tree carries reaches the emitted text. Trimmed, and with the
+line-break-to-space flattening restated in the checker rather than borrowed from the serializer, so
+a writer that stopped flattening reddens it instead of agreeing with it — the shape `pbt.rs`'s
+`note_reach` uses for the YAML spine, written where its own format's rule lives. A dropped note had
+been invisible by construction: text that lost a note on the first emission loses it identically on
+the second, so re-parseability, the fixed point and the tree equality all hold on a document that
+lost something.
+
+Four shapes turned out to be unread, in the order the counterexamples arrived, and five named tests
+hold them. An empty table `A = {}` and an empty array `A = []` carrying their own note; a scalar
+whose note stands on its own line in the older `comment` slot, which `emit_pair` never asked of a
+value; and two places where one line was answered by one slot read through `or_else` — a key's
+inline note beside its value's inline note, and a key's inline note beside a section header carrying
+a note of its own. A TOML member line holds one comment, so in each case the second note simply was
+not written. They now take the line above, which is where this crate's reader reports a member's
+leading note from, so all four settle on the first re-emission; the value keeps its compact `{}` /
+`[]` spelling.
+
+The first of those was the shape `(hu)` recorded and `(hv)` confirmed as a format limit — "TOML has
+no line that can report it back". That premise covered only the inside of the braces, and the
+property tier found the outside: the key's own line does report it. The two tests `(hv)` named were
+flipped from asserting `A = {}` with no note anywhere to asserting `# a\nA = {}` plus the fixed
+point.
+
+The set is falsified, not taken on faith: one mutation — the helper answering `&[]` for every node
+and both demotions pinned to `false` — reddened all five named tests (98 passed, 5 failed) and the
+property within 3,000 cases; restoring the file returned it byte-identical (`sha256 33ff781e…`).
+`tests/test_toml_writer_suite.py` carries the shipped YAML→hub→TOML route for the three value-side
+shapes, each read back by `tomlkit` and `tomllib` as well as by this crate.
+
+The price is the writer's, and it is not the notes. On this host with the baseline's pinned
+`rustc 1.97.1`, three repeats each and spread 0.000 %: `to_toml_medium` 28,980,532 / 28,980,542 /
+28,980,552 against the committed floor 28,056,624 — +3.29 %, which the harness's 2,000 iterations
+divide to 462 instructions per document; `to_toml_notes` 16,468,903 against 16,266,870 — +1.24 %;
+`to_toml_long_strings` 30,857,215 against 29,833,173 — +3.43 %. Two of the three that moved are
+note-free documents, so what they pay is the question every pair now asks, not a note any of them
+carries. The same host read 28,056,537 on the shape `(hv)` shipped, which is why the move belongs to
+this head rather than to the box; the engine write rows are the set that pairings showed to hold
+across runner images to within ~120 instructions, so the enforcing image is expected to read the
+same order of size, and the three names go into the refresh's `accept_drift` rather than the
+tolerance moving. `(hv)` already measured the cheaper-looking guard — `has_notes()` in front — as
+the more expensive shape, so what is left is the payoff task it opened: fewer lookups per container,
+not more.
+
+The refresh answered for the image on this same head: `to_toml_medium` 28,980,558,
+`to_toml_long_strings` 30,857,011 and `to_toml_notes` 16,468,905 — within 6, 204 and 2
+instructions of the three host readings above — so a host reading of an *engine write* row does
+predict the enforcing image on this tree, which is the row family the image-keying work measured as
+image-independent and not the binding rows it keys by image. The other fifty-two floors moved by at
+most 0.19 % (`from_json_medium` +0.19 %, everything else inside 0.05 %): the harness's own code size
+again, charging its siblings. Those three names went into `accept_drift` and that run's artifact is
+the `.ci/ir-baseline.json` this head carries, so the move and the image that measures it are one
+event, and the eighteen marked readings in `QUALITY_MATRIX.md` were re-derived from that file —
+`scripts/check_ir_floor_quotes.py` is what keeps the page from drifting off it again.
+
+One residual stays, and this head is where it was measured. A key's inline note beside a header that
+carries no note of its own still rides the header line, and the header line's comment is read back
+as a leading note, so the text moves: `to_toml("A: # keynote\n  x: 1 # valnote\n")` writes
+`[A] # keynote\nx = 1 # valnote\n`, and re-emitting what `from_toml` hands back writes
+`# keynote\n[A]\nx = 1 # valnote\n`. It is not a loss — the note survives on the second pass — but
+it is the two-round family one step from the pair-emitter this entry touched.
+`prop_toml_writer_is_fixed_point` stayed green at 20,000 cases both before and after this change, so
+the generator does not reach that slot combination, and the conservation property does not ask it
+either: it asks the first emission. Naming which of the two should answer is the next decision.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

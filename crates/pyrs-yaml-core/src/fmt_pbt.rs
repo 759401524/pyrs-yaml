@@ -98,6 +98,57 @@ fn toml_undecorated(node: &crate::ast::CustomNode) -> bool {
     }
 }
 
+/// Every note the tree carries, as it must appear in the emitted TOML.
+///
+/// A reach check, not an equality check: it asks only that no note silently disappears, which is the
+/// claim the writer owns. Who owns a note once the document re-parses is a different question —
+/// `toml_root_note_ok` exists because two adjacent `# …` lines have no two-owner spelling in TOML —
+/// and the fixed-point properties above cannot see a drop at all, because text that lost a note on
+/// the first emission loses it identically on the second, so the two passes match.
+///
+/// Restated here rather than borrowed from the serializer, so a writer that stopped flattening
+/// reddens this check instead of agreeing with it: a TOML comment runs to the line end and has no
+/// spelling for a break, so what must reach the document is the one-line form; padding after the
+/// marker is not content any reader recovers, so the text is trimmed first. A note that is blank
+/// once trimmed carries nothing a comment can hold, and is exempt rather than tolerated silently.
+fn toml_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    collect_note_texts(node, emitted, &mut missing);
+    missing
+}
+
+fn collect_note_texts(node: &crate::ast::CustomNode, emitted: &str, missing: &mut Vec<String>) {
+    use crate::ast::CustomNode as N;
+    for text in node
+        .comment()
+        .filter(|c| !c.standalone)
+        .map(|c| vec![c.text.to_string()])
+        .unwrap_or_default()
+        .into_iter()
+        .chain(node.leading_comments().iter().map(|c| c.text.to_string()))
+    {
+        let trimmed = text.trim();
+        let expected = trimmed.replace(['\n', '\r'], " ");
+        if !trimmed.is_empty() && !emitted.contains(&expected) {
+            missing.push(format!("note never reached the document: {text:?}"));
+        }
+    }
+    match node {
+        N::Mapping { pairs, .. } => {
+            for (k, v) in pairs {
+                collect_note_texts(k, emitted, missing);
+                collect_note_texts(v, emitted, missing);
+            }
+        }
+        N::Sequence { items, .. } => {
+            for item in items {
+                collect_note_texts(item, emitted, missing);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Undecorated trees that are *certain* to contain an inline table.
 ///
 /// `arb_node_meta` attaches a note to a node often enough that a multi-node tree with no note
@@ -251,6 +302,23 @@ proptest! {
         let reparsed = toml::from_toml(&text)?;
         let text2 = toml::to_toml(&reparsed)?;
         prop_assert_eq!(text, text2, "TOML writer not idempotent on own output");
+    }
+
+    // -- note conservation ---------------------------------------------------
+    // The three properties above answer "does it settle", "does it re-parse", "does the tree come
+    // back" — and a writer that drops a note on the floor passes all three, because the note is
+    // absent from both passes. This is the claim PR #676 fixed: a container's own leading note never
+    // reached the document, and the tier stayed green until a hand-built table named the shape.
+    #[test]
+    fn prop_toml_writer_carries_every_note(node in arb_custom_node()) {
+        let Ok(text) = toml::to_toml(&node) else { return Ok(()) };
+        let missing = toml_missing_notes(&node, &text);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost, on:\n{text}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
     }
 
     #[test]

@@ -22,8 +22,8 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 841 Rust `#[test]`, 2,079 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 31 proptest properties (27 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| unit / integration | 845 Rust `#[test]`, 2,080 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 32 proptest properties (28 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
@@ -588,7 +588,7 @@ those bridges grew a long-value twin at both ends, since the long-value shape th
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 76,854,707<!-- ir-floor: documents_short_strings --> against 119,424,763<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 76,854,817<!-- ir-floor: documents_short_strings --> against 119,424,775<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` on the row the file
 keys `20261023.334.3` at 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 --> and
@@ -608,12 +608,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,556<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 18,005,152<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,152<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,678,108<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,858,108<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 64,411,669<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 18,005,160<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,124<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,678,102<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,858,102<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 702,028,246<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,578<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 701,896,643<!-- ir-floor: parse_notes --> and `stream_notes` 578,827,532<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
@@ -625,12 +625,12 @@ and 93,952,438 on the event route (+16.30 % and +19.37 %, which is 4,473 and 4,2
 note), and 31,022,014 of the first and 33,738,000 of the second sit in eight functions the note-free
 control never enters at all; `docs/dev/perf.md` names them. TOML grew both halves of the same pair on
 a fixture of its own, because a note there has a shape neither bridge shows:
-`to_toml_notes` 16,266,870<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
+`to_toml_notes` 16,468,905<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
 dialect writers write, so its number sits beside `to_jsonc_notes` and `to_json5_notes` as the same
-document through a third writer, and `from_toml_notes` 148,375,267<!-- ir-floor: from_toml_notes -->
+document through a third writer, and `from_toml_notes` 148,375,308<!-- ir-floor: from_toml_notes -->
 reads a seven-comment TOML document holding `MEDIUM_TOML`'s values and nothing else
 (`crates/pyrs-yaml-core/tests/ir_fixtures.rs` requires the two to render identical JSON), so that half is a measured pair
-rather than a named one: against `from_toml_medium` 121,149,790<!-- ir-floor: from_toml_medium --> the
+rather than a named one: against `from_toml_medium` 121,153,784<!-- ir-floor: from_toml_medium --> the
 seven comments cost 27,225,477 loop instructions, +22.47 % or 1,945 per comment once the harness's
 2,000 iterations are divided out, the comment bytes included. The attribution names where each half
 goes, re-profiled on this head: `pyrs_toml::writer::push_note_text` 14.98 % of the writer's loop — it
@@ -647,19 +647,30 @@ where this crate's
 reader reports such a note from, and where PR #146 already put a member's key-line note. Because a
 multi-line inline table or array is 1.1 syntax, only a note may take a container there.
 `crates/pyrs-yaml-core/tests/ir_fixtures.rs` accordingly asserts all six of the fixture's notes arrive
-and that the emitted text re-reads to itself. Two boundaries stay, and the property tier named the
-second one after the change shipped rather than before it: an own-line note after the last key
+and that the emitted text re-reads to itself. One boundary stays: an own-line note after the last key
 has no AST slot - the parser hands it back as the second value of its pair and the writer never sees
-it - and a note carried by an *empty* container has no line to be written on, because a `#` line
-inside `{ }` reaches no member and this crate's reader hands back no note for that position (measured:
-`A = {\n  # a\n}` re-emits as `A = {}\n`), so demoting an empty one moved the text instead of settling
-it. `prop_toml_writer_is_fixed_point` found the second shape at 20,000 cases, the seed is pinned in
-`crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt`, and two named tests hold its table and array
-halves; the same file asserts the first absent instead of letting a floor fall by dropping a note nobody
-claimed. `docs/dev/quality-ledger.md` `(hu)` records the pair as measured boundaries and `(hv)` closes
-the first of them. The Python-object write route joined too
-(`safe_dump_small` 13,296,198<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
-`safe_dump_medium` 110,615,048<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
+it - so `ir_fixtures.rs` asserts it absent instead of letting a floor fall by dropping a note nobody
+claimed. The second boundary `(hv)` recorded has moved. It read a note carried by an *empty* container
+as unwritable, because a `#` line inside `{ }` reaches no member and this crate's reader hands back no
+note for that position (measured: `A = {\n  # a\n}` re-emits as `A = {}\n`), so demoting an empty one
+moved the text. That premise covered only the inside of the braces.
+`prop_toml_writer_carries_every_note` - the conservation property `(hu)` and `(hv)` both noted the tier
+was missing, "no property asks whether every note survived" - asks that every note the tree carries
+reach the emitted text, and within 20,000 cases it named four shapes nobody read: a note on an empty
+table, the same on an empty array, an own-line note on a scalar value, and a key's inline note beside
+the note its value or its section header already held, where one member line was answered by one slot
+read through `or_else`. All four now take the line above the key, which is where this crate's reader
+reports a member's leading note from, so the text both keeps the note and settles on the first
+re-emission; the compact `{}` / `[]` spelling is unchanged. The two tests `(hv)` named flipped with it,
+five named tests hold the shapes, `tests/test_toml_writer_suite.py` carries the three value-side shapes
+through the shipped route, and one mutation - the new helper answering `&[]` for every node - reddened
+all five plus the property. What the tier still does not ask is which *owner* a note lands on: a key's
+inline note beside a header that carries none still rides the header line and moves to its own line on
+the second emission, measured on this head and green in the fixed-point property, which never reaches
+that slot combination. `docs/dev/quality-ledger.md` `(hu)` and `(hv)` record the pair as they were
+measured, `(hw)` records this correction and the price. The Python-object write route joined too
+(`safe_dump_small` 13,297,727<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
+`safe_dump_medium` 110,613,266<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
 documents `to_python_small` and `to_python_medium` read, turned into objects by that channel's own
 body outside the counted loop and then written back by `safe_dump`) — 8.32x the instructions at the
 larger input. The route `safe_dump` and `from_dict` serve had moved no number since the harness
@@ -848,7 +859,7 @@ The question that filled it again on 2026-10-14 was about the tier itself: `prop
 counts properties, and a count is satisfied by a property that never asserts.
 `conditional_property_assertions()` therefore reads each property body for a guard of the shape
 `if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
-round-trip classifier has since replaced that guard, and the probe now reports 0 of the 31 properties.
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 32 properties.
 Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
 to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it

@@ -196,6 +196,26 @@ def test_a_note_above_the_first_item_of_an_array_travels_the_route_inside_it():
     assert pyrs_yaml.to_toml("top: 1\narr:\n  - 1\n  - 2\ntail: 2\n") == "top = 1\narr = [1, 2]\ntail = 2\n"
 
 
+def test_a_note_above_a_value_with_no_members_travels_the_route_on_the_key_line():
+    # The shapes PR #676 left outside its own rule: a note whose owner has no member to sit beside.
+    # `# above` inside `{ }` re-reads as no note, so the writer kept the compact spelling and the note
+    # vanished — and the fixed point stayed green because both passes were equally note-free. They now
+    # take the line above the key, which is where this crate's reader reports a member's leading note
+    # from, so the text both carries the note and settles.
+    cases = [
+        ("A:\n  # above\n  {}\nB: 1\n", "# above\nA = {}\nB = 1\n", {"A": {}, "B": 1}),
+        ("A:\n  # above\n  []\nB: 1\n", "# above\nA = []\nB = 1\n", {"A": [], "B": 1}),
+        ("A:\n  # above\n  v\nB: 1\n", '# above\nA = "v"\nB = 1\n', {"A": "v", "B": 1}),
+    ]
+    for src, expected, value in cases:
+        noted = pyrs_yaml.to_toml(src)
+        assert noted == expected, f"{src!r} wrote {noted!r}"
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(noted)) == noted, f"{expected!r} does not settle"
+        assert pyrs_yaml.load_toml(noted) == value
+        for name, read in READERS.items():
+            assert read(noted) == value, f"{name} read the noted text as something else"
+
+
 def test_the_gate_cannot_silently_skip_every_reader():
     # The claim of this file is that a parser the repository does not own reads the output. `tomlkit`
     # is an unconditional test dependency, so an empty reader set means the gate stopped existing.
