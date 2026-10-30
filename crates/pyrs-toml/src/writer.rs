@@ -115,12 +115,21 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         // an inline note. The fallbacks keep #109-era hand-built nodes
         // and YAML-origin documents rendering identically.
         let own = tbl.leading_comments();
-        let leading: &[pyrs_ast::ast::Comment] = if !own.is_empty() {
+        // The key's stack and the section's own stack are two slots: #114 moved a header's leading
+        // notes onto the child mapping, which freed the parent key's slot rather than replacing it,
+        // and the header line below carries at most one inline note. Reading one list *instead of*
+        // the other lost the key's note whenever both were non-empty - found by
+        // `prop_toml_writer_carries_every_note` at 20,000 cases, and pinned by
+        // `a_key_line_stack_beside_a_section_stack_loses_neither_note`, which holds both the order
+        // (the key's lines above the section's own) and the fact that re-emitting that text returns
+        // it, so the round trip settles on the first hop instead of hiding the loss in a fixed point.
+        let key_leading = key_node.leading_comments();
+        let own_notes: &[pyrs_ast::ast::Comment] = if !own.is_empty() {
             own
         } else if let Some(c) = tbl.comment().filter(|c| c.standalone) {
             core::slice::from_ref(c)
         } else {
-            key_node.leading_comments()
+            &[]
         };
         // Blank line before a section separator acts like the KV rule:
         // skip it for the first section if any top-level pairs already
@@ -128,10 +137,13 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         if tbl.blank_before() && !(idx == 0 && out.is_empty()) {
             out.push('\n');
         }
-        for c in leading {
+        for c in key_leading {
             write_note(&mut out, &c.text);
         }
-        if leading.is_empty() {
+        for c in own_notes {
+            write_note(&mut out, &c.text);
+        }
+        if key_leading.is_empty() && own_notes.is_empty() {
             // Pre-#114 shape: the note rides the parent key's `comment` field.
             if let Some(c) = key_node.comment().filter(|c| c.standalone) {
                 write_note(&mut out, &c.text);
@@ -1810,6 +1822,38 @@ mod tests {
         assert_eq!(
             out, "nested = {\n  # n\n  inner = 1\n}\ntail = 2\n",
             "the note did not survive: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_key_line_stack_beside_a_section_stack_loses_neither_note() {
+        // #114 freed the parent key's leading slot rather than replacing it, so a key carrying a
+        // stack above a section carrying its own owes BOTH lines. The section pass read one list
+        // *instead of* the other and lost the key's note, and the emission settled on the shortened
+        // text, so no fixed-point check could see it - `prop_toml_writer_carries_every_note` drew it
+        // at 20,000 cases.
+        let mut key = CustomNode::plain_scalar("a");
+        key.push_leading_comment(Comment {
+            text: "K".into(),
+            standalone: true,
+        });
+        let mut table = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("x"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        table.push_leading_comment(Comment {
+            text: "T".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping([(key, table)].into_iter().collect());
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "# K\n# T\n[a]\nx = 1\n",
+            "the key's leading stack did not reach the header"
         );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");

@@ -6,6 +6,35 @@ use crate::parser::{parse, yaml::Schema};
 use pyrs_toml::{from_toml, to_toml};
 
 #[test]
+fn a_header_note_stack_that_arrives_by_way_of_yaml_reaches_the_section() {
+    // The crate's own writer test builds the two slots by hand; this one proves the shipped route
+    // fills them: a note above a section key, and a note above that section's first member, which
+    // the YAML reader homes on the container's own list. Both lines owe the header, and the text
+    // re-reads to itself, so the loss the conservation oracle drew is not reachable from this side
+    // either.
+    let text = to_toml(&parse("# K\nsec:\n  # T\n  x: 1\n", Schema::Core).unwrap()).unwrap();
+    assert_eq!(
+        text, "# K\n# T\n[sec]\nx = 1\n",
+        "the route lost a line: {text}"
+    );
+    let again = to_toml(&from_toml(&text).unwrap()).unwrap();
+    assert_eq!(text, again, "the emission is not a fixed point: {again}");
+
+    // The same pair below another key, so a leading-stack loss cannot hide behind document start.
+    let later =
+        to_toml(&parse("top: 1\n# K\nsec:\n  # T\n  x: 1\n", Schema::Core).unwrap()).unwrap();
+    assert_eq!(
+        later, "top = 1\n# K\n# T\n[sec]\nx = 1\n",
+        "the route lost a line below a pair: {later}"
+    );
+    let later_again = to_toml(&from_toml(&later).unwrap()).unwrap();
+    assert_eq!(
+        later, later_again,
+        "the second shape does not settle: {later_again}"
+    );
+}
+
+#[test]
 fn to_toml_roundtrip_table_and_array() {
     let yaml = "a: \"1\"\nb: 2\nc:\n  - x: 1\n  - x: 2\n";
     let ast = parse(yaml, Schema::Core).unwrap();

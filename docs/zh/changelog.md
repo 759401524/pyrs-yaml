@@ -237,6 +237,22 @@ status: new
 
 #### 修复
 
+- **章节头的两条注释栈不再是二选一** — 章节键与它领衔的映射各有自己的 leading 列表，而
+  `crates/pyrs-toml/src/writer.rs` 的章节 pass 只填一个切片：先问章节自己的列表，空了才回退去读键
+  的。于是两者都非空时就少写一栈——键上带 `# K`、`[a]` 上带 `# T` 的节点实测只输出
+  `# T\n[a]\nx = 1\n`。被截短的文字再发射仍是它自己，所以固定点、可再解析、树相等全部通过，一份丢了
+  行的文档照样绿。这一层里唯一把两个槽都记账的预言机是 `prop_toml_writer_carries_every_note`，它在
+  `crates/` 与主干逐字节相同的 head 上以 20,000 例抽到了该形状——主干因此是间歇性红，而重跑变绿并不等
+  于修好。现在两条列表按顺序拼接，键的行位于章节自身之上，正是本 crate 的读器交回双注释头栈的顺序，
+  所以第一次重发射就收敛。`a_key_line_stack_beside_a_section_stack_loses_neither_note` 钉住字节与固
+  定点；出货路由（YAML→中枢→TOML）上同一对形状由
+  `a_header_note_stack_that_arrives_by_way_of_yaml_reaches_the_section` 钉住；绑定层的同名一条
+  `test_a_section_key_note_beside_the_section_note_travels_the_route` 还把同一文本交给 `tomlkit` 与
+  `tomllib` 读回同一个值。反证就是修复前那一行——
+  两个列表只读一个，两处都变红，左侧分别是 `# T\n[a]\nx = 1\n` 与 `top = 1\n# T\n[sec]\nx = 1\n`。代
+  价是那道守卫而不是注释本身：两个列表写成两个循环时 `to_toml_medium` 高出地板 +0.46 %（同样的顺序经
+  `Iterator::chain` 要 +0.83 %，两者输出的字节完全相同），而真带注释的场景不动——`to_toml_notes`
+  −0.03 %、`to_toml_long_strings` −0.02 %。
 - **五个 TOML 注释槽位没人读，而看不出丢注释的那一层也补上了** — `to_toml` 在需要的行不存在时就把注
   释丢掉：自带注释的空表或空数组、注释自成一行的标量值，以及两处用 `or_else` 让一行只认一个槽位的情
   形——键的行内注释与它值的行内注释并排，以及与它 section 头的行内注释并排。原先没有任何性质问过这件
