@@ -9,6 +9,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
+  fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
+  `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602
+  leaves — 58,064 / 53,396 / 53,251 / 52,978 / 52,913 across those five kinds — and not one leaf of
+  any other type. The number protocol, the type registry and the `!!binary` / `!!timestamp` routes
+  were never drawn, so the tier's claim was "no panic over a JSON subset of the domain". `hard_leaf`
+  in `tests/strategies.py` adds an unbounded integer, the non-finite floats, tuples, `bytes`,
+  `date`, `time`, `datetime`, `Decimal` and four types that carry no YAML spelling; 20,000 draws of
+  the widened generator now spend 134,145 of their 229,798 leaves on those families — roughly 10,000
+  each, plus 22,108 integers past i64 and 10,470 non-finite floats. The invariant widened with the
+  domain: `test_dump_never_raises` accepts text or `pyrs_yaml.YamlTypeError` and nothing else, so a
+  refusal wearing another name is a failure — swapping the handler for `except ValueError` reddens
+  it on a `set` draw — and `test_each_widened_family_is_text_or_the_typed_refusal` pins seventeen
+  measured outcomes one row at a time: an out-of-range integer reads back as `str`, a tuple as
+  `list`, `bytes` as `bytes`, the temporals and `Decimal` as themselves, and a `set`, `frozenset`,
+  `complex` or unregistered class as that typed refusal. Each row that reaches text also re-dumps to
+  the same bytes, which is the second new question: a family that only settles on its second
+  emission is a round trip that moves, and one of them does. `safe_dump(-(2**64))` writes bare
+  digits, the hub reads them as a string, and re-dumping that string quotes it, while the same
+  decision on `2**63` repeats its own text — a sign asymmetry in one quoting guard, recorded with
+  its measured second emission in `NON_SETTLING` instead of leaving the table, and open as a defect
+  rather than closed by this entry. The third is about the strategy itself: a leaf that stops
+  reaching the mix costs a red run, because
+  `test_the_widened_leaves_reach_every_family_they_were_added_for` draws the same generator 400
+  times and fails by naming any family that never arrived — take `hard_leaf` out and it lists all
+  twelve — so the tier cannot quietly narrow again. No engine code moves: what these rows name is
+  the binding's existing behaviour, measured rather than assumed. The exact-equality strategies stay
+  JSON-shaped, because their claim is byte-for-byte round trip and that is only true of that subset.
+  The rows also needed an isolation the widening itself broke: with `tests/test_concurrency.py`
+  first — that module ends on `clear_type_handlers()` — four of these families raised and `Decimal`
+  wrote an untagged `1.5` that reads back as a `float`, because the call drops the handlers the
+  package installs at import along with the custom ones its own docstring names. The module now
+  carries the same `_register_builtins()` guard `tests/test_toml.py` uses, so the rows answer the
+  same in any order.
+  Two of those families — an integer past i64 and a non-finite float — are rare inside an unbounded
+  integer or float strategy, and each now holds a branch of its own for the reach guard's sake: at
+  400 draws the first shape of this reddened on two CI legs with different names, 3.10 without a
+  non-finite float and 3.8 without a wide int, which is a coin flip wearing a test name. The same
+  guard then saw all twelve families in ten consecutive runs, and it still bites — take the two
+  branches out and it reddens by naming the non-finite float.
 - **TOML's note machinery is priced on both sides now** — every TOML floor ran over documents
   holding no `#`, so `push_note_text`, the parser's `take_comment` and the note list it returns
   alongside the table moved no committed number. `to_toml_notes` and `from_toml_notes` joined the
