@@ -257,6 +257,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Five TOML note slots nobody read, and the tier that could not see them go** — `to_toml` dropped
+  a note whenever the line it needed did not exist: on an empty table or empty array carrying its
+  own note (`A = {}`, `A = []`), on a scalar value whose note stands on its own line, and twice
+  where one member line was answered by a single slot read through `or_else` — a key's inline note
+  beside its value's, and beside its section header's. Nothing asked, because a dropped note is
+  invisible to the properties that were there: text that lost a note on the first emission loses it
+  identically on the second, so re-parseability, the fixed point and the tree equality all passed on
+  a document that had lost something. `prop_toml_writer_carries_every_note` joins the tier and asks
+  that every note the tree carries reach the emitted text — trimmed, one line, the flattening
+  restated in the checker rather than borrowed from the writer, the shape the YAML spine's
+  `note_reach` uses — and named all four shapes within 20,000 generated cases. They take the line
+  above the key, which is where this crate's reader reports a member's leading note from, so each
+  settles on the first re-emission while the value keeps its compact `{}` / `[]` spelling. Five
+  named tests in `crates/pyrs-toml/src/writer.rs` hold the shapes and the fixed point,
+  `tests/test_toml_writer_suite.py` carries the three value-side ones through the shipped
+  YAML→hub→TOML route as read back by `tomlkit` and `tomllib`, and one mutation — the new helper
+  answering `&[]` for every node — reddens all five plus the property. The price is the guard, not
+  the notes: on the pinned `rustc 1.97.1` `to_toml_medium` reads +3.29 % and `to_toml_long_strings`
+  +3.43 % over their floors on documents holding no `#` at all (462 instructions per harness
+  document), and `to_toml_notes` +1.24 %; `docs/dev/quality-ledger.md` `(hw)` records the readings
+  and the three names go to the baseline refresh's `accept_drift`. What still stays is a *position*
+  question, not a survival one: a key's inline note beside a header that carries no note of its own
+  rides the header line and moves to its own line on the second emission — measured, lossless, and
+  outside what the fixed-point property reaches.
 - **A note above a container's first member was dropped, not moved** — `to_toml` wrote
   `nested:\n  # above the inner key\n  inner: 1` as `nested = {inner = 1}` and
   `arr:\n  # above the first item\n  - 1` as `arr = [1, 2]`. The hub homes a note that ends the line
@@ -278,13 +302,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reader's version, measured on 2026-10-29: CPython 3.11 through 3.14 `tomllib` do, CPython 3.15.0's
   `tomllib` and `tomli` 2.5.0 — the reader below 3.11 — do not, so the gate keys the expectation
   instead of assuming it and this crate's own `from_toml_v1_0` stays the 1.0 judge. An empty
-  container is the exception the property tier found at 20,000 cases: `A = {}` carrying its own note
-  keeps the compact form, because a `#` line inside `{ }` reaches no member and this crate's reader
-  hands back no note for it, so demoting it moved the text on the second write.
-  `docs/dev/quality-ledger.md` `(hu)` recorded the shape as a measured boundary; `(hv)` corrects it.
-  The price is on the writer and was measured on the enforcing image: `to_toml_medium` +1.256%,
-  `to_toml_long_strings` +2.081% and `to_toml_notes` +6.872%, while the two TOML read floors moved
-  +0.0014% and -0.0007% — a slot the read route never consults costs it nothing.
+  container was the exception the property tier found at 20,000 cases: `A = {}` carrying its own
+  note kept the compact form and lost the note, because a `#` line inside `{ }` reaches no member
+  and this crate's reader hands back no note for that position. `docs/dev/quality-ledger.md` `(hu)`
+  recorded the shape as a measured boundary and `(hv)` confirmed it; the bullet above it on this
+  list moves the shape off that list, because the line above the key is a line the reader does
+  report a member's leading note from. The price is on the writer and was measured on the enforcing
+  image: `to_toml_medium` +1.256%, `to_toml_long_strings` +2.081% and `to_toml_notes` +6.872%, while
+  the two TOML read floors moved +0.0014% and -0.0007% — a slot the read route never consults costs
+  it nothing.
 - **A registered handler owns the scalar it claims, and nothing else** — the three shapes #671 left
   open are now one rule with one answer, measured on the tree that landed it. `safe_dump` of
   `{"m": Booly()}` — a class carrying only `__bool__`, so nothing but a handler has anything to say

@@ -137,6 +137,15 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 write_note(&mut out, &c.text);
             }
         }
+        // A header line holds one comment and the section's own note owns it, so a key that carries a
+        // note of its own takes the line above — the position this crate's reader reports a header's
+        // leading note from, and the same demotion `emit_pair` makes for a `key = value` line. Without
+        // it, `[0] # n` answered for both slots and the key's note vanished.
+        if tbl.comment().is_some_and(|c| !c.standalone)
+            && let Some(c) = key_node.comment().filter(|c| !c.standalone)
+        {
+            write_note(&mut out, &c.text);
+        }
         // A TOML-origin node keeps the header's inline note on the section mapping; a YAML-origin one
         // hands it over on the KEY node's inline slot, because in `sec: # note` the note ends the
         // key's line. Reading only the mapping's slot dropped the note outright - the same defect
@@ -206,6 +215,35 @@ fn write_note(out: &mut String, text: &str) {
     out.push('\n');
 }
 
+/// The leading notes a value carries that its own spelling cannot place.
+///
+/// [`write_value`]'s two container arms demote a decorated container and write its own leading notes
+/// above its first member — so a non-empty container never comes to this helper with anything to
+/// report, and asking it is one discriminant. Two shapes do have notes with nowhere to sit:
+///
+/// - An **empty** container. `# b` inside `[ ]` or `{ }` reaches no member and this crate's reader
+///   hands back nothing for it, so the compact form is the only spelling left and the note had no
+///   line inside the value to go on.
+/// - A **scalar** whose note stands on its own line. TOML has no value position that reports a
+///   leading note back — a `# b` line reaches this crate's reader as the *key's* note — and
+///   `emit_pair` read only the value's inline slot, so a standalone note on the value vanished.
+///
+/// Both belong to the line the caller owns: the pair emitters take these notes and write them above
+/// the key, which is where a TOML reader reports a member's leading note from. The owner then reads
+/// back as the key rather than the value — the same relocation [`write_notated_table`] already
+/// accepts for a key's inline note, and the boundary ruling this crate's own reader keeps — so the
+/// second emission writes the note from that slot at the same position and the text settles.
+///
+/// Returns the empty slice for anything else, so the two callers ask one question per member line.
+fn unplaced_value_notes(node: &CustomNode) -> &[pyrs_ast::ast::Comment] {
+    match node {
+        CustomNode::Sequence { items, .. } if items.is_empty() => node.leading_comments(),
+        CustomNode::Mapping { pairs, .. } if pairs.is_empty() => node.leading_comments(),
+        CustomNode::Scalar { .. } => node.leading_comments(),
+        _ => &[],
+    }
+}
+
 /// Emit one `key = value` line together with any leading (standalone) or
 /// trailing (inline) comments attached via `NodeMeta::comment`.
 fn emit_pair(
@@ -222,6 +260,21 @@ fn emit_pair(
     }
     if key_node.leading_comments().is_empty()
         && let Some(c) = key_node.comment().filter(|c| c.standalone)
+    {
+        write_note(out, &c.text);
+    }
+    // The notes this value's own spelling cannot place, on the line the key owns — the only line a
+    // TOML reader reports a member's leading note from. See [`unplaced_value_notes`].
+    for c in unplaced_value_notes(value_node) {
+        write_note(out, &c.text);
+    }
+    // A key's own-line note and its value's own-line note cannot share the member line: TOML gives a
+    // `key = value` line one comment and the value's note owns it. The key's note takes the line
+    // above, which is where [`write_notated_table`] already sends a key's inline note for the same
+    // reason — and where this crate's reader reports a member's leading note from, so the next
+    // emission writes the same text from the key's own leading list.
+    if value_node.comment().is_some_and(|c| !c.standalone)
+        && let Some(c) = key_node.comment().filter(|c| !c.standalone)
     {
         write_note(out, &c.text);
     }
@@ -303,7 +356,8 @@ fn element_has_note(item: &CustomNode) -> bool {
 /// The answer comes from [`CustomNode::leading_comments`], which is already the pair this writer
 /// needs - the leading list, else the legacy standalone `comment` slot (#114 reads the same pair for
 /// a section header) - so one lookup per *non-empty* container is all the question costs; the two
-/// arms ask nothing of an empty one, whose note has no line to be written on. Prefixing it with
+/// arms ask nothing of an empty one, whose note [`unplaced_value_notes`] hands up to the line its
+/// caller owns. Prefixing it with
 /// [`CustomNode::has_notes`] was the first version, and the floor priced that: two calls out of the
 /// crate per container, +1.30 % on `to_toml_medium` on this host (28,068,579 against the 27,708,605
 /// floor this change replaced, about eighteen instructions per container) — the reading this gate
@@ -401,6 +455,13 @@ fn write_notated_table(
         // above the member: the position the TOML reader reports a note from. Measured, the second
         // emission is identical.
         if let Some(c) = k.comment().filter(|c| !c.standalone) {
+            out.push_str("  # ");
+            push_note_text(out, &c.text);
+            out.push('\n');
+        }
+        // A member whose value is an empty container has no line of its own for the note the
+        // container carries, so the note takes the member's line and the braces hold `{}`.
+        for c in unplaced_value_notes(v) {
             out.push_str("  # ");
             push_note_text(out, &c.text);
             out.push('\n');
@@ -556,7 +617,8 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // table reads. Undecorated arrays keep the compact form, so 1.0 output is unchanged.
             // An empty array is asked nothing at all: its own note would have no element to sit
             // beside, and a `# ` line inside `[]` re-reads as no note (measured), which moved the
-            // text on the second write.
+            // text on the second write. The note is not lost — [`unplaced_value_notes`] hands it to
+            // the line the caller already owns, above the key.
             if !items.is_empty() {
                 let leading = container_leading_notes(node);
                 if !leading.is_empty() || items.iter().any(element_has_note) {
@@ -585,7 +647,10 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // `write_notated_table`. An empty table is asked nothing, for
             // the array arm's reason: `# a` inside `{ }` reaches no member
             // and this crate's reader hands back no note for it, so the
-            // demoted text moved on the second write.
+            // demoted text moved on the second write. Such a note is still
+            // carried — the layout test above asks [`unplaced_value_notes`]
+            // of every member value so the table demotes, and the member loop
+            // writes the note on the member's own line.
             if !pairs.is_empty() {
                 let leading = container_leading_notes(node);
                 if !leading.is_empty()
@@ -593,6 +658,7 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                         !k.leading_comments().is_empty()
                             || k.comment().is_some_and(|c| !c.standalone)
                             || v.comment().is_some_and(|c| !c.standalone)
+                            || !unplaced_value_notes(v).is_empty()
                     })
                 {
                     return write_notated_table(out, pairs, leading);
@@ -1787,15 +1853,15 @@ mod tests {
     }
 
     #[test]
-    fn a_note_on_an_empty_inline_table_keeps_the_compact_form_and_the_fixed_point() {
+    fn a_note_on_an_empty_inline_table_takes_the_key_line_and_settles() {
         // Pinned from `prop_toml_writer_is_fixed_point` at 20,000 cases (seed 87565b80, saved by
         // that run in `proptest-regressions/fmt_pbt.txt`): an *empty* mapping carrying its own note.
-        // The demotion a non-empty table gets has nothing to write beside here, and a `# ` line
-        // inside `{ }` reaches no member — measured through this crate's own reader,
-        // `to_toml(from_toml("A = {\n  # a\n}"))` gives back `A = {}`, no note anywhere. So the
-        // demoted text moved on the second write and the fixed point broke. A note owned by an
-        // empty container is the boundary's other half, beside an own-line note after a file's
-        // last key: TOML has no line that can report it back.
+        // This test used to pin the opposite — `A = {}` with no note anywhere — on the reasoning that
+        // "TOML has no line that can report it back". That premise only ever covered the inside brace:
+        // `to_toml(from_toml("A = {\n  # a\n}"))` does hand back `A = {}` with no note, so demoting
+        // the container moved the text on the second write. The line above the key is a line the
+        // reader does report a member's leading note from, so the note survives the round trip and
+        // settles — and the value keeps its compact `{}` spelling either way.
         let mut empty = CustomNode::plain_mapping(Default::default());
         empty.push_leading_comment(Comment {
             text: "a".into(),
@@ -1808,15 +1874,18 @@ mod tests {
         );
 
         let out = to_toml(&root).unwrap();
-        assert_eq!(out, "A = {}\n", "an empty table was demoted: {out}");
+        assert_eq!(
+            out, "# a\nA = {}\n",
+            "the note did not reach the key line: {out}"
+        );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }
 
     #[test]
-    fn a_note_on_an_empty_inline_array_keeps_the_compact_form_and_the_fixed_point() {
-        // The sequence twin of the pinned counterexample, because the two arms are one rule and the
-        // array half of a shared helper is the half a fixture tends not to reach.
+    fn a_note_on_an_empty_inline_array_takes_the_key_line_and_settles() {
+        // The sequence twin, because the two arms are one rule and the array half of a shared helper
+        // is the half a fixture tends not to reach.
         let mut empty = CustomNode::plain_sequence(Vec::new());
         empty.push_leading_comment(Comment {
             text: "a".into(),
@@ -1829,7 +1898,101 @@ mod tests {
         );
 
         let out = to_toml(&root).unwrap();
-        assert_eq!(out, "A = []\n", "an empty array was demoted: {out}");
+        assert_eq!(
+            out, "# a\nA = []\n",
+            "the note did not reach the key line: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_standalone_note_on_a_scalar_value_takes_the_key_line_and_settles() {
+        // Pinned from `prop_toml_writer_carries_every_note`: a section body whose member carries its
+        // value's note in the older `comment` slot with `standalone = true`. `emit_pair` asked the
+        // value only for its *inline* slot — the note that ends the key's line — so a note standing
+        // above the value had no slot the pair emitter read, and it vanished outright. The line above
+        // the key is where this crate's reader reports a member's leading note from, so the note
+        // survives and the second emission writes the same text from the key's own list.
+        let mut value = CustomNode::plain_scalar("A");
+        value.set_comment(Comment {
+            text: "0".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("a"),
+                CustomNode::plain_mapping(
+                    [(CustomNode::plain_scalar(" "), value)]
+                        .into_iter()
+                        .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "[a]\n# 0\n\" \" = \"A\"\n",
+            "the value's own-line note did not reach the member: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_key_line_note_beside_a_value_line_note_takes_the_line_above_and_settles() {
+        // Pinned from `prop_toml_writer_carries_every_note`: the key carried an inline note and so did
+        // its value. `emit_pair` asked `value … .or_else(key …)` — one slot for the whole line — so a
+        // key's note disappeared the moment its value had a note of its own.
+        let mut key = CustomNode::plain_scalar("a");
+        key.set_comment(Comment {
+            text: "0".into(),
+            standalone: false,
+        });
+        let mut value = CustomNode::plain_scalar("A");
+        value.set_comment(Comment {
+            text: "A".into(),
+            standalone: false,
+        });
+        let root = CustomNode::plain_mapping([(key, value)].into_iter().collect());
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "# 0\na = \"A\" # A\n",
+            "the key's own-line note did not reach the document: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_key_line_note_beside_a_section_note_takes_the_line_above_the_header() {
+        // The header's twin of the pair above, reached through the section pass rather than
+        // `emit_pair`: `[a]` writes one comment after the brackets and `header_inline` chose the
+        // section's own note, so a key carrying a note of its own lost it.
+        let mut key = CustomNode::plain_scalar("a");
+        key.set_comment(Comment {
+            text: "K".into(),
+            standalone: false,
+        });
+        let mut table = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("x"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        table.set_comment(Comment {
+            text: "T".into(),
+            standalone: false,
+        });
+        let root = CustomNode::plain_mapping([(key, table)].into_iter().collect());
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "# K\n[a] # T\nx = 1\n",
+            "the key's own-line note did not reach the header: {out}"
+        );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }
