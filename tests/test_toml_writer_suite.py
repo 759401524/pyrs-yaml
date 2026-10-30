@@ -216,6 +216,29 @@ def test_a_note_above_a_value_with_no_members_travels_the_route_on_the_key_line(
             assert read(noted) == value, f"{name} read the noted text as something else"
 
 
+def test_a_section_key_note_beside_the_section_note_travels_the_route():
+    # The two slots (hy) found are reachable from YAML text: a note above the section's key, and a
+    # note above that section's first member, which the hub homes on the container's own list. Both
+    # lines owe the header, the text settles on the first hop, and a parser this project does not own
+    # reads it — stacked comments above a table header are TOML 1.0 syntax, so unlike the multi-line
+    # inline table above, this needs no version keying.
+    cases = [
+        ("# K\nsec:\n  # T\n  x: 1\n", "# K\n# T\n[sec]\nx = 1\n", {"sec": {"x": 1}}),
+        (
+            "top: 1\n# K\nsec:\n  # T\n  x: 1\n",
+            "top = 1\n# K\n# T\n[sec]\nx = 1\n",
+            {"top": 1, "sec": {"x": 1}},
+        ),
+    ]
+    for src, expected, value in cases:
+        noted = pyrs_yaml.to_toml(src)
+        assert noted == expected, f"{src!r} wrote {noted!r}"
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(noted)) == noted, f"{expected!r} does not settle"
+        assert pyrs_yaml.load_toml(noted) == value
+        for name, read in READERS.items():
+            assert read(noted) == value, f"{name} read the noted text as something else"
+
+
 def test_the_gate_cannot_silently_skip_every_reader():
     # The claim of this file is that a parser the repository does not own reads the output. `tomlkit`
     # is an unconditional test dependency, so an empty reader set means the gate stopped existing.

@@ -11187,6 +11187,65 @@ Python value, because for these ten families the binding's answer is deliberatel
 become a string. The exact-equality claim still belongs to `roundtrip_safe_json`, which is JSON
 shaped by design, and the widened domain deliberately does not join it.
 
+### (hy) A header's two note stacks were read as alternatives (2026-10-30)
+
+`(hw)` closed five unread slots and left one open as a *position* question. The conservation
+property it added then drew a sixth slot on trunk, and this one is a loss rather than a position.
+
+The section pass in `crates/pyrs-toml/src/writer.rs` built one slice out of two lists:
+
+```text
+let leading = if !own.is_empty() { own }
+    else if let Some(c) = tbl.comment().filter(|c| c.standalone) { core::slice::from_ref(c) }
+    else { key_node.leading_comments() };
+```
+
+PR #114 moved a header's leading notes onto the child mapping, which freed the parent key's slot
+instead of replacing it, so a key that carries a stack above a section that carries its own is two
+slots, and the key's list is reached only when the section's is empty. Measured on a node whose key
+carries `# K` and whose table carries `# T`, `to_toml` returned `# T\n[a]\nx = 1\n` — the key's line
+gone — and re-emitting that text returned the same text. A dropped note is invisible to every
+property that compares emissions, which is the class `(hw)` registered when it added the oracle:
+re-parseability, the fixed point and tree equality all pass on a document that lost something, and
+only the oracle that charges the tree's notes against the text can see it. CI's
+`property tier (20k cases, shard 1/4)` red on PR #678's head was that oracle finding trunk, not the
+PR: `git diff f8c196c5 51abcbb4 -- crates/` is empty, so the head's engine tree is trunk's byte for
+byte, and a rerun of the same job came back green because the shape is a draw, not a certainty. A
+green rerun of an intermittent red is not a fix.
+
+The fix writes both lists, the key's lines above the section's own, as two loops over `key_leading`
+and `own_notes`, and keeps the pre-#114 fallback for a node whose note rides the key's `comment`
+slot with both lists empty. Two tiers ask it.
+`a_key_line_stack_beside_a_section_stack_loses_neither_note` holds the hand-built node's bytes
+`# K\n# T\n[a]\nx = 1\n` and its fixed point, and
+`a_header_note_stack_that_arrives_by_way_of_yaml_reaches_the_section` in
+`crates/pyrs-yaml-core/src/integration/toml_family.rs` holds the same pair through the shipped
+YAML→hub→TOML route — `# K\nsec:\n  # T\n  x: 1` and its `top = 1`-prefixed twin, each settling on
+the first hop. The binding tier reads the same pair: `tests/test_toml_writer_suite.py`'s
+`test_a_section_key_note_beside_the_section_note_travels_the_route` asserts those bytes, the settle,
+and that `tomlkit` and `tomllib` both read the noted text back as the same value — comments stacked
+above a table header are TOML 1.0 syntax, so unlike the multi-line inline table `(hw)` wrote, this
+shape needs no version-keyed expectation. The control is the pre-fix selection put back in place of
+the two loops: both tests redden, the crate one with `left: "# T\n[a]\nx = 1\n"` and the route one
+with `left: "top = 1\n# T\n[sec]\nx = 1\n"`, which is the same loss read from either side, and
+nothing else in either crate changes verdict.
+
+The price was read on this host with the gate's own three repeats, which agree to under 0.001%:
+`to_toml_medium` is 28,980,970 with the section pass as trunk wrote it, 29,220,971 with both lists
+chained through `Iterator::chain` (+0.83%, past the line), and 29,114,939 with the same order
+written as two `for` loops (+0.46%). Nothing about the emission differs between the two spellings,
+so the 106,032 instructions between them are a code-size result rather than a semantic one — the
+family a note-only change was priced by before. The two-loop spelling ships. `to_toml_long_strings`
+(30,851,864, −0.02%) and `to_toml_notes` (16,464,635, −0.03%) do not move either way, which is the
+control that says the cost is the per-header guard and not the notes: the two scenarios carrying
+notes are the ones that got cheaper. This host also reads trunk's `load_toml_medium` and
+`load_toml_long_strings` at exactly the numbers this branch reads — +1.65% and +2.98% over their
+image-keyed floors — and lands `documents_short_strings` and `documents_long_strings` 12.77% and
+8.22% under committed floors on both trees, which is host-versus-image drift named here so a reader
+does not mistake it for this change. `to_toml_medium` is not image-keyed, and this host's trunk
+reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
+verdict; the enforcing reading is CI's `ir` job.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

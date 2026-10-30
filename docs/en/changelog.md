@@ -307,6 +307,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
+  hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
+  one slice by asking the section's list first and falling back to the key's. Both non-empty is
+  therefore one note stack short: a key carrying `# K` above a section carrying `# T` emitted
+  `# T\n[a]\nx = 1\n`, and because the shortened text re-emits as itself, the fixed point,
+  re-parseability and tree equality all passed on a document that had lost a line. The only oracle
+  in the tier that charges both slots is `prop_toml_writer_carries_every_note`, which drew the shape
+  at 20,000 cases on a head whose `crates/` tree is trunk's byte for byte — so trunk was
+  intermittently red, and a rerun that came back green was not a fix. Both lists are written now,
+  the key's lines above the section's own, and each shape settles on the first hop.
+  `a_key_line_stack_beside_a_section_stack_loses_neither_note` pins the hand-built node's bytes and
+  fixed point, and `a_header_note_stack_that_arrives_by_way_of_yaml_reaches_the_section` pins the
+  same pair reached through the shipped YAML→hub→TOML route, whose binding-level twin
+  `test_a_section_key_note_beside_the_section_note_travels_the_route` reads that text back with
+  `tomlkit` and `tomllib` too. The control is the pre-fix selection
+  put back in place of the two loops: both tests redden, with `# T\n[a]\nx = 1\n` and
+  `top = 1\n# T\n[sec]\nx = 1\n` on their lefts. The price is the guard, not the notes:
+  `to_toml_medium` reads +0.46 % over its floor where the two lists are written as two loops (the
+  same order through `Iterator::chain` costs +0.83 %, and the emitted bytes are identical between
+  the two spellings), while the scenarios that do carry notes do not move — `to_toml_notes` −0.03 %
+  and `to_toml_long_strings` −0.02 %.
 - **Five TOML note slots nobody read, and the tier that could not see them go** — `to_toml` dropped
   a note whenever the line it needed did not exist: on an empty table or array carrying its own
   note, on a scalar value whose note stands on its own line, and twice where one member line was
