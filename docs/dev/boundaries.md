@@ -49,6 +49,23 @@ forms are not reproducible.
   every container a "blank lines before me" field is per-container writer state, and the Ir floors
   price that on every serialize scenario (`docs/dev/perf.md`). Pinned by
   `TestBlankLineFidelity.test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point`.
+- **Three of the five scalar styles share one key spelling.** A block header has to end its line, so
+  a `|`- or `>`-styled key leaves the writer as the double-quoted spelling of its text — chomping
+  and indentation indicator gone with the header — and an empty plain key is quoted too, because the
+  bare form reads as null. Measured on the emission of each style in key position: `!? ''` keeps its
+  quote, `!? abc` keeps the bare form, and `!? "abc"`, `!? |`-and-`abc` and the bare-empty `!?` all
+  reach the text as `!? "abc"` / `!? ""`. `KeyIdentity::Tagged` now carries that projected style, so
+  the generator, the edit layer and the merge expansion read one model of what a key line can hold,
+  and `same_emitted_key` folds a merged pair the projection fuses — the target's entry wins, as YAML
+  1.1 merge already decides for two spellings of one text. What is still open is a mapping that
+  *names* two fused spellings itself: `? !? |` + `: 1` + `? !?` + `: 2` reads as two entries and
+  emits `!? "": 1` twice, which this engine's own reader refuses as a duplicate. Registered as
+  `engine:block-styled-key-spelling-collides`, because the two ways to close it are decisions rather
+  than patches: give a block-styled key the `?`-marker layout (a spelling a flow parent does not
+  have, so the pair collides there again), or fold the pair on read, which changes which entries a
+  document holds. Pinned by
+  `TestKeySpellingProjection.test_two_keys_the_writer_spells_alike_emit_one_text`, with the pair the
+  quote character still separates beside it as the control.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful

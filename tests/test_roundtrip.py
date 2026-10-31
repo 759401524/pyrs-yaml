@@ -185,3 +185,28 @@ class TestBlankLineFidelity:
         doc = pyrs_yaml.parse("a: 1\n\nb: 2\n")
         doc.set("$.a", 9)
         assert doc.to_yaml() == "a: 9\nb: 2\n"
+
+
+class TestKeySpellingProjection:
+    """Three of the five scalar styles share one key spelling, and the reader does not know.
+
+    Characterization, not aspiration: `engine:block-styled-key-spelling-collides` in
+    `.ci/known-residuals.json`. A block header has to end its line, so the writer spells a
+    `|`- or `>`-styled key, and a bare-empty one, as the double-quoted text. A document that
+    names two of them holds two entries on the read and emits one key twice on the write.
+    """
+
+    @pytest.mark.known_residual("engine:block-styled-key-spelling-collides")
+    def test_two_keys_the_writer_spells_alike_emit_one_text(self):
+        emitted = pyrs_yaml.parse("? !? |\n: 1\n? !?\n: 2\n").to_yaml()
+        assert emitted == '!? "": 1\n!? "": 2\n'
+        with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
+            pyrs_yaml.parse(emitted)
+
+    def test_the_spelling_that_survives_is_the_quote_character(self):
+        # The control: where a quote is what separates the pair, both entries survive the
+        # round trip - so the residual above is the key line's layout limit, not a general
+        # loss of tagged keys.
+        emitted = pyrs_yaml.parse("? !? ''\n: 1\n? !? \"\"\n: 2\n").to_yaml()
+        assert emitted == "!? '': 1\n!? \"\": 2\n"
+        assert pyrs_yaml.parse(emitted).to_yaml() == emitted

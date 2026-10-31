@@ -297,6 +297,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A merged key the writer cannot spell twice is folded, not written twice** — a block header has
+  to end its line, so a `|`- or `>`-styled scalar key leaves the writer as the double-quoted
+  spelling of its text, and an empty plain key is quoted too; three of the five scalar styles
+  therefore reach the key line as one text. A `<<` that carried one of them into a mapping already
+  naming another kept both entries and wrote `!? "abc": 1` beside `!? "abc": 2` — text this engine's
+  own reader refuses as `duplicate key`, and the projection that explains libFuzzer `yaml_roundtrip`
+  crash-4bf6ee37. `same_emitted_key` now asks that projection before it compares, so the merged pair
+  folds to one entry and the target's value wins, as YAML 1.1 merge already decides for two
+  spellings of one text. `KeyIdentity::Tagged` carries the projected style, so the generator veto,
+  the edit layer and the merge expansion read one model of what a key line can hold: five rows went
+  into the rule-against- writer-against-reader table (two must keep both entries, three must fold),
+  and putting the source style back reddens it by naming the row. Not closed: a mapping that names
+  two fused spellings in its own body still emits one key twice — registered as
+  `engine:block-styled-key-spelling-collides` with its repro, because both ways of closing it are
+  rulings: the `?`-marker spelling a flow parent cannot follow, or a read-time fold that changes
+  which entries a document holds. Priced at +0.13% paired on `parse_inline_merge` against the same
+  host's trunk reading (`docs/dev/quality-ledger.md`, `(ia)`).
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

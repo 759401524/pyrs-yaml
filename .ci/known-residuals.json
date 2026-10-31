@@ -38,6 +38,14 @@
       "opened": "2026-10-27",
       "exit": "parse('a: 1' + blank + 'b: 2').to_yaml() reproduces the blank at each of the eight positions the repro walks (root, nested key, sequence item, before a note, consecutive, after a block scalar, leading, trailing) instead of emitting the compact form",
       "why": "the reader records no empty line between entries and the writer emits one line break per item, so there is no slot a blank could be restored from; measured 2026-10-27 the edit route drops it too, so no shipped path keeps it. Values, key order, anchors and notes are lossless and the output is already a fixed point, which makes this layout rather than semantics. Filling the slot means per-container writer state, and the Ir gate prices what that costs on the serialize floors (docs/dev/perf.md), so it is registered and declined for now rather than silently absorbed"
+    },
+    {
+      "id": "engine:block-styled-key-spelling-collides",
+      "repro": "tests/test_roundtrip.py::TestKeySpellingProjection::test_two_keys_the_writer_spells_alike_emit_one_text",
+      "tier": "rust-core",
+      "opened": "2026-10-31",
+      "exit": "parse('? !? |\\n: 1\\n? !?\\n: 2\\n').to_yaml() re-parses. Two routes, both priced in ledger (ia): the writer keeps a block-styled key's own form through the '?' marker - a layout change a flow parent cannot follow, so the pair collides there again - or the reader folds the pair by the projection it resolves to, the way is_null_key already folds two null spellings, which changes which entries a document holds and is a ruling rather than a patch",
+      "why": "a block header has to end its line, so a key written `|`, `>` or bare-empty leaves as the double-quoted spelling and three of the five scalar styles reach one text; a mapping the reader built with two of them therefore emits a duplicate its own reader refuses (libFuzzer yaml_roundtrip crash-4bf6ee37). The merge route is fixed (#688's sibling): same_emitted_key now asks the projection"
     }
   ]
 }
