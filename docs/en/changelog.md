@@ -304,6 +304,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
   (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
   existing errors; see `docs/dev/boundaries.md`.
+- **Two public callables were never run, and now nothing can be** — the shipped stub declares 74
+  public callables, and reading every module under `tests/` for names used as the callee of a call
+  found 2 that nothing ever called: `get_plugin` and `YamlDocument.flush_source`. Both answered
+  correctly once measured — `get_plugin("!date")` is `("!date", "<class 'datetime.date'>")` and
+  `None` for an unknown or empty tag, and `flush_source()` on an unedited document keeps the text it
+  was read with, which is the sign that the call is not an eager reformat.
+  `tests/test_api_call_surface.py` is the gate that keeps the count at zero: it reads the stub for
+  module functions and public methods, requires a call site, and refuses the four ways this kind of
+  check goes quietly green — a stub read that finds nothing because the parser broke, a name
+  *mentioned* (in a docstring, a `dir()` string, a bare attribute bind) rather than called, a gate
+  pointed at an artifact other than the file the wheel ships, and the two names this row was written
+  for.
 
 #### Fixed
 
