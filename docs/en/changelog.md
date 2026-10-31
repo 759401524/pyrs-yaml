@@ -19,6 +19,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **Two contracts of `Document.validate()` are measured and registered** — the surface delegates
+  every rule to `jsonschema`, and the tree now says what that costs. `[project.dependencies]` is
+  `typing-extensions` alone and the three extras are `cli`, `pydantic` and `settings`, so nothing
+  this project publishes installs the evaluator: with the module halted in `sys.modules` — the same
+  failure an absent wheel produces — `doc.validate({...})` answers a base install with a bare
+  `ModuleNotFoundError`, while `docs/en/quick-start.md` installs once at its top and calls the
+  method in step 12. The second boundary is the schema *text*: the `str` door runs `json.loads`
+  before the evaluator is consulted, so the YAML spelling — the form every other schema surface
+  here reads — returns a stdlib `json.decoder.JSONDecodeError`, which belongs to neither the ten
+  documented `Yaml*` classes nor the CLI's `except YamlValidateError` arm; measured,
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` prints exactly that traceback. Both are
+  registered in `.ci/known-residuals.json` with a live repro each
+  (`api:validate-evaluator-is-not-installed-by-anything-we-ship` and
+  `api:validate-schema-text-is-json-only`) and are deliberately not fixed here: an extra is a
+  packaging decision, widening the door or wrapping the error changes a public contract, and
+  PR #517 designs the evaluator that would make both questions moot.
 - **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
   fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
   `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602

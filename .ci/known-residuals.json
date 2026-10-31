@@ -38,6 +38,22 @@
       "opened": "2026-10-27",
       "exit": "parse('a: 1' + blank + 'b: 2').to_yaml() reproduces the blank at each of the eight positions the repro walks (root, nested key, sequence item, before a note, consecutive, after a block scalar, leading, trailing) instead of emitting the compact form",
       "why": "the reader records no empty line between entries and the writer emits one line break per item, so there is no slot a blank could be restored from; measured 2026-10-27 the edit route drops it too, so no shipped path keeps it. Values, key order, anchors and notes are lossless and the output is already a fixed point, which makes this layout rather than semantics. Filling the slot means per-container writer state, and the Ir gate prices what that costs on the serialize floors (docs/dev/perf.md), so it is registered and declined for now rather than silently absorbed"
+    },
+    {
+      "id": "api:validate-schema-text-is-json-only",
+      "repro": "tests/test_validate.py::TestTheDelegatedEvaluatorContract::test_a_yaml_spelled_schema_refuses_with_a_stdlib_json_error",
+      "tier": "binding",
+      "opened": "2026-10-31",
+      "exit": "parse('port: 8080').validate('type: object\\nrequired: [port]\\n') either evaluates the YAML spelling or raises pyrs_yaml.YamlValidateError, and the public docstring of Document.validate names the text form the schema argument accepts",
+      "why": "the schema parameter is typed `str | dict[str, Any]` and the only text form is JSON: document.rs runs json.loads on the string before the evaluator is consulted, so the spelling a YAML user reaches for comes back as a stdlib json.decoder.JSONDecodeError - outside the ten documented Yaml* classes, and outside the `except YamlValidateError` arm of the CLI, where measured 2026-10-31 `pyrs-yaml validate doc.yaml --schema-file schema.yaml` prints that traceback. Widening acceptance is an interface decision and wrapping the error is an error-contract change; docs/dev/json-schema-engine.md designs the route that makes the question moot"
+    },
+    {
+      "id": "api:validate-evaluator-is-not-installed-by-anything-we-ship",
+      "repro": "tests/test_validate.py::TestTheDelegatedEvaluatorContract::test_a_base_install_answers_with_a_bare_module_not_found_error",
+      "tier": "binding",
+      "opened": "2026-10-31",
+      "exit": "a named extra installs a JSON Schema evaluator, or Document.validate() refuses with a pyrs_yaml error whose text names the install route, so following docs/en/quick-start.md from its single `pip install pyrs-yaml` line cannot end in a ModuleNotFoundError",
+      "why": "Document.validate forwards every rule to `jsonschema` (crates/pyrs-yaml/src/py/document.rs imports it), and no distribution this project publishes installs that package: [project.dependencies] is typing-extensions alone and the three extras are cli, pydantic and settings, while jsonschema sits in the test group. Measured 2026-10-31 with the module halted in sys.modules - the same failure an absent wheel gives - the call raises a bare ModuleNotFoundError that names nothing the reader can act on. An extra is a packaging decision (AGENTS.md: ask first), and the evaluator this repository owns is the design under review in docs/dev/json-schema-engine.md"
     }
   ]
 }

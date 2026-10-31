@@ -17,6 +17,22 @@ status: new
 
 #### 追加
 
+- **`Document.validate()` の契約二つを実測して登録した** — この面はすべての規則を
+  `jsonschema` に委譲しており、その代価をこのツリーははっきり書く。`[project.dependencies]` は
+  `typing-extensions` 一件だけ、extras は `cli`、`pydantic`、`settings` の三つで、本プロジェクトが
+  公開するどの配布物にも評価器は含まれない。モジュールを `sys.modules` で止める（wheel が無いときと
+  同じ失敗）と、新規インストールでの `doc.validate({...})` は
+  裸の `ModuleNotFoundError` を返すだけだ。
+  ところが `docs/en/quick-start.md` は冒頭で一度インストールし、第 12 歩でこのメソッドを呼ぶ。
+  二つ目の境界はスキーマの*テキスト*。`str` の扉は評価器に問う前に `json.loads` を走らせるので、
+  YAML の綴り（この中の他のスキーマ面が読む形）は標準ライブラリの
+  `json.decoder.JSONDecodeError` を返す。このクラスは文書化された十個の `Yaml*` にも、CLI の
+  `except YamlValidateError` 節にも属さない。実測では
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` がまさにその traceback を出す。両方は
+  `.ci/known-residuals.json` に生きた repro を添えて登録した
+  （`api:validate-evaluator-is-not-installed-by-anything-we-ship` と
+  `api:validate-schema-text-is-json-only`）。ここでは意図的に直さない。extra は配布の決定であり、
+  扉を開くのも例外を包み直すのも公開契約の変更で、PR #517 の評価器は両方の問いを無効にする。
 - **Python の生成層が、葉では名前の付けられなかった家族を描くようになった** — `arbitrary_json` は葉
   を `None`、`bool`、±10^12 内の `int`、有限の `float`、`str` に限っていた。何が除外されていたかは葉
   を数えれば出る。25,000 回の抽出は 270,602 枚の葉を作り、この五種がそれぞれ 58,064 / 53,396 /

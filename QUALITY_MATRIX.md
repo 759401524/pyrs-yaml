@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 847 Rust `#[test]`, 2,083 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 847 Rust `#[test]`, 2,086 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 32 proptest properties (28 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -952,6 +952,8 @@ none of these is a shape the matrix is blind to.
 | `engine:container-inline-note-position` | hub / Rust core | a TOML `[sec] # note` keeps its text and its table but not its line: the hub has no container inline-note position, and adding one means changing the locked granit capture model ([boundaries](docs/dev/boundaries.md)) | `to_toml(from_toml("[sec] # note\nx = 1\n"))` writes the note on the header line |
 | `api:set-comment-container-owner` | binding writer | `set_comment(..., standalone=False)` on a container lands on the last child's line, and the re-read gives the note that child; the edit fuzz tier therefore withholds the ownership claim (ledger (ei), #113) | the container keeps the note at a position the reader reports back, or the call refuses |
 | `engine:entry-blank-lines` | hub / Rust core | an empty line between two entries survives no round, in any position or route: the reader records none and the writer emits one break per item, so the layout the author wrote is flattened while values, order, anchors and notes stay lossless ([boundaries](docs/dev/boundaries.md)) | the eight positions the repro walks reproduce their blank line instead of the compact form |
+| `api:validate-schema-text-is-json-only` | binding / CLI | the `str` form of the schema argument is parsed as JSON before the evaluator is consulted, so the YAML spelling - what a user of this package reaches for - answers with a stdlib `json.decoder.JSONDecodeError` that belongs to neither the documented `Yaml*` family nor the CLI's `except YamlValidateError` arm ([boundaries](docs/dev/boundaries.md)) | `validate("type: object")` evaluates the YAML spelling or raises `YamlValidateError`, and the public docstring names the text form the parameter accepts |
+| `api:validate-evaluator-is-not-installed-by-anything-we-ship` | packaging / binding | every rule `Document.validate()` applies belongs to `jsonschema`, and no distribution this project publishes installs it - base dependencies are `typing-extensions` alone, the extras are `cli`, `pydantic` and `settings`, and the package sits in the test group - so a base install answers the documented method with a bare `ModuleNotFoundError` ([boundaries](docs/dev/boundaries.md)) | a named extra installs an evaluator, or the missing evaluator refuses with a `pyrs_yaml` error naming the install route |
 
 ### Improvement plan
 

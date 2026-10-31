@@ -49,6 +49,26 @@ forms are not reproducible.
   every container a "blank lines before me" field is per-container writer state, and the Ir floors
   price that on every serialize scenario (`docs/dev/perf.md`). Pinned by
   `TestBlankLineFidelity.test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point`.
+- **The schema text a `validate()` call accepts.** `Document.validate` takes `str | dict`, and the
+  `str` door is JSON: the binding runs `json.loads` on the text before the evaluator is consulted.
+  The YAML spelling — the form every other schema surface in this package reads — comes back as a
+  stdlib `json.decoder.JSONDecodeError`. That class is in neither the ten documented `Yaml*` errors
+  nor the CLI's `except YamlValidateError` arm: measured 2026-10-31,
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` printed a traceback for a file the guide
+  calls a schema. Registered as `api:validate-schema-text-is-json-only` and pinned by
+  `TestTheDelegatedEvaluatorContract.test_a_yaml_spelled_schema_refuses_with_a_stdlib_json_error`.
+  Accepting YAML text widens an acceptance door and re-wrapping the refusal changes the error
+  contract, so neither is smuggled in beside this registration.
+- **Who actually evaluates a JSON Schema.** No rule `Document.validate()` applies is owned here: the
+  binding imports `jsonschema` and forwards, and that package lives in the test group only —
+  `[project.dependencies]` is `typing-extensions` alone, and the three extras are `cli`, `pydantic`
+  and `settings`. Measured 2026-10-31 with the module halted the way an absent wheel halts it, a
+  base install answers the documented method with a bare `ModuleNotFoundError` that names no route,
+  while `docs/en/quick-start.md` installs once at its top and calls `validate()` in step 12. It is
+  registered as `api:validate-evaluator-is-not-installed-by-anything-we-ship`, pinned by
+  `TestTheDelegatedEvaluatorContract.test_a_base_install_answers_with_a_bare_module_not_found_error`.
+  Adding an extra is a packaging decision (AGENTS.md: ask first), and the evaluator this repository
+  would own is designed in the still-open PR #517.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful
