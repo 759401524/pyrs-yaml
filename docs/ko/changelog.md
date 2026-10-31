@@ -17,6 +17,21 @@ status: new
 
 #### 추가
 
+- **`Document.validate()`의 계약 두 가지를 측정하고 등록했다** — 이 면은 모든 규칙을
+  `jsonschema`에 넘기므로, 이 트리는 그 대가를 이제 분명히 적는다. `[project.dependencies]`는
+  `typing-extensions` 하나이고 extra는 `cli`, `pydantic`, `settings` 세 개라서, 이 프로젝트가
+  배포하는 무엇도 평가기를 설치하지 않는다. 모듈을 `sys.modules`에서 막으면(wheel이 없을 때와
+  같은 실패) 새 설치에서의 `doc.validate({...})`는 맨 `ModuleNotFoundError`만 던지는데,
+  `docs/en/quick-start.md`는 맨 앞에서 한 번 설치하고 12단계에서 그 메서드를 부른다. 두 번째
+  경계는 스키마 *텍스트*다. `str` 문의는 평가기에게 묻기 전에 `json.loads`를 돌리므로, YAML
+  표기(여기 다른 스키마 면들이 읽는 형태)는 표준 라이브러리의
+  `json.decoder.JSONDecodeError`를 돌려준다. 그 클래스는 문서에 적힌 열 개의 `Yaml*`에도, CLI의
+  `except YamlValidateError` 절에도 속하지 않는다. 실측 결과
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml`이 바로 그 traceback을 출력한다. 둘 다
+  `.ci/known-residuals.json`에 살아 있는 repro와 함께 등록했다
+  (`api:validate-evaluator-is-not-installed-by-anything-we-ship`,
+  `api:validate-schema-text-is-json-only`). 여기서는 일부러 고치지 않는다. extra는 배포 결정이고,
+  문을 넓히거나 예외를 감싸는 것은 공개 계약 변경이며, PR #517의 평가기는 두 질문을 없앤다.
 - **Python 생성 계층, 잎으로는 이름을 붙일 수 없던 계열을 이제 그린다** — `arbitrary_json`은 잎을
   `None`, `bool`, ±10^12 안의 `int`, 유한한 `float`, `str`으로 제한했다. 무엇이 빠졌는지는 잎을 세면
   나온다. 25,000번의 추출은 잎 270,602개를 만들고, 다섯 종류가 각각 58,064 / 53,396 / 53,251 /

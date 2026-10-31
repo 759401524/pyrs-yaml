@@ -19,6 +19,19 @@ status: new
 
 #### 新增
 
+- **`Document.validate()` 的两条契约被实测并登记** — 这个表面把每条规则都交给 `jsonschema`，
+  而这份树如今把这样做的代价写清楚了。`[project.dependencies]` 只有 `typing-extensions` 一项，
+  三个 extras 是 `cli`、`pydantic` 与 `settings`，所以本项目发布的任何分发都不安装求值器：把该
+  模块在 `sys.modules` 里按住——与缺 wheel 时同一种失败——全新安装上的 `doc.validate({...})`
+  只回一个裸的 `ModuleNotFoundError`，而 `docs/en/quick-start.md` 在开头装一次，第 12 步就调用
+  这个方法。第二条边界是模式*文本*：`str` 这道门在问求值器之前先跑 `json.loads`，所以 YAML 拼法
+  ——这里其他每个模式表面所读的形态——返回标准库的 `json.decoder.JSONDecodeError`，它既不属于
+  文档写明的十个 `Yaml*` 类，也不在 CLI 的 `except YamlValidateError` 分支里；实测
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` 正打出这段 traceback。两条都登记在
+  `.ci/known-residuals.json`，各带一个活的复现
+  （`api:validate-evaluator-is-not-installed-by-anything-we-ship` 与
+  `api:validate-schema-text-is-json-only`），且刻意不在此处修掉：加 extra 是打包决定，放宽这道门
+  或改写其异常都会改动公开契约，而 PR #517 设计的求值器能让这两个问题一起消失。
 - **Python 生成层如今画出它的叶子从前叫不出名字的家族** — `arbitrary_json` 原先把叶子限制在 `None`、
   `bool`、±10^12 以内的 `int`、有限 `float` 和 `str`，而清点它生成的叶子正好说明这排除了什么：25,000
   次抽样产出 270,602 片叶子，这五类各 58,064 / 53,396 / 53,251 / 52,978 / 52,913 片，此外一片别的类
