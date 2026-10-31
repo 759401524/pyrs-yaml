@@ -11246,6 +11246,42 @@ does not mistake it for this change. `to_toml_medium` is not image-keyed, and th
 reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
 verdict; the enforcing reading is CI's `ir` job.
 
+### (hz) A note inserted at a stale line start split a value onto its own line (2026-10-31)
+
+The scheduled fuzz tier had been `completed/failure` for five consecutive weeks (10-03 through
+10-31) and nobody could say what it found, because `scripts/fuzz_rounds.sh` built its signature with
+`grep -hoE "panicked at [^:]+"` - a cut at the first colon that discarded the line number and the
+assertion text, while `cargo fuzz`'s own output went to a per-round log that is never printed.
+Fixing the report (`fuzz.yml`'s harness, ledger-adjacent PR) turned nine anonymous crash inputs into
+three named claims, and the first of them was a writer-contract violation, not a drift.
+
+Minimized by delta-debugging the artifact by hand from 122 bytes to 23:
+`: !` LF `<<: #b` LF `<<: #b` LF `3 #~`. The reader accepts it. The emission was
+`"~: ! # b\n~\n# b\n<<: 3  # ~\n"`, which this engine's own reader refuses: `simple key expected ':'
+at char 9 line 2 column 1`. The value's null text had been written as a bare `~` at column zero.
+
+The mechanism is an offset, not a placement rule. A mapping entry captures the start of its own line
+before writing its key (`own_line_start`, `serializer.rs`), and a pending tag-only line - the state
+a tagged empty value leaves behind - is closed by *inserting* the value's `~` before that captured
+offset. `insert_note_at` already shifts `pending_tag_insert_at` for exactly this reason
+(crash-5561902a is its comment), and `close_captured_pending_line` guards adjacency, but the pair's
+captured line start had no such maintenance, so the next key's inline note was dropped into the
+middle of the line the close had just lengthened. `note_line_above` now enforces the invariant
+instead of assuming it: an offset that is not a line start is advanced to the next one, which is
+where the line it meant moved to. The same input emits `~: ! ~` + two note lines and is a fixed
+point on the first round; the duplicated `# b` is the merge fold storing one physical comment in
+both the inline and leading slot, and it re-reads to the same tree, so it is noted here rather than
+treated as a defect.
+
+Pinned by `a_key_note_above_a_pair_with_a_pending_tag_line_reparses_and_settles` in
+`crates/pyrs-yaml-core/tests/settles_in_one_round.rs` and by
+`fuzz/seeds/yaml_roundtrip/former-crash-2c76568e….seed`, so the PR-time `-runs=0` replay carries it.
+Measured sensitivity: on `75e81bac`'s serializer that one test fails with the refused text quoted
+above while the other ten in the file pass (`11 tests run: 10 passed, 1 failed`), and with the fix
+`11 passed`; `cargo nextest run --all` is 834/834. The remaining two claims from the same run - the
+duplicate complex-key emission and the TOML inline-table note that will not settle - are separate
+root causes and get their own entries when they are fixed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
