@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 847 Rust `#[test]`, 2,083 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 848 Rust `#[test]`, 2,083 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 32 proptest properties (28 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 175 seeds of which 85 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -807,7 +807,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (84 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (85 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

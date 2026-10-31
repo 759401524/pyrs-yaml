@@ -307,6 +307,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A note no longer splits a value across two lines** — a mapping entry remembers where its own
+  line starts, and closing a pending tag-only line inserts that value's `~` *before* the remembered
+  offset without moving it, so the next key's inline note was dropped into the middle of the
+  line the closure had just lengthened. `to_yaml` of `: !` / `<<: #b` / `<<: #b` / `3 #~`
+  emitted `~: ! # b` then a bare `~` at column zero, which this engine's own reader refuses
+  (`simple key expected ':'`): the writer had broken the one contract `yaml_roundtrip` states — its
+  output always re-parses. `note_line_above` now treats "this offset names a line" as an invariant
+  and advances a stale capture to the next line start, so the emission is `~: ! ~` plus the note
+  lines and settles on the first round. Found by the scheduled discovery tier, whose report had been
+  discarding the claim for five red weeks; pinned by a named Rust test and
+  `fuzz/seeds/yaml_roundtrip/former-crash-2c76568e….seed`, and measured to discriminate — on the
+  previous tree that one test fails with the refused text quoted while its ten siblings pass.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
