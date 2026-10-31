@@ -730,6 +730,23 @@ def _row_properties(props: list[str], row: FormatRow) -> list[str]:
     return credited
 
 
+def _credits_python_property_tier(row: FormatRow, text: str) -> bool:
+    """Whether a Python property file is a tier for this row.
+
+    The row's own property fragments - the same field the Rust half reads - asked as the two
+    identifier shapes a call site takes: `load_<surface>` / `to_<surface>`, or a leading-underscore
+    helper. Keying this on `fragment` instead asked a Python file to carry the *fuzz-target* name, so
+    a property tier could never be credited to a row whose fuzz cell is named differently: the
+    delegated JSON Schema surface looked for `to_document_validate` and reported `no` about a tier
+    that existed. Matching the fragment loosely has the opposite fault: `_schema` inside
+    `_json_schema` would credit the rule-language row with a file that never mentions it.
+    """
+    return "@given" in text and any(
+        re.search(rf"\b(?:load|to)_{prop_fragment}\b|\b_{prop_fragment}\b", text)
+        for prop_fragment in row.prop_fragments
+    )
+
+
 def format_matrix() -> dict:
     """The per-format tier table, derived from the files that declare the defence.
 
@@ -749,11 +766,11 @@ def format_matrix() -> dict:
         unit = _unit_test_count(crate_dir, row.unit_scope)
         rust_props = _row_properties(props, row)
 
-        python_props = []
-        for path in sorted((REPO / "tests").glob("test_property*.py")):
-            text = read(path)
-            if "@given" in text and re.search(rf"(load|to|_){fragment}\b", text):
-                python_props.append(path.name)
+        python_props = [
+            path.name
+            for path in sorted((REPO / "tests").glob("test_property*.py"))
+            if _credits_python_property_tier(row, read(path))
+        ]
 
         fuzz_parse = sorted(name for name in targets if fragment in name and re.match(r"(parse|validate)", name))
         fuzz_round = sorted(name for name in targets if fragment in name and "roundtrip" in name)

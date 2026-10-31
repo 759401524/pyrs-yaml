@@ -38,6 +38,22 @@
       "opened": "2026-10-27",
       "exit": "parse('a: 1' + blank + 'b: 2').to_yaml() reproduces the blank at each of the eight positions the repro walks (root, nested key, sequence item, before a note, consecutive, after a block scalar, leading, trailing) instead of emitting the compact form",
       "why": "the reader records no empty line between entries and the writer emits one line break per item, so there is no slot a blank could be restored from; measured 2026-10-27 the edit route drops it too, so no shipped path keeps it. Values, key order, anchors and notes are lossless and the output is already a fixed point, which makes this layout rather than semantics. Filling the slot means per-container writer state, and the Ir gate prices what that costs on the serialize floors (docs/dev/perf.md), so it is registered and declined for now rather than silently absorbed"
+    },
+    {
+      "id": "api:dict-door-key-fold",
+      "repro": "tests/test_property_json_schema.py::TestTheDictDoorFoldsAKeyPairTheDocumentWritesApart::test_the_pair_folds_at_the_dict_and_the_schema_answers_for_one_entry",
+      "tier": "binding",
+      "opened": "2026-10-31",
+      "exit": "to_dict() either keeps both entries of a key pair the source writes apart (a structure that can hold them) or refuses it the way to_dict already refuses a tagged pair, so no door answers with one entry while to_yaml and to_json answer with two",
+      "why": "`1: one` beside `true: two` is two YAML keys and one Python dict entry, because `1 == True` and setting an equal key replaces the value while keeping the first key. The AST holds both, `to_yaml()` re-emits both and `to_json()` writes both, so the fold belongs to this door alone; PyYAML's loader folds at the same point (measured 2026-10-31), so the fold is the counterparties' shape, not a drift this project introduced. `Document.validate()` judges the folded instance, which is how the schema tier found it"
+    },
+    {
+      "id": "engine:key-identity-route-parity",
+      "repro": "tests/test_property_json_schema.py::TestTheTwoReadersAnswerOppositeWaysOnAdjacentKeyPairs::test_the_ast_route_refuses_what_the_fast_route_accepts",
+      "tier": "rust-core",
+      "opened": "2026-10-31",
+      "exit": "parse() and safe_load() give the same accept-or-refuse answer on `1:` beside `'1':` and on `1:` beside `true:`, because one key-identity model decides both routes",
+      "why": "the AST route tracks an untagged scalar key by its text (`KeyIdentity::Text`: style never reaches its decision), so `1:` and `'1':` are one key and it refuses; the direct route tracks the resolved Python object, so `1` and `true` are one key and it refuses there instead. The two answers cross over on adjacent pairs, and the two routes each diverge from a different counterparty. Aligning them decides which documents are valid at all, so it is a ruling, not a patch"
     }
   ]
 }

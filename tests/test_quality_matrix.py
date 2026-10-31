@@ -363,6 +363,26 @@ def test_property_probe_finds_the_real_properties(matrix, measured):
         assert any(name.endswith(f"::{prop}") for name in names), prop
 
 
+def test_a_python_property_tier_is_credited_by_the_rows_own_fragments(matrix):
+    """The Python half reads the row's property fragments, anchored both ends - not its fuzz name.
+
+    Keyed on `fragment`, the delegated JSON Schema row asked a Python file to carry
+    `to_document_validate`, the name of a fuzz target that does not exist, so a tier written against
+    that surface read as `property=no` forever. Keyed loosely, `to_schema` would credit the rule
+    language with a file about JSON Schema. Both halves of the mistake are forced here.
+    """
+    rows = {row.label: row for row in matrix.FORMAT_ROWS}
+    schema_row = rows["JSON Schema validation"]
+    rule_row = rows["Schema rule language"]
+    yaml_row = rows["YAML"]
+    tier = "@given(_json_schema())\ndef test_x():\n    pass\n"
+    assert matrix._credits_python_property_tier(schema_row, tier), tier
+    assert not matrix._credits_python_property_tier(schema_row, "@given\ndef test_x():\n    load_json()\n")
+    assert not matrix._credits_python_property_tier(rule_row, tier)
+    assert matrix._credits_python_property_tier(rule_row, "@given\ndef test_x():\n    to_schema()\n")
+    assert matrix._credits_python_property_tier(yaml_row, "@given\ndef test_x():\n    to_yaml()\n")
+
+
 def test_a_property_that_filters_its_own_samples_is_named(matrix, tmp_path):
     """The guard is the finding, so the probe must not read a plain property as silent.
 
@@ -1182,6 +1202,11 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert authority["JSON Schema validation"]["files"] == ["test_document_validate_suite.py"], authority
     assert authority["JSON Schema validation"]["verdict"] == "yes", authority
     assert not rows["JSON Schema validation"]["fuzz_parse"], "no Rust fuzz target names the delegated surface"
+    # Its property cell is the Python tier, and the cell is only `yes` because that file names the
+    # surface: pin the input, or a row that matched nothing would read the same as one that matched.
+    assert rows["JSON Schema validation"]["property_python"] == ["test_property_json_schema.py"], rows[
+        "JSON Schema validation"
+    ]
 
     # The rule language is a row of its own, and the cells are counted in the file that declares
     # it: it shares `pyrs-yaml-core` with the YAML engine, so a crate-wide count would read as
