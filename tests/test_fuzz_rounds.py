@@ -10,7 +10,8 @@ allowed needs the same treatment as engine code — a stub that reproduces each 
 demand, and an assertion per behaviour.
 
 The stub replaces `cargo` on `PATH` and replays a plan file: one line per round, either
-`clean` or `<artifact-name>|<bytes>|<panic line>`.
+`clean` or `<artifact-name>|<bytes>|<panic text>`. The panic text is printed with `printf %b`, so a
+plan line can carry `\\n` and reproduce the way rustc splits a panic across two lines.
 
 Linux only, deliberately. `scripts/fuzz_rounds.sh` is a POSIX shell harness (bash, seq, cmp,
 sed, wc) and CI runs it on ubuntu, which is where these assertions execute. Windows' `bash.exe`
@@ -59,7 +60,7 @@ body=${rest%%|*}
 sig=${rest#*|}
 mkdir -p "$STUB_ARTIFACTS"
 printf '%s' "$body" > "$STUB_ARTIFACTS/$name"
-echo "$sig" >&2
+printf '%b\n' "$sig" >&2
 exit 1
 """
 
@@ -119,6 +120,65 @@ def crash(name: str, body: str, site: str = "yaml_roundtrip.rs:37") -> str:
     # artifact as opaque bytes anyway.
     assert "\n" not in body and "|" not in body, body
     return f"{name}|{body}|panicked at fuzz/fuzz_targets/{site}"
+
+
+def crash_with_message(name: str, body: str, site: str, message: str) -> str:
+    """A panic the way rustc prints it: location on one line, the claim on the next."""
+    assert "\n" not in body and "|" not in body, body
+    panic = f"thread '<unnamed>' panicked at fuzz/{site}\\n{message}"
+    return f"{name}|{body}|{panic}"
+
+
+def first_finding(tmp_path: Path) -> str:
+    path = tmp_path / "fuzz" / "collected" / TARGET / "findings.tsv"
+    return path.read_text(encoding="utf-8").splitlines()[0]
+
+
+def test_the_signature_keeps_the_panic_line_and_the_message(tmp_path: Path) -> None:
+    """`panicked at [^:]+` cut the report at the first colon, which made five red weeks unreadable.
+
+    Measured on run 41182712560: `yaml_roundtrip`, `toml_roundtrip` and `edit_yaml` each surfaced
+    three crash inputs under the signature `panicked at fuzz_targets/yaml_roundtrip.rs` - no line,
+    no message - and the detail could not be recovered afterwards, because `cargo fuzz` writes to a
+    per-round log that never reaches CI. The artifacts survive; the claim does not, unless the
+    signature carries both.
+    """
+    build(
+        tmp_path,
+        [
+            crash_with_message(
+                "crash-aaa",
+                "body",
+                site="fuzz_targets/yaml_roundtrip.rs:37:5:",
+                message="assertion `left == right` failed: serialization not idempotent",
+            )
+        ],
+    )
+    proc = run(tmp_path)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    signature = first_finding(tmp_path).split("\t")[0]
+    assert "yaml_roundtrip.rs:37:5:" in signature, signature
+    assert "serialization not idempotent" in signature, signature
+    summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert "serialization not idempotent" in summary, summary
+    assert "1 crash input(s) / 1 distinct signature(s)" in proc.stdout, proc.stdout
+
+
+def test_a_tab_in_a_panic_line_does_not_split_the_report_column(tmp_path: Path) -> None:
+    """`findings.tsv` is tab-separated and the aggregate counts its first column.
+
+    `.github/workflows/fuzz.yml` turns the file into a signature count with `cut -f1 | sort -u`, so
+    one tab inside a panic line would read as a second column and understate the count the report
+    prints - the same class of wrong-number-but-green failure the aggregate job already documents.
+    """
+    build(tmp_path, [crash("crash-aaa", "body", site="fuzz_targets/x.rs:1:1:\\t\\tboom")])
+    proc = run(tmp_path)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    line = first_finding(tmp_path)
+    assert line.count("\t") == 1, repr(line)
+    signature, artifact = line.split("\t")
+    assert artifact == "crash-aaa", line
+    assert "boom" in signature and "\t" not in signature, repr(signature)
 
 
 def test_two_inputs_reaching_one_signature_are_both_reported(tmp_path: Path) -> None:

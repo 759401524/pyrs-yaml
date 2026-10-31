@@ -96,9 +96,27 @@ for round in $(seq 1 "$rounds"); do
         break
     fi
 
-    # One signature per round: the panic location, the assertion text, or the
-    # libFuzzer summary line, whichever comes first.
-    signature=$(grep -m1 -hoE "panicked at [^:]+|assertion [^ ]+ failed|SUMMARY: libFuzzer: .*" "$log")
+    # One signature per round: the panic location WITH its line and column, plus the first line of
+    # the message that follows it; failing that, the assertion text or the libFuzzer summary line.
+    # The cut used to be `grep -hoE "panicked at [^:]+"`, which stops at the first colon - so the
+    # five consecutive red scheduled runs (2026-10-03 through 2026-10-31) each reported
+    # `panicked at fuzz_targets/yaml_roundtrip.rs` with no line number and no message, and the text
+    # could not be recovered afterwards because `cargo fuzz` writes to a per-round log that never
+    # reaches CI. A tab is flattened because `findings.tsv` separates its two columns with one.
+    signature=$(awk '
+        /panicked at/ {
+            loc = $0
+            if (loc ~ /:[[:space:]]*$/ && (getline msg) > 0) {
+                sub(/^[[:space:]]+/, "", msg)
+                loc = loc " " msg
+            }
+            print loc
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' "$log" | tr '\t' ' ')
+    [ -n "$signature" ] || signature=$(grep -m1 -hoE "assertion [^ ]+ failed|SUMMARY: libFuzzer: .*" "$log" | tr '\t' ' ')
     [ -n "$signature" ] || signature="unknown (see job log)"
 
     # Every artifact of this round is archived *before* anything else can happen,
