@@ -237,6 +237,18 @@ status: new
 
 #### 修复
 
+- **模糊测试的报表不再把发现丢掉** — `scripts/fuzz_rounds.sh` 原先用
+  `grep -m1 -hoE "panicked at [^:]+"` 拼每条崩溃签名，而 `[^:]+` 停在第一个冒号，所以一条
+  panic 到报表里只剩 `panicked at fuzz_targets/yaml_roundtrip.rs`：没有行号、没有列、没有消息。
+  也没有别处带着那段文本，因为 `cargo fuzz run` 的输出写进一轮一份、从不打印的日志。后果是
+  可数的：按计划跑的发现层连续五个周六都是 `completed/failure`（2026-10-03、-10、-17、-24、
+  -31），而没人说得出它找到了什么。签名现在同时留下位置与其后第一行消息，这正是让归档
+  artifact 可用的前提——对照今天这次跑，`yaml_roundtrip`、`toml_roundtrip` 与 `edit_yaml` 各报出
+  三条崩溃输入，随后几分钟就依归档字节复现出两处写器契约违反。制表符被压平，因为
+  `findings.tsv` 用它分隔两列，而 `.github/workflows/fuzz.yml` 以 `cut -f1 | sort -u` 数签名，
+  消息里混进一个制表符就会少报作业打印的数。`tests/test_fuzz_rounds.py` 多出两条用例，把旧
+  `grep` 放回去就让两条都变红（实测 `2 failed, 6 passed`）。该由谁来*消费*一次红的计划跑——
+  开 issue、挡某条路径，还是只当报告——是另一个决定，此处不作。
 - **章节头的两条注释栈不再是二选一** — 章节键与它领衔的映射各有自己的 leading 列表，而
   `crates/pyrs-toml/src/writer.rs` 的章节 pass 只填一个切片：先问章节自己的列表，空了才回退去读键
   的。于是两者都非空时就少写一栈——键上带 `# K`、`[a]` 上带 `# T` 的节点实测只输出

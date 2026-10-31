@@ -287,6 +287,20 @@ status: new
 
 #### 수정
 
+- **퍼징 보고서가 발견을 버리고 있었다** — `scripts/fuzz_rounds.sh`는 크래시 서명을
+  `grep -m1 -hoE "panicked at [^:]+"`로 만들었고 `[^:]+`는 첫 콜론에서 멈춘다. 그래서 panic은
+  `panicked at fuzz_targets/yaml_roundtrip.rs` 한 줄만 남고 행도 열도 메시지두 사라졌다. 옮길 곳도
+  없었다. `cargo fuzz run` 출력은 라운드별 로그에 쓰이고 그 로그는 한 번도 출력되지 않기 때문이다.
+  결과는 셀 수 있다. 예약 실행의 탐사 계층은 2026-10-03, -10, -17, -24, -31 다섯 주 연속
+  `completed/failure`였는데 아무도 무엇을 찾았다고 말하지 못했다. 서명은 이제 위치와 그 다음 줄의
+  메시지를 모두 남긴다. 아카이브된 artifact를 쓸 수 있게 하는 것이 바로 그 부분이다. 오늘 실행과
+  대조하면 `yaml_roundtrip`, `toml_roundtrip`, `edit_yaml`이 각각 크래시 입력 3개를 보고했고,
+  아카이브 바이트에서 기록자 계약 위반 2건을 몇 분 안에 재현했다. 탭은 납작하게 만든다.
+  `findings.tsv`는 탭으로 두 칸을 나누고 `.github/workflows/fuzz.yml`은 `cut -f1 | sort -u`로
+  서명을 세므로, 메시지에 섞인 탭은 작업이 출력하는 수를 줄인다. `tests/test_fuzz_rounds.py`에
+  두 경우를 더했고, 옛 `grep`으로 되돌리면 두 개가 빨개진다(실측 `2 failed, 6 passed`). 빨간 예약
+  실행을 누가 *소비*할지 — issue를 열고, 경로를 막고, 보고서로만 둘지 — 는 별도 결정이며 여기서
+  정하지 않는다.
 - **헤더의 주석 스택 두 개는 이제 선택이 아니다** — 섹션 키와 그 키가 이끄는 맵핑은 각자의 leading
   목록을 갖지만, `crates/pyrs-toml/src/writer.rs` 의 섹션 통과분은 목록 하나만 채웠다. 먼저 섹션
   자신의 목록을 묻고 비어 있을 때만 키로 물러나기 때문이다. 따라서 둘 다 비어 있지 않으면 주석 스택

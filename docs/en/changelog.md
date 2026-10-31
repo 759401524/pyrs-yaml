@@ -307,6 +307,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The fuzz report no longer throws the finding away** — `scripts/fuzz_rounds.sh` built each crash
+  signature with `grep -m1 -hoE "panicked at [^:]+"`, and `[^:]+` stops at the first colon, so a
+  panic reached the report as `panicked at fuzz_targets/yaml_roundtrip.rs`: no line, no column, no
+  message. Nothing else carried the text either, because `cargo fuzz run` writes to a per-round log
+  that is never printed. The consequence is measurable: the scheduled discovery tier came back
+  `completed/failure` on five consecutive Saturdays (2026-10-03, -10, -17, -24, -31) and nobody
+  could say what it had found. The signature now keeps the location *and* the first line of the
+  message that follows it, which is what makes an archived artifact actionable: read against
+  today's run, `yaml_roundtrip`, `toml_roundtrip` and `edit_yaml` each surfaced three crash inputs,
+  and the two writer-contract violations were reproduced from the archived bytes in minutes
+  afterwards. A tab
+  is flattened because `findings.tsv` separates two columns with one and
+  `.github/workflows/fuzz.yml` counts signatures with `cut -f1 | sort -u`, so a tab inside a message
+  would understate the number the job prints. `tests/test_fuzz_rounds.py` gains two cases, and
+  putting the old `grep` back reddens both (measured: `2 failed, 6 passed`). What should *consume* a
+  red schedule run — open an issue, block a path, or stay a report — is a separate decision and is
+  not taken here.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
