@@ -37,6 +37,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
   above its brackets).
+- **Two contracts of `Document.validate()` are measured and registered** — the surface delegates
+  every rule to `jsonschema`, and the tree now says what that costs. `[project.dependencies]` is
+  `typing-extensions` alone and the three extras are `cli`, `pydantic` and `settings`, so nothing
+  this project publishes installs the evaluator: with the module halted in `sys.modules` — the same
+  failure an absent wheel produces — `doc.validate({...})` answers a base install with a bare
+  `ModuleNotFoundError`, while `docs/en/quick-start.md` installs once at its top and calls the
+  method in step 12. The second boundary is the schema *text*: the `str` door runs `json.loads`
+  before the evaluator is consulted, so the YAML spelling — the form every other schema surface
+  here reads — returns a stdlib `json.decoder.JSONDecodeError`, which belongs to neither the ten
+  documented `Yaml*` classes nor the CLI's `except YamlValidateError` arm; measured,
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` prints exactly that traceback. Both are
+  registered in `.ci/known-residuals.json` with a live repro each
+  (`api:validate-evaluator-is-not-installed-by-anything-we-ship` and
+  `api:validate-schema-text-is-json-only`) and are deliberately not fixed here: an extra is a
+  packaging decision, widening the door or wrapping the error changes a public contract, and
+  PR #517 designs the evaluator that would make both questions moot.
 - **A note behind a tag-only line landed inside that line** — `yaml_roundtrip` crash-2c76568e hands
   the writer a mapping whose first pair is a bare tag (`bg: !`). No scalar text is written for it,
   so that line stays open until something closes it by inserting the value's null text; the leading

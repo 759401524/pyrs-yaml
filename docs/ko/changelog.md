@@ -43,6 +43,21 @@ status: new
   멤버가 아니라 항목 자체로 다시 읽힌다)와
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
   위에 남는다).
+- **`Document.validate()`의 계약 두 가지를 측정하고 등록했다** — 이 면은 모든 규칙을
+  `jsonschema`에 넘기므로, 이 트리는 그 대가를 이제 분명히 적는다. `[project.dependencies]`는
+  `typing-extensions` 하나이고 extra는 `cli`, `pydantic`, `settings` 세 개라서, 이 프로젝트가
+  배포하는 무엇도 평가기를 설치하지 않는다. 모듈을 `sys.modules`에서 막으면(wheel이 없을 때와
+  같은 실패) 새 설치에서의 `doc.validate({...})`는 맨 `ModuleNotFoundError`만 던지는데,
+  `docs/en/quick-start.md`는 맨 앞에서 한 번 설치하고 12단계에서 그 메서드를 부른다. 두 번째
+  경계는 스키마 *텍스트*다. `str` 문의는 평가기에게 묻기 전에 `json.loads`를 돌리므로, YAML
+  표기(여기 다른 스키마 면들이 읽는 형태)는 표준 라이브러리의
+  `json.decoder.JSONDecodeError`를 돌려준다. 그 클래스는 문서에 적힌 열 개의 `Yaml*`에도, CLI의
+  `except YamlValidateError` 절에도 속하지 않는다. 실측 결과
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml`이 바로 그 traceback을 출력한다. 둘 다
+  `.ci/known-residuals.json`에 살아 있는 repro와 함께 등록했다
+  (`api:validate-evaluator-is-not-installed-by-anything-we-ship`,
+  `api:validate-schema-text-is-json-only`). 여기서는 일부러 고치지 않는다. extra는 배포 결정이고,
+  문을 넓히거나 예외를 감싸는 것은 공개 계약 변경이며, PR #517의 평가기는 두 질문을 없앤다.
 - **태그만 있는 줄 뒤에 온 주석이 그 줄 안으로 들어갔다** — `yaml_roundtrip` 의 crash-2c76568e 는 첫
   쌍이 맨 태그(`bg: !`)인 매핑을 라이터에 넘긴다. 스칼라 텍스트를 쓰지 않으므로 그 줄은 값을 null 텍
   스트로 삽입하는 무언가가 닫을 때까지 열린 채 남는다. 다음 쌍의 leading 주석 스택이

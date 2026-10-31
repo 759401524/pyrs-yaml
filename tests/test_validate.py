@@ -1,6 +1,7 @@
 """Tests for YamlDocument.validate() and to_json()."""
 
 import json
+import sys
 
 import pytest
 
@@ -113,3 +114,51 @@ class TestValidateCacheSemantics:
             pyrs_yaml.parse("a: text").validate(s1)
         with pytest.raises(pyrs_yaml.YamlValidateError):
             pyrs_yaml.parse("a: text").validate(s2)
+
+
+class TestTheDelegatedEvaluatorContract:
+    """What `validate()` answers when the schema text is YAML, or when no evaluator is installed.
+
+    `Document.validate` applies rules this repository does not own: `document.rs` imports `jsonschema`
+    and forwards, and nothing this project publishes installs that package - `[project.dependencies]`
+    is `typing-extensions` alone, the three extras are `cli`, `pydantic` and `settings`, and
+    `jsonschema` sits in the test group. Both refusals below are therefore what an ordinary install
+    reaches, and neither answer comes from the package's own exception family. They are registered
+    rather than fixed here because each fix is a decision the tree has not taken: an extra is
+    packaging, widening or wrapping the schema-text door is an error-contract change, and
+    `docs/dev/json-schema-engine.md` designs the evaluator that would remove both.
+    """
+
+    def test_the_dict_and_json_text_doors_answer_in_the_documented_family(self):
+        """The refusals below are about the spelling and the install, not about the rules."""
+        schema = {"type": "object", "required": ["port"]}
+        for spelling in (schema, json.dumps(schema)):
+            pyrs_yaml.parse("port: 8080\n").validate(spelling)
+            with pytest.raises(pyrs_yaml.YamlValidateError):
+                pyrs_yaml.parse("other: 1\n").validate(spelling)
+
+    @pytest.mark.known_residual("api:validate-schema-text-is-json-only")
+    def test_a_yaml_spelled_schema_refuses_with_a_stdlib_json_error(self):
+        doc = pyrs_yaml.parse("port: 8080\n")
+        doc.validate({"type": "object", "required": ["port"]})
+        # The same rules, spelled the way every other schema this package reads is spelled, reach
+        # `json.loads` first and come back as a stdlib parse error - not a `YamlValidateError`.
+        with pytest.raises(json.JSONDecodeError):
+            doc.validate("type: object\nrequired: [port]\n")
+
+    @pytest.mark.known_residual("api:validate-evaluator-is-not-installed-by-anything-we-ship")
+    def test_a_base_install_answers_with_a_bare_module_not_found_error(self):
+        # `sys.modules[...] = None` halts the import exactly as an absent distribution does, so this
+        # runs on every leg whether or not the evaluator is installed here. The schema names nothing
+        # the rest of the suite validates against, so the compiled-validator cache stays cold and the
+        # call really reaches the import.
+        held = sys.modules.get("jsonschema")
+        sys.modules["jsonschema"] = None
+        try:
+            with pytest.raises(ModuleNotFoundError):
+                pyrs_yaml.parse("port: 8080\n").validate({"title": "residual-validate-evaluator"})
+        finally:
+            if held is None:
+                del sys.modules["jsonschema"]
+            else:
+                sys.modules["jsonschema"] = held

@@ -7184,7 +7184,8 @@ Two surfaces wore the name "schema". The *validator* this repository invented - 
 `ValidateKind`, `ValidateRule`, `SchemaValidationError`, `validate_against_schema()`,
 `validate_against_registered_schema()` - and the *language* it read: `parse_schema_yaml()`,
 `RuleResolver`, `YamlTypeKind`, the `rules:` grammar that maps scalar patterns to YAML types.
-PR #517 retired the first on 2026-10-21, and `QUALITY_MATRIX.md` recorded that retirement as
+PR #569 retired the first on 2026-10-21 (`ce97ef6b`; this entry named #517, the still-open design
+for a Rust evaluator, not that change), and `QUALITY_MATRIX.md` recorded that retirement as
 "its Rust entry points are deleted". Measured on the tree the same day, the second half is alive
 and shipped: `pyrs-yaml-core` still exports `parse_schema_yaml`, `RuleResolver` and
 `YamlTypeKind` (`crates/pyrs-yaml-core/src/parser/yaml/mod.rs:26`), the binding still calls the

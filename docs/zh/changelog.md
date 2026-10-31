@@ -41,6 +41,19 @@ status: new
   回到表项本身，而不是它的第一个成员）与
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（嵌套数组自己的注释留在它的括号上
   方）。
+- **`Document.validate()` 的两条契约被实测并登记** — 这个表面把每条规则都交给 `jsonschema`，
+  而这份树如今把这样做的代价写清楚了。`[project.dependencies]` 只有 `typing-extensions` 一项，
+  三个 extras 是 `cli`、`pydantic` 与 `settings`，所以本项目发布的任何分发都不安装求值器：把该
+  模块在 `sys.modules` 里按住——与缺 wheel 时同一种失败——全新安装上的 `doc.validate({...})`
+  只回一个裸的 `ModuleNotFoundError`，而 `docs/en/quick-start.md` 在开头装一次，第 12 步就调用
+  这个方法。第二条边界是模式*文本*：`str` 这道门在问求值器之前先跑 `json.loads`，所以 YAML 拼法
+  ——这里其他每个模式表面所读的形态——返回标准库的 `json.decoder.JSONDecodeError`，它既不属于
+  文档写明的十个 `Yaml*` 类，也不在 CLI 的 `except YamlValidateError` 分支里；实测
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` 正打出这段 traceback。两条都登记在
+  `.ci/known-residuals.json`，各带一个活的复现
+  （`api:validate-evaluator-is-not-installed-by-anything-we-ship` 与
+  `api:validate-schema-text-is-json-only`），且刻意不在此处修掉：加 extra 是打包决定，放宽这道门
+  或改写其异常都会改动公开契约，而 PR #517 设计的求值器能让这两个问题一起消失。
 - **标签独行之后，键上的注释落进了那一行里面** — `yaml_roundtrip` 的 crash-2c76568e 交给写入器的映
   射，第一对就是一个裸标签（`bg: !`）。它不写出任何标量文本，所以这一行一直开着，直到有东西用该值的
   null 文本把它关上；下一对的 leading 注栈在 `write_note_line` 里做了这件事，而那几行字节把第一行往
