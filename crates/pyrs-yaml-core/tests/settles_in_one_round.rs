@@ -409,3 +409,36 @@ fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
         );
     }
 }
+
+/// libFuzzer `yaml_roundtrip` crash-2c76568e, minimized by hand to 23 bytes.
+///
+/// The emission was not merely unstable, it was text this engine's own reader refuses: a mapping
+/// whose first value is empty under a tag leaves its line pending, and closing that line inserts
+/// the value's null text *before* the line start the next pair had already captured. `write_pair`
+/// then placed the following key's inline note at that stale offset, splitting the line -
+/// `~: ! ~` became `~: ! # b` plus a bare `~` at column zero, which re-reads as
+/// `simple key expected ':'`. `note_line_above` now treats "is this a line start" as an invariant
+/// rather than an assumption, because every insertion that moves a line moves its start by the same
+/// amount, so the line a stale capture meant is the next one.
+#[test]
+fn a_key_note_above_a_pair_with_a_pending_tag_line_reparses_and_settles() {
+    for (src, notes) in [(": !\n<<: #b\n<<: #b\n 3 #~", 3), (": !\nq: #b\n 3 #~", 2)] {
+        let one = emit(src);
+        let reparsed = parse(&one, Schema::Core);
+        assert!(
+            reparsed.is_ok(),
+            "the writer emitted text its own reader refuses ({one:?}): {}",
+            reparsed.err().map(|e| e.to_string()).unwrap_or_default()
+        );
+        assert_eq!(
+            one.matches("# ").count(),
+            notes,
+            "one note per source comment survives to the emission: {one:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}

@@ -690,6 +690,21 @@ impl Serializer {
     /// own indent.
     fn note_line_above(&mut self, at: usize, text: &str) {
         let at = at.min(self.output.len());
+        // `at` names a line, so it has to start one. A pair captures its line start before its
+        // own key is written, and closing a pending tag-only line during that write inserts the
+        // value's null text *before* the capture - which leaves the captured offset pointing into
+        // the middle of the line it just lengthened, and inserting there split the null text onto
+        // a line of its own: `~: ! ~` became `~: ! # b` + `~`, text this engine's reader refuses
+        // (`simple key expected ':'`, libFuzzer `yaml_roundtrip` crash-2c76568e). Every insertion
+        // that moves a line also moves its start by the same amount, so the line the capture
+        // meant is the next one.
+        let at = if at == 0 || self.output[..at].ends_with('\n') {
+            at
+        } else {
+            self.output[at..]
+                .find('\n')
+                .map_or(self.output.len(), |at_line| at + at_line + 1)
+        };
         let indent: String = self.output[at..]
             .chars()
             .take_while(|c| *c == ' ')
