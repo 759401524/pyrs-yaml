@@ -234,6 +234,29 @@ status: new
 - **可选 `mmap` 读路径** — 开启后 `parse_file` 直接从内存映射解析非空常规文件，省掉
   `read_to_string` 的整文件拷贝；默认关闭（`default = ["numpy"]` 不变）。空文件、目录、
   非常规路径与非 UTF-8 输入保持原有报错；详见 `docs/dev/boundaries.md`。
+- **JSON Schema 面有了属性层，并查出两条边界** — 防线矩阵里那一行委托给 `jsonschema` 的
+  `Document.validate()`，其属性层一直记作缺失。语料套件重放 1,302 条用例，但每条只用一份文档
+  配一个 schema 对象校验，所以全是冷未命中：编译后的校验器缓存——循环校验真正走的
+  `best_match(iter_errors(...))`——只有四处手写调用点在守，没有任何生成用例走到；而且每条用例
+  都经 `json.dumps` 进入，交给引擎的键一律已是字符串。`tests/test_property_json_schema.py`
+  现在两种形态都生成：一套元合法的 draft2020-12 文法（七个类型名、布尔 schema、`anyOf`、
+  `prefixItems`、`if`-`then` 嵌套）配上仍保留 YAML 类型的键，每条属性 300 例，每个判定与消息
+  都与同一实例上的 `jsonschema` 比对。`test_the_repeat_call_is_the_cached_path` 是"第二次调用
+  确实走了缓存"的见证：它数 `check_schema`，冷路径会跑、缓存路径不跑——因为拿两次冷调用互相
+  比较的属性，只会报出一个什么都没判的层。随机抽键的拼写正是查出这两条边界的原因：`1: one`
+  与 `true: two` 在 `to_dict()` 里折成一项（`1 == True`，相等的键是被替换而非新增），而
+  `to_yaml()` 照写两行、`to_json()` 照写两个成员——`validate()` 读的正是会折的那扇门，于是 JSON
+  投影接受的双键文档会被 `minProperties 2` 拒绝（实测 PyYAML 在同一处也折，2026-10-31，所以
+  折叠是对手共同的形态，不是本项目引入的漂移）。两条 YAML 读路径在相邻键对上给出相反答案：
+  `parse()` 拒绝 `safe_load()` 保留的 `1:` 与 `'1':`，`safe_load()` 拒绝 `parse()` 保留的 `1:` 与
+  `true:`，因为一边按文本认未加标签的键、另一边按解析后的对象认。两者都连同复现用例写进
+  `.ci/known-residuals.json` 与 `docs/dev/boundaries.md`，而不是静默吸收；统一两条读路径要决定
+  哪些文档本身合法，所以那一半是裁定，不是补丁。此前这一行也没法被记账：探针拿 Python 属性
+  文件去匹配该行的*模糊测试目标名*，而不是它的属性片段，所以为一个委托面写的层明明存在却读作
+  缺失；修复由 `test_a_python_property_tier_is_credited_by_the_rows_own_fragments` 双向钉住，
+  因为宽松的匹配会把只谈 JSON Schema 的文件记到规则语言那一行上。这一层自身的判别力用三处
+  突变验证（改去比对另一扇门、改去比对另一份文档的实例、改去断言冷路径），每一处都把它的断言
+  变红。
 
 #### 修复
 

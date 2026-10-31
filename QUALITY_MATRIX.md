@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 847 Rust `#[test]`, 2,083 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 847 Rust `#[test]`, 2,091 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 32 proptest properties (28 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -101,7 +101,7 @@ Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell agains
 | YAML | yes | yes | yes | yes | yes | yes |
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
-| JSON Schema validation | no | no | no | n/a | n/a | yes |
+| JSON Schema validation | no | yes | no | n/a | n/a | yes |
 | Schema rule language | yes | yes | yes | n/a | n/a | yes |
 
 **There are two schema surfaces, and both are now judged from outside.** `Document.validate()`
@@ -111,6 +111,20 @@ invented is gone: it was retired on 2026-10-21 in favour of this standard surfac
 outside ever asked its rules, and reusing a standard engine removed the question instead of answering
 it. Its entry points - `validate_against_schema()`, `validate_against_registered_schema()`,
 `TypeSpec`, `ValidateKind`, `ValidateRule` and `SchemaValidationError` - are deleted, not deprecated.
+
+That row's property cell was `no` until 2026-10-31, and the two shapes it now generates are the two
+the corpus cannot reach: a corpus case validates one document against one schema object, so every
+case is a cold miss and the cached path went unjudged at scale; and a corpus case enters through
+`json.dumps`, so every key it hands the engine is already a string. Drawing key spellings at random
+is what found `api:dict-door-key-fold` and `engine:key-identity-route-parity`, both registered below
+with their repros rather than absorbed. The row's `unit` and `fuzz-parse` cells are still `no` by
+construction rather than as open work: the row owns no crate, so there is no Rust `#[test]` count to
+read and the Python unit tests that exist (`tests/test_validate.py`) are not what that column
+measures; and `fuzz/Cargo.toml` names the engine crates only - `pyrs-yaml-core`, `pyrs-json`,
+`pyrs-toml`, `pyrs-schema`, `pyrs-event`, `pyrs-ast` - because a fuzz target runs with no interpreter,
+while the conversion, the acceptance path and the cache all live in the binding. What a delegated
+surface can be judged by is a second implementation disagreeing with it, which is what the corpus and
+this tier both are.
 
 The rule *language* that validator read is a different surface, and it survives: `parse_schema_yaml()`,
 `RuleResolver` and `YamlTypeKind` are still exported by `pyrs-yaml-core`, `register_schema()`,
@@ -952,6 +966,8 @@ none of these is a shape the matrix is blind to.
 | `engine:container-inline-note-position` | hub / Rust core | a TOML `[sec] # note` keeps its text and its table but not its line: the hub has no container inline-note position, and adding one means changing the locked granit capture model ([boundaries](docs/dev/boundaries.md)) | `to_toml(from_toml("[sec] # note\nx = 1\n"))` writes the note on the header line |
 | `api:set-comment-container-owner` | binding writer | `set_comment(..., standalone=False)` on a container lands on the last child's line, and the re-read gives the note that child; the edit fuzz tier therefore withholds the ownership claim (ledger (ei), #113) | the container keeps the note at a position the reader reports back, or the call refuses |
 | `engine:entry-blank-lines` | hub / Rust core | an empty line between two entries survives no round, in any position or route: the reader records none and the writer emits one break per item, so the layout the author wrote is flattened while values, order, anchors and notes stay lossless ([boundaries](docs/dev/boundaries.md)) | the eight positions the repro walks reproduce their blank line instead of the compact form |
+| `api:dict-door-key-fold` | binding | `1: one` beside `true: two` is two YAML keys and one Python dict entry, because `1 == True` and an equal key replaces the value while keeping the first key: `to_yaml()` and `to_json()` both write two, `to_dict()` answers with one, and `Document.validate()` judges that one. PyYAML folds at the same point, so the shape is the counterparties' - what is this project's is shipping a door that does not fold ([boundaries](docs/dev/boundaries.md)) | `to_dict()` holds both entries of the pair, or refuses it the way it already refuses a tagged pair |
+| `engine:key-identity-route-parity` | hub / Rust core | the two YAML readers key a mapping by different things, so their answers cross over on adjacent pairs: the AST route tracks an untagged scalar's *text* (`KeyIdentity::Text`), which makes `1:` and `'1':` one key and refuses them, while the direct route tracks the *resolved* object, which makes `1` and `true` one key and refuses those instead. Each route matches one counterparty and not the other ([boundaries](docs/dev/boundaries.md)) | `parse()` and `safe_load()` give the same accept-or-refuse answer on both pairs, from one identity model |
 
 ### Improvement plan
 

@@ -304,6 +304,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
   (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
   existing errors; see `docs/dev/boundaries.md`.
+- **The JSON Schema surface has a property tier, and it found two boundaries** — the delegated
+  `Document.validate()` row of the defence matrix read `no` where its property tier should have
+  been. The corpus suite replays 1,302 cases, but each one validates a single document against a
+  single schema object, so every case is a cold miss and the compiled-validator cache —
+  `best_match(iter_errors(...))`, which is what anyone validating in a loop actually gets — was
+  judged by four hand-written call sites and nothing generated; and every case enters through
+  `json.dumps`, so every key it hands the engine is already a string.
+  `tests/test_property_json_schema.py` draws both shapes now: a meta-valid draft2020-12 grammar
+  (seven type names, boolean schemas, `anyOf` / `prefixItems` / `if`-`then` nests) against documents
+  whose keys keep their YAML types, 300 cases per property, with every verdict and message compared
+  against `jsonschema` on the same instance. `test_the_repeat_call_is_the_cached_path` is the
+  witness that the second call really is the cached one — it counts `check_schema`, which the fresh
+  path runs and the cached path does not — because a property that compared two cold calls would
+  have reported a tier while judging nothing. Drawing key spellings at random is what surfaced the
+  two boundaries this entry registers. `to_dict()` folds `1: one` beside `true: two` into one entry,
+  because `1 == True` and an equal key is replaced rather than added, while `to_yaml()` re-emits
+  both lines and `to_json()` writes both members — and `validate()` reads the folding door, so
+  `minProperties 2` refuses a two-key document the JSON projection accepts (PyYAML's loader folds at
+  the same point, measured 2026-10-31, so the fold is the counterparties' shape and not a drift this
+  project introduced). And the two YAML readers answer opposite ways on adjacent pairs: `parse()`
+  refuses `1:` beside `'1':` that `safe_load()` keeps, and `safe_load()` refuses `1:` beside `true:`
+  that `parse()` keeps, because one tracks an untagged key by its text and the other by its resolved
+  object. Both are written down with their repros in `.ci/known-residuals.json` and
+  `docs/dev/boundaries.md` rather than absorbed; aligning the readers decides which documents are
+  valid at all, so that half is a ruling, not a patch. The row could not have been credited before:
+  the probe matched a Python property file against the row's *fuzz-target* name rather than its
+  property fragment, so a tier written for a delegated surface read as absent while it existed — the
+  fix is pinned by `test_a_python_property_tier_is_credited_by_the_rows_own_fragments`, in both
+  directions, because a loose match would credit the rule-language row with a file about JSON
+  Schema. The tier's own discrimination was checked by three mutations — compare against the other
+  door, compare against another document's instance, assert the fresh path instead of the hit — and
+  each turned its claim red.
 
 #### Fixed
 

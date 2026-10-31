@@ -49,6 +49,22 @@ forms are not reproducible.
   every container a "blank lines before me" field is per-container writer state, and the Ir floors
   price that on every serialize scenario (`docs/dev/perf.md`). Pinned by
   `TestBlankLineFidelity.test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point`.
+- **A key pair Python folds (`1:` beside `true:`).** Two YAML keys, one Python dict entry:
+  `1 == True` and setting an equal key replaces the value while keeping the first key, so
+  `to_dict()` answers `{1: 'two'}` where `to_yaml()` re-emits both lines and `to_json()` writes both
+  members. The fold is the dict door's own — PyYAML's loader folds at the same point, measured
+  2026-10-31 — but this project ships a door that does not, and `Document.validate()` reads the
+  folding one, so a schema that counts members sees one fewer than the document holds. Registered as
+  `api:dict-door-key-fold`, found by `tests/test_property_json_schema.py` drawing key spellings at
+  random, and pinned by `TestTheDictDoorFoldsAKeyPairTheDocumentWritesApart`.
+- **Which key is a duplicate, per route.** The AST route tracks an untagged scalar key by its text
+  (`KeyIdentity::Text`, `crates/pyrs-ast/src/ast.rs`), so style never reaches its decision and `1:`
+  beside `'1':` is one key, refused; the direct route tracks the resolved object, so `1` and `true`
+  are one key and it refuses *those* instead. The answers cross over on adjacent pairs, and each
+  route matches a different counterparty: PyYAML and ruamel both keep `1` beside `'1'`, ruamel alone
+  calls `1` and `true` duplicates. Registered as `engine:key-identity-route-parity`. Aligning the
+  routes decides which documents are valid at all, so it is a ruling rather than a patch, and both
+  directions are pinned by `TestTheTwoReadersAnswerOppositeWaysOnAdjacentKeyPairs`.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful
