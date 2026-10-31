@@ -294,6 +294,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
   (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
   existing errors; see `docs/dev/boundaries.md`.
+- **The cross-format bridges no test ever crossed** — an AST pass over every test function body in
+  all 134 modules of `tests/`, measured 2026-10-31, counted how many bodies call a reader of one
+  format and a writer of another: `json -> jsonc`, `jsonc -> toml`, `json5 -> json`,
+  `json5 -> jsonc` and `json5 -> toml` had no call site at all. JSON5 is the dialect that owns
+  `0xFF`, `.5`, `+7`, single quotes, trailing commas and two comment syntaxes, and nothing in the
+  suite ever sent it toward strict JSON, JSONC or TOML. `tests/test_cross_format_note_entry.py` is
+  that table: four entrances with comment syntax, four exports with comment syntax, four note slots,
+  64 cells, each asserting the note's token reaches the text or the export refuses with a reason
+  true about the target format — the rule `tests/test_cross_format_note_slots.py` already applies to
+  the outbound half from YAML, now applied to the inbound half. All 64 pass, and the row cannot be
+  satisfied by a note that turned into data: the token must also disappear when the output is
+  stripped with that export's own comment grammar, which separates `{"a": 1 // note}` from
+  `{"a": "note"}`. The five value bridges cross with their literals resolved (`0xFF` reaches TOML as
+  `255`), and the one cell that moves — a note on an inline array, which the TOML writer expands
+  onto the last element's line — is pinned as the relocation `docs/dev/boundaries.md` already
+  records, settling on the second round. Strict `to_json` is deliberately out of the table rather
+  than overlooked: JSON has no comment to write, so omitting one is correct there.
 
 ### Fixed
 
