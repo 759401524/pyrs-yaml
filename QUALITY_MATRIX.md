@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 870 Rust `#[test]`, 2,112 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 870 Rust `#[test]`, 2,120 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 35 proptest properties (31 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 201 seeds of which 109 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 91 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -101,7 +101,7 @@ Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell agains
 | YAML | yes | yes | yes | yes | yes | yes |
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
-| JSON Schema validation | no | no | no | n/a | n/a | yes |
+| JSON Schema validation | no | yes | no | n/a | n/a | yes |
 | Schema rule language | yes | yes | yes | n/a | n/a | yes |
 
 **There are two schema surfaces, and both are now judged from outside.** `Document.validate()`
@@ -111,6 +111,20 @@ invented is gone: it was retired on 2026-10-21 in favour of this standard surfac
 outside ever asked its rules, and reusing a standard engine removed the question instead of answering
 it. Its entry points - `validate_against_schema()`, `validate_against_registered_schema()`,
 `TypeSpec`, `ValidateKind`, `ValidateRule` and `SchemaValidationError` - are deleted, not deprecated.
+
+That row's property cell was `no` until 2026-10-31, and the two shapes it now generates are the two
+the corpus cannot reach: a corpus case validates one document against one schema object, so every
+case is a cold miss and the cached path went unjudged at scale; and a corpus case enters through
+`json.dumps`, so every key it hands the engine is already a string. Drawing key spellings at random
+is what found `api:dict-door-key-fold` and `engine:key-identity-route-parity`, both registered below
+with their repros rather than absorbed. The row's `unit` and `fuzz-parse` cells are still `no` by
+construction rather than as open work: the row owns no crate, so there is no Rust `#[test]` count to
+read and the Python unit tests that exist (`tests/test_validate.py`) are not what that column
+measures; and `fuzz/Cargo.toml` names the engine crates only - `pyrs-yaml-core`, `pyrs-json`,
+`pyrs-toml`, `pyrs-schema`, `pyrs-event`, `pyrs-ast` - because a fuzz target runs with no interpreter,
+while the conversion, the acceptance path and the cache all live in the binding. What a delegated
+surface can be judged by is a second implementation disagreeing with it, which is what the corpus and
+this tier both are.
 
 The rule *language* that validator read is a different surface, and it survives: `parse_schema_yaml()`,
 `RuleResolver` and `YamlTypeKind` are still exported by `pyrs-yaml-core`, `register_schema()`,
@@ -968,6 +982,8 @@ none of these is a shape the matrix is blind to.
 | `engine:entry-blank-lines` | hub / Rust core | an empty line between two entries survives no round, in any position or route: the reader records none and the writer emits one break per item, so the layout the author wrote is flattened while values, order, anchors and notes stay lossless ([boundaries](docs/dev/boundaries.md)) | the eight positions the repro walks reproduce their blank line instead of the compact form |
 | `api:validate-schema-text-is-json-only` | binding / CLI | the `str` form of the schema argument is parsed as JSON before the evaluator is consulted, so the YAML spelling - what a user of this package reaches for - answers with a stdlib `json.decoder.JSONDecodeError` that belongs to neither the documented `Yaml*` family nor the CLI's `except YamlValidateError` arm ([boundaries](docs/dev/boundaries.md)) | `validate("type: object")` evaluates the YAML spelling or raises `YamlValidateError`, and the public docstring names the text form the parameter accepts |
 | `api:validate-evaluator-is-not-installed-by-anything-we-ship` | packaging / binding | every rule `Document.validate()` applies belongs to `jsonschema`, and no distribution this project publishes installs it - base dependencies are `typing-extensions` alone, the extras are `cli`, `pydantic` and `settings`, and the package sits in the test group - so a base install answers the documented method with a bare `ModuleNotFoundError` ([boundaries](docs/dev/boundaries.md)) | a named extra installs an evaluator, or the missing evaluator refuses with a `pyrs_yaml` error naming the install route |
+| `api:dict-door-key-fold` | binding | `1: one` beside `true: two` is two YAML keys and one Python dict entry, because `1 == True` and an equal key replaces the value while keeping the first key: `to_yaml()` and `to_json()` both write two, `to_dict()` answers with one, and `Document.validate()` judges that one. PyYAML folds at the same point, so the shape is the counterparties' - what is this project's is shipping a door that does not fold ([boundaries](docs/dev/boundaries.md)) | `to_dict()` holds both entries of the pair, or refuses it the way it already refuses a tagged pair |
+| `engine:key-identity-route-parity` | hub / Rust core | the two YAML readers key a mapping by different things, so their answers cross over on adjacent pairs: the AST route tracks an untagged scalar's *text* (`KeyIdentity::Text`), which makes `1:` and `'1':` one key and refuses them, while the direct route tracks the *resolved* object, which makes `1` and `true` one key and refuses those instead. Each route matches one counterparty and not the other ([boundaries](docs/dev/boundaries.md)) | `parse()` and `safe_load()` give the same accept-or-refuse answer on both pairs, from one identity model |
 
 ### Improvement plan
 
