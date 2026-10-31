@@ -138,15 +138,27 @@ def fuzz_crates() -> list[str]:
     return sorted(set(re.findall(r'^([a-z0-9-]+) = \{ path = "\.\./crates/', text, re.MULTILINE)))
 
 
-def fuzz_seed_inventory() -> dict:
-    """The archived corpus, counted from `fuzz/seeds/**/*.seed`.
+def fuzz_seed_inventory(root: Path | None = None) -> dict:
+    """The archived corpus, counted per target as well as in total.
 
     Counted from the seeds rather than inferred from the targets: a target with no archived
     input still runs, but the PR replay tier has nothing to replay for it, so the target
-    count alone would overstate what that tier can prove.
+    count alone would overstate what that tier can prove. The per-target split is here because
+    the total cannot say it - one directory holding a single file and another holding eighty-two
+    both read as the same number in the row beside them. Depth one and the `.seed` suffix are not
+    style: `fuzz.yml` copies `fuzz/seeds/<target>/*.seed` flat into the corpus it replays, so a
+    nested or renamed input is counted by nobody and run by nothing.
     """
-    seeds = [path for path in (REPO / "fuzz" / "seeds").rglob("*.seed") if path.is_file()]
-    return {"seeds": len(seeds), "former_crash": sum("former-crash-" in path.name for path in seeds)}
+    base = (root or REPO) / "fuzz" / "seeds"
+    per_target: dict[str, list[str]] = {}
+    for directory in sorted(p for p in base.glob("*") if p.is_dir()):
+        per_target[directory.name] = sorted(path.name for path in directory.glob("*.seed"))
+    names = [name for files in per_target.values() for name in files]
+    return {
+        "seeds": len(names),
+        "former_crash": sum("former-crash-" in name for name in names),
+        "per_target": {name: len(files) for name, files in per_target.items()},
+    }
 
 
 def engine_crates(fuzz_links: list[str]) -> list[str]:
@@ -1334,6 +1346,32 @@ def measure() -> dict:
                 ]
             )
 
+    # A pull-request leg replays the committed corpus and explores nothing (`-runs=0` in
+    # `scripts/fuzz_rounds.sh`), and `fuzz/corpus/` is gitignored, so a target's durable inputs are
+    # exactly its own `fuzz/seeds/<target>/*.seed`. Two shapes make the tier read bigger than it is
+    # and neither is visible in the aggregate: a target CI runs that has no seed at all, and a seed
+    # directory for a target nobody declares - the gitignored corpora of this tree still hold
+    # `validate_schema/` and `kg/`, which is where that fossil turns up first.
+    for target in sorted(name for name in ci_targets if not seeds["per_target"].get(name)):
+        holes.append(
+            [
+                "fuzz-corpus-unseeded",
+                target,
+                "CI runs this target on every pull request with `-runs=0`, which replays the committed "
+                "seeds and explores nothing, so the merge-blocking half of its tier has no input while "
+                "the seed total still reads as a corpus and the matrix row still credits the target",
+            ]
+        )
+    for target in sorted(set(seeds["per_target"]) - set(targets)):
+        holes.append(
+            [
+                "fuzz-corpus-orphan",
+                target,
+                "these seeds are counted in the corpus total that every quoted number comes from, but no "
+                "declared target replays them, so the durable tier is thinner than its own count",
+            ]
+        )
+
     # The authority column is a boundary, not a score: parity answers "do we agree" and cannot find a
     # rule that both sides never implemented. Emitting a hole for an empty column is what keeps the
     # registry's meaning - `holes: []` says nothing is unmeasured, not that nothing is unjudged.
@@ -1593,6 +1631,7 @@ def measure() -> dict:
         "fuzz_ci_matrix": ci_targets,
         "fuzz_seed_count": seeds["seeds"],
         "fuzz_former_crash_count": seeds["former_crash"],
+        "fuzz_seed_counts": [f"{name}:{count}" for name, count in sorted(seeds["per_target"].items())],
         "rust_test_count": rust_tests,
         "python_test_function_count": python_tests,
         "pytest_tier_interpreters": tier["interpreters"],
@@ -1625,6 +1664,7 @@ SUMMARY_KEYS = (
     "fuzz_ci_matrix",
     "fuzz_seed_count",
     "fuzz_former_crash_count",
+    "fuzz_seed_counts",
     "rust_test_count",
     "python_test_function_count",
     "prek_hooks",
@@ -1639,6 +1679,19 @@ SUMMARY_KEYS = (
     "format_verdicts",
     "changelog_entry_counts",
 )
+
+
+def _seed_depth(counts: list) -> str:
+    """The two ends of the per-target distribution, as the fuzz row's own words.
+
+    A single aggregate number cannot tell `1` from `82`, and the row that quotes it is read as a
+    description of the replay tier; naming both ends is what keeps the thin target visible.
+    """
+    if not counts:
+        return "no per-target measurement"
+    pairs = sorted((int(text.rpartition(":")[2]), text.rpartition(":")[0]) for text in counts)
+    low, high = pairs[0], pairs[-1]
+    return f"thinnest {low[0]} (`{low[1]}`) / fullest {high[0]} (`{high[1]}`)"
 
 
 #: The count-bearing sentences of `QUALITY_MATRIX.md`, each with the numbers the probe owns.
@@ -1678,9 +1731,16 @@ ROW_RULES = (
     ),
     (
         "fuzz row",
-        re.compile(r"^(\| fuzz \| )(\d+) targets, (\d+) seeds of which (\d+)( are `former-crash-\*`)", re.M),
-        lambda data: "{:d} targets, {:d} seeds of which {:d}".format(
-            len(data["fuzz_targets"]), data["fuzz_seed_count"], data["fuzz_former_crash_count"]
+        re.compile(
+            r"^(\| fuzz \| )\d+ targets, \d+ seeds of which \d+ are `former-crash-\*`, "
+            r"thinnest \d+ \(`[a-z0-9_]+`\) / fullest \d+ \(`[a-z0-9_]+`\)( \|)",
+            re.M,
+        ),
+        lambda data: "{:d} targets, {:d} seeds of which {:d} are `former-crash-*`, {}".format(
+            len(data["fuzz_targets"]),
+            data["fuzz_seed_count"],
+            data["fuzz_former_crash_count"],
+            _seed_depth(data["fuzz_seed_counts"]),
         ),
     ),
     (

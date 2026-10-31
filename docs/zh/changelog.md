@@ -19,6 +19,19 @@ status: new
 
 #### 新增
 
+- **模糊测试的种子层按目标分别计数，并附带两条拒绝** — 矩阵此前只印一个总数
+  （`174 seeds of which 84 are former crashes`），而总数说不出一个目标有八十二条可留输入、
+  另一个只有一份文件。`fuzz_seed_inventory()` 现在按 `fuzz.yml` 真正复制的深度与后缀
+  （一层、`*.seed`）清点每个 `fuzz/seeds/<target>/`，公开 `fuzz_seed_counts`，模糊测试那一行
+  也报出分布的两端，数字由 `--write-rows` 重写。为什么要按目标看，由读语料的那个事件决定：
+  在拉取请求上 `scripts/fuzz_rounds.sh` 跑 `-runs=0`，只回放已提交的种子，不做任何探索，而
+  `fuzz/corpus/` 被 gitignore 排除，一次运行发现的输入留在执行机上。所以一个没有种子的目标，
+  它那拦合并的一层其实一条输入都没有；留在无人声明的目录里的种子，则把后来每个数字所引用的
+  总数抬大。两种形态如今都被拒绝——`fuzz-corpus-unseeded` 与 `fuzz-corpus-orphan`——而它们在
+  今天的树上都测得零：九个目标的种子数介于 1 与 82 之间，也没有孤儿目录，所以这条规则今天分文
+  不花，只截住下一次删除。`tests/test_quality_matrix.py` 用篡改过的清单逼出每条拒绝，而
+  `test_the_seed_inventory_counts_what_the_workflow_copies` 会在计数退回递归通配时变红：嵌在
+  子目录里的 `deep.seed` 不算输入，`cp fuzz/seeds/<target>/*.seed` 根本到不了它。
 - **Python 生成层如今画出它的叶子从前叫不出名字的家族** — `arbitrary_json` 原先把叶子限制在 `None`、
   `bool`、±10^12 以内的 `int`、有限 `float` 和 `str`，而清点它生成的叶子正好说明这排除了什么：25,000
   次抽样产出 270,602 片叶子，这五类各 58,064 / 53,396 / 53,251 / 52,978 / 52,913 片，此外一片别的类

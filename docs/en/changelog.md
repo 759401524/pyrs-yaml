@@ -19,6 +19,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The fuzz seed tier is counted per target, with two refusals** — the matrix printed one aggregate
+  (`174 seeds of which 84 are former crashes`), and an aggregate cannot tell a target with
+  eighty-two durable inputs from a target with one file. `fuzz_seed_inventory()` now counts each
+  `fuzz/seeds/<target>/` at the depth and suffix `fuzz.yml` copies (one level, `*.seed`), publishes
+  `fuzz_seed_counts`, and the fuzz row names both ends of the distribution, which `--write-rows`
+  rewrites. The split matters at the event that reads the corpus: on a pull request
+  `scripts/fuzz_rounds.sh` runs `-runs=0`, which replays the committed seeds and explores nothing,
+  while `fuzz/corpus/` is gitignored and what a run discovers stays on the runner. A target with no
+  seed therefore has a merge-blocking tier with no input at all, and seeds left in a directory no
+  manifest declares inflate the total every later number is quoted from. Both shapes are refused
+  now — `fuzz-corpus-unseeded` and `fuzz-corpus-orphan` — and both measure zero on today's tree,
+  whose nine targets hold between 1 and 82 seeds with no orphan directory: the rule costs nothing
+  today and catches the next deletion. `tests/test_quality_matrix.py` forces each refusal from a
+  doctored inventory, and `test_the_seed_inventory_counts_what_the_workflow_copies` reddens if the
+  count drifts back to a recursive glob, because a nested `deep.seed` is not an input —
+  `cp fuzz/seeds/<target>/*.seed` never reaches it.
 - **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
   fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
   `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602
