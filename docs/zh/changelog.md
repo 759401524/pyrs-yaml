@@ -553,6 +553,13 @@ status: new
 
 #### 变更
 
+- **TOML 章节头注释位移的原因改指向对的写器** — 记录 `[sec] # note` 保住文字和所属表却保不住所在行的
+  那条边界，原先把原因归给 YAML 解析器的注释捕获模型。实测相反：引擎自己那一对是固定点，把
+  `from_toml` 的产出交给 `to_toml` 会原样返回 `# above the section\n[srv] # inline\nport = 1\n`，这
+  一点由 `preserves_section_header_trailing_and_leading` 钉住。于是移动出自本项目自己的落位规则 —
+  YAML 写器把容器的行内注释放到该容器正文的末行，读者再把末行的注释报告成那一行成员自己的注释。该规
+  则的第二种落位现已按字节钉住：末行被占时，表头注释抬到 `[sec]` 的上一行，而 `x = 1 # M` 保住自己那
+  一行 — 两条注释、两行、一跳收敛，读回的值不变。
 - **数进解释器的 Ir 地板改为按 runner 镜像键控** — `.ci/ir-baseline.json` 新增 `image_floors`
   表，`scripts/ir_gate.py` 让执法的那一趟跟自己所处镜像的那一行比，而不是拿一个数去问所有主机。
   哪些场景进表由 harness 映射派生，所以只有把解释器也数进去的那几条才有键：同一棵树、两个 harness
