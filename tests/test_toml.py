@@ -386,6 +386,23 @@ class TestSectionHeaderCommentBoundary:
         assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
         assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, out
 
+    @pytest.mark.known_residual("engine:container-inline-note-position")
+    def test_a_header_note_whose_slot_is_taken_hoists_above_the_header(self):
+        # Where the relocation lands depends on whether the body's last line is free. Taken, the
+        # YAML writer has no inline slot left and writes the note above the block instead, which
+        # the TOML section pass then reads back as the header's *leading* note - so the note moves
+        # twice over (`sec:`'s own line, then above `sec`) and still lands on `sec`'s table. Both
+        # notes keep their own line: nothing shadows, nothing is lost, and one round settles it.
+        src = "[sec] # H\nx = 1 # M\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert out == "# H\n[sec]\nx = 1 # M\n", out
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, out
+        # A free line above the tail makes no difference: the borrowed slot is the last line, so a
+        # taken tail still hoists the header's note even with an unannotated entry in between.
+        two = "[sec] # H\nx = 1\ny = 2 # Z\n"
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(two)) == "# H\n[sec]\nx = 1\ny = 2 # Z\n", two
+
     def test_standalone_section_comment_still_survives(self):
         # Only the *inline* header comment changes position; a standalone note on the
         # line above the header is preserved in place (via the #131 leading-comment
