@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 870 Rust `#[test]`, 2,108 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 870 Rust `#[test]`, 2,112 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 35 proptest properties (31 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 201 seeds of which 109 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 91 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
