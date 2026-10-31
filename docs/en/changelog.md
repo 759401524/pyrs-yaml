@@ -307,6 +307,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The interpreter grid no longer asks the runner image for a build it does not publish** —
+  `ubuntu-latest` became Ubuntu 26.04, and `actions/setup-python@v7` answers
+  `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04` for the two floor
+  versions of the supported range. Measured on one commit of PR #681 on 2026-10-31:
+  `test (ubuntu-latest, 3.8)` and `(ubuntu-latest, 3.9)` died at `Set up Python` while
+  `test (macos-latest, 3.8)` and `test (windows-latest, 3.8)` passed the identical request, so the
+  rule is per (runner, version) and not per version. The failure was not two red legs: the only
+  check name branch protection consumes is `Test matrix (all legs)`, the fan-in job asked the image
+  for 3.8 too, and a required check that cannot start is a refusal - every pull request in the
+  repository became unmergeable at once, including the ones that could not have caused it.
+  `ci_matrix_plan.py` now emits an `interpreter` provider per cell (`uv` below the image floor on
+  the cheap runner, `setup` elsewhere), `ci.yml` reads it - `uv venv .venv --python <version>` where
+  the image carries no build, unchanged elsewhere - and the two jobs that pin the floor
+  (`main-gate`, `matrix-verdict`) run their checkers through `uv run --no-project --python 3.8`, so
+  uv resolves the interpreter from its own index. Four things hold it in place: `--check` refuses a
+  plan whose provider disagrees with the image rule in either direction, and three tests in
+  `tests/test_ci_matrix_plan.py` pin the rule, the workflow's consumption of the field, and the fact
+  that the fan-in no longer touches the image. No corpus, wheel or Ir floor moved: an interpreter
+  resolved from a different index is the same CPython, and `prek run --all-files` plus
+  `uv run pytest tests/` were green on the tree. `publish.yml` asks for 3.8 as well, on jobs that
+  run inside manylinux and musllinux containers where the container rather than the image supplies
+  the build index - left alone, because a tag push is the only place that can be measured and a
+  release path is not the place for a guess.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

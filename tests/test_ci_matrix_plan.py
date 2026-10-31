@@ -314,6 +314,81 @@ def test_the_gate_conditions_read_the_roles_not_the_cells() -> None:
     )
 
 
+def test_the_provider_rule_names_the_cells_the_image_cannot_serve() -> None:
+    """Ubuntu 26.04 carries no build below 3.10, so those cells must not ask setup-python for one.
+
+    Measured 2026-10-31 on PR #681: `test (ubuntu-latest, 3.8)` and `(ubuntu-latest, 3.9)` died at
+    `Set up Python` with `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04`,
+    while `test (macos-latest, 3.8)` and `test (windows-latest, 3.8)` passed the identical request on
+    the same commit. The rule is therefore per (runner, version), not per version.
+    """
+    assert plan_owner.interpreter_for("ubuntu-latest", "3.8") == plan_owner.UV_PROVIDER
+    assert plan_owner.interpreter_for("ubuntu-latest", "3.9") == plan_owner.UV_PROVIDER
+    assert plan_owner.interpreter_for("ubuntu-latest", "3.10") == plan_owner.SETUP_PROVIDER
+    assert plan_owner.interpreter_for("windows-latest", "3.8") == plan_owner.SETUP_PROVIDER
+    assert plan_owner.interpreter_for("macos-latest", "3.8") == plan_owner.SETUP_PROVIDER
+    for leg in pr_plan():
+        want = plan_owner.interpreter_for(leg["os"], leg["python-version"])
+        assert leg["interpreter"] == want, leg
+    for leg in plan_owner.plan("schedule", declared_versions()):
+        assert leg["interpreter"] == plan_owner.interpreter_for(leg["os"], leg["python-version"]), leg
+
+
+def test_check_reports_a_leg_that_asks_the_image_for_a_version_it_lacks() -> None:
+    """A plan whose provider disagrees with the image rule is refused, in both directions."""
+    versions = declared_versions()
+    broken = [dict(leg) for leg in plan_owner.plan("pull_request", versions)]
+    for leg in broken:
+        if leg["os"] == "ubuntu-latest" and leg["python-version"] == "3.8":
+            leg["interpreter"] = plan_owner.SETUP_PROVIDER
+    problems = plan_owner.check(versions, legs=broken, smoke=plan_owner.smoke_plan(versions))
+    assert any("ubuntu-latest on 3.8" in line for line in problems), problems
+
+    flipped = [dict(leg) for leg in plan_owner.plan("pull_request", versions)]
+    for leg in flipped:
+        if leg["os"] == "macos-latest" and leg["python-version"] == "3.8":
+            leg["interpreter"] = plan_owner.UV_PROVIDER
+    problems = plan_owner.check(versions, legs=flipped, smoke=plan_owner.smoke_plan(versions))
+    assert any("macos-latest on 3.8" in line for line in problems), problems
+
+
+def test_the_test_leg_routes_each_cell_to_the_provider_the_plan_names() -> None:
+    """The workflow has to consume the field, or the rule above is a number nobody reads.
+
+    Read off the parsed job: `uv venv .venv --python <version>` is the half that actually selects the
+    uv-managed interpreter, so a gate on the `if:` alone would pass a workflow that dropped it.
+    """
+    job = workflow_document()["jobs"]["test"]
+    steps = {str(step.get("name", "")): step for step in job.get("steps") or []}
+    setup = steps["Set up Python"]
+    assert setup["if"] == "${{ matrix.interpreter == 'setup' }}", setup
+    assert "setup-python" in str(setup["uses"])
+    assert steps["Create virtualenv"]["if"] == "${{ matrix.interpreter == 'setup' }}"
+    managed = steps["Create virtualenv on the uv-managed interpreter"]
+    assert managed["if"] == "${{ matrix.interpreter == 'uv' }}", managed
+    assert "--python" in managed["run"] and "matrix.python-version" in managed["run"], managed["run"]
+    uv = [step for step in job["steps"] if "setup-uv" in str(step.get("uses", ""))]
+    assert uv, "the leg that installs an interpreter with uv has no uv"
+    assert [str(step.get("name", "")) for step in job["steps"]].index("Install uv") < [
+        str(step.get("name", "")) for step in job["steps"]
+    ].index("Create virtualenv on the uv-managed interpreter")
+
+
+def test_the_fan_in_verdict_does_not_ask_the_image_for_the_floor() -> None:
+    """`Test matrix (all legs)` is the only name branch protection consumes.
+
+    When it asked the image for 3.8 it red-denied every pull request at once, including the ones that
+    could not have caused it, so the fan-in resolves its interpreter through uv and never touches the
+    image's build index.
+    """
+    for name in ("matrix-verdict", "main-gate"):
+        steps = workflow_document()["jobs"][name]["steps"]
+        assert not [step for step in steps if "setup-python" in str(step.get("uses", ""))], name
+        assert [step for step in steps if "setup-uv" in str(step.get("uses", ""))], name
+        runs = [str(step.get("run", "")) for step in steps]
+        assert any("uv run --no-project --python 3.8" in text for text in runs), (name, runs)
+
+
 def test_leg_names_are_still_the_shape_branch_protection_matches() -> None:
     """Check names are the merge contract; an explicit `name:` is required once the matrix has flags."""
     job = workflow_document()["jobs"]["test"]
@@ -351,7 +426,7 @@ def test_the_plan_is_valid_json_for_a_matrix_include() -> None:
     assert json.loads(json.dumps(payload)) == payload
     for leg in payload:
         assert isinstance(leg["coverage"], bool) and isinstance(leg["suite"], bool)
-        assert set(leg) == {"os", "python-version", "coverage", "compliance", "suite"}, leg
+        assert set(leg) == {"os", "python-version", "coverage", "compliance", "suite", "interpreter"}, leg
 
 
 def test_the_workflow_checks_the_plan_before_spending_legs() -> None:
@@ -366,17 +441,19 @@ def test_the_workflow_checks_the_plan_before_spending_legs() -> None:
 def test_the_pinned_versions_and_the_plan_agree() -> None:
     """The floor CI imports checkers on and the floor the package declares are the same fact.
 
-    `matrix-verdict` runs `check_matrix_verdict.py` on 3.8 on purpose - it is the job that must never be
-    the one that breaks - and that choice is only meaningful while 3.8 is still the declared floor.
+    `matrix-verdict` runs `check_matrix_verdict.py` on the declared floor on purpose - it is the job
+    that must never be the one that breaks - and that choice is only meaningful while that version is
+    still the floor. Since 2026-10-31 the fan-in resolves its interpreter through uv (Ubuntu 26.04
+    publishes no build of it for `actions/setup-python`), so the floor is read from the command
+    rather than from a `with: python-version:` the job no longer has.
     """
     verdict = workflow_document()["jobs"]["matrix-verdict"]
-    pinned = [
-        step["with"]["python-version"]
-        for step in verdict["steps"]
-        if isinstance(step.get("with"), dict) and "python-version" in step["with"]
-    ]
-    assert pinned == [declared_versions()[0]], (
-        f"the fan-in runs on {pinned}; the declared floor is {declared_versions()[0]}"
+    floor = declared_versions()[0]
+    runs = " ".join(str(step.get("run", "")) for step in verdict["steps"])
+    assert f"--python {floor} " in runs, f"the fan-in does not run on the declared floor {floor}: {runs}"
+    assert "python-version" not in str(verdict["steps"]), (
+        "the fan-in asks the runner image for an interpreter again, which is how every pull request "
+        f"was red-denied on 2026-10-31 when the image stopped carrying {floor}"
     )
 
 

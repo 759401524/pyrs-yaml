@@ -287,6 +287,26 @@ status: new
 
 #### 수정
 
+- **인터프리터 표가 러너 이미지가 갖고 있지 않은 빌드를 요구하지 않게 됐다** — `ubuntu-latest`가
+  Ubuntu 26.04로 바뀌자 `actions/setup-python@v7`은 지원 범위의 아래 두 버전에 대해
+  `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04`라고 답한다.
+  2026-10-31에 PR #681의 같은 커밋에서 실측했다: `test (ubuntu-latest, 3.8)`과
+  `(ubuntu-latest, 3.9)`는 `Set up Python`에서 죽은 반면 `test (macos-latest, 3.8)`과
+  `test (windows-latest, 3.8)`은 같은 요구로 통과했다. 따라서 규칙은 버전 단위가 아니라
+  (러너, 버전) 쌍으로 정해진다. 빨간 두 레그로 끝나지 않았다. 브랜치 보호가 보는 이름은
+  `Test matrix (all legs)` 하나뿐인데 그 합류 잡 역시 이미지에 3.8을 요청했다. 시작할 수 없는
+  필수 검사는 거절이므로, 원인이 될 수 없는 풀 리퀘스트까지 저장소 전체가 동시에 병합 불가가 됐다.
+  이제 `ci_matrix_plan.py`는 칸마다 `interpreter` 공급처를 낸다(값싼 러너에서 이미지 아래이면
+  `uv`, 그 외엔 `setup`). `ci.yml`를 그것을 읽어 이미지에 빌드가 없는 칸만
+  `uv venv .venv --python <version>`을 쓰고 나머지는 그대로다. 바닥 버전에 고정된 두 잡
+  (`main-gate`, `matrix-verdict`)은 검사 스크립트를 `uv run --no-project --python 3.8`로 실행해
+  인터프리터를 uv 자신의 색인에서 해결한다. 네 곳이 붙잡는다: `--check`은 이미지 규칙과 어긋나는
+  계획을 양방향으로 거부하고, `tests/test_ci_matrix_plan.py`의 세 검사는 규칙·워크플로우가 실제로 그
+  필드를 읽는다는 사실·합류가 더 이상 이미지를 건드리지 않음을 각각 고정한다. 콜렉션·wheel·Ir 바닥은
+  움직이지 않았다: 다른 색인에서 해결해도 같은 CPython이고, `prek run --all-files`와
+  `uv run pytest tests/`가 이 트리에서 초록이었다. `publish.yml`도 3.8을 요구하지만 그 레그는
+  manylinux·musllinux 컨테이너 안에서 돌며 빌드 색인을 내는 쪽은 이미지가 아니라 컨테이너다.
+  측정할 수 있는 자리는 태그 푸시뿐이므로 릴리스 경로에서 추측은 하지 않는다 ―― 그대로 둔다.
 - **헤더의 주석 스택 두 개는 이제 선택이 아니다** — 섹션 키와 그 키가 이끄는 맵핑은 각자의 leading
   목록을 갖지만, `crates/pyrs-toml/src/writer.rs` 의 섹션 통과분은 목록 하나만 채웠다. 먼저 섹션
   자신의 목록을 묻고 비어 있을 때만 키로 물러나기 때문이다. 따라서 둘 다 비어 있지 않으면 주석 스택
