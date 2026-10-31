@@ -66,6 +66,30 @@ CHEAP_OS = "ubuntu-latest"
 COVERAGE_VERSION = "3.12"
 COMPLIANCE_VERSION = "3.14"
 
+#: Where a leg's interpreter comes from. `actions/setup-python` resolves a version from the runner
+#: image's build index, and `ubuntu-latest` became Ubuntu 26.04 on 2026-10-31: on that image the
+#: request for 3.8 and 3.9 answers `The version '3.8' with architecture 'x64' was not found for
+#: Ubuntu 26.04`, measured on the same commit of PR #681 where `test (macos-latest, 3.8)` and
+#: `test (windows-latest, 3.8)` both passed the identical request. uv resolves the same versions from
+#: its own build index and asks nothing of the image, so the cells below this floor on the cheap
+#: runner name uv instead.
+#:
+#: The version that broke is not the point; the fan-in is. `Test matrix (all legs)` is the only check
+#: name branch protection consumes and it asked the image for 3.8, so the migration red-denied the
+#: verdict for every pull request at once, including the ones that could not have caused it.
+#: `tests/test_ci_matrix_plan.py` refuses a plan whose ubuntu cells below this floor still say setup.
+IMAGE_FLOOR = "3.10"
+SETUP_PROVIDER = "setup"
+UV_PROVIDER = "uv"
+
+
+def interpreter_for(os_name: str, version: str) -> str:
+    """The provider a cell's interpreter has to come from, given the runner it lands on."""
+    if os_name == CHEAP_OS and _key(version) < _key(IMAGE_FLOOR):
+        return UV_PROVIDER
+    return SETUP_PROVIDER
+
+
 CLASSIFIER = re.compile(r'^\s*"Programming Language :: Python :: (3\.\d+)",\s*$')
 MIN_VERSION = "3.8"
 
@@ -146,6 +170,7 @@ def _leg(os_name: str, version: str, versions: list, event: str = "pull_request"
         # without ~2 500 assertions re-run per OS. The scheduled tier asks for the full grid, so there
         # every cell runs the suite and the distinction is switched off rather than re-derived.
         "suite": full or os_name == CHEAP_OS or version in expensive_suite_versions(versions),
+        "interpreter": interpreter_for(os_name, version),
     }
 
 
@@ -179,6 +204,7 @@ def smoke_plan(versions: list) -> list:
             "coverage": False,
             "compliance": False,
             "suite": False,
+            "interpreter": interpreter_for(os_name, version),
         }
         for os_name in OS_ALL
         for version in versions
@@ -243,6 +269,16 @@ def check(versions: list, legs: list | None = None, smoke: list | None = None) -
         problems.append("the scheduled tier must run the suite in every cell, not just the PR tier")
     if _key(MIN_VERSION) > _key(versions[0]):
         problems.append(f"the floor declared in requires-python ({MIN_VERSION}) is above {versions[0]}")
+    for tier_name, tier in (("suite", legs), ("smoke", smoke), ("scheduled", full)):
+        for leg in tier:
+            wants = interpreter_for(leg["os"], leg["python-version"])
+            if leg.get("interpreter") != wants:
+                problems.append(
+                    f"{leg['os']} on {leg['python-version']} ({tier_name} tier) asks for interpreter "
+                    f"provider {leg.get('interpreter')!r}, the image rule says {wants!r} - a leg whose "
+                    f"interpreter the runner image does not carry dies at Set up Python, and the "
+                    f"fan-in verdict dies with it"
+                )
     return problems
 
 

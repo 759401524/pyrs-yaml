@@ -237,6 +237,22 @@ status: new
 
 #### 修复
 
+- **解释器网格不再向 runner 镜像要它没有的构建** — `ubuntu-latest` 换到 Ubuntu 26.04 后，
+  `actions/setup-python@v7` 对受支持区间最低两个版本回答
+  `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04`。2026-10-31 在 PR #681
+  的同一提交上实测：`test (ubuntu-latest, 3.8)` 与 `(ubuntu-latest, 3.9)` 死在 `Set up Python`，而
+  `test (macos-latest, 3.8)` 与 `test (windows-latest, 3.8)` 用同样的请求通过，所以规则按
+  (runner, 版本) 判定而非只看版本。红掉的不止两条腿：分支保护只认 `Test matrix (all legs)` 这一个
+  名字，而该汇聚作业也向镜像要 3.8；必需的检查看不起来就是拒绝，于是仓库里每个 PR 同时不可合并，
+  包括不可能与此有关的。现在 `ci_matrix_plan.py` 为每格给出 `interpreter` 提供方（廉价 runner 上低于
+  镜像地板的用 `uv`，其余仍用 `setup`），`ci.yml` 读取它——镜像没有构建的格子用
+  `uv venv .venv --python <版本>`，其他不变——并把版本钉在最低位的两个作业（`main-gate`、
+  `matrix-verdict`）改用 `uv run --no-project --python 3.8` 跑校验脚本，让 uv 从自己的索引解析
+  解释器。四处把关：`--check` 双向拒绝与镜像规则不符的计划，`tests/test_ci_matrix_plan.py` 里三条
+  测试分别钉住该规则、作业确实读取该字段、以及汇聚作业不再触碰镜像。语料、wheel 与 Ir 地板都没动：
+  换索引解析的是同一个 CPython，`prek run --all-files` 与 `uv run pytest tests/` 在该树上全绿。
+  `publish.yml` 也请求 3.8，但那些作业跑在 manylinux 与 musllinux 容器里，提供构建索引的是容器而非
+  镜像——留着没改，因为只有推 tag 才能实测，发布路径不该拿来猜。
 - **章节头的两条注释栈不再是二选一** — 章节键与它领衔的映射各有自己的 leading 列表，而
   `crates/pyrs-toml/src/writer.rs` 的章节 pass 只填一个切片：先问章节自己的列表，空了才回退去读键
   的。于是两者都非空时就少写一栈——键上带 `# K`、`[a]` 上带 `# T` 的节点实测只输出

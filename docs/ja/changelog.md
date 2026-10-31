@@ -287,6 +287,26 @@ status: new
 
 #### 修正
 
+- **インタープリタ表がランナー画像の持たないビルドを要求しなくなった** — `ubuntu-latest` が
+  Ubuntu 26.04 になり、`actions/setup-python@v7` は対応範囲の下端 2 バージョンに
+  `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04` と答える。
+  2026-10-31 に PR #681 の同一コミットで実測：`test (ubuntu-latest, 3.8)` と
+  `(ubuntu-latest, 3.9)` は `Set up Python` で死に、`test (macos-latest, 3.8)` と
+  `test (windows-latest, 3.8)` は同じ要求で通った。規則はバージョン単独ではなく
+  (ランナー, バージョン) で決まる。赤くなったのは 2 レグでは済まない。ブランチ保護が見る名前は
+  `Test matrix (all legs)` だけで、その合流ジョブも画像に 3.8 を求めていた。開始できない必須
+  チェックは拒否なので、原因になり得ない PR まで倉庫の全てが同時にマージ不能になった。
+  `ci_matrix_plan.py` はいま各マスへ `interpreter` の供給元を出す（安いランナーで画像の床より
+  下は `uv`、ほかは `setup`）。`ci.yml` はそれを読み、画像にビルドが無いマスだけ
+  `uv venv .venv --python <version>` を使い、他は不変。床を固定した 2 ジョブ
+  （`main-gate` と `matrix-verdict`）は検証スクリプトを `uv run --no-project --python 3.8` で
+  走らせ、インタープリタを uv 自身の索引から解決する。四方で固定する：`--check` は画像規則と食い違う
+  計画を両方向で拒否し、`tests/test_ci_matrix_plan.py` の 3 検は規則・ワークフローが実際にその
+  欄を読むこと・合流が画像を触らなくなったことをそれぞれ釘付けにする。コーパス・wheel・Ir 床は
+  動いていない。別の索引から解決しても同じ CPython で、`prek run --all-files` と
+  `uv run pytest tests/` はこのツリーで緑だった。`publish.yml` も 3.8 を要求するが、あれは
+  manylinux・musllinux コンテナ内で走るレグであり、ビルド索引を出すのは画像ではなくコンテナだ。
+  測れるのはタグプッシュの場だけなので、リリース経路で推測はしない ―― 据え置き。
 - **見出しの注釈スタック二つはもう択一ではない** — セクションのキーと、そのキーが先導するマッピング
   は各自自身の leading リストを持つのに、`crates/pyrs-toml/src/writer.rs` のセクション通過は一つのス
   ライスしか埋めていなかった：まずセクション側のリストを尋ね、空のときだけキー側へ退避する。だから両
