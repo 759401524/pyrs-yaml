@@ -43,6 +43,22 @@ status: new
   ヘッダ上の `# [` は最初のメンバーではなく項目自身に読み戻される）と
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（入れ子配列自身のコメントはそのブ
   ラケットの上に残る）。
+- **`Document.validate()` の契約二つを実測して登録した** — この面はすべての規則を
+  `jsonschema` に委譲しており、その代価をこのツリーははっきり書く。`[project.dependencies]` は
+  `typing-extensions` 一件だけ、extras は `cli`、`pydantic`、`settings` の三つで、本プロジェクトが
+  公開するどの配布物にも評価器は含まれない。モジュールを `sys.modules` で止める（wheel が無いときと
+  同じ失敗）と、新規インストールでの `doc.validate({...})` は
+  裸の `ModuleNotFoundError` を返すだけだ。
+  ところが `docs/en/quick-start.md` は冒頭で一度インストールし、第 12 歩でこのメソッドを呼ぶ。
+  二つ目の境界はスキーマの*テキスト*。`str` の扉は評価器に問う前に `json.loads` を走らせるので、
+  YAML の綴り（この中の他のスキーマ面が読む形）は標準ライブラリの
+  `json.decoder.JSONDecodeError` を返す。このクラスは文書化された十個の `Yaml*` にも、CLI の
+  `except YamlValidateError` 節にも属さない。実測では
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` がまさにその traceback を出す。両方は
+  `.ci/known-residuals.json` に生きた repro を添えて登録した
+  （`api:validate-evaluator-is-not-installed-by-anything-we-ship` と
+  `api:validate-schema-text-is-json-only`）。ここでは意図的に直さない。extra は配布の決定であり、
+  扉を開くのも例外を包み直すのも公開契約の変更で、PR #517 の評価器は両方の問いを無効にする。
 - **タグだけの行の後ろに来た注釈が、その行の内側に落ちていた** — `yaml_roundtrip` の crash-2c76568e
   は、最初のペアが裸のタグ（`bg: !`）であるマッピングをライタへ渡す。スカラー本文を書かないため、そ
   の行は値を null テキストとして挿入する何かが閉じるまで開いたままになる。次のペアの leading 注釈ス
