@@ -27,7 +27,11 @@ forms are not reproducible.
   comment, and not which table it belongs to; pinned by
   `TestSectionHeaderCommentBoundary.test_header_inline_comment_is_relocated_not_dropped` and
   `test_relocated_note_lands_on_the_tables_last_entry`, which assert survival, the in-table slot,
-  and the one-round fixed point. This bullet used to blame "the locked granit comment-capture model"
+  and the one-round fixed point. The slot it borrows is always the body's *last* line, never a free
+  one above it, so a tail line that already carries a note hoists the header's above the header
+  instead (`[sec] # H` + `x = 1 # M` → `# H` + `[sec]` + `x = 1 # M`) — two notes, two lines, one
+  round to settle, pinned by `test_a_header_note_whose_slot_is_taken_hoists_above_the_header`. This
+  bullet used to blame "the locked granit comment-capture model"
   and to claim pure YAML loses the position too; both measured false on 2026-10-25. granit is not in
   this path — `pyrs_toml`'s own scanner captures the header note — and a YAML document's
   `sec: # note` does keep its position through the hub, reaching the TOML header line from the key

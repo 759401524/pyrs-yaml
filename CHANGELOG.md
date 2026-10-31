@@ -722,6 +722,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A relocated TOML header note names the right cause** — the boundary recording that a TOML
+  `[sec] # note` keeps its text and its table but not its line blamed the YAML parser's
+  comment-capture model. The measurement says otherwise: the engine pair is a fixed point, so
+  feeding `from_toml`'s output to `to_toml` returns
+  `# above the section\n[srv] # inline\nport = 1\n` unchanged, which
+  `preserves_section_header_trailing_and_leading` pins. The move is this project's own placement
+  rule — the YAML writer parks a container's inline note on the last line of its body, and the
+  reader reports that line's note as its member's. The rule's second placement is pinned with bytes
+  now: with the tail line taken, the header's note rises above `[sec]` while `x = 1 # M` keeps its
+  own line — two notes, two lines, one round to settle, same value read back.
 - **The Ir floor for a scenario that counts an interpreter is keyed by runner image** —
   `.ci/ir-baseline.json` gains an `image_floors` table, and `scripts/ir_gate.py` now compares an
   enforcing run against the row for the image it is on, instead of asking one number to settle the
