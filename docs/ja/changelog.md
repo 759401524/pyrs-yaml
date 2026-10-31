@@ -17,6 +17,21 @@ status: new
 
 #### 追加
 
+- **ファジングのシード層を対象別に数え、二つの拒否を添えた** — 行列は総数ひとつだけを
+  印字していた（`174 seeds of which 84 are former crashes`）。総数では、永続入力が八十二本ある
+  対象とファイル一枚の対象を区別できない。`fuzz_seed_inventory()` は今、`fuzz.yml` が実際に
+  コピーする深さと拡張子（一段、`*.seed`）で各 `fuzz/seeds/<target>/` を数え、
+  `fuzz_seed_counts` を公開し、ファジングの行は分布の両端を名乗る。数値は `--write-rows` が
+  書き直す。対象別に分ける意味は、コーパスを読むイベントにある。プルリクエストでは
+  `scripts/fuzz_rounds.sh` が `-runs=0` を走らせ、確定したシードを再生するだけで探索しない。
+  `fuzz/corpus/` は gitignore で、実行が見つけた入力はランナーに残る。だからシードのない対象は、
+  マージを止める層が入力ゼロのまま並んでおり、どのマニフェストも宣言していないディレクトリに
+  残ったシードは、後で引用されるすべての数字の母集団を膨らませる。両方の形はいま拒否される
+  （`fuzz-corpus-unseeded` と `fuzz-corpus-orphan`）。そして両方とも今日のツリーではゼロ。九つの
+  対象は 1 本から 82 本のシードを持ち、孤児ディレクトリはない。だからこの規則は今日コストを
+  掛けず、次の削除だけを捕まえる。`tests/test_quality_matrix.py` は改変した一覧で各拒否を
+  発火させ、`test_the_seed_inventory_counts_what_the_workflow_copies` は集計が再帰 glob に戻れば
+  赤くなる。入れ子の `deep.seed` は入力ではない。`cp fuzz/seeds/<target>/*.seed` は届かない。
 - **Python の生成層が、葉では名前の付けられなかった家族を描くようになった** — `arbitrary_json` は葉
   を `None`、`bool`、±10^12 内の `int`、有限の `float`、`str` に限っていた。何が除外されていたかは葉
   を数えれば出る。25,000 回の抽出は 270,602 枚の葉を作り、この五種がそれぞれ 58,064 / 53,396 /

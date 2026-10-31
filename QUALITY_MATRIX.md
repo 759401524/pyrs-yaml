@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 847 Rust `#[test]`, 2,083 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 847 Rust `#[test]`, 2,086 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 32 proptest properties (28 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 174 seeds of which 84 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 82 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -810,6 +810,20 @@ What a closed defect leaves behind, per the discipline this repository already r
 minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (84 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
+
+The seed total counts the tier; it does not describe it, and the gap appeared when the same
+inventory was asked per directory. `fuzz_seed_inventory()` now reports the depth of every
+`fuzz/seeds/<target>/`, and the section-1 fuzz row names both ends of it from that same
+measurement.
+That depth is exactly what a pull request replays: `scripts/fuzz_rounds.sh` runs `-runs=0` for
+that event, which explores nothing, and `fuzz/corpus/` is gitignored, so the corpus a run
+discovers stays on the runner. A target with no seed therefore has a merge-blocking tier with
+no input at all while the aggregate still reads as a corpus. Two refusals come out of the
+measurement, `fuzz-corpus-unseeded` and `fuzz-corpus-orphan`, and both are empty on the tree of
+the day - the same shape as the `placement_errors` rule recorded under *Registered blind spots*,
+which also cost nothing on the day it was written. The orphan half is not hypothetical: this
+tree's gitignored corpus still carries `validate_schema/` and `kg/`, directories for targets no
+manifest declares any more, which is where a seed tier rots first.
 
 Two structural gaps, both now enforced:
 

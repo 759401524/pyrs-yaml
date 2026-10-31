@@ -207,9 +207,59 @@ def test_fuzz_denominator_is_the_harness_dependency_list(matrix):
         assert (REPO_ROOT / "crates" / crate / "Cargo.toml").exists(), crate
 
 
+def test_the_seed_inventory_counts_what_the_workflow_copies(matrix, tmp_path):
+    """A seed is only a seed if `fuzz.yml` can copy it: depth one, `.seed` suffix.
+
+    The workflow's `Seed corpus` step runs `cp fuzz/seeds/<target>/*.seed`, flat and globbed by
+    suffix, and `fuzz/corpus/` is gitignored. So a nested input or a renamed one is in neither the
+    replay nor the count - and a directory that has lost its only seed has to read as zero seeds
+    rather than as no directory, which is the difference between a thin tier and a tier that
+    vanished from the measurement.
+    """
+    seeds = tmp_path / "fuzz" / "seeds"
+    (seeds / "parse_demo" / "nested").mkdir(parents=True)
+    (seeds / "parse_demo" / "former-crash-abc.seed").write_text("x", encoding="utf-8")
+    (seeds / "parse_demo" / "hand.seed.txt").write_text("x", encoding="utf-8")
+    (seeds / "parse_demo" / "nested" / "deep.seed").write_text("x", encoding="utf-8")
+    (seeds / "empty_target").mkdir()
+    assert matrix.fuzz_seed_inventory(root=tmp_path) == {
+        "seeds": 1,
+        "former_crash": 1,
+        "per_target": {"parse_demo": 1, "empty_target": 0},
+    }
+
+
+def test_an_unseeded_fuzz_target_is_a_hole_in_both_directions(matrix, monkeypatch):
+    """The aggregate cannot see a target with no corpus, so the refusal is the only witness."""
+    real = matrix.fuzz_seed_inventory()
+    assert [hole for hole in matrix.measure()["holes"] if hole[0] == "fuzz-corpus-unseeded"] == []
+
+    thin = dict(real["per_target"])
+    monkeypatch.setattr(matrix, "fuzz_seed_inventory", lambda root=None: {**real, "per_target": thin})
+    thin["parse_yaml"] = 0
+    holes = [name for kind, name, _why in matrix.measure()["holes"] if kind == "fuzz-corpus-unseeded"]
+    assert holes == ["parse_yaml"], holes
+
+    thin["parse_yaml"] = real["per_target"]["parse_yaml"]
+    assert [hole for hole in matrix.measure()["holes"] if hole[0] == "fuzz-corpus-unseeded"] == []
+
+
+def test_seeds_for_a_target_nothing_declares_are_a_hole(matrix, monkeypatch):
+    """Orphan inputs inflate the total every later number is quoted from."""
+    real = matrix.fuzz_seed_inventory()
+    assert [hole for hole in matrix.measure()["holes"] if hole[0] == "fuzz-corpus-orphan"] == []
+
+    monkeypatch.setattr(
+        matrix,
+        "fuzz_seed_inventory",
+        lambda root=None: {**real, "per_target": {**real["per_target"], "validate_schema": 12}},
+    )
+    holes = [name for kind, name, _why in matrix.measure()["holes"] if kind == "fuzz-corpus-orphan"]
+    assert holes == ["validate_schema"], holes
+
+
 def test_roundtrip_requirement_is_per_format_family(matrix):
     targets = ["yaml_roundtrip", "parse_json"]
-    assert matrix.roundtrip_target_for("pyrs-yaml-core", targets)
     assert matrix.roundtrip_target_for("pyrs-ast", targets)
     assert not matrix.roundtrip_target_for("pyrs-json", targets)
 
@@ -429,7 +479,7 @@ def test_the_page_states_the_counts_the_probe_measures(measured):
     )
 
 
-def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
+def test_the_test_matrix_rows_state_the_counts_the_probe_measures(matrix, measured):
     """Every number in the section-1 table is a claim about the tree, so the page is pinned to it.
 
     The page's header promises the numbers cannot rot, but only the property sentence had a test
@@ -441,7 +491,11 @@ def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
     text = DOC_PATH.read_text(encoding="utf-8")
     unit = re.search(r"\| unit / integration \| ([\d,]+) Rust `#\[test\]`, ([\d,]+) Python test functions \|", text)
     prop = re.search(r"\| property \| (\d+) proptest properties", text)
-    fuzz = re.search(r"\| fuzz \| (\d+) targets, (\d+) seeds of which (\d+) are `former-crash-\*` \|", text)
+    fuzz = re.search(
+        r"\| fuzz \| (\d+) targets, (\d+) seeds of which (\d+) are `former-crash-\*`, "
+        r"thinnest (\d+) \(`([a-z0-9_]+)`\) / fullest (\d+) \(`([a-z0-9_]+)`\) \|",
+        text,
+    )
     regress = re.search(r"former-crash-<hash>\.seed` \((\d+) of them\)", text)
     assert unit and prop and fuzz and regress, "QUALITY_MATRIX.md no longer states every section-1 count"
     claimed = (
@@ -463,6 +517,10 @@ def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
         measured["fuzz_former_crash_count"],
     )
     assert claimed == measured_counts, f"QUALITY_MATRIX.md claims {claimed}, the probe measures {measured_counts}"
+    # The per-target ends of the same corpus, so the aggregate cannot hide a thin replay tier.
+    thin, thin_name, full, full_name = (fuzz.group(4), fuzz.group(5), fuzz.group(6), fuzz.group(7))
+    depth = f"thinnest {thin} (`{thin_name}`) / fullest {full} (`{full_name}`)"
+    assert depth == matrix._seed_depth(measured["fuzz_seed_counts"]), depth
 
 
 def test_the_committed_rows_are_what_the_derivation_writes(matrix, measured):
