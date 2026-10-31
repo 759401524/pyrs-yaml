@@ -54,6 +54,22 @@
       "opened": "2026-10-31",
       "exit": "a named extra installs a JSON Schema evaluator, or Document.validate() refuses with a pyrs_yaml error whose text names the install route, so following docs/en/quick-start.md from its single `pip install pyrs-yaml` line cannot end in a ModuleNotFoundError",
       "why": "Document.validate forwards every rule to `jsonschema` (crates/pyrs-yaml/src/py/document.rs imports it), and no distribution this project publishes installs that package: [project.dependencies] is typing-extensions alone and the three extras are cli, pydantic and settings, while jsonschema sits in the test group. Measured 2026-10-31 with the module halted in sys.modules - the same failure an absent wheel gives - the call raises a bare ModuleNotFoundError that names nothing the reader can act on. An extra is a packaging decision (AGENTS.md: ask first), and the evaluator this repository owns is the design under review in docs/dev/json-schema-engine.md"
+    },
+    {
+      "id": "api:dict-door-key-fold",
+      "repro": "tests/test_property_json_schema.py::TestTheDictDoorFoldsAKeyPairTheDocumentWritesApart::test_the_pair_folds_at_the_dict_and_the_schema_answers_for_one_entry",
+      "tier": "binding",
+      "opened": "2026-10-31",
+      "exit": "to_dict() either keeps both entries of a key pair the source writes apart (a structure that can hold them) or refuses it the way to_dict already refuses a tagged pair, so no door answers with one entry while to_yaml and to_json answer with two",
+      "why": "`1: one` beside `true: two` is two YAML keys and one Python dict entry, because `1 == True` and setting an equal key replaces the value while keeping the first key. The AST holds both, `to_yaml()` re-emits both and `to_json()` writes both, so the fold belongs to this door alone; PyYAML's loader folds at the same point (measured 2026-10-31), so the fold is the counterparties' shape, not a drift this project introduced. `Document.validate()` judges the folded instance, which is how the schema tier found it"
+    },
+    {
+      "id": "engine:key-identity-route-parity",
+      "repro": "tests/test_property_json_schema.py::TestTheTwoReadersAnswerOppositeWaysOnAdjacentKeyPairs::test_the_ast_route_refuses_what_the_fast_route_accepts",
+      "tier": "rust-core",
+      "opened": "2026-10-31",
+      "exit": "parse() and safe_load() give the same accept-or-refuse answer on `1:` beside `'1':` and on `1:` beside `true:`, because one key-identity model decides both routes",
+      "why": "the AST route tracks an untagged scalar key by its text (`KeyIdentity::Text`: style never reaches its decision), so `1:` and `'1':` are one key and it refuses; the direct route tracks the resolved Python object, so `1` and `true` are one key and it refuses there instead. The two answers cross over on adjacent pairs, and the two routes each diverge from a different counterparty. Aligning them decides which documents are valid at all, so it is a ruling, not a patch"
     }
   ]
 }
