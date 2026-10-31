@@ -405,7 +405,20 @@ fn write_notated_array(
             out.push('\n');
         }
         out.push_str("  ");
-        write_value(out, it)?;
+        // The stack written above is this element's own leading note, and a nested container writes
+        // its leading note inside its own brackets too - so descending with the slot still filled
+        // laid one note down twice. The reader then hands the first copy to the element and the
+        // second to that element's own first item, and every following round adds a copy again:
+        // `list = [\n  # n\n  [1]\n]\n` reached three `# n` lines by its second emission. A note has
+        // one owner and one line, so the body gets a copy with that slot emptied - the position
+        // above the bracket is the one this crate's reader reports the element's note back from.
+        if it.leading_comments().is_empty() {
+            write_value(out, it)?;
+        } else {
+            let mut bare = it.clone();
+            bare.remove_leading_comment();
+            write_value(out, &bare)?;
+        }
         // The last element's line is the only one a note may finish: `1 # x,` is not TOML at all,
         // and a note written after the comma is reported by the reader as the *next* element's
         // leading note - so that placement moved the comment on every round and the text never
@@ -1685,6 +1698,38 @@ mod tests {
         assert!(out.contains("# lead b"), "leading b lost: {out}");
         let twice = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, twice, "not idempotent: {out} vs {twice}");
+    }
+
+    #[test]
+    fn a_note_above_a_nested_container_is_written_once_and_the_text_settles() {
+        // A note sitting above an array element that is itself a container has exactly one line to
+        // live on - the one at the element's own indent, which is where this crate's reader reports
+        // the element's note back from. The body used to write the same stack again *inside* the
+        // nested brackets as that container's own leading note, so the re-read gave two owners for
+        // one source line and each following emission added another copy: `list = [\n  # n\n
+        // [1]\n]\n` reached three `# n` lines by its second round (libFuzzer `edit_yaml`
+        // crash-445ddfff, crash-450cac9b and crash-dce5f5ed all report that one claim). What is
+        // pinned here is the fixed point, and the note count, so a duplication cannot pass as
+        // stability and a dropped note cannot pass as a fixed point.
+        for (src, notes) in [
+            ("list = [\n  # n\n  [1]\n]\n", 1),
+            ("list = [\n  \"a\",\n  # n\n  [1]\n]\n", 1),
+            ("list = [\n  # n\n  {a = 1}\n]\n", 1),
+            ("s = \"v0\"\n\"?ss\" = [\n  \"v0\",\n  # n\n  [{}]\n]\n", 1),
+            ("list = [\n  # a\n  # b\n  [1]\n]\n", 2),
+            // The control: two notes with two different owners stay two lines, one each.
+            ("list = [\n  # own\n  [\n  # inner\n  1\n]\n]\n", 2),
+        ] {
+            let out = to_toml(&from_toml(src).unwrap()).unwrap();
+            assert_eq!(out, src, "the shape moved: {src:?} -> {out:?}");
+            assert_eq!(
+                out.matches("# ").count(),
+                notes,
+                "one source line per note is the claim: {out:?}"
+            );
+            let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+            assert_eq!(out, again, "not a fixed point: {out:?} -> {again:?}");
+        }
     }
 
     #[test]

@@ -11246,6 +11246,62 @@ does not mistake it for this change. `to_toml_medium` is not image-keyed, and th
 reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
 verdict; the enforcing reading is CI's `ir` job.
 
+### (ib) One note, one line, one owner: the TOML writer wrote a nested container's note twice (2026-10-31)
+
+PR #689 closed one of the nine inputs the sampler reported; this closes six more of them, and it
+started where that one started - with the same run's `edit_yaml` artifacts, whose report says only
+`panicked at fuzz_targets/edit_yaml.rs`. Their panic text is unrecoverable from CI: the job log for
+run 41182712560 carries the harness's aggregated line (`3 panicked at fuzz_targets/edit_yaml.rs`)
+and never wrote the individual bodies, so #687's signature fix repairs the report, not the archive.
+Replaying them with `cargo fuzz run <target> <artifact> -- -runs=0` (WSL nightly, `CARGO_TARGET_DIR`
+on the Linux filesystem - the host's own 9p mount dies mid-compile) gave the three identical
+sentences: *"an edited tree wrote TOML that did not settle in one round"*. One root cause, so one
+pull request, not three.
+
+**The shape.** A `#` line above an array element that is itself a table or an array had two homes in
+the writer's layout. Measured from the tree outward, the reader is innocent:
+`from_toml("list = [\n  # n\n  [1]\n]\n")` holds exactly one owner - the outer array's first
+element, the inner array, carries `lead=["n"]`, and the inner `1` carries nothing. The writer then
+printed that stack twice: `write_notated_array` writes the element's `leading_comments()` at the
+element's own indent - the position this crate's reader reports an element's note back from - and
+descends into a nested container that reports the same stack as its *own* leading note, so the body
+printed it again inside the brackets. The re-read therefore held two owners for one source line, and
+each following emission added another copy: three `# n` lines by round two, four by round three.
+This is not the `(ds)`/`(dq)` species - a placement that moves - but text the tree never held,
+growing without bound, which a fixed-point assertion catches on its first round and a conservation
+oracle would catch as an invented note.
+
+**The fix** hands the descent a copy with that slot emptied (`CustomNode::remove_leading_comment` on
+the element), so a note keeps one line and one owner. Two consequences are pinned rather than
+assumed: a *stack* of two notes above one element still keeps both lines in order, and a source
+whose two notes really do have two different owners (`# own` outside the brackets, `# inner` inside)
+still writes two lines - the control that says the rule is one-note-one-owner and not a preference
+for dropping notes. The empty-container case is untouched because it never descends: its note is
+handed up to the line its caller owns, which is what `unplaced_value_notes` has done since `(hw)`.
+
+**Coverage, proved by putting the defect back.** The strip replaced by a plain descent reddens
+`a_note_above_a_nested_container_is_written_once_and_the_text_settles` printing the duplicate
+(`left: "list = [\n  # n\n  [\n  # n\n  1\n]\n]\n"`). All six inputs that carry artifacts in that
+run's report - `edit_yaml` crash-445ddfff, crash-450cac9b, crash-dce5f5ed and `toml_roundtrip`
+crash-969291e0, crash-b750553e, crash-fe4a2b80 - replay clean here, and each is archived as a
+`former-crash-*` seed in its own target's corpus, which converts a weekly discovery into a per-pull-
+request gate (`-runs=0` replays them). The pristine red for the six is the run itself: both jobs of
+41182712560 are `failure` on `main`, so their artifacts are red on the tree this change branches
+from. Of the nine, then: six closed here, one by #688, one registered by #689 and awaiting its
+ruling, and `yaml_roundtrip` crash-1bbd4d7f still open.
+
+**The price.** Same host, the gate's pinned `rustc 1.97.1`, three repeats per scenario and the
+largest kept, repeats agreeing to under 40 instructions. `to_toml_notes` - the scenario that walks
+this branch - reads 16,510,685: **+0.25%** over its committed floor. The paired reading is the one
+that belongs to this change: this same host read 16,464,680 for that scenario twice over trees
+carrying no TOML change at all - once in `(hy)`, once in this session's run on a branch that touches
+only the YAML writer, agreeing to the instruction - so the cost is **+46,005 instructions, +0.28%**.
+`to_toml_medium` reads 29,114,907 where `(hy)`
+recorded 29,114,939 for that same tree - **32 instructions**, i.e. unmoved; its +0.46% absolute
+is #679's stale floor, already named there. `to_toml_long_strings` is −0.02% against its floor, the
+same sign and size `(hy)` measured. Nothing crossed the 0.50% line, so no floor was moved and no
+tolerance widened, and CI's `ir` job is the enforcing verdict.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

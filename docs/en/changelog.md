@@ -307,6 +307,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A note above a nested TOML container is written once** — a `#` line sitting above an array
+  element that is itself a table or an array had two homes in the writer's layout: it was printed at
+  the element's own indent, which is where this crate's reader reports that element's note back
+  from, and again inside the nested container's brackets as the container's own leading note. One
+  source line then had two owners on the re-read, and every following emission added another copy -
+  measured, `list = [\n  # n\n  [1]\n]\n` reached three `# n` lines by its second round and never
+  settled. The body now receives the element with that slot emptied, so a note keeps one line and
+  one owner; a stack of two notes keeps both lines in order, and a source whose two notes really do
+  have two owners still writes two lines. Six of the nine inputs the weekly sampler reported on
+  2026-10-31 were this one claim - libFuzzer `edit_yaml` crash-445ddfff, crash-450cac9b,
+  crash-dce5f5ed and `toml_roundtrip` crash-969291e0, crash-b750553e, crash-fe4a2b80 - each replays
+  with `-runs=0` clean on this tree and is archived in its own target's corpus, and the crate's unit
+  tier pins the shape.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
