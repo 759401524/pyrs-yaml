@@ -362,6 +362,12 @@ fn owns_owning_key(
 /// the re-read then dropped — anchor and value with it (property tier CI seed
 /// `c9ef4fd3…`, where `prop_mapping_order_preserved` and `prop_tag_preserved` failed on
 /// the same tree for exactly that reason).
+///
+/// A tagged scalar gets the same treatment from the writer's side: a block-styled key leaves as
+/// the quoted spelling of its text, so `!? "abc"` and `!? |-`-and-`abc` are one key once the
+/// document is laid out, and keeping both emitted `!? "abc": 1` beside `!? "abc": 2` - a document
+/// this engine's own reader refuses as a duplicate (libFuzzer `yaml_roundtrip` crash-4bf6ee37).
+/// `CustomNode::key_spelling_folded` is the projection the writer applies, asked of a copy.
 fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
     if is_null_key(a) && is_null_key(b) {
         return true;
@@ -378,7 +384,15 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
                 meta: mb,
                 ..
             },
-        ) => ma.tag().is_none() && mb.tag().is_none() && va == vb,
+        ) => {
+            if ma.tag().is_none() && mb.tag().is_none() {
+                return va == vb;
+            }
+            if a.key_spelling_moves() || b.key_spelling_moves() {
+                return a.key_spelling_folded() == b.key_spelling_folded();
+            }
+            a == b
+        }
         _ => a == b,
     }
 }

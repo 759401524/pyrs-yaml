@@ -409,3 +409,26 @@ fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
         );
     }
 }
+
+/// A key the writer cannot spell distinctly is one key, and the merge expansion now says so.
+///
+/// `!? "abc"` and a strip-chomped literal of the same text are two nodes - the tag keeps them
+/// out of the reader's text track - but a block header has to end its line, so the writer spells
+/// both as `!? "abc"`. A `<<` that carried one into a mapping already holding the other therefore
+/// wrote a document its own reader refused: `duplicate key: abc`. Asking the emission's own
+/// projection folds the pair the way the text track already folds `abc` and `'abc'`, and the
+/// target's entry wins, which is what YAML 1.1 merge says of a key the target names itself.
+#[test]
+fn a_merged_key_the_writer_cannot_spell_distinctly_folds_to_the_targets_entry() {
+    let src = "base: &b {!? \"abc\": 1}\nm:\n  <<: *b\n  ? !? |-\n    abc\n  : 2\n";
+    let one = emit(src);
+    assert_eq!(
+        one, "base: &b {!? \"abc\": 1}\nm:\n  !? \"abc\": 2\n",
+        "the merged pair has one spelling, so it has one entry: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}

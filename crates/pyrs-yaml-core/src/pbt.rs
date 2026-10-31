@@ -1631,6 +1631,22 @@ mod tests {
                 scalar("k", ScalarStyle::SingleQuoted, Some(("!", "a"))),
                 true,
             ),
+            // A block header cannot ride a key line, so the writer spells a block-styled key with
+            // the double-quoted form (`!? |` + `abc` + `: 1` emits `!? "abc": 1`). The plain and
+            // single-quoted spellings of the same text still reach the text as themselves, so each
+            // of those pairs keeps two entries.
+            (
+                "a tagged literal and its plain twin",
+                scalar("abc", ScalarStyle::Literal, Some(("!", "?"))),
+                scalar("abc", ScalarStyle::Plain, Some(("!", "?"))),
+                true,
+            ),
+            (
+                "a tagged literal and its single-quoted twin",
+                scalar("abc", ScalarStyle::Literal, Some(("!", "?"))),
+                scalar("abc", ScalarStyle::SingleQuoted, Some(("!", "?"))),
+                true,
+            ),
             // `null:` reads as a null key and `'null':` as the string, so the reader keeps
             // both; `true:` and `'true':` both reach the reader's text track and collide.
             (
@@ -1680,6 +1696,29 @@ mod tests {
                 "the same text, plain and quoted",
                 plain("k"),
                 scalar("k", ScalarStyle::SingleQuoted, None),
+                false,
+            ),
+            // Both halves of the block-key projection, measured on the emission: the writer has
+            // one spelling for `!? |`-and-body and `!? "abc"`, and one for the bare-empty `!? `
+            // and `!? ""` (an empty plain key cannot go bare). libFuzzer `yaml_roundtrip`
+            // crash-4bf6ee37 reached the first as two complex keys whose bodies came out as the
+            // same `!? "": ~` line.
+            (
+                "a tagged literal and its double-quoted twin",
+                scalar("abc", ScalarStyle::Literal, Some(("!", "?"))),
+                scalar("abc", ScalarStyle::DoubleQuoted, Some(("!", "?"))),
+                false,
+            ),
+            (
+                "a tagged empty plain and its double-quoted twin",
+                scalar("", ScalarStyle::Plain, Some(("!", "?"))),
+                scalar("", ScalarStyle::DoubleQuoted, Some(("!", "?"))),
+                false,
+            ),
+            (
+                "a tagged empty literal and its folded twin",
+                scalar("", ScalarStyle::Literal, Some(("!", "?"))),
+                scalar("", ScalarStyle::Folded, Some(("!", "?"))),
                 false,
             ),
             (
@@ -1767,7 +1806,7 @@ mod tests {
         ];
         let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
         assert_eq!(
-            distinguishable, 15,
+            distinguishable, 17,
             "the table must keep a real share of its classes on each side"
         );
 

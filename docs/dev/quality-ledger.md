@@ -11246,6 +11246,87 @@ does not mistake it for this change. `to_toml_medium` is not image-keyed, and th
 reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
 verdict; the enforcing reading is CI's `ir` job.
 
+### (ia) A key line has fewer spellings than the AST has styles (2026-10-31)
+
+PR #688 took one of the nine inputs the sampler reported once `(hy)`'s signature fix made them
+legible. Three of the nine remain, and this entry is the second: `crash-4bf6ee37`, minimized by
+deletion to 15 bytes - `? !? |` CR `? !?` - a document whose emission this engine's own reader
+refuses. What ships here is a sibling of that input, found by the same probe, because the crash
+itself needs a ruling and the sibling does not.
+
+**The projection.** A scalar in key position has five styles and the writer has fewer than five
+spellings, because a block header has to end its line and a bare empty key reads as null. Measured
+on the emission of each style, tagged `!?`:
+
+| source key | text | emitted |
+|:-----------|:-----|:--------|
+| `!? abc` (plain) | `abc` | `!? abc` |
+| `!? 'abc'` (single) | `abc` | `!? 'abc'` |
+| `!? "abc"` (double) | `abc` | `!? "abc"` |
+| `!? \|-` (literal) | `abc` | `!? "abc"` |
+| `!? >-` (folded) | `abc` | `!? "abc"` |
+| `!?` (plain, empty) | `` | `!? ""` |
+| `!? ""` (double, empty) | `` | `!? ""` |
+
+Three of the seven rows therefore land on one text with another: the double, the literal and the
+folded spelling of `abc` share `!? "abc"`, and the two empty spellings share `!? ""`. The last row
+and the plain spelling above it are the crash - a literal key and a plain key of one text emit one
+key twice. The quoted styles survive each other; the block styles survive nothing, and their
+chomping and indentation indicator leave with the header. A singleton document loses the style
+quietly - `? !? |` + `: 1` settles as `!? "": 1` on its first round - so the loss only becomes a
+*red* when two of the fused spellings sit in one mapping.
+
+**The model gap.** `KeyIdentity::Tagged` carried the source style, which is what the reader's node
+equality asks, not what the emission can hold. That made the generator free to draw the pair, the
+merge expansion free to inject it, and the edit layer address two keys the text says are one - the
+same family as the flow-parent correction `flow_folded` records: the identity question is asked of a
+*spelling*, so it has to be asked after the writer has chosen one. `key_style_projection` now folds
+`Literal` and `Folded` to `DoubleQuoted` and an empty `Plain` with them, and five rows went into
+`the_key_rule_agrees_with_the_writer_and_the_reader`: two that must keep both entries (literal
+against plain, literal against single-quoted) and three that must fold (literal against double,
+empty plain against empty double, empty literal against empty folded). The table's `distinguishable`
+count moved 15 → 17. Sensitivity: replacing the projection with the source style reddens the gate
+naming the literal-against-double row and quoting the flow text it refused.
+
+**The reachable violation.** `same_emitted_key` compared tagged scalars by whole-node equality, so a
+`<<` carrying `!? "abc"` into a mapping already naming `? !? |-` + `abc` kept both and wrote
+`!? "abc": 1` beside `!? "abc": 2` - a document of this engine's making that its reader refuses
+(`duplicate key: abc`). It now asks the projection on a copy first, which is `flow_folded`'s
+precedent rather than a fourth predicate: fold to what the text can hold, then compare. The merged
+pair becomes one entry and the target's value wins, which is what YAML 1.1 merge already decides for
+two spellings of one text - measured: the base's `1` is gone and `m` holds `!? "abc": 2`, settling
+on the first round. The regression is
+`a_merged_key_the_writer_cannot_spell_distinctly_folds_to_the_targets_entry`, archived in the
+`yaml_roundtrip` corpus as `merge-block-styled-key-spelling.seed`, and the mutation that puts the
+old comparison back reddens it by printing the duplicated line. The guard `key_spelling_moves` keeps
+the copy off the common path - a plain or quoted key needs nothing but the comparison it already
+had - and it is deliberately scalar-only: a container key's body is not projected, because the pair
+hiding *inside* a complex key is the half this entry does not close.
+
+**What is not closed, and why it is a ruling.** `? !? |` + `: 1` + `? !?` + `: 2` still reads as two
+entries and still emits `!? "": 1` twice; measured identical on the default, `core` and `1.1`
+schemas of the shipped binding, and it is the shape `crash-4bf6ee37` reaches through a complex key.
+Two ways out, both decisions: spell a block-styled key with the `?` marker so its header survives
+(which fixes this crash's own pair, cannot be followed by a flow parent at all, and still cannot
+separate a plain from a double-quoted empty key - three styles competing for two quote spellings),
+or fold the pair on read the way `is_null_key` already folds two null spellings, which changes which
+entries a document holds. Registered as `engine:block-styled-key-spelling-collides` with the 22-byte
+repro and the injective pair beside it as the control, so the next sampler red on this input is a
+named boundary rather than a new discovery. This belongs with the reader key-identity orientation
+already open, not with a patch of the week.
+
+**The price.** Read on this host with the gate's pinned `rustc 1.97.1`, three measurements per
+scenario, largest kept. `parse_inline_merge` - the scenario the merge predicate lives on - is
+358,149,263 on `main` (75e81bac) and 358,613,039 here: **+0.13% paired**, 463,776 instructions over
+the harness's 2,000 iterations, 232 per one. Its absolute reading is +0.55% against the committed
+floor, and `main` already sits at +0.42% on this host, so the row crosses the 0.50% line on a floor
+that is stale for this machine rather than on this change - the same shape `(ga)` and `(hy)` record.
+No floor was moved and no tolerance widened here; CI's `ir` job on the enforcing image is the
+verdict, and if it reads past the line the remedy is the baseline-refresh dispatch, not a local
+`--update`. `parse_anchors` reads +0.24% before the simplification and +0.29% after, inside
+tolerance, with no `main` control taken; every other row is unchanged to two decimals, including all
+nine `serialize_*`/`to_*` floors the identity model could touch, because the writer never asks it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -634,6 +634,27 @@ fn null_spelling(style: &ScalarStyle, value: &Arc<str>) -> bool {
     *style == ScalarStyle::Plain && (value.as_ref() == "~" || value.eq_ignore_ascii_case("null"))
 }
 
+/// The style a **key**-position scalar keeps once the writer has laid the pair out.
+///
+/// A block header has to end its line, so a block-styled key can never be written in front of the
+/// `:`; the writer spells it with the double-quoted form instead. Measured: `? !? |` + `abc` +
+/// `: 1` emits `!? "abc": 1`, and beside a double-quoted `!? "abc"` the emission is two identical
+/// lines the reader refuses as one duplicate key (libFuzzer `yaml_roundtrip` crash-4bf6ee37,
+/// minimized to `? !? |\r? !?`). An empty plain key has no bare spelling either - the writer
+/// quotes it (`"": v`) - so it joins the same class.
+///
+/// Only these two moves are folded, because only these two are reachable from source text. A
+/// hand-built `Scalar` in the plain spelling whose text cannot go bare (`" x"`) also lands in the
+/// quoted class; the ruling recorded on [`CustomNode::key_identity`] covers a tree the reader
+/// never built, so it is not modelled here.
+fn key_style_projection(style: &ScalarStyle, value: &Arc<str>) -> ScalarStyle {
+    match style {
+        ScalarStyle::Literal | ScalarStyle::Folded => ScalarStyle::DoubleQuoted,
+        ScalarStyle::Plain if value.is_empty() => ScalarStyle::DoubleQuoted,
+        other => *other,
+    }
+}
+
 /// What a reader sees when it decides whether two mapping keys are the same key.
 ///
 /// The node map already refuses two entries whose keys are equal `CustomNode`s, so a document can
@@ -680,6 +701,10 @@ pub enum KeyIdentity<'a> {
     /// tag, the value and the style - but not a note riding the key line. Measured both ways:
     /// `!a k` beside `!a 'k'` comes back as two keys, while `!!a k: one` beside
     /// `!!a k: two  # n` re-reads as `duplicate key: k`.
+    ///
+    /// The style here is the one [`key_style_projection`] says the *emission* keeps, not the one
+    /// the source used: a block header cannot ride a key line, so `!a |`-and-body and `!a "…"`
+    /// reach the text as the same quoted spelling and are one key.
     Tagged {
         text: &'a Arc<str>,
         tag: Option<&'a Tag>,
@@ -1550,7 +1575,7 @@ impl CustomNode {
             } if !null_spelling(style, value) => KeyIdentity::Tagged {
                 text: value,
                 tag: meta.tag(),
-                style: *style,
+                style: key_style_projection(style, value),
             },
             CustomNode::Null { meta } | CustomNode::Scalar { meta, .. } => {
                 let tag = meta.tag();
@@ -1579,6 +1604,53 @@ impl CustomNode {
                 tag: meta.tag(),
             },
             other => KeyIdentity::Other(other),
+        }
+    }
+
+    /// Whether [`CustomNode::key_spelling_folded`] would change this node.
+    ///
+    /// A caller that compares keys asks this first, so the copy below is built only for the pair
+    /// the projection can actually fuse - a plain or quoted key of any text reaches its own
+    /// spelling and needs nothing but the comparison it already had. A container key answers
+    /// `false`: its body is not projected here, and the pair that hides inside one is the half
+    /// `docs/dev/boundaries.md` registers.
+    pub fn key_spelling_moves(&self) -> bool {
+        match self {
+            CustomNode::Scalar {
+                value,
+                style,
+                chomping,
+                block_indent,
+                ..
+            } => {
+                key_style_projection(style, value) != *style
+                    || *chomping != Chomping::Clip
+                    || block_indent.is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// This key with the spelling the writer will give it: a block-styled key loses its header,
+    /// its chomping and its indentation indicator, and a bare-empty plain key gains quotes.
+    ///
+    /// A block header has to end its line, so `? !? |`-and-`abc` and `? !? "abc"` reach the text
+    /// as one key, and a merge expansion that kept both wrote a document its own reader refuses
+    /// as a duplicate (libFuzzer `yaml_roundtrip` crash-4bf6ee37). Comparing copies rather than
+    /// writing a second predicate keeps [`CustomNode::key_identity`] the one model of what a
+    /// spelling means - the same move the generator's `flow_folded` makes for a flow parent.
+    pub fn key_spelling_folded(&self) -> CustomNode {
+        match self {
+            CustomNode::Scalar {
+                value, style, meta, ..
+            } => CustomNode::Scalar {
+                value: value.clone(),
+                style: key_style_projection(style, value),
+                chomping: Chomping::Clip,
+                block_indent: None,
+                meta: meta.clone(),
+            },
+            other => other.clone(),
         }
     }
 
