@@ -63,11 +63,14 @@ jobs:
       # head - which is why the hole is that nothing was asking, not that unverified content shipped.
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.8"
+          version: "latest"
 
+      # The interpreter comes from uv, not from the image: `ubuntu-latest` is Ubuntu 26.04 since
+      # 2026-10-31 and publishes no 3.8 build for `actions/setup-python` to find. See the
+      # `matrix-verdict` job for the same substitution and the measurement behind it.
       - name: Prove this tip is content the merge gate judged
         env:
           # Measured by the dispatch this arm exists for: a job's `permissions:` mints `GITHUB_TOKEN`,
@@ -76,7 +79,7 @@ jobs:
           # reports as "cannot ask" (exit 2). On a push to `main` that run would have been the job's
           # first and only one, so the gate would have started life red.
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/check_main_provenance.py
+        run: uv run --no-project --python 3.8 python scripts/check_main_provenance.py
 
   # The interpreter grid is planned rather than written out, by `scripts/ci_matrix_plan.py`. The
   # version list comes from `pyproject.toml`'s classifiers, so the matrix cannot drift away from the
@@ -601,11 +604,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.0
         with:
@@ -613,8 +611,24 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      # The plan names the provider per cell (`interpreter_for` in `scripts/ci_matrix_plan.py`),
+      # because `ubuntu-latest` on Ubuntu 26.04 carries no build below 3.10 for setup-python to
+      # resolve - measured 2026-10-31 on PR #681, where the ubuntu 3.8 and 3.9 legs died at
+      # `Set up Python` while the macOS and Windows 3.8 legs passed the same request. uv installs the
+      # interpreter from its own index, so the grid keeps its floor version on the cheap runner.
+      - name: Set up Python
+        if: ${{ matrix.interpreter == 'setup' }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
       - name: Create virtualenv
+        if: ${{ matrix.interpreter == 'setup' }}
         run: uv venv .venv
+
+      - name: Create virtualenv on the uv-managed interpreter
+        if: ${{ matrix.interpreter == 'uv' }}
+        run: uv venv .venv --python "${{ matrix.python-version }}"
 
       - name: Download abi3 wheel
         uses: actions/download-artifact@v8
@@ -862,19 +876,25 @@ jobs:
       # `scripts/` and importing it is what exercises it on the interpreter that ships it.
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.8"
+          version: "latest"
 
       # 3.8 on purpose: the fan-in is the job that must never be the one that breaks, so it runs on
       # the floor of the supported range as well, and `scripts/check_matrix_verdict.py` carries the
-      # lazy annotations that makes necessary.
+      # lazy annotations that makes necessary. The interpreter comes from uv rather than
+      # `actions/setup-python` because `ubuntu-latest` is Ubuntu 26.04 since 2026-10-31 and that
+      # image publishes no 3.8 build: measured on PR #681, this job died at Set up Python with
+      # `The version '3.8' with architecture 'x64' was not found for Ubuntu 26.04`, which red-denied
+      # the only check name branch protection consumes for every pull request at once. uv resolves
+      # the same version from its own index and asks nothing of the image. `--no-project` keeps the
+      # call from syncing the extension into an environment that needs a wheel build.
       - name: Verdict over every leg
         env:
           NEEDS: ${{ toJSON(needs) }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
-        run: python scripts/check_matrix_verdict.py
+        run: uv run --no-project --python 3.8 python scripts/check_matrix_verdict.py
 
   compliance-report:
     needs: [release-wheels, changes]
