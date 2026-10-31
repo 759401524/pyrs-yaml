@@ -186,3 +186,22 @@ def test_third_party_plugins_skip_when_absent(monkeypatch):
 
     monkeypatch.setattr("builtins.__import__", fake_import)
     _builtin._register_third_party()
+
+
+def test_get_plugin_answers_the_pair_list_plugins_reports():
+    """`get_plugin` is the single-tag door onto the same registry `list_plugins` walks."""
+    listed = pyrs_yaml.list_plugins()
+    assert listed, "the enriched built-in set is what this door is measured against"
+    tag, python_type = listed[0]
+    assert pyrs_yaml.get_plugin(tag) == (tag, python_type)
+    # Every listed tag answers through the door, not just the first: a lookup that worked only for
+    # the entry the walk reports first would pass this row and still be broken.
+    assert [pyrs_yaml.get_plugin(known) for known, _ in listed] == listed
+
+
+def test_get_plugin_answers_none_for_a_tag_nothing_registers():
+    assert pyrs_yaml.get_plugin("!no.such.tag") is None
+    # The empty tag is the shape a caller reaches by building `"!" + name` from a missing name, so
+    # it is answered rather than raised - and answered `None`, which is what the stub documents.
+    assert pyrs_yaml.get_plugin("") is None
+    assert pyrs_yaml.get_plugin("!") is None

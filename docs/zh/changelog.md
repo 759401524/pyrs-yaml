@@ -234,6 +234,15 @@ status: new
 - **可选 `mmap` 读路径** — 开启后 `parse_file` 直接从内存映射解析非空常规文件，省掉
   `read_to_string` 的整文件拷贝；默认关闭（`default = ["numpy"]` 不变）。空文件、目录、
   非常规路径与非 UTF-8 输入保持原有报错；详见 `docs/dev/boundaries.md`。
+- **两个公开可调用名从未被执行，而现在这不会再发生** — 随 wheel 发布的桩声明 74 个公开可调用名，
+  把 `tests/` 下每个模块都读一遍、只认"作为被调函数出现"的名字，发现 2 个从未被调用：`get_plugin`
+  与 `YamlDocument.flush_source`。实测后两者都答对：`get_plugin("!date")` 是
+  `("!date", "<class 'datetime.date'>")`，未知或空标签答 `None`；未经编辑的文档调用
+  `flush_source()` 仍保持读入时的文本，这说明该调用不是提前重排格式。
+  `tests/test_api_call_surface.py` 是把计数钉在零的门：它从桩里读模块函数与公开方法，要求存在调用
+  点，并拒绝这类检查悄悄变绿的四种路径——解析器坏掉导致一个名字都没读到、名字只是被*提及*（写在
+  docstring 里、`dir()` 的字符串里、裸属性赋值里）而没被调用、门指向的不是 wheel 实际发布的那份
+  文件，以及这一行当初正是为哪两个名字而写。
 
 #### 修复
 
