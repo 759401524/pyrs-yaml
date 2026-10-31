@@ -43,6 +43,21 @@ status: new
   멤버가 아니라 항목 자체로 다시 읽힌다)와
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
   위에 남는다).
+- **퍼징 시드 계층을 대상별로 세고 거절 두 가지를 함께 둔다** — 행렬은 총합 하나만
+  찍었다(`174 seeds of which 84 are former crashes`). 총합으로는 영구 입력이 여든둘인 대상과
+  파일 하나가 전부인 대상을 구별할 수 없다. `fuzz_seed_inventory()`는 이제 `fuzz.yml`이 실제로
+  복사하는 깊이와 접미사(한 단계, `*.seed`)로 각 `fuzz/seeds/<target>/`을 세어
+  `fuzz_seed_counts`를 공개하고, 퍼징 행은 분포의 양끝을 이름으로 밝힌다. 숫자는
+  `--write-rows`가 다시 쓴다. 대상별로 나눈 의미는 코퍼스를 읽는 이벤트에 있다. PR에서는
+  `scripts/fuzz_rounds.sh`가 `-runs=0`을 돌려 확정된 시드만 재생하고 탐색은 하지 않는다.
+  `fuzz/corpus/`는 gitignore라서 한 실행이 발견한 입력은 러너에 남는다. 그래서 시드가 없는 대상은
+  병합을 막는 계층이 입력 하나 없이 놓이고, 어느 매니페스트도 선언하지 않은 디렉터리에 남은 시드는
+  뒤에서 인용되는 모든 숫자의 밑값을 부풀린다. 두 형태는 이제 거부된다
+  (`fuzz-corpus-unseeded`와 `fuzz-corpus-orphan`). 둘 다 오늘 트리에서는 0개로 측정된다. 아홉
+  대상은 시드 1개에서 91개를 들고 고아 디렉터리는 없다. 그래서 이 규칙은 오늘 비용을 들이지 않고
+  다음 삭제를 잡는다. `tests/test_quality_matrix.py`는 조작된 목록으로 각 거절을 발화시키고,
+  `test_the_seed_inventory_counts_what_the_workflow_copies`는 집계가 재귀 glob으로 되돌아가면
+  빨개진다. 하위에 낀 `deep.seed`는 입력이 아니다. `cp fuzz/seeds/<target>/*.seed`가 닿지 않는다.
 - **`Document.validate()`의 계약 두 가지를 측정하고 등록했다** — 이 면은 모든 규칙을
   `jsonschema`에 넘기므로, 이 트리는 그 대가를 이제 분명히 적는다. `[project.dependencies]`는
   `typing-extensions` 하나이고 extra는 `cli`, `pydantic`, `settings` 세 개라서, 이 프로젝트가
