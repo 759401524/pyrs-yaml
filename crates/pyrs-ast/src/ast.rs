@@ -637,54 +637,34 @@ fn null_spelling(style: &ScalarStyle, value: &Arc<str>) -> bool {
 /// What a reader sees when it decides whether two mapping keys are the same key.
 ///
 /// The node map already refuses two entries whose keys are equal `CustomNode`s, so a document can
-/// only hold two keys that differ in metadata the reader ignores: the style of a scalar, a comment,
-/// a source range. Those are exactly the pairs that reach the reader as one key - or as an error -
-/// and this enum names that coarser identity so a writer can fold on it. Borrowed rather than
-/// owned, because a fold is per key on the serialize path.
+/// only hold two keys that differ in metadata the map keeps but the *text* cannot tell apart: a
+/// scalar's style or quote, an anchor, a comment, a source range. Those are exactly the pairs that
+/// reach the reader as one key - or as an error - and this enum names that coarser identity so a
+/// writer can fold on it. Borrowed rather than owned, because a fold is per key on the serialize
+/// path.
 ///
-/// The classes are the reader's, not the text's: `parser/mod.rs` tracks untagged scalar keys by
-/// value, skips tagged ones, and folds null and merge keys by resolved identity.
+/// The classes are the reader's: `parser/mod.rs` tracks untagged scalar keys by value, tracks
+/// tagged ones by tag and value, and folds null and merge keys by resolved identity.
 #[derive(Debug, Clone)]
 pub enum KeyIdentity<'a> {
-    /// A key the reader resolves to null: the `Null` variant, or a plain `~` / `null` spelling in
-    /// any case. The spelling is absent on purpose - `NULL:` and `~:` are one key. When a tag is
-    /// present the reader stops folding, so `(!E, anchor)` distinguishes two lines and a bare null
-    /// carries no anchor of its own.
-    ///
-    /// `(tag, anchor)` for a key the reader resolves to null — the `Null` variant or
-    /// a plain scalar spelled `~` or `null` in any case — and `None` for anything the
-    /// reader keeps as its own key.
-    ///
-    /// The empty string is deliberately absent: an empty plain *key* in source reads
-    /// as null, but the writer will not emit one — it quotes it (`"": v`) so an AST
-    /// holding an empty-string key stays the string key it was written as.
-    ///
-    /// `Null` carries no text of its own: the writer emits the word `null` for it,
-    /// so a null cannot be told from another null, nor from a plain scalar spelled
-    /// like one. A note rides the *line* rather than the key, so it separates
-    /// nothing; the reader then folds the two lines into one entry and reports the
-    /// second key as a duplicate (property tier at 20 000 cases: `!E null: A  # 0`
-    /// beside `!E null: a`).
-    ///
-    /// An anchor is only consulted once a tag is present. Measured, not assumed: a
-    /// mapping does hold one bare null key whatever anchors ride it — `&a null: one`
-    /// and `&b null: two` re-read as a single entry — while a tag takes the key out
-    /// of the null fold and the reader then compares whole nodes, so `&a !E null`
-    /// and `&b !E null` stay two keys.
-    Null(Option<&'a Tag>, Option<&'a str>),
+    /// A null key with no tag: the `Null` variant, or a plain `~` / `null` spelling in any case.
+    /// The spelling is absent on purpose - `NULL:` and `~:` are one key, and the writer spells
+    /// every one of them `~`. The empty string is deliberately absent too: an empty plain *key*
+    /// in source reads as null, but the writer will not emit one - it quotes it (`"": v`) so an
+    /// AST holding an empty-string key stays the string key it was written as.
+    Null,
     /// An untagged scalar's text, which is what the reader tracks: `k:` and `'k':` are one key,
-    /// style never reaching its decision. A tagged scalar is not here, because the reader skips
-    /// tagged keys in that track and leaves the pair to the node map's own equality.
+    /// style never reaching its decision.
     Text(&'a Arc<str>),
-    /// A tagged scalar: the reader leaves the pair to node equality, and node equality asks the
-    /// tag, the value and the style - but not a note riding the key line. Measured both ways:
-    /// `!a k` beside `!a 'k'` comes back as two keys, while `!!a k: one` beside
-    /// `!!a k: two  # n` re-reads as `duplicate key: k`.
-    Tagged {
-        text: &'a Arc<str>,
-        tag: Option<&'a Tag>,
-        style: ScalarStyle,
-    },
+    /// A tagged scalar: the tag and the text its line carries. Style, quote and anchor separate
+    /// nothing, because the writer chooses them for the reader's benefit and not the key's: `!a`,
+    /// `!a ""` and `!a |` all emit as `!a ""`, and `!a a:b` emits as `!a "a:b"` beside a
+    /// double-quoted twin. `!a k` and `!a 'k'` are therefore one key, while `!a k` and `!b k`
+    /// are two - YAML's own node equality for scalars (tag and value), which is what the reader
+    /// now enforces (libFuzzer `yaml_roundtrip` crash-4bf6ee37).
+    ///
+    /// A tagged `Null` node is `text: "null"`, the word its line carries.
+    Tagged { text: &'a str, tag: &'a Tag },
     /// A non-empty sequence key, told apart by what it holds and by the spelling the source used:
     /// `[a]` and a block `- a` come back as two keys (measured), while a note riding the key itself
     /// separates nothing - `? - null` written twice, one carrying a note, re-reads as a duplicate.
@@ -714,22 +694,11 @@ impl PartialEq for KeyIdentity<'_> {
     /// compares. Flow spelling is not ignored - measured, `[a]` and `- a` stay two keys.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Null(tag1, anchor1), Self::Null(tag2, anchor2)) => {
-                tag1 == tag2 && anchor1 == anchor2
-            }
+            (Self::Null, Self::Null) => true,
             (Self::Text(a), Self::Text(b)) => a == b,
-            (
-                Self::Tagged {
-                    text: t1,
-                    tag: g1,
-                    style: s1,
-                },
-                Self::Tagged {
-                    text: t2,
-                    tag: g2,
-                    style: s2,
-                },
-            ) => t1 == t2 && g1 == g2 && s1 == s2,
+            (Self::Tagged { text: t1, tag: g1 }, Self::Tagged { text: t2, tag: g2 }) => {
+                t1 == t2 && g1 == g2
+            }
             (Self::EmptyMapping, Self::EmptyMapping)
             | (Self::EmptySequence, Self::EmptySequence) => true,
             (
@@ -778,20 +747,15 @@ impl core::hash::Hash for KeyIdentity<'_> {
     /// Each arm mixes its discriminant first, so the classes cannot collide on shared children.
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         match self {
-            Self::Null(tag, anchor) => {
-                0u8.hash(state);
-                tag.hash(state);
-                anchor.hash(state);
-            }
+            Self::Null => 0u8.hash(state),
             Self::Text(text) => {
                 1u8.hash(state);
                 text.hash(state);
             }
-            Self::Tagged { text, tag, style } => {
+            Self::Tagged { text, tag } => {
                 2u8.hash(state);
                 text.hash(state);
                 tag.hash(state);
-                style.hash(state);
             }
             Self::EmptyMapping => 3u8.hash(state),
             Self::EmptySequence => 4u8.hash(state),
@@ -1544,20 +1508,20 @@ impl CustomNode {
         match self {
             CustomNode::Scalar {
                 value, style, meta, ..
-            } if meta.tag().is_none() && !null_spelling(style, value) => KeyIdentity::Text(value),
-            CustomNode::Scalar {
-                value, style, meta, ..
-            } if !null_spelling(style, value) => KeyIdentity::Tagged {
-                text: value,
-                tag: meta.tag(),
-                style: *style,
+            } => match meta.tag() {
+                Some(tag) => KeyIdentity::Tagged {
+                    text: value.as_ref(),
+                    tag,
+                },
+                None if !null_spelling(style, value) => KeyIdentity::Text(value),
+                None => KeyIdentity::Null,
             },
-            CustomNode::Null { meta } | CustomNode::Scalar { meta, .. } => {
-                let tag = meta.tag();
-                // A bare null key carries no anchor of its own: `&a null:` and `&b null:` are both
-                // just `~:` to the reader. A tag stops that folding, so it carries the anchor.
-                KeyIdentity::Null(tag, if tag.is_some() { meta.anchor() } else { None })
-            }
+            // The writer spells a `Null` node as the word `null`, so under a tag it is the
+            // tagged string "null" and folds with a plain scalar spelled the same way.
+            CustomNode::Null { meta } => match meta.tag() {
+                Some(tag) => KeyIdentity::Tagged { text: "null", tag },
+                None => KeyIdentity::Null,
+            },
             CustomNode::Sequence { items, .. } if items.is_empty() => KeyIdentity::EmptySequence,
             CustomNode::Mapping { pairs, .. } if pairs.is_empty() => KeyIdentity::EmptyMapping,
             CustomNode::Sequence {
@@ -1793,12 +1757,14 @@ pub mod proptest_strategies {
 
     /// True when two keys collapse onto one YAML rendering: same-kind empty
     /// containers, whose distinguishing attributes (flow style, meta) never
-    /// reach the emitted text; two scalars carrying the same *text*, which is
-    /// exactly how the reader identifies a key — an anchor, tag, comment or style
-    /// difference cannot tell two of them apart once re-parsed (crash-3b0a7d1d);
-    /// or two spellings of null, which the reader folds into the mapping's single
-    /// null key. A mapping holding any of these re-parses as a duplicate key — the
-    /// parser's strictness is correct, the pair is not.
+    /// reach the emitted text; two scalars carrying the same text, which is
+    /// exactly how the reader identifies an untagged key — an anchor, comment or
+    /// style difference cannot tell two of them apart once re-parsed
+    /// (crash-3b0a7d1d); two scalars carrying the same tag *and* text, whose
+    /// anchors, comments and quotes the writer need not spell apart either
+    /// (crash-4bf6ee37); or two spellings of null, which the reader folds into the
+    /// mapping's single null key. A mapping holding any of these re-parses as a
+    /// duplicate key — the parser's strictness is correct, the pair is not.
     ///
     /// Public so the engine crate can pin this rule against what its writer
     /// actually emits and what its reader actually folds
@@ -1816,7 +1782,8 @@ pub mod proptest_strategies {
     /// table in `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` pins both). So the
     /// question the generator asks is answered on a copy with every standalone slot dropped, which
     /// leaves [`CustomNode`]'s own equality - inline notes, tags, anchors, style - in charge of
-    /// everything the emission can still tell apart.
+    /// everything the emission can still tell apart, minus the folds [`CustomNode::key_identity`]
+    /// names for scalar keys.
     fn standalone_notes_lifted(node: &CustomNode) -> CustomNode {
         let mut lifted = node.clone();
         lifted.remove_leading_comment();

@@ -1573,11 +1573,13 @@ mod tests {
                 null(None, None, None),
                 true,
             ),
+            // Anchors are not part of YAML's node equality, and the writer never needs to
+            // spell them apart for a reader that compares tag and value (crash-4bf6ee37).
             (
                 "two tagged nulls under different anchors",
                 null(Some(("!", "E")), Some("a"), None),
                 null(Some(("!", "E")), Some("b"), None),
-                true,
+                false,
             ),
             (
                 "two nested mappings, different content",
@@ -1594,8 +1596,7 @@ mod tests {
             // The writer quotes an empty plain key (`"": v`) instead of emitting the
             // null spelling the reader would fold, so a tilde key keeps its own entry.
             ("a tilde and an empty key", plain("~"), plain(""), true),
-            // A tag is part of the emitted line, so `!a k:` and `!b k:` re-read as two
-            // entries: the reader's value-collision track deliberately skips tagged keys.
+            // A tag joins the identity, so `!a k:` and `!b k:` re-read as two entries.
             (
                 "two scalars, same text, different tags",
                 scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
@@ -1622,14 +1623,29 @@ mod tests {
                 crate::ast::CustomNode::plain_sequence(vec![null(None, None, Some("A"))]),
                 true,
             ),
-            // A tagged key is outside the reader's text track (`parser/mod.rs` skips tagged
-            // scalars there), so two spellings of one tagged text re-read as two entries: measured,
-            // `!a k: one` + `!a 'k': two` comes back with both.
+            // One tag and one value are one key however the quote differs, which is what the
+            // reader now enforces. The crash shape was its empty case: the writer spells a plain
+            // empty and an empty quoted `!?` key `!? ""` both times.
             (
                 "a tagged scalar, plain and quoted",
                 scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
                 scalar("k", ScalarStyle::SingleQuoted, Some(("!", "a"))),
-                true,
+                false,
+            ),
+            // The two spellings the fuzzer drew that emitted one line twice, kept as rows because
+            // the emitted text, not the quote, is where they collapse: a plain `a:b` key is
+            // emitted double-quoted.
+            (
+                "a tagged scalar with a decoy colon, plain and quoted",
+                scalar("a:b", ScalarStyle::Plain, Some(("!", "a"))),
+                scalar("a:b", ScalarStyle::DoubleQuoted, Some(("!", "a"))),
+                false,
+            ),
+            (
+                "an empty tagged scalar, plain and quoted",
+                scalar("", ScalarStyle::Plain, Some(("!", "?"))),
+                scalar("", ScalarStyle::DoubleQuoted, Some(("!", "?"))),
+                false,
             ),
             // `null:` reads as a null key and `'null':` as the string, so the reader keeps
             // both; `true:` and `'true':` both reach the reader's text track and collide.
@@ -1767,7 +1783,7 @@ mod tests {
         ];
         let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
         assert_eq!(
-            distinguishable, 15,
+            distinguishable, 13,
             "the table must keep a real share of its classes on each side"
         );
 
