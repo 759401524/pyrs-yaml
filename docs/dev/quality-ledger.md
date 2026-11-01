@@ -11365,6 +11365,47 @@ fails by design. A JSONC half has to compare against `to_jsonc_text`, which is a
 is left unbuilt here rather than folded in quietly. `parse_schema` holds one seed and has no comment
 vocabulary.
 
+### (ig) A tagged sequence lifted only its first item's own notes (2026-11-01)
+
+A block mapping with an `&anchor` / `!tag` header line cannot keep a note that rides a nested `?` /
+`-` marker below that line: granit reports such a note at the container's own level, so the next
+emission hoists it and the document only settles on its second round. `lift_first_entry_notes`
+answered this for mappings by walking the first key's whole marker spine with `hoist_marker_note`.
+Its sequence twin, `lift_first_item_notes`, read only the first item's own `leading_comments`, so
+the same drift survived whenever a tagged *sequence*'s first item was a complex-key mapping carrying
+a note on its key.
+
+The scheduled fuzz runs found two, `crash-094d4d6a` (46 B) and `crash-8492f5ee` (40 B). Both
+minimize to a `!`-tagged sequence whose first item is `? ~` with a `# ?` on the marker: round one
+emits the note after the `!` line, round two hoists it above, so
+`to_yaml(parse(to_yaml(x))) != to_yaml(x)`. A probe over every downloaded `yaml_roundtrip` input
+separated them from the rest — seven settle on trunk, and neither #691 nor #689 moves these two
+(re-replayed against each draft head), so they were a leak the note-settle drafts did not cover. The
+sequence lift now calls `hoist_marker_note` exactly as the mapping lift does.
+`a_tagged_sequences_marker_note_settles_above_its_header` pins all three, and the inputs are
+archived as `fuzz/seeds/yaml_roundtrip/former-crash-{094d4d6a,8492f5ee,701f76bf}.seed`, replayed by
+the round-trip corpus every `cargo nextest`.
+
+The third is where a duplicate draft converged: #711's artifact is the same leak at eight bytes
+(`!\n- ?\n#~`), and the file that draft added was named `former-crash-094d4d6a.seed` although
+`sha1` of those bytes is `701f76bf` — the name belonged to this change's 46 B input. Replayed
+against this change alone, the eight-byte input and its `&a` twin settle in one round with the note
+above the header exactly once, so #711's own pin passes without its serializer branch. That branch
+is not equivalent: on a variant carrying four distinct note texts the AST holds the item's notes
+`A B` and the first key's `D C`, and this change emits `A B D C` (the tree's order) where #711
+emitted `C D A B`; its second changelog bullet also described identity behaviour main already
+ships. The fold keeps this change's walk, archives #711's bytes under their real hash, and
+strengthens the pin with the placement and single-occurrence assertions equality cannot make.
+
+The price is the guard's extra walk, read on this host against the same tree without it:
+`serialize_block` +0.18 % and `serialize_note_flow` +0.17 %, `serialize_medium` +0.12 %,
+`serialize_small` +0.10 %, `serialize_anchors` +0.06 %, `serialize_block_scalars` +0.03 %. The
+no-fix tree sits at +0.00 % on the two named rows, so the move is the added spine probe per tagged
+block sequence, not host drift; every scenario stays inside the 0.5 % line, so none FAILs and
+nothing re-baselines. A *third* downloaded input, `crash-0f934648`, fails differently — the writer
+emits a bare `~` at line 2 column 1 that its own reader refuses as a colon-less simple key — and is
+deliberately left unfixed and unarchived here: a different root cause is a different change.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

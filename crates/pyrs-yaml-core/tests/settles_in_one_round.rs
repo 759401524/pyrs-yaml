@@ -396,6 +396,47 @@ fn a_headed_items_note_settles_above_the_outer_sequences_header() {
     );
 }
 
+/// libFuzzer `yaml_roundtrip` crash-094d4d6a, crash-8492f5ee and crash-701f76bf: a tagged block
+/// sequence whose first item rides a note on its `?`/`-` marker spine. `lift_first_entry_notes`
+/// hoists the whole spine for a mapping container, but the sequence lift read only the first item's
+/// own stack, so a nested marker note stayed *below* the header line — where the reader hands it to
+/// the sequence — and the emission only settled on its second pass. Now the sequence lift walks the
+/// spine too. `crash-701f76bf` is the same leak at its smallest, eight bytes under a tag; its `&a`
+/// twin is the anchor spelling of the same header. Equality alone would pass an emission that
+/// dropped or doubled the note, so those two shapes also assert the note lands above the header,
+/// exactly once.
+#[test]
+fn a_tagged_sequences_marker_note_settles_above_its_header() {
+    for src in [
+        "!\n-\n#?\n ?   #[\n ? &.?-\n#?\n ?   #[\n ? &.?# ~# ~",
+        "!\n-\n#?\n ?   #[ ?-\n#?\n ?   #[ ?    &.?# ~",
+    ] {
+        let one = emit(src);
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "{src:?} not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+    for src in ["!\n- ?\n#~", "&a\n- ?\n#~"] {
+        let one = emit(src);
+        assert!(
+            one.starts_with("# ~\n"),
+            "the note must be lifted above the header: {src:?} -> {one:?}"
+        );
+        assert_eq!(
+            one.matches("# ~").count(),
+            1,
+            "the note appears exactly once: {src:?} -> {one:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "{src:?} not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}
+
 #[test]
 fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
     use pyrs_yaml_core::ast::Comment;

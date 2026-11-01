@@ -14,7 +14,7 @@
 //! `fuzz/seeds/parse_yaml` and the document half of `fuzz/seeds/edit_yaml` (whose entries are
 //! `document NUL script`), and the TOML spoke reads `fuzz/seeds/toml_roundtrip` and
 //! `fuzz/seeds/parse_toml` through `from_toml` / `to_toml`. Measured on 2026-11-02 the two spokes
-//! charge 57 + 2 + 1 and 11 + 3 note-bearing seeds. Inputs that are not valid UTF-8 or that the
+//! charge 60 + 2 + 1 and 11 + 3 note-bearing seeds. Inputs that are not valid UTF-8 or that the
 //! parser (correctly) rejects are skipped: they have no AST, so there is no note to keep.
 //!
 //! **This file is the conservation half; the settlement half is elsewhere and wider.**
@@ -168,7 +168,7 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
     );
     // The corpus must actually cover the invariant: a vacuous pass would be worse
     // than no test, because it looks like coverage. Measured on 2026-11-02, the three
-    // YAML-spoke corpora carry notes on 57 + 2 + 1 seeds; 55 is that count with slack
+    // YAML-spoke corpora carry notes on 60 + 2 + 1 seeds; 55 is that count with slack
     // for inputs being retired, and a reading below it means the corpus lost its
     // comments rather than that the assertion is merely unused.
     assert!(

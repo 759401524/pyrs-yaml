@@ -1048,6 +1048,7 @@ impl Serializer {
         let (stripped_items, preamble_notes) =
             lift_first_item_notes(items, meta, flow_style, in_value_context);
         let items: &[CustomNode] = stripped_items.as_deref().unwrap_or(items);
+        let preamble_notes = preamble_notes.as_deref();
         let sk = ContainerSkeleton {
             empty: items.is_empty(),
             meta,
@@ -2902,24 +2903,39 @@ fn spine_has_notes(key: &CustomNode) -> bool {
 }
 
 /// The [`lift_first_entry_notes`] equivalent for a block sequence's first item.
-fn lift_first_item_notes<'a>(
-    items: &'a [CustomNode],
+///
+/// It walks the first item's whole marker spine, not just its own leading stack: the reader
+/// reports a note that trails a nested `?`/`-` marker at the container's level, so leaving it in
+/// the body puts it below the `&anchor`/`!tag` header line, where the next round hoists it and the
+/// emission only settles on its second pass (libFuzzer `yaml_roundtrip` crash-094d4d6a, minimised
+/// to a `!`-tagged sequence whose first item is `? ~` with a `# ?` riding the marker). The mapping
+/// lift already did this via [`hoist_marker_note`]; the sequence lift read only the first item's own
+/// stack, so the nested note leaked below the header.
+fn lift_first_item_notes(
+    items: &[CustomNode],
     meta: &NodeMeta,
     flow_style: bool,
     in_value_context: bool,
-) -> (Option<Vec<CustomNode>>, Option<&'a [Comment]>) {
+) -> (Option<Vec<CustomNode>>, Option<Vec<Comment>>) {
     if !writes_block_header(meta, flow_style, in_value_context) {
         return (None, None);
     }
     let Some(first_item) = items.first() else {
         return (None, None);
     };
-    let notes = first_item.leading_comments();
+    // Borrow before allocating: a tagged sequence whose first item carries no note anywhere on its
+    // spine keeps the clone off the hot path, the same guard [`lift_first_entry_notes`] uses.
+    if first_item.leading_comments().is_empty() && !spine_has_notes(first_item) {
+        return (None, None);
+    }
+    let mut notes = first_item.leading_comments().to_vec();
+    let mut worked = strip_leading_comment(first_item);
+    notes.extend(hoist_marker_note(&mut worked));
     if notes.is_empty() {
         return (None, None);
     }
     let mut stripped = items.to_vec();
-    stripped[0] = strip_leading_comment(first_item);
+    stripped[0] = worked;
     (Some(stripped), Some(notes))
 }
 
