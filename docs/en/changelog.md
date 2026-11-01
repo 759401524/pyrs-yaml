@@ -307,6 +307,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
+  reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
+  those for the reader and not for the key: plain and quoted spellings of one tagged key both emit
+  as `!a "…"`, and an anchored `Null` emits as `!a null`. Its own emission therefore came back as
+  `duplicate key` — libFuzzer `yaml_roundtrip` crash-4bf6ee37, 45 bytes, archived as
+  `former-crash-4bf6ee37.seed`. Tagged keys are now tracked by tag and value, YAML's own equality
+  for scalar nodes; a tagged `Null` joins that track as the word `null` its line carries, so
+  `&a !E null` and `&b !E null` are one key while `!a k` and `!b k` stay two. Anchors, quotes,
+  comments and style now separate nothing, which also makes `!a k` beside `!a 'k'` a duplicate —
+  the spec's reading, and a pair the writer could only have spelled apart by accident.
+  `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` pins both sides, and the property
+  tier's key table carries the same classes. The control is the pre-fix behaviour put back
+  (`note_tagged_key` answering "new" for every key): both tests redden and the archived seed
+  crashes with `deadly signal`, rc 77, where the fixed build replays it clean. Price: none on the
+  allocation gate — the table hangs off the receiver keyed by stack depth and is created by the
+  first tagged key, so `parse_medium` holds at 67 allocations / 24 512 bytes on std and 74 /
+  24 952 without it.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

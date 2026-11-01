@@ -649,6 +649,9 @@ struct AstReceiver<'a> {
     /// itself a container), and a single `Option` per container kept only the
     /// last of any stacked notes — so the slot is a list.
     comment_stack: Vec<Vec<Comment>>,
+    /// Tagged-key tables of the open mappings, keyed by stack depth. Empty unless
+    /// a document writes a tag on a key; see [`TaggedKeySets`].
+    tagged_key_sets: TaggedKeySets,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Whether to collect completed documents for multi-doc parsing. When
@@ -739,6 +742,43 @@ fn note_scalar_key(seen: &mut SeenValueKeys, key: &Arc<str>) -> bool {
     seen.insert(Arc::clone(key), ()).is_none()
 }
 
+/// Tagged scalar keys already seen in one mapping, keyed by the tag *and* the
+/// value: YAML's own equality for scalar nodes.
+///
+/// Kept apart from [`SeenValueKeys`] because an untagged key is identified by its
+/// value alone, and composing both identities into one string would let a quoted
+/// value equal a composed one. The tag is the whole [`Tag`] rather than its
+/// spelling for the same reason - `!<!foo>` and `!foo` spell alike but are
+/// different tags.
+#[cfg(feature = "std")]
+type SeenTaggedKeys = std::collections::HashSet<(Tag, Arc<str>)>;
+#[cfg(not(feature = "std"))]
+type SeenTaggedKeys = NodeMap<(Tag, Arc<str>), ()>;
+
+/// The tagged-key tables of the mappings currently open, keyed by the depth of
+/// the mapping in `stack`.
+///
+/// Kept out of `ParseState::Mapping` on purpose: a per-mapping `Option` there
+/// grew that enum by a hash table's 48 bytes, and the receiver's stack buffer is
+/// four entries deep on the `parse_medium` fixture, so a table a tag-free
+/// document never builds still cost +192 bytes on `tests/alloc_gate.rs`. Entry
+/// per depth is created on the first tagged key and dropped when its mapping
+/// closes, so a document without one allocates nothing here.
+type TaggedKeySets = NodeMap<usize, SeenTaggedKeys>;
+
+/// Record a tagged key in the mapping at `depth` and report whether it was new.
+fn note_tagged_key(sets: &mut TaggedKeySets, depth: usize, tag: &Tag, value: &Arc<str>) -> bool {
+    let entry = (tag.clone(), Arc::clone(value));
+    #[cfg(feature = "std")]
+    {
+        sets.entry(depth).or_default().insert(entry)
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        sets.entry(depth).or_default().insert(entry, ()).is_none()
+    }
+}
+
 #[derive(Debug)]
 enum ParseState {
     /// Building a mapping
@@ -816,6 +856,7 @@ impl<'a> AstReceiver<'a> {
             document_versions: Vec::new(),
             anchors: NodeMap::default(),
             comment_stack: Vec::new(),
+            tagged_key_sets: NodeMap::default(),
             pending_standalone_comment: Vec::new(),
             document_ended: false,
             max_depth,
@@ -1078,6 +1119,9 @@ impl<'a> AstReceiver<'a> {
 
     /// Push a node to the current context
     fn push_node(&mut self, node: CustomNode) {
+        // Where this mapping's tagged-key table lives; `stack.last_mut()` below
+        // borrows another field, so the index is read first.
+        let key_depth = self.stack.len().saturating_sub(1);
         match self.stack.last_mut() {
             Some(ParseState::Mapping {
                 current_key,
@@ -1191,17 +1235,57 @@ impl<'a> AstReceiver<'a> {
                         // `String` allocation); the `String` is materialized
                         // only when a collision is found.
                         let value_dup: Option<String> = match &key {
-                            // A tag replaces the implicit resolution, so `!a null`
-                            // and `!A null` are different keys: their emitted lines
-                            // carry the tag and re-read apart, which is exactly what
-                            // must not be reported as a collision.
-                            CustomNode::Scalar { value, meta, .. } if meta.tag().is_none() => {
-                                if note_scalar_key(seen_value_keys, value) {
-                                    None
-                                } else {
-                                    Some(value.to_string())
+                            // A key's identity is what its emitted line says: the
+                            // value, for an untagged scalar (style, quote and
+                            // trailing note do not reach that line); the tag and
+                            // the value together for a tagged one, which is YAML's
+                            // own equality for scalar nodes. So `!a null` and
+                            // `!A null` are two keys while two spellings under
+                            // *one* tag are one key - `!a k` and `!a 'k'`, or the
+                            // plain empty and empty quoted `!?` pair the writer
+                            // spells `!? ""` twice, which made the reader refuse
+                            // its own emission (crash-4bf6ee37).
+                            CustomNode::Scalar { value, meta, .. } => match meta.tag() {
+                                None => {
+                                    if note_scalar_key(seen_value_keys, value) {
+                                        None
+                                    } else {
+                                        Some(value.to_string())
+                                    }
                                 }
-                            }
+                                Some(tag) => {
+                                    if note_tagged_key(
+                                        &mut self.tagged_key_sets,
+                                        key_depth,
+                                        tag,
+                                        value,
+                                    ) {
+                                        None
+                                    } else {
+                                        Some(format!("{}{} {value}", tag.handle, tag.suffix))
+                                    }
+                                }
+                            },
+                            // A tagged null is a tagged scalar the writer spells
+                            // `null`, so it joins that track instead of the null
+                            // fold above: `&a !E null` and `&b !E null` are one
+                            // node however their anchors differ.
+                            CustomNode::Null { meta } => match meta.tag() {
+                                Some(tag) => {
+                                    let text: Arc<str> = Arc::from("null");
+                                    if note_tagged_key(
+                                        &mut self.tagged_key_sets,
+                                        key_depth,
+                                        tag,
+                                        &text,
+                                    ) {
+                                        None
+                                    } else {
+                                        Some(format!("{}{} null", tag.handle, tag.suffix))
+                                    }
+                                }
+                                None => None,
+                            },
                             _ => None,
                         };
                         use indexmap::map::Entry;
@@ -1618,6 +1702,9 @@ impl<'a> AstReceiver<'a> {
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
             let standalone = self.comment_stack.pop().unwrap_or_default();
+            // This mapping has left the stack; its table must not answer for the
+            // next mapping that reaches the same depth.
+            self.tagged_key_sets.swap_remove(&self.stack.len());
 
             let end = if !flow_style {
                 pairs
@@ -3450,6 +3537,42 @@ mod tests {
             )
             .is_ok(),
             "duplicate merge keys must be allowed"
+        );
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-4bf6ee37): the value-identity check ran
+    /// only for keys *without* a tag, so two `!?` keys a style apart - a plain
+    /// empty scalar and an empty double-quoted one, one value under that tag -
+    /// both reached the tree. The writer spelled them `!? "": ~` twice and the
+    /// reader then refused its own emission. A tagged key is identified by its
+    /// tag and its value, YAML's own equality for scalar nodes, so the style, the
+    /// quote and the anchor cannot separate two of them.
+    #[test]
+    fn duplicate_tagged_scalar_key_by_tag_and_value_is_rejected() {
+        let err = parse("? !?\n:\n  ~\n? !? \"\"\n:\n  ~\n", YamlSchema::Core)
+            .expect_err("two keys under one tag with one value are one key");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // The second spelling the fuzzer drew: `a:b` needs the quotes on emission,
+        // so the plain key goes out quoted and both lines read `!a "a:b"`.
+        let err = parse("? !a a:b\n:\n  ~\n? !a \"a:b\"\n:\n  ~\n", YamlSchema::Core)
+            .expect_err("the writer quotes the plain twin");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // Anchors are decoration, not identity (the pbt table's row).
+        let err = parse(
+            "? &a !E null\n:\n  one\n? &b !E null\n:\n  two\n",
+            YamlSchema::Core,
+        )
+        .expect_err("one tag and one value are one key under any anchors");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // The tag is part of that identity: different tags re-read apart, because
+        // the emitted key line carries the tag.
+        assert!(
+            parse("? !a\n:\n  ~\n? !b\n:\n  ~\n", YamlSchema::Core).is_ok(),
+            "different tags are different keys"
+        );
+        assert!(
+            parse("? !? a\n:\n  ~\n? !? b\n:\n  ~\n", YamlSchema::Core).is_ok(),
+            "one tag with different values is two keys"
         );
     }
 
