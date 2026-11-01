@@ -297,6 +297,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A string spelled `+-333…` is quoted again by the JSON5 writer** — the bare-token test strips one
+  leading sign before its numeric checks, then asked whether the *body* was a strict JSON number, so
+  `+-33337333333373333333733333` passed as `+` over an acceptable `-333…` and `to_json5_text`
+  emitted text its own reader refuses (`expected integer digits in number`). Only a leading `+` over
+  an unsigned body is a JSON5 spelling now; `+7`, `-7` and `+1.5` keep their bare token, and the
+  quoted document comes back as the string it was (libFuzzer `json_roundtrip` crash-0a929a32,
+  archived as a seed).
 - **A note standing over an emptied container keeps the sequence item on its dash line** — the
   reader files a note written above a container's first pair as that container's own leading note,
   so an edit that deletes the last pair leaves a standalone note over nothing. `is_compact_item`
