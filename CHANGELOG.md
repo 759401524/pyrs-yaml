@@ -297,6 +297,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An array element keeps the note on each side of its value** — a note after the comma and one
+  after the value reach one element through two separate flushes (`array` takes the pending list
+  before `value()` and flushes what follows it), and both land in the single inline slot: the
+  second `set_comment` overwrote the first, so the tree carried one note while `parse_stream`
+  reported both. libFuzzer `json_events_replay` crash-0449c0ae, 42 bytes, archived as
+  `former-crash-0449c0ae.seed`; crash-0466d7f6, 81 bytes, reaches the same slot from inside a
+  nested array. The earlier note now moves to the leading list instead of being dropped, and keeps
+  its `standalone` flag, so the slot the stream names and the slot the tree filed it in still
+  agree — the folded tree is the scanned tree, decorations included. Only the corpus invariant
+  charged the loss before: `the_two_walks_describe_the_same_document` reddened on
+  `("b[", false)` missing from the tree, and the named
+  `an_element_keeps_the_notes_on_both_sides_of_its_value` states the claim on
+  `[/* before */ 1 /* after */]`. Put the overwrite back and both redden; the corpus now drives
+  51 verdict pairs and replays 28 accepted documents, which is what the file's measured comment
+  records.
 - **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
   reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
   those for the reader and not for the key: plain and quoted spellings of one tagged key both emit

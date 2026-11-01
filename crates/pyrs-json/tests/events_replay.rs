@@ -41,7 +41,7 @@ use pyrs_json::{
 /// under the replay and note comparisons. One floor cannot cover both: a corpus of nothing but
 /// refusals would drive pairs and replay none, and the second claim would go untested in silence.
 ///
-/// Measured: 13 seeds over 3 dialects drove 39 pairs and replayed 22 accepted documents. Both
+/// Measured: 15 seeds over 3 dialects drove 51 pairs and replayed 28 accepted documents. Both
 /// floors sit below those numbers on purpose — slack for a seed being retired, not targets to hit.
 const MIN_SEEDED_PAIRS: usize = 30;
 const MIN_REPLAYED_PAIRS: usize = 15;
@@ -135,6 +135,39 @@ fn a_jsonc_document_rebuilds_itself_from_its_own_events() {
     // The stronger claim, decorations included: the note that rode the key is still on the key,
     // the one inside the sequence is still inside it.
     assert_eq!(replay, node, "the folded tree filed a note in another slot");
+}
+
+#[test]
+fn an_element_keeps_the_notes_on_both_sides_of_its_value() {
+    // libFuzzer `json_events_replay` crash-0449c0ae: a note after the comma and one after the
+    // value reach one array element through two flushes, and the single inline slot kept only the
+    // later one - the earlier note vanished from the tree while the stream still reported it.
+    let text = "[/* before */ 1 /* after */]";
+    let node = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+    let events = parse_stream_with_options(text, JsonParseOptions::JSONC).expect("streams");
+    let mut expected = vec![("before".to_string(), false), ("after".to_string(), false)];
+    expected.sort();
+    let mut kept = Vec::new();
+    tree_notes(&node, &mut kept);
+    kept.sort();
+    assert_eq!(
+        kept, expected,
+        "the tree dropped a note the element carried"
+    );
+    let mut reported: Vec<(String, bool)> = stream_notes(&events)
+        .into_iter()
+        .map(|(text, _, owner)| (text, owner.is_leading()))
+        .collect();
+    reported.sort();
+    assert_eq!(
+        reported, expected,
+        "the stream reports a note the tree does not carry"
+    );
+    assert_eq!(
+        from_events(&events).expect("its own stream replays"),
+        node,
+        "the folded tree filed a note in another slot"
+    );
 }
 
 #[test]
