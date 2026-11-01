@@ -489,6 +489,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   against the scanner's instead of trusting node equality on its own. The instruction-count harness
   drives the scanners, the writers and the loaders, not `from_events`, so no measured scenario moves
   on this path.
+- **A note after the document's closing bracket is written, not dropped** — every note the JSONC and
+  JSON5 writers emit came from a member loop (a pair's key and value, a sequence's elements), and
+  the document root is no member's child, so the root's own line-end slot had no writer at all:
+  parsing `{"a": 1} // after` and writing it back produced `{"a": 1}`, and the same note reached
+  through the YAML hub was lost identically. `emit_root_leading` had covered the root's *leading*
+  slot since the compact route was added, which is why the gap read like a dialect limitation
+  instead of a missing call. The generative cross-format tier had no oracle for this family — only
+  TOML charged note conservation — so `prop_jsonc_writer_carries_every_note` and its JSON5 twin were
+  added first; the JSONC one shrank to a hand-built root carrying a trailing note on its first run,
+  at 400 cases. Each of the four entry points now emits the root's line-end note after the top-level
+  value, and `test_a_note_after_the_document_reaches_both_json_dialects` pins the shipped
+  YAML→JSONC/JSON5 route in both layouts. The counterexample is the pre-fix output — both new
+  properties redden on `{"a": 1}`. The price is one `has_notes()` guard per document, not per
+  member.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

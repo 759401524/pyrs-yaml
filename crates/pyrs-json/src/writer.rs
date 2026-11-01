@@ -103,6 +103,7 @@ pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Jsonc)?;
+    emit_inline_comment(node, &mut out);
     Ok(out)
 }
 
@@ -116,6 +117,7 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
     let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Jsonc)?;
+    emit_inline_comment(node, &mut out);
     Ok(out)
 }
 
@@ -128,6 +130,7 @@ pub fn to_json5_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json5)?;
+    emit_inline_comment(node, &mut out);
     Ok(out)
 }
 
@@ -139,13 +142,17 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
     let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json5)?;
+    emit_inline_comment(node, &mut out);
     Ok(out)
 }
 
 /// Emit a root container's own leading (standalone) comments before the
 /// top-level value. Nested members get theirs via the pair-loop
 /// `emit_standalone_comment`; the outermost node has no preceding key
-/// slot, so a document-leading `#`/`//` comment would otherwise drop.
+/// slot, so a document-leading `#`/`//` comment would otherwise drop. The
+/// root's other slot — a `// …` after the closing bracket — has no member
+/// loop either, so each entry point calls `emit_inline_comment` on the root
+/// once the value is written.
 fn emit_root_leading(node: &CustomNode, out: &mut String) {
     if !node.has_notes() {
         return;
