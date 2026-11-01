@@ -11246,6 +11246,39 @@ does not mistake it for this change. `to_toml_medium` is not image-keyed, and th
 reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
 verdict; the enforcing reading is CI's `ir` job.
 
+### (ii) A following key's leading note dragged the previous pair's null off its own line (2026-11-01)
+
+`(hw)` charged note survival and `(hy)` closed a header loss; both left the pair-line *offsets*
+alone, and this is the first shape where those offsets go stale mid-pair.
+
+An empty key over a tag (`: !`) writes a tagged null and leaves `pending_tag_insert_at` pointing at
+the null still to be written on that pair's line. The `(bg)` fix deliberately carries that marker
+across one pair so a following key's inline note can be hoisted above it. This shape is the carry
+going wrong: the following key is a `<<` that granit reaches with *both* a leading note and an
+inline note (two `<<` lines collapse onto one key, stacking them). Its leading note is written
+through `write_note_line`, which flushes the prior pending — inserting bytes *before* the pair's own
+line — but the pair had captured `own_line_start`, `pair_line_start` and `pending_before` above that
+insert. The inline note was then placed at the stale offset, on the previous pair's line, and the
+null fell onto a line carrying no key.
+
+Measured on `: !` above `<<: #:` then `<<: #b` with value `e #~`: round one emitted
+`~: ! # b\n~\n# :\n<<: e  # ~\n` and the reader refused the bare `~` at line 2 ("simple key
+expected ':'"). Re-reading `pending_tag_insert_at` and the pair's line start after the leading notes
+settles both to the real positions, so the first emission is `~: ! ~\n# :\n# b\n<<: e  # ~\n` — the
+null rides its own value, each note keeps its owner — and it is its own fixed point. Two facts keep
+it scoped: it sits inside `if key.has_notes()`, so a note-free simple key never runs it, and a key
+with no leading note never enters the loop that could have flushed, so the `(bg)` carry is
+untouched.
+
+`an_empty_key_pending_null_settles_before_a_following_note_bearing_key` pins the fixed point, and
+the input is archived as a `former-crash-*` seed so the fuzz tier replays it. The control is main
+itself: that exact input emits a non-re-parsing `~: ! # b` there, and nothing else changes verdict.
+The price is free on the hot path — on the pinned `rustc 1.97.1` this host reads `serialize_medium`
++0.01 %, `serialize_block` +0.03 %, `serialize_note_flow` +0.03 %, `serialize_small` −0.10 %, none
+past the 0.5 % line, so no floor moves. The `load_toml_medium`/`load_toml_long_strings`
++1.65/+2.98 % and `documents` −12.77/−8.22 % that also fail are the same host-versus-image drift
+`(hy)` names; this change touches neither route.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

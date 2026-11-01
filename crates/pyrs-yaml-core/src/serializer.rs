@@ -1354,9 +1354,9 @@ impl Serializer {
     ) -> Result<(), SerializeError> {
         // Captured before the pair writes anything: writing the key and value resets
         // `pending_tag_insert_at`, and the key's inline note is placed afterwards.
-        let pending_before = self.pending_tag_insert_at;
+        let mut pending_before = self.pending_tag_insert_at;
         self.pair_line_start = self.output.len();
-        let own_line_start = self.pair_line_start;
+        let mut own_line_start = self.pair_line_start;
         self.block_header_break = None;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
@@ -1446,6 +1446,20 @@ impl Serializer {
                     // (libFuzzer `yaml_roundtrip` crash-c5b367d3).
                     self.write_note_line(indent_width, &comment.text);
                 }
+                // Writing a leading note can flush a pending tag-only line the *previous*
+                // pair left (through `write_note_line` -> `close_pending_tag_line`), which
+                // inserts bytes before this pair's line. `pending_before`, `own_line_start`
+                // and `pair_line_start` were captured above that flush and are now stale;
+                // re-read them so this pair's inline key note lands on its real line, not the
+                // prior pair's (the stale offset emitted an orphan null the reader refuses -
+                // libFuzzer `yaml_roundtrip` crash-0f934648: `: !` then a collapsed `<<`
+                // carrying both a leading and an inline note). Kept inside `has_notes` so the
+                // note-free simple key - every key of an undecorated document - is untouched,
+                // and a key with no leading note never ran the loop above, so the `bg: !:`
+                // captured-pending machinery that case relies on is unchanged.
+                pending_before = self.pending_tag_insert_at;
+                own_line_start = self.output.len();
+                self.pair_line_start = own_line_start;
             }
             self.write_indent(indent_width);
             self.write_scalar_for_key(key, false);

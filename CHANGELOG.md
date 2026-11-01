@@ -297,6 +297,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A following key's leading note could drag the previous pair's null onto its own line** — an
+  empty key over a tag (`: !`) leaves a pending null that the *next* pair must flush onto the pair
+  that made it. When that next key carries a leading note, `write_note_line` flushes the pending —
+  which inserts bytes *before* the next pair's line — but the inline note placed after it was
+  positioned from a pair-line start captured before that flush, so it landed on the previous pair's
+  line and the null fell onto a line with no key: a bare `~` that granit refuses with "simple key
+  expected ':'". A `<<` merge key that arrives carrying both a leading and an inline note reaches
+  the shape — measured on `: !` above a collapsed `<<` (`<<: #:` then `<<: #b` with value `e #~`),
+  which emitted `~: ! # b` over an orphan `~` line and did not re-read; `prop_roundtrip` and the
+  fuzz tier reach it. The fix re-reads the pending marker and the pair's own line start after the
+  leading notes, so the inline note lands on the pair's real line — kept inside the
+  key-carries-notes branch, so the note-free simple key every undecorated document runs pays
+  nothing, and a key with no leading note never enters it, so the `bg: !:` captured-pending
+  machinery the earlier fixes lean on is untouched.
+  `an_empty_key_pending_null_settles_before_a_following_note_bearing_key` pins the fixed point, and
+  the now-fixed input is archived as `fuzz/seeds/yaml_roundtrip/former-crash-0f934648.seed`. On the
+  pinned `rustc 1.97.1` this host moves no serialize scenario past the line — `serialize_medium`
+  +0.01 %, `serialize_block` +0.03 %, `serialize_note_flow` +0.03 %, `serialize_small` −0.10 % — the
+  guard is free on the hot path; the `load_toml` and `documents` readings that also fail are trunk's
+  own host-versus-image drift, named the same way in the `(hy)` row.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

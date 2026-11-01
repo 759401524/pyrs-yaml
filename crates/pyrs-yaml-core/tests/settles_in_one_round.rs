@@ -15,6 +15,27 @@ fn emit(src: &str) -> String {
     to_yaml(&parse(src, Schema::Core).expect("the pinned input parses"))
 }
 
+/// libFuzzer `yaml_roundtrip` crash-0f934648: an empty key over a tag, then a `<<` merge key that
+/// carries both a leading note and an inline note.
+///
+/// The empty key's value is a tagged null, and writing it leaves a pending null that the *next* pair
+/// must flush onto its own line. The next key here carries a leading note, and `write_note_line`
+/// flushes the pending - which inserts bytes before the merge key's line, so the merge key's line
+/// start, captured before that flush, went stale. Its inline note was placed at the stale offset,
+/// onto the prior pair's line (`~: ! # b`), and the pending null fell onto a line that carries no
+/// key: a bare `~` that granit refuses with "simple key expected ':'". Re-reading the pending marker
+/// and the pair's line start after the leading notes settles both to the real positions, so the
+/// first emission is the fixed point - the null rides its own value, each note keeps its owner.
+#[test]
+fn an_empty_key_pending_null_settles_before_a_following_note_bearing_key() {
+    let one = emit(": !\n<<: #:\n<<: #b\n e #~");
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
 /// libFuzzer `yaml_roundtrip` crash-c2343438, minimized to 14 bytes as crash-2eaa5599: a key's
 /// inline note over a block body.
 ///
