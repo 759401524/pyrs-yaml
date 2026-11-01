@@ -312,6 +312,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `[/* before */ 1 /* after */]`. Put the overwrite back and both redden; the corpus now drives
   51 verdict pairs and replays 28 accepted documents, which is what the file's measured comment
   records.
+- **A key's note is filed above the pair even when the key's leading note moved that line** — a pair
+  records where its key line starts before it writes anything, then writes the key's leading notes;
+  `write_note_line` closes a pending tag-only line above the pair by inserting the value's `~` at an
+  offset *before* that start and appends the note line, so the key line had moved by the time the
+  key's inline note was placed. That note cannot share the pair line when the value carries one of
+  its own, so it goes above the pair, and the placement was handed the stale offset: `# b` split the
+  pending value's line and pushed its `~` onto a bare line of its own, yielding `~: ! # b` / `~`,
+  which this reader refuses (`simple key expected ':'`) — libFuzzer `yaml_roundtrip` crash-76e05a78,
+  104 bytes, minimised to 25 and archived as `former-crash-76e05a78.seed`. The pair now re-anchors
+  its key line after those leading notes;
+  `a_key_note_above_a_closed_pending_tag_line_settles_in_one_round` pins the 25-byte emission byte
+  for byte (`~: ! ~` / `# *` / `# b` / `<<: e  # ~`) and the 104-byte original, and restoring the
+  stale offset reddens it with the pre-fix text. No new pass or allocation: the re-anchor is the
+  length already appended, read once.
 - **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
   reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
   those for the reader and not for the key: plain and quoted spellings of one tagged key both emit

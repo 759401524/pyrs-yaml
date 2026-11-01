@@ -409,3 +409,38 @@ fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
         );
     }
 }
+
+/// libFuzzer `yaml_roundtrip` crash-76e05a78, minimized to 25 bytes: a key's inline note that
+/// cannot share its pair line with the value's own note, placed above a pair whose pending
+/// tag-only line the key's leading note had already closed.
+///
+/// A pair captures the position its key line starts at before writing anything. Writing the key's
+/// leading note runs `write_note_line`, which closes the pending tag-only line above the pair by
+/// inserting the value's `~` at an offset *before* that position, and then appends the note line -
+/// so the key's line has moved. The key's inline note, which has to go above the pair because the
+/// value keeps the only trailing slot, was written at the stale offset: `# b` split the pending
+/// value's line and displaced its `~` onto a bare line of its own, which this reader refuses
+/// (`simple key expected ':'`). The key line is re-anchored after its leading notes now.
+#[test]
+fn a_key_note_above_a_closed_pending_tag_line_settles_in_one_round() {
+    let minimal = ":\n#*\n<<:\n: !\n<<: #b\n e #~";
+    let one = emit(minimal);
+    assert_eq!(
+        one, "~: ! ~\n# *\n# b\n<<: e  # ~\n",
+        "the minimised shape has a pinned emission"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+
+    let original = "gb:\n-<<:\n: !:\t\n<<: +\n#?*)b\n\t\t\n<<:\n\n?: #*\n : !:\t\n<<: #*b\n  \
+                    :rue?  ? 0&3# #!!\"#~? 0? y:: \r\n\r\r\rbg: !::\t-)\t\n";
+    let one = emit(original);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}

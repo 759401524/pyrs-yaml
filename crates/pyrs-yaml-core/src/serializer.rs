@@ -1357,6 +1357,14 @@ impl Serializer {
         let pending_before = self.pending_tag_insert_at;
         self.pair_line_start = self.output.len();
         let own_line_start = self.pair_line_start;
+        // Where the key's own line starts. Kept apart from `own_line_start`, which names the
+        // position the enclosing container's note is filed above: writing the key's leading
+        // notes can insert bytes *before* that position (closing a pending tag-only line) and
+        // then appends the note lines, so the key line moved. The key's inline note is placed
+        // relative to where the key actually landed; using the stale offset put a note
+        // mid-line over the pending value (`~: ! ~` + `# b` inserted at the old start), and
+        // the resulting `~: ! # b` / `~` line pair was text this reader refuses (crash-76e05a78).
+        let mut key_line_start = own_line_start;
         self.block_header_break = None;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
@@ -1447,6 +1455,10 @@ impl Serializer {
                     self.write_note_line(indent_width, &comment.text);
                 }
             }
+            // `write_note_line` is where a pending tag-only line gets closed, and that
+            // close inserts its `~` before this pair's line; every note line it appended
+            // sits above the key too. The key line starts here now.
+            key_line_start = self.output.len();
             self.write_indent(indent_width);
             self.write_scalar_for_key(key, false);
         }
@@ -1545,7 +1557,7 @@ impl Serializer {
                 {
                     let fallback = key_note_at.unwrap_or(self.output.len() - 1);
                     let at = self
-                        .note_slot_on_pair_line(own_line_start)
+                        .note_slot_on_pair_line(key_line_start)
                         .unwrap_or(fallback);
                     self.insert_note_at(at, &note_line("  ", &text));
                 } else {
@@ -1556,7 +1568,7 @@ impl Serializer {
                     // back with `K` on `b`). A pending tag-only line directly above is the
                     // exception that has to be closed first, or the note becomes that
                     // value's leading note instead (`bg: !:` + `<<: #*b`).
-                    let above = self.close_captured_pending_line(pending_before, own_line_start);
+                    let above = self.close_captured_pending_line(pending_before, key_line_start);
                     self.note_line_above(above, &text);
                 }
             }
