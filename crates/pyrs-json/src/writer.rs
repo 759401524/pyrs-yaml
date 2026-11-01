@@ -639,8 +639,10 @@ fn is_json5_number(text: &str) -> bool {
     if let Some(int) = body.strip_suffix('.') {
         return json5_integer_part(int);
     }
-    // leading `+` on an otherwise-strict JSON number (e.g. `+7`, `+1.5`).
-    if text.starts_with('+') && is_json_number(body) {
+    // leading `+` on an otherwise-strict JSON number (e.g. `+7`, `+1.5`). The body must not carry a
+    // sign of its own: the strip above makes `+-1` look like `-1`, which `is_json_number` accepts,
+    // but no JSON5 reader takes a second sign (libFuzzer `json_roundtrip` crash-0a929a32).
+    if text.starts_with('+') && !body.starts_with(['+', '-']) && is_json_number(body) {
         return true;
     }
     false
@@ -1061,6 +1063,23 @@ mod tests {
     // engine-level scenario and lives in `pyrs-yaml-core`
     // `src/integration/json_family.rs`; this crate must not reach back into
     // the YAML parser.
+
+    #[test]
+    fn a_second_sign_is_not_a_json5_number() {
+        // libFuzzer `json_roundtrip` (crash-0a929a32): the document is one quoted string, and the
+        // bare-token test stripped the `+` and then accepted the `-333…` body - the JSON5 writer
+        // emitted `+-333…`, which its own reader refuses.
+        let src = "+-33337333333373333333733333";
+        let node = crate::from_json5(&format!("\t\"{src}\"")).unwrap();
+        let text = to_json5_text(&node).unwrap();
+        assert_eq!(text, format!("\"{src}\""));
+        assert!(crate::from_json5(&text).is_ok(), "{text}");
+        // The single-sign neighbours stay bare.
+        for bare in ["+7", "-7", "+1.5", "-1.5"] {
+            let text = to_json5_text(&CustomNode::plain_scalar(bare)).unwrap();
+            assert_eq!(text, bare);
+        }
+    }
 
     #[test]
     fn a_number_the_json5_reader_refuses_is_not_emitted_bare() {

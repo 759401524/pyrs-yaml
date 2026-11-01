@@ -24,7 +24,8 @@ use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, 
 
 /// Lower bound on how many dialect rounds must reach the assertion.
 ///
-/// Measured when this file was written: 14 seeds driving 33 rounds. Each seed is an input
+/// Measured when the sign-strip seed joined: 17 seeds driving 38 rounds (a seed the three
+/// readers all accept drives three). Each seed is an input
 /// that made an assertion fail in the run that found it - a registered defect, not an
 /// exemption. The floor sits below that on purpose — it is slack for a seed being retired,
 /// not a target to hit — and a count under it would mean the corpus stopped carrying input
