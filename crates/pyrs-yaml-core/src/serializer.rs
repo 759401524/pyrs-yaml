@@ -1356,7 +1356,11 @@ impl Serializer {
         // `pending_tag_insert_at`, and the key's inline note is placed afterwards.
         let pending_before = self.pending_tag_insert_at;
         self.pair_line_start = self.output.len();
-        let own_line_start = self.pair_line_start;
+        // Assigned by whichever key branch runs, right before it writes the pair's own line:
+        // a leading note line closes a pending tag-only line by inserting that value's null
+        // text, and those bytes shift the line right. Read later as a line start, a stale
+        // offset lands the key's inline note mid-line (libFuzzer crash-2c76568e).
+        let own_line_start;
         self.block_header_break = None;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
@@ -1412,6 +1416,9 @@ impl Serializer {
             for note in &hoisted {
                 self.write_note_line(indent_width, note.text.as_ref());
             }
+            // A note line above may have closed a pending tag line, shifting this pair right.
+            own_line_start = self.output.len();
+            self.pair_line_start = own_line_start;
             self.write_indent(indent_width);
             self.output.push('?');
             if let CustomNode::Alias { name } = key {
@@ -1447,6 +1454,9 @@ impl Serializer {
                     self.write_note_line(indent_width, &comment.text);
                 }
             }
+            // Same recapture as the marker branch: the leading stack may have shifted this line.
+            own_line_start = self.output.len();
+            self.pair_line_start = own_line_start;
             self.write_indent(indent_width);
             self.write_scalar_for_key(key, false);
         }
