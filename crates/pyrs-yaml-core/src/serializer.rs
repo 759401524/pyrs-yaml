@@ -1355,6 +1355,16 @@ impl Serializer {
         // Captured before the pair writes anything: writing the key and value resets
         // `pending_tag_insert_at`, and the key's inline note is placed afterwards.
         let pending_before = self.pending_tag_insert_at;
+        // A key's own note lines close the previous pair's tag-only line from inside
+        // `write_note_line`, and that closure inserts the value's null text *behind* the
+        // offsets measured just below. Doing it here first - the same bytes at the same
+        // place - keeps `own_line_start` naming a real line start. Measured afterwards, the
+        // key's trailing note was inserted inside the previous value, where a bare `~`
+        // line re-parses as content the write never emitted (libFuzzer `yaml_roundtrip`
+        // crash-76e05a78).
+        if !key.leading_comments().is_empty() {
+            self.close_pending_tag_line();
+        }
         self.pair_line_start = self.output.len();
         let own_line_start = self.pair_line_start;
         self.block_header_break = None;
@@ -3821,6 +3831,38 @@ mod tests {
             "not a fixed point in one round: {one:?} -> {again:?}"
         );
     }
+
+    /// libFuzzer `yaml_roundtrip` crash-76e05a78 (104 bytes): a pair follows a tag-only
+    /// line, its key carries a leading note *and* a trailing one, and its value has a note
+    /// of its own. The key's leading note closed the pending line from inside
+    /// `write_note_line` - after the pair's start had been recorded - so the inserted `~`
+    /// shifted that start into the previous value. The key's trailing note then went in
+    /// behind the tag, splitting the pair into `~: ! # b` and a bare `~` line the reader
+    /// refuses ("simple key expected ':'"). Closing the pending line before the pair's
+    /// offsets are measured keeps the value on one line and the note above the pair.
+    #[test]
+    fn a_key_note_pair_below_a_tag_only_line_settles() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-76e05a78.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert!(
+            !one.lines().any(|line| line.trim_end() == "~"),
+            "a bare `~` line is not part of the tree: {one:?}"
+        );
+        for note in ["# *b", "# ?*)b"] {
+            assert_eq!(
+                one.matches(note).count(),
+                1,
+                "the note {note:?} appears exactly once: {one:?}"
+            );
+        }
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+
     /// `write_mapping_pair` has a slot for it. The compact dash loop in
     /// `write_sequence_item` hand-rolls the same `key: value` line without that slot, so
     /// under a `- ` the note vanished on the *first* emission — silent data loss, not a

@@ -297,6 +297,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A key's own note line no longer moves the pair it belongs to off its line** —
+  `write_mapping_pair` records where the pair starts and then writes its key; a key carrying a
+  leading note closed the previous pair's tag-only line from inside `write_note_line` *after* that
+  record, and the `~` that closure inserts sits behind the recorded offset. The pair's start then
+  named a byte inside the previous value, so the key's trailing note was inserted there: a document
+  whose first pair ends in `: !` and whose second key carries both a leading and a trailing note
+  split into `… ! # b` plus a bare `~` line, which the reader refuses as `simple key expected ':'`
+  (libFuzzer `yaml_roundtrip` crash-76e05a78, 104 bytes, archived as `former-crash-76e05a78.seed`;
+  minimised to 25 bytes, `:` / `#b` / `<<:` / `: !` / `<<: #b` / an indented `3 #~`, the same
+  failure). The pending line is now closed before the pair's offsets are measured — the same bytes
+  at the same place, written one line earlier — so the note lands above the pair and reads back as
+  that key's. Control: the pre-fix ordering put back (the eager close made conditional on `false`)
+  reddens `a_key_note_pair_below_a_tag_only_line_settles` with `~: !: # *b` and a `~` line on its
+  left. A tag-only value followed by a note-free pair is untouched: `a: !` / `b: 1` still emits
+  without a `~`, because that close is taken only when the key opens with note lines of its own.
 - **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
   reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
   those for the reader and not for the key: plain and quoted spellings of one tagged key both emit
