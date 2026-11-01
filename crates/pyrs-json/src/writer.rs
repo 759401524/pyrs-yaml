@@ -26,6 +26,24 @@ use pyrs_ast::ast::{CustomNode, ScalarStyle};
 use pyrs_ast::error::{DepthError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
 
+/// Initial capacity for a writer's output buffer.
+///
+/// `String::new()` reaches 512 bytes through seven reallocations (8, 16, 32, 64, 128, 256,
+/// 512), and on a config-sized document those copies and their malloc/free pairs are most of
+/// what the write does. Measured in counted instructions on this tree's host, with the gate's
+/// pinned `rustc 1.97.1` (the same host read `to_json_medium` to within 0.002% of the
+/// committed floor without this change, so the deltas are the change):
+///
+/// - `to_json_medium` (a 300-byte document) 22,884,635 → 17,718,056, −22.6%
+/// - `to_jsonc_notes` 18,005,160 → 13,405,914, −25.5%
+/// - `to_json_long_strings` 23,213,076 → 21,599,724, −6.9%
+///
+/// One number rather than a size estimate: measuring the tree first would cost a second walk,
+/// more than the growth it removes on exactly the documents where the chain is long. Every
+/// document up to this size now takes a single allocation, and a larger one starts here and
+/// grows geometrically, so it loses the same seven reallocations and pays nothing extra.
+const OUT_CAPACITY: usize = 512;
+
 /// Which JSON-family dialect `write_value` targets. `Json5` is a superset
 /// of `Jsonc` (comments) that additionally restores JSON5-only spellings:
 /// single-quoted strings and the `0x…` / `.5` / `+7` numeric forms (PR #121),
@@ -57,7 +75,7 @@ impl Mode {
 
 /// Compact JSON.
 pub fn to_json_text(node: &CustomNode) -> Result<String, SerializeError> {
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json)?;
     Ok(out)
 }
@@ -67,7 +85,7 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
     if indent == 0 {
         return to_json_text(node);
     }
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json)?;
     Ok(out)
 }
@@ -82,7 +100,7 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
 /// put one member deeper was not, which made the compact form lose notes that
 /// the same document kept at the top level.
 pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Jsonc)?;
     Ok(out)
@@ -95,7 +113,7 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
     if indent == 0 {
         return to_jsonc_text(node);
     }
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Jsonc)?;
     Ok(out)
@@ -107,7 +125,7 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
 /// verbatim. Object keys are always quoted (JSON5 permits bare keys but
 /// quoting is lossless and simpler). Round-trips `from_json5` output.
 pub fn to_json5_text(node: &CustomNode) -> Result<String, SerializeError> {
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json5)?;
     Ok(out)
@@ -118,7 +136,7 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
     if indent == 0 {
         return to_json5_text(node);
     }
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json5)?;
     Ok(out)
