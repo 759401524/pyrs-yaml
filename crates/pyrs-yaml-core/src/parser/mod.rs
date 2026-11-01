@@ -649,9 +649,10 @@ struct AstReceiver<'a> {
     /// itself a container), and a single `Option` per container kept only the
     /// last of any stacked notes — so the slot is a list.
     comment_stack: Vec<Vec<Comment>>,
-    /// Tagged-key tables of the open mappings, keyed by stack depth. Empty unless
-    /// a document writes a tag on a key; see [`TaggedKeySets`].
-    tagged_key_sets: TaggedKeySets,
+    /// Set once any scalar in the document carries a tag. A tag-free document -
+    /// the shape both Ir fixtures have - then never walks a finished mapping for
+    /// tagged keys, and pays one bool.
+    saw_tag: bool,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Whether to collect completed documents for multi-doc parsing. When
@@ -755,27 +756,49 @@ type SeenTaggedKeys = std::collections::HashSet<(Tag, Arc<str>)>;
 #[cfg(not(feature = "std"))]
 type SeenTaggedKeys = NodeMap<(Tag, Arc<str>), ()>;
 
-/// The tagged-key tables of the mappings currently open, keyed by the depth of
-/// the mapping in `stack`.
+/// The first duplicate among `pairs` whose keys carry a tag, or `None`.
 ///
-/// Kept out of `ParseState::Mapping` on purpose: a per-mapping `Option` there
-/// grew that enum by a hash table's 48 bytes, and the receiver's stack buffer is
-/// four entries deep on the `parse_medium` fixture, so a table a tag-free
-/// document never builds still cost +192 bytes on `tests/alloc_gate.rs`. Entry
-/// per depth is created on the first tagged key and dropped when its mapping
-/// closes, so a document without one allocates nothing here.
-type TaggedKeySets = NodeMap<usize, SeenTaggedKeys>;
+/// Out of line and asked only once a mapping has closed: the check sat in
+/// `push_node` first, and that call site alone - unreachable on a document with
+/// no tag, so pure code generation - moved every `parse_*` scenario past the Ir
+/// gate's tolerance. The finished pair list holds the same keys, and only a
+/// document that carried a tag (`AstReceiver::saw_tag`) reaches the walk.
+fn duplicate_tagged_key(pairs: &NodeMap<CustomNode, CustomNode>) -> Option<String> {
+    let mut seen = SeenTaggedKeys::default();
+    for (key, _) in pairs {
+        match key {
+            CustomNode::Scalar { value, meta, .. } => {
+                let Some(tag) = meta.tag() else { continue };
+                if !insert_tagged_key(&mut seen, tag, value) {
+                    return Some(format!("{}{} {value}", tag.handle, tag.suffix));
+                }
+            }
+            // A tagged null joins the tagged scalars instead of the null fold - the
+            // writer spells it `null`, so `&a !E null` and `&b !E null` are one
+            // node however their anchors differ.
+            CustomNode::Null { meta } => {
+                let Some(tag) = meta.tag() else { continue };
+                let text: Arc<str> = Arc::from("null");
+                if !insert_tagged_key(&mut seen, tag, &text) {
+                    return Some(format!("{}{} null", tag.handle, tag.suffix));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
 
-/// Record a tagged key in the mapping at `depth` and report whether it was new.
-fn note_tagged_key(sets: &mut TaggedKeySets, depth: usize, tag: &Tag, value: &Arc<str>) -> bool {
+/// Record one tagged key and report whether it was new.
+fn insert_tagged_key(seen: &mut SeenTaggedKeys, tag: &Tag, value: &Arc<str>) -> bool {
     let entry = (tag.clone(), Arc::clone(value));
     #[cfg(feature = "std")]
     {
-        sets.entry(depth).or_default().insert(entry)
+        seen.insert(entry)
     }
     #[cfg(not(feature = "std"))]
     {
-        sets.entry(depth).or_default().insert(entry, ()).is_none()
+        seen.insert(entry, ()).is_none()
     }
 }
 
@@ -856,7 +879,7 @@ impl<'a> AstReceiver<'a> {
             document_versions: Vec::new(),
             anchors: NodeMap::default(),
             comment_stack: Vec::new(),
-            tagged_key_sets: NodeMap::default(),
+            saw_tag: false,
             pending_standalone_comment: Vec::new(),
             document_ended: false,
             max_depth,
@@ -1119,9 +1142,6 @@ impl<'a> AstReceiver<'a> {
 
     /// Push a node to the current context
     fn push_node(&mut self, node: CustomNode) {
-        // Where this mapping's tagged-key table lives; `stack.last_mut()` below
-        // borrows another field, so the index is read first.
-        let key_depth = self.stack.len().saturating_sub(1);
         match self.stack.last_mut() {
             Some(ParseState::Mapping {
                 current_key,
@@ -1235,57 +1255,22 @@ impl<'a> AstReceiver<'a> {
                         // `String` allocation); the `String` is materialized
                         // only when a collision is found.
                         let value_dup: Option<String> = match &key {
-                            // A key's identity is what its emitted line says: the
-                            // value, for an untagged scalar (style, quote and
-                            // trailing note do not reach that line); the tag and
-                            // the value together for a tagged one, which is YAML's
-                            // own equality for scalar nodes. So `!a null` and
-                            // `!A null` are two keys while two spellings under
-                            // *one* tag are one key - `!a k` and `!a 'k'`, or the
-                            // plain empty and empty quoted `!?` pair the writer
-                            // spells `!? ""` twice, which made the reader refuse
-                            // its own emission (crash-4bf6ee37).
-                            CustomNode::Scalar { value, meta, .. } => match meta.tag() {
-                                None => {
-                                    if note_scalar_key(seen_value_keys, value) {
-                                        None
-                                    } else {
-                                        Some(value.to_string())
-                                    }
+                            // A tag replaces the implicit resolution, so `!a null`
+                            // and `!A null` are different keys: their emitted lines
+                            // carry the tag and re-read apart, which is exactly what
+                            // must not be reported as a collision. Two spellings
+                            // under *one* tag are one key (`!a k` and `!a 'k'`, or
+                            // the plain empty and empty quoted pair the writer emits
+                            // as `!? ""` twice), and that identity is checked over
+                            // the finished pair list when the mapping closes - see
+                            // `duplicate_tagged_key`.
+                            CustomNode::Scalar { value, meta, .. } if meta.tag().is_none() => {
+                                if note_scalar_key(seen_value_keys, value) {
+                                    None
+                                } else {
+                                    Some(value.to_string())
                                 }
-                                Some(tag) => {
-                                    if note_tagged_key(
-                                        &mut self.tagged_key_sets,
-                                        key_depth,
-                                        tag,
-                                        value,
-                                    ) {
-                                        None
-                                    } else {
-                                        Some(format!("{}{} {value}", tag.handle, tag.suffix))
-                                    }
-                                }
-                            },
-                            // A tagged null is a tagged scalar the writer spells
-                            // `null`, so it joins that track instead of the null
-                            // fold above: `&a !E null` and `&b !E null` are one
-                            // node however their anchors differ.
-                            CustomNode::Null { meta } => match meta.tag() {
-                                Some(tag) => {
-                                    let text: Arc<str> = Arc::from("null");
-                                    if note_tagged_key(
-                                        &mut self.tagged_key_sets,
-                                        key_depth,
-                                        tag,
-                                        &text,
-                                    ) {
-                                        None
-                                    } else {
-                                        Some(format!("{}{} null", tag.handle, tag.suffix))
-                                    }
-                                }
-                                None => None,
-                            },
+                            }
                             _ => None,
                         };
                         use indexmap::map::Entry;
@@ -1562,6 +1547,7 @@ impl<'a> AstReceiver<'a> {
             && let CustomNode::Scalar { meta: m, .. } = &mut node
         {
             m.set_tag(convert_tag(&tag));
+            self.saw_tag = true;
         }
 
         self.push_node(node);
@@ -1702,9 +1688,16 @@ impl<'a> AstReceiver<'a> {
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
             let standalone = self.comment_stack.pop().unwrap_or_default();
-            // This mapping has left the stack; its table must not answer for the
-            // next mapping that reaches the same depth.
-            self.tagged_key_sets.swap_remove(&self.stack.len());
+            // A tagged key's identity - tag plus value - is settled over the
+            // finished pair list rather than per key: see `duplicate_tagged_key`.
+            // A document with no tag pays the `saw_tag` test and nothing else.
+            if self.saw_tag
+                && !self.allow_duplicate_keys
+                && self.duplicate_key_error.is_none()
+                && let Some(key) = duplicate_tagged_key(&pairs)
+            {
+                self.duplicate_key_error = Some(ParseError::DuplicateKey(key));
+            }
 
             let end = if !flow_style {
                 pairs
@@ -3563,6 +3556,11 @@ mod tests {
             YamlSchema::Core,
         )
         .expect_err("one tag and one value are one key under any anchors");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // The check runs over a mapping's finished pairs, so a nested mapping
+        // settles its own tagged keys too.
+        let err = parse("outer:\n  !a k: 1\n  !a 'k': 2\n", YamlSchema::Core)
+            .expect_err("a nested mapping holds one key for one tag and value");
         assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
         // The tag is part of that identity: different tags re-read apart, because
         // the emitted key line carries the tag.
