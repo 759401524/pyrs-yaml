@@ -1911,6 +1911,13 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
         if leading {
             node.push_leading_comment(comment);
         } else {
+            // A sequence element meets this function twice: the notes above it and the ones after
+            // it both ride its one inline slot. The tree walk moves the earlier note to the
+            // leading list when the later one arrives, so the fold does the same rather than
+            // dropping it - the leading list keeps the source flag the tree gave it.
+            if let Some(earlier) = node.comment().cloned() {
+                node.push_leading_comment(earlier);
+            }
             node.set_comment(comment);
         }
     }
@@ -4102,6 +4109,7 @@ mod tests {
                 "{/*k*/ a: /*v*/ 'b' /*t*/, c: 1 // end\n}",
             ),
             (JsonParseOptions::JSON5, "[1, /* between */ 2]"),
+            (JsonParseOptions::JSONC, "[1, /* b */ 2 /* c */, 3]"),
         ];
         for (opts, text) in noted {
             let tree = from_json_with_options(text, *opts)
@@ -4265,6 +4273,7 @@ mod tests {
                 "{/*k*/ a: /*v*/ 'b' /*t*/, c: 1 // end\n}",
             ),
             (JsonParseOptions::JSON5, "[1, /* between */ 2]"),
+            (JsonParseOptions::JSONC, "[1, /* b */ 2 /* c */, 3]"),
         ];
         for (opts, text) in cases {
             let tree = from_json_with_options(text, *opts)
@@ -4307,9 +4316,54 @@ mod tests {
                 );
             }
             // The owner is the tree's own answer, so the fold puts every note back where the
-            // tree had it - the whole document, decorations included.
-            assert_eq!(fold(&events), tree, "{text}: the fold lost a note");
+            // tree had it - the whole document, decorations included. Node equality is blind to
+            // the comment slots, so the notes are compared on their own as well.
+            let folded = fold(&events);
+            assert_eq!(folded, tree, "{text}: the fold is not the scanned tree");
+            let mut from_fold = Vec::new();
+            tree_notes(&folded, &mut from_fold);
+            from_fold.sort();
+            assert_eq!(
+                from_fold, tree_slots,
+                "{text}: the fold dropped a note the tree keeps"
+            );
         }
+    }
+
+    #[test]
+    fn the_fold_files_an_elements_second_note_group_where_the_tree_does() {
+        // A sequence element's notes reach the tree in two calls - the ones above it, then the
+        // ones after it - and both ride its one inline slot. `from_events` used to let the later
+        // group's note overwrite the earlier one, so a stream folded back to a tree without a note
+        // the stream itself had reported. The fold now moves the earlier note to the leading list
+        // exactly where the tree walk puts it. The JSONC input that found this:
+        // `[1 /* a */, /* b */ 1 /* a */, /* b */ 22]`.
+        let text = "[1, /* b */ 2 /* c */, 3]";
+        let tree = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+        let mut kept = Vec::new();
+        tree_notes(&tree, &mut kept);
+        kept.sort();
+        assert_eq!(
+            kept,
+            vec![("b".to_string(), false), ("c".to_string(), false)],
+            "the tree keeps both notes, and neither had a line of its own"
+        );
+        let events = parse_stream_with_options(text, JsonParseOptions::JSONC).expect("streams");
+        let mut reported = stream_notes(&events);
+        reported.sort();
+        assert_eq!(
+            reported,
+            vec![
+                ("b".to_string(), false, NoteOwner::FollowingInline),
+                ("c".to_string(), false, NoteOwner::PrecedingInline),
+            ],
+            "the stream says both notes ride the element"
+        );
+        let folded = fold(&events);
+        let mut back = Vec::new();
+        tree_notes(&folded, &mut back);
+        back.sort();
+        assert_eq!(back, kept, "the fold dropped the earlier note");
     }
 
     #[test]

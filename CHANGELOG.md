@@ -458,6 +458,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   past the 0.50% line. The check therefore runs over a closed mapping's pair list, reached only
   when the document carried a tag. Price: none on the allocation gate — `parse_medium` holds at
   67 allocations / 24 512 bytes on std and 74 / 24 952 without it.
+- **The JSON event fold no longer drops a sequence element's earlier note** — an element's notes
+  reach the tree in two groups, the ones above it and then the ones after it, and both file onto the
+  node's one inline slot. `from_events` let the second group's same-line note overwrite the first,
+  so a document the stream had just described folded back shorter: `[1, /* b */ 2 /* c */, 3]`
+  scanned as `b` in the leading list and `c` in the inline slot, and folded as `c` alone. A dropped
+  note is invisible to the tiers built on this: the shortened text re-emits as itself, so the fixed
+  point, re-parseability and tree equality all passed on the document that had already lost
+  something — node equality does not read the comment slots, and the corpus assertion compared the
+  two trees with it. The two walks caught it instead: `json_events_replay` found the stream naming
+  both notes while the fold kept one, on the 42-byte input
+  `[1 /* a */, /* b */ 1 /* a */, /* b */ 22]` (sha1 `e72e24ef…`), now archived as
+  `fuzz/seeds/json_events_replay/former-crash-e72e24ef.seed` and replayed over both walks by
+  `crates/pyrs-json/tests/events_replay.rs` in the merge gate. `apply` in
+  `crates/pyrs-json/src/parser.rs` now files a second same-line note the way the tree walk's
+  `attach_pending` does: the earlier note moves to the leading list still carrying the source flag
+  the tree gave it, and the later one takes the slot, so the fold rebuilds the scanned tree rather
+  than a shorter one. `the_fold_files_an_elements_second_note_group_where_the_tree_does` pins the
+  tree, the stream owners and the fold, and the corpus comparison now reads the folded tree's notes
+  against the scanner's instead of trusting node equality on its own. The instruction-count harness
+  drives the scanners, the writers and the loaders, not `from_events`, so no measured scenario moves
+  on this path.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
