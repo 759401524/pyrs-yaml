@@ -1,4 +1,4 @@
-//! Property-based fuzz tests for the TOML / JSON / JSONC / JSON5 formats.
+//! Property-based fuzz tests for the TOML / JSON / JSONC / JSON5 formats and the YAML writer.
 //!
 //! `pbt.rs` fuzzes the YAML spine; this module gives the four other formats the
 //! same treatment, covering the properties the objective calls for:
@@ -10,6 +10,9 @@
 //! - **re-parseability + writer fixed point** - whatever a writer emits must
 //!   re-parse, and re-serializing the re-parsed value is a fixed point (the
 //!   writer is idempotent on its own output).
+//! - **note conservation** - every note the tree carries reaches the emitted
+//!   text of all four writers; a writer that drops one passes everything above,
+//!   because the note is absent from both passes.
 
 #![cfg(test)]
 
@@ -127,6 +130,19 @@ fn toml_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<Strin
 fn json_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
     let mut missing = Vec::new();
     collect_note_texts(node, emitted, &mut missing, true);
+    missing
+}
+
+/// Every note the tree carries, as it must appear in the emitted YAML.
+///
+/// Same reach claim as [`toml_missing_notes`], read through the YAML writer's own spelling rule:
+/// `push_note_text` drops the note's outer blanks and writes each interior break as a space, so the
+/// flattened text is what has to appear. A blank note is skipped rather than reported — it has no
+/// spelling this engine's reader keeps, and `note_is_writable` drops it on purpose, which is also
+/// why the empty `trimmed` is not a loss.
+fn yaml_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    collect_note_texts(node, emitted, &mut missing, false);
     missing
 }
 
@@ -382,6 +398,24 @@ proptest! {
         prop_assert!(
             missing.is_empty(),
             "{} note(s) lost by pretty JSON5, on:\n{pretty}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+    }
+
+    // The YAML column had no generative note-conservation claim: `tests/note_survival.rs` asserts
+    // the same invariant, but over the committed fuzz corpus, so a shape no seed spells was never
+    // asked. This asks it of `arb_custom_node` — anchors, tags, block scalars, flow containers and
+    // notes stacked on multi-node trees — and it fails the way that file describes: the reader
+    // recorded the note, so the writer has to emit it. What neither can see is a note lost during
+    // ingest (the AST never had it) and the shapes outside this generator (`Alias`).
+    #[test]
+    fn prop_yaml_writer_carries_every_note(node in arb_custom_node()) {
+        let text = crate::serializer::to_yaml(&node);
+        let missing = yaml_missing_notes(&node, &text);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost, on:\n{text}\nlosses:\n{}",
             missing.len(),
             missing.join("\n")
         );

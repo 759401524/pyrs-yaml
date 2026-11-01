@@ -43,6 +43,16 @@ status: new
   ヘッダ上の `# [` は最初のメンバーではなく項目自身に読み戻される）と
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（入れ子配列自身のコメントはそのブ
   ラケットの上に残る）。
+- **YAML 書き出し側の注記保存は、いま生成木の上でも課される** — この側のオラクルは
+  `tests/note_survival.rs` ひとつだけで、しかもコミット済みの fuzz コーパスを歩くものだった。種が綴
+  れない形は一度も問われていない。`prop_yaml_writer_carries_every_note` は `arb_custom_node` に同じ
+  不変条件を課す——アンカー、タグ、ブロックスカラー、フローコンテナ、多ノード木に積まれた注記—— そし
+  て各注記を書き出し側自身の綴り規則で読む。`push_note_text` は注記の外側の空白を落とし、内部の改行
+  を空白に書き、`note_is_writable` は空白だけの注記を意図的に捨てるので、空の注記は喪失ではなく除外
+  である。本当に赤くなる。`note_is_writable` を `false` にすると最初のサンプルが `successes: 0` で落
+  ち、この木では 10,000 件の生成ケースが通る。見えないものも明記する。取り込み段階で失われた注記は
+  AST に届いておらず、`Alias` は生成器の外にある。層は 35 プロパティになり、`QUALITY_MATRIX.md` の行
+  は手書きではなく `scripts/quality_matrix.py --write-rows` が書き直した。
 - **Python の生成層が、葉では名前の付けられなかった家族を描くようになった** — `arbitrary_json` は葉
   を `None`、`bool`、±10^12 内の `int`、有限の `float`、`str` に限っていた。何が除外されていたかは葉
   を数えれば出る。25,000 回の抽出は 270,602 枚の葉を作り、この五種がそれぞれ 58,064 / 53,396 /

@@ -22,8 +22,8 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 865 Rust `#[test]`, 2,088 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 34 proptest properties (30 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| unit / integration | 866 Rust `#[test]`, 2,088 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 35 proptest properties (31 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 197 seeds of which 107 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
@@ -859,7 +859,7 @@ The question that filled it again on 2026-10-14 was about the tier itself: `prop
 counts properties, and a count is satisfied by a property that never asserts.
 `conditional_property_assertions()` therefore reads each property body for a guard of the shape
 `if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
-round-trip classifier has since replaced that guard, and the probe now reports 0 of the 34 properties.
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 35 properties.
 Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
 to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it
