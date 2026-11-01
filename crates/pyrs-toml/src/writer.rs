@@ -25,13 +25,19 @@ use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{ParseError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
 
+/// Initial capacity for the document buffer; the argument and its measurements live on the
+/// JSON writer's `OUT_CAPACITY`. This writer's half of it, in counted instructions on the same
+/// host: `to_toml_medium` 28,980,558 → 23,915,923 (−17.5%), `to_toml_notes` 16,468,905 →
+/// 12,071,715 (−26.7%), `to_toml_long_strings` 30,857,011 → 29,239,827 (−5.2%).
+const OUT_CAPACITY: usize = 512;
+
 /// Render a value-only AST as TOML text. `SerializeError::UnsupportedValue` carries
 /// the rejection reason for shapes TOML cannot represent.
 pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     let CustomNode::Mapping { pairs, .. } = node else {
         return Err(SerializeError::UnsupportedValue("toml-requires-table-root"));
     };
-    let mut out = String::new();
+    let mut out = String::with_capacity(OUT_CAPACITY);
     // PR #131: a document-level standalone comment (the very first `# note`
     // of a TOML doc, or a note on a YAML-origin root) lands on the root
     // mapping's leading-note list — the same shape the JSON writer

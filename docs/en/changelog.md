@@ -1196,6 +1196,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **A writer's output buffer takes one allocation instead of climbing the growth ladder** — the
+  JSON, JSONC, JSON5, TOML and YAML writers each began with `String::new()`, which reaches 512
+  bytes through seven reallocations (8, 16, 32, 64, 128, 256, 512). On a config-sized document
+  those copies and their malloc/free pairs are most of what the write does. Measured in counted
+  instructions on the same host under the gate's pinned `rustc 1.97.1`: `to_json_medium`, a
+  300-byte document, 22,884,635 → 17,718,056 (−22.6%), `to_toml_notes` 16,468,905 → 12,071,715
+  (−26.7%), `serialize_block` 14,518,712 → 10,899,301 (−24.9%), `serialize_note_flow` 64,411,669
+  → 59,227,943 (−8.1%), and every one of the sixteen writer scenarios moves down, the smallest
+  being `to_toml_long_strings` −5.2%. The control is the same tree without the change, which read
+  the committed floor of `to_json_medium` to +0.002% — so the movement is the edit, not the host.
+  `edit_set_metadata`, which regenerates a spliced pair through the same serializer, moves −7.3%;
+  the other edit scenarios land between −1.3% and neutral, and `safe_dump_*` / `to_python_*` sit
+  inside ±0.28%. One capacity for every document rather than a size estimate: measuring the tree
+  first would cost a second walk, more than the growth it removes on exactly the documents where
+  the chain is long, while a larger document starts from this floor and grows geometrically — it
+  loses the same seven reallocations and pays nothing extra. No byte of output changes; the floors
+  that price these writers are refreshed with this change.
 - **A block note is written in one pass** — `to_jsonc_notes` and `to_json5_notes` price the
   flattening a note passes through before it is written as a comment, and the block half of it
   allocated twice: `push_block_note` did `text.replace(['\\n', '\\r'], " ").trim()
