@@ -321,6 +321,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The Markdown formatter no longer edits the inside of a code span** — `rumdl fmt`'s MD038 fixes
+  "spaces inside code span elements" by *deleting* the byte, so a span written as backtick, space,
+  `? > #I` came back without that space in all five changelog mirrors and in
+  `docs/dev/quality-ledger.md`, while the hook printed `Passed`. The rule's premise holds only for
+  the paired case that CommonMark already strips at render; a leading-only space is content — here
+  the indentation that makes a YAML sample a nested marker body. `MD038` joins the disables in
+  `.rumdl.toml`, and the measurement that makes this free is that `rumdl check` over all 178 tracked
+  pages reported 0 findings on 2026-11-01 — the reading a fix-on-touch rule must leave behind, since
+  any such span is rewritten the first time its page is edited, so none survive to be counted. A
+  formatter's output *is* the fixed point, which is why no later `prek` run and no CI job can see
+  the edit.
+  `tests/test_rumdl_span_rule.py` pins the rule, the three disables before it and the reason written
+  beside it; `docs/dev/quality-ledger.md` `(id)` carries the reproduction and the trade.
 - **A note no longer splits a value across two lines** — a mapping entry remembers where its own
   line starts, and closing a pending tag-only line inserts that value's `~` *before* the remembered
   offset without moving it, so the next key's inline note was dropped into the middle of the
