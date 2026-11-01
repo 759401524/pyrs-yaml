@@ -20,14 +20,18 @@ use pyrs_ast::ast::CustomNode;
 use pyrs_ast::ast::NodeMap;
 use pyrs_ast::error::{DepthError, ParseError};
 
-/// Default nesting limit for arrays / inline tables, mirroring the JSON
-/// pipeline's `DEFAULT_MAX_DEPTH` (`pyrs-json`).
-/// TOML's `parse_value` is the single recursion funnel (arrays and inline
-/// tables both re-enter through it), so bounding it here caps the whole
-/// descent. Without it a deeply nested `[[[[…]]]]` / `{a={b={c=…}}}` input
-/// recursed until the native stack overflowed and aborted the process
-/// (verified: 5000-deep array → `0xC00000FD`), the TOML analogue of the
-/// #166 YAML merge stack overflow.
+/// Default nesting limit for the whole descent.
+///
+/// Two recursions build a tree and both are bounded here. `parse_value` is the
+/// funnel for arrays and inline tables (`{a={b=…}}`, `[[[…]]]`), and the
+/// iterative table-descents in `register_kv` (a dotted key `a.b.c = …`) and
+/// `register_header` (`[a.b.c]`) nest one table per path segment — a shape
+/// `parse_value` never re-enters, so it needs its own check. Without the
+/// descents a deeply nested dotted key built a tree whose conversion and
+/// writer recursion overflowed the native stack (verified: a 2000-segment
+/// `a.a.…a = 1` aborts `0xC00000FD` on a 2 MiB thread), and the writer then
+/// re-spelled that chain as an inline table the reader refused to re-parse —
+/// the TOML analogue of the #166 YAML merge stack overflow.
 pub const DEFAULT_MAX_DEPTH: usize = 1000;
 
 /// TOML grammar dialect to accept at parse time.
@@ -1658,6 +1662,14 @@ impl<'a> Parser<'a> {
         if key.is_empty() {
             return Err(self.err_at("empty key path", key_start));
         }
+        // A dotted path nests one table per segment below the current section, so the leaf lands at
+        // `current.len() + key.len()` tables deep. The parser lays that chain in iteratively, so the
+        // `parse_value` funnel never sees it — bounding it here is what makes the guard's promise
+        // ("caps every nesting path") true for dotted keys, and what keeps the writer's inline-table
+        // re-spelling of the chain inside the depth the reader will accept back.
+        if self.current.len() + key.len() > DEFAULT_MAX_DEPTH {
+            return Err(ParseError::MaxDepthExceeded(DepthError(DEFAULT_MAX_DEPTH)));
+        }
         // Walk from the root through the current section path, then descend
         // along the dotted key. Mutable-pointer traversal mirrors
         // `register_header` because Rust's borrow-checker rejects the naive
@@ -1761,6 +1773,11 @@ impl<'a> Parser<'a> {
         // element of `[[a.b]]` the first element's identity, which is what refused four valid
         // documents of the official corpus. The text is built only where a rejection quotes it.
         let joined = || key_text(key);
+        // A header names its table from the root, so its path length is that table's depth. Same
+        // reason as `register_kv`: the descent is iterative, so the `parse_value` funnel misses it.
+        if key.len() > DEFAULT_MAX_DEPTH {
+            return Err(ParseError::MaxDepthExceeded(DepthError(DEFAULT_MAX_DEPTH)));
+        }
         let mut root = &mut self.root as *mut CowTable;
         for (i, (seg, seg_at)) in key.iter().enumerate() {
             let last = i + 1 == key.len();
@@ -2251,6 +2268,76 @@ mod tests {
         on_big_stack(|| {
             let src = format!("a = {}{}", "[".repeat(500), "]".repeat(500));
             assert!(from_toml(&src).is_ok());
+        });
+    }
+
+    #[test]
+    fn dotted_key_path_beyond_budget_errors_instead_of_overflowing() {
+        // The iterative table-descent in `register_kv` builds a nested table per
+        // dotted segment, so the `parse_value` funnel never counted it. Before
+        // that path was bounded, a fuzz input of ~1100 dotted segments
+        // (`a.b.b.…b = 1`) overflowed the native stack on a 2 MiB thread and
+        // only aborted; on a big stack it parsed, and the writer re-spelled the
+        // chain as an inline table the reader then refused — a round trip that
+        // lost the document. Run on the default test thread (2 MiB) so an
+        // overflow aborts the process rather than passing quietly; the guard
+        // must answer with `MaxDepthExceeded` first.
+        let over = format!("{} = 1\n", vec!["a"; 1100].join("."));
+        let err =
+            from_toml(&over).expect_err("over-nested dotted key must be rejected, not overflow");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+
+        let way_over = format!("{} = 1\n", vec!["a"; 2000].join("."));
+        let err =
+            from_toml(&way_over).expect_err("far-over-nested dotted key must reject cleanly too");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+    }
+
+    #[test]
+    fn header_path_beyond_budget_errors_instead_of_overflowing() {
+        // The sibling funnel: `register_header` descends from the root one table
+        // per `[a.b.c]` segment, also iteratively, also uncounted until now.
+        let path = vec!["a"; 1100].join(".");
+        let src = format!("[{path}]\nx = 1\n");
+        let err = from_toml(&src).expect_err("over-nested table header must be rejected");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+    }
+
+    #[test]
+    fn dotted_key_within_budget_round_trips_without_inflation() {
+        // An accepted dotted path must survive a round trip: the old gap let the
+        // writer re-spell the table chain as an inline table the reader refused,
+        // so `parse -> emit -> parse` rejected a document `parse` had accepted.
+        // Depth 300 is comfortably inside both the budget and the smallest test
+        // thread stack, so this proves fidelity rather than the ceiling.
+        let path = vec!["a"; 300].join(".");
+        let src = format!("{path} = 1\n");
+        let node = from_toml(&src).expect("within-budget dotted key must parse");
+        let once = crate::to_toml(&node).expect("and emit");
+        let again = from_toml(&once).expect("and re-parse the emission");
+        let twice = crate::to_toml(&again).expect("and re-emit");
+        assert_eq!(once, twice, "a within-budget dotted path is a fixed point");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn dotted_key_at_the_budget_edge_still_round_trips() {
+        // The accepted edge itself: a 999-segment path sits one below the
+        // rejection boundary and must settle, not drift. It needs the big stack
+        // because a legal ~1000-deep tree recurses in the conversion and writer
+        // — the same budget-vs-native-stack residual the array tests already
+        // acknowledge by running here (see `docs/dev/quality-ledger.md` `(hm)`).
+        on_big_stack(|| {
+            let path = vec!["a"; 999].join(".");
+            let src = format!("{path} = 1\n");
+            let node = from_toml(&src).expect("at-edge dotted key must parse");
+            let once = crate::to_toml(&node).expect("and emit");
+            let again = from_toml(&once).expect("the writer's spelling must re-parse");
+            let twice = crate::to_toml(&again).expect("and re-emit");
+            assert_eq!(
+                once, twice,
+                "the accepted edge is a fixed point, not a lost document"
+            );
         });
     }
 
