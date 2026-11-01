@@ -307,6 +307,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A blank note no longer forces the multi-line shape whose comment it drops** — a note that is
+  whitespace once trimmed has nothing to print, yet its bare *presence* still met the layout
+  predicate, so `to_toml` moved `A = [[ "!"]]` — a single space stood as the inner sequence's
+  leading note — onto several lines and then wrote no `#` for it. A multi-line array carrying no
+  comment re-reads as the undecorated shape, so the next emission came back compact and the two
+  differed; `prop_toml_writer_is_fixed_point` drew it at 20,000 cases. Dropping the empty text in
+  the note writer was only half the answer — an earlier guard had already stopped the bare `#` line
+  the reader folded into a *second* empty note, but a container still left the compact form for a
+  note it then refused to print, which is a shape that is not a fixed point either. The writer now
+  treats a note blank once trimmed as absent where it picks the layout too: `note_is_writable` gates
+  both container arms' shape predicate, `element_has_note` and the two notated routes' inline slot,
+  so the decision reads the note text and agrees with what gets written — the YAML `write_note_line`
+  and the conservation oracle `toml_missing_notes`, which already exempted a blank note from
+  reaching the document, answer the same way.
+  `a_whitespace_note_in_a_nested_array_leaves_the_compact_shape_and_settles` pins the compact bytes
+  and the fixed point; the control is the predicate made to answer `true` — presence again — which
+  reddens it: the first emission is then the multi-line array carrying no comment, and only the
+  second is the compact one. The price sits on note-heavy documents, because the decision now reads
+  the note text once: on the pinned `rustc 1.97.1` this host gives `to_toml_medium` −1.14 % (the
+  note-free path is untouched) and `to_toml_notes` +1.02 % over their floors, the latter past the
+  line and named for the baseline refresh's `accept_drift`, which owns the enforcing-image number.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

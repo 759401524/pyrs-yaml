@@ -222,7 +222,29 @@ fn push_note_text(out: &mut String, text: &str) {
 /// one of these per comment line and `String as fmt::Write` costs a `Formatter` and a `write_str`
 /// call each time. Byte-identical to the macro it replaces.
 fn write_note(out: &mut String, text: &str) {
+    // A note with nothing to say is not a comment line. `push_note_text` trims, so a
+    // whitespace-only note would emit a bare `# ` that the reader hands back as *another*
+    // empty standalone note — so every round adds one, and the writer never reaches a fixed
+    // point (`prop_toml_writer_is_fixed_point` at 20,000 cases: `A = [[ "!"]]` with a
+    // whitespace-only note on the inner sequence). The YAML `write_note_line` drops the same
+    // note on this ground; matching it keeps both spokes idempotent.
+    if text.trim().is_empty() {
+        return;
+    }
     out.push_str("# ");
+    push_note_text(out, text);
+    out.push('\n');
+}
+
+/// One standalone `  # note` line inside a container, guarded exactly like [`write_note`]: a
+/// whitespace-only note writes nothing, so it cannot become the bare `# ` line the reader hands
+/// back as another empty note — the growth that kept `prop_toml_writer_is_fixed_point` off a fixed
+/// point (20,000 cases: `A = [[ "!"]]` with a ` ` note on the inner sequence).
+fn container_note_line(out: &mut String, text: &str) {
+    if text.trim().is_empty() {
+        return;
+    }
+    out.push_str("  # ");
     push_note_text(out, text);
     out.push('\n');
 }
@@ -348,6 +370,25 @@ fn reject_colliding_texts(pairs: &NodeMap<CustomNode, CustomNode>) -> Result<(),
     Ok(())
 }
 
+/// Whether a comment carries text the writer can place.
+///
+/// A TOML comment is `#` plus text to end of line, and nothing after the marker is content a reader
+/// recovers — so a note blank once trimmed carries nothing a comment can hold, and the conservation
+/// oracle exempts it (`toml_missing_notes` skips a trimmed-empty text). The writer then has to treat
+/// it as absent *everywhere*, or the two halves disagree: a whitespace-only note whose *presence*
+/// still pushes a container out of the compact form, while its empty *text* is dropped on write,
+/// leaves a multi-line array carrying no comment at all — and the reader hands that back as the
+/// undecorated shape, so the second emission is the compact one (`prop_toml_writer_is_fixed_point`).
+///
+/// `chars().all(is_whitespace)` rather than `trim().is_empty()`: a note is blank exactly when every
+/// character is whitespace, and `all` stops at the first non-space byte, so a real note costs one
+/// comparison. `trim` would also scan the *trailing* whitespace, and `container_note_line` /
+/// `write_note` still trim the same text to lay it out — that second read is the one that pays for
+/// the shape decision this predicate makes.
+fn note_is_writable(comment: &pyrs_ast::ast::Comment) -> bool {
+    !comment.text.chars().all(char::is_whitespace)
+}
+
 /// Whether an array element owns a note the TOML spelling has to show.
 ///
 /// `has_notes` first: it answers from two inline discriminants and never dereferences the boxed
@@ -355,7 +396,10 @@ fn reject_colliding_texts(pairs: &NodeMap<CustomNode, CustomNode>) -> Result<(),
 /// then costs one such test per element instead of two view lookups.
 fn element_has_note(item: &CustomNode) -> bool {
     item.has_notes()
-        && (!item.leading_comments().is_empty() || item.comment().is_some_and(|c| !c.standalone))
+        && (item.leading_comments().iter().any(note_is_writable)
+            || item
+                .comment()
+                .is_some_and(|c| !c.standalone && note_is_writable(c)))
 }
 
 /// The container node's own leading notes - the fifth slot, and the one no member carries.
@@ -394,15 +438,11 @@ fn write_notated_array(
     // a note carried by the array back from - so the second emission finds it in the slot its own
     // first emission chose.
     for c in leading {
-        out.push_str("  # ");
-        push_note_text(out, &c.text);
-        out.push('\n');
+        container_note_line(out, &c.text);
     }
     for (i, it) in items.iter().enumerate() {
         for c in it.leading_comments() {
-            out.push_str("  # ");
-            push_note_text(out, &c.text);
-            out.push('\n');
+            container_note_line(out, &c.text);
         }
         out.push_str("  ");
         write_value(out, it)?;
@@ -411,7 +451,10 @@ fn write_notated_array(
         // leading note - so that placement moved the comment on every round and the text never
         // settled. Anywhere but last, the note gets its own line after the element, which is where
         // the reader hands it to the next one.
-        match it.comment().filter(|c| !c.standalone) {
+        match it
+            .comment()
+            .filter(|c| !c.standalone && note_is_writable(c))
+        {
             Some(c) if i + 1 == items.len() => {
                 out.push_str(" # ");
                 push_note_text(out, &c.text);
@@ -445,9 +488,7 @@ fn write_notated_table(
     // leading note from - the same answer #146 gave for a member's key-line note.
     out.push_str("{\n");
     for c in leading {
-        out.push_str("  # ");
-        push_note_text(out, &c.text);
-        out.push('\n');
+        container_note_line(out, &c.text);
     }
     let count = pairs.len();
     let mut unscanned = true;
@@ -457,9 +498,7 @@ fn write_notated_table(
             reject_colliding_texts(pairs)?;
         }
         for c in k.leading_comments() {
-            out.push_str("  # ");
-            push_note_text(out, &c.text);
-            out.push('\n');
+            container_note_line(out, &c.text);
         }
         // A note that ended its key's line reaches this writer on the key's *inline* slot - that is
         // how the hub hands it over, because there a note finishing the key's line belongs to the
@@ -467,16 +506,12 @@ fn write_notated_table(
         // above the member: the position the TOML reader reports a note from. Measured, the second
         // emission is identical.
         if let Some(c) = k.comment().filter(|c| !c.standalone) {
-            out.push_str("  # ");
-            push_note_text(out, &c.text);
-            out.push('\n');
+            container_note_line(out, &c.text);
         }
         // A member whose value is an empty container has no line of its own for the note the
         // container carries, so the note takes the member's line and the braces hold `{}`.
         for c in unplaced_value_notes(v) {
-            out.push_str("  # ");
-            push_note_text(out, &c.text);
-            out.push('\n');
+            container_note_line(out, &c.text);
         }
         let last = idx + 1 == count;
         out.push_str("  ");
@@ -489,7 +524,7 @@ fn write_notated_table(
         // next key on re-read, so the next emission moved it and the text never settled (proptest
         // `prop_toml_writer_is_fixed_point`, 20 000 cases). Anywhere but last, the note gets its own
         // line after the member, which is the position the reader reports it from.
-        match v.comment().filter(|c| !c.standalone) {
+        match v.comment().filter(|c| !c.standalone && note_is_writable(c)) {
             Some(c) if last => {
                 out.push_str(" # ");
                 push_note_text(out, &c.text);
@@ -633,7 +668,7 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // the line the caller already owns, above the key.
             if !items.is_empty() {
                 let leading = container_leading_notes(node);
-                if !leading.is_empty() || items.iter().any(element_has_note) {
+                if leading.iter().any(note_is_writable) || items.iter().any(element_has_note) {
                     return write_notated_array(out, items, leading);
                 }
             }
@@ -665,12 +700,14 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // writes the note on the member's own line.
             if !pairs.is_empty() {
                 let leading = container_leading_notes(node);
-                if !leading.is_empty()
+                if leading.iter().any(note_is_writable)
                     || pairs.iter().any(|(k, v)| {
-                        !k.leading_comments().is_empty()
-                            || k.comment().is_some_and(|c| !c.standalone)
-                            || v.comment().is_some_and(|c| !c.standalone)
-                            || !unplaced_value_notes(v).is_empty()
+                        k.leading_comments().iter().any(note_is_writable)
+                            || k.comment()
+                                .is_some_and(|c| !c.standalone && note_is_writable(c))
+                            || v.comment()
+                                .is_some_and(|c| !c.standalone && note_is_writable(c))
+                            || unplaced_value_notes(v).iter().any(note_is_writable)
                     })
                 {
                     return write_notated_table(out, pairs, leading);
@@ -1435,6 +1472,55 @@ mod tests {
             to_toml(&back).expect("writes twice"),
             text,
             "not a fixed point"
+        );
+    }
+
+    #[test]
+    fn a_whitespace_note_in_a_nested_array_leaves_the_compact_shape_and_settles() {
+        // `prop_toml_writer_is_fixed_point` at 20,000 cases: a value carrying a
+        // whitespace-only standalone note made `write_note` emit a bare `# ` line, which the
+        // reader hands back as *another* empty standalone note, so every round adds one and the
+        // writer never settles (`A = [[ "!"]]` with a ` ` note on the inner sequence).
+        //
+        // Dropping the empty text in `write_note` alone is only half the answer: the note's
+        // *presence* still pushed the array onto several lines while its text was gone, so the
+        // first emission was multi-line, the reader recovered no note, and the second was compact
+        // — a shape that is not a fixed point either. The writer therefore treats a note blank once
+        // trimmed as absent in the layout decision too (`note_is_writable`), matching the YAML
+        // writer's `write_note_line` and the conservation oracle's exemption of a blank note, so
+        // the array stays compact and round one equals round two.
+        let mut inner = CustomNode::Sequence {
+            items: vec![CustomNode::plain_scalar("!")],
+            flow_style: false,
+            meta: pyrs_ast::ast::NodeMeta::default(),
+        };
+        inner.push_leading_comment(pyrs_ast::ast::Comment {
+            text: " ".into(),
+            standalone: true,
+        });
+        let outer = CustomNode::Sequence {
+            items: vec![inner],
+            flow_style: false,
+            meta: pyrs_ast::ast::NodeMeta::default(),
+        };
+        let mut pairs = pyrs_ast::ast::NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("A"), outer);
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: pyrs_ast::ast::NodeMeta::default(),
+        };
+
+        let one = to_toml(&node).expect("the tree writes");
+        assert_eq!(
+            one, "A = [[\"!\"]]\n",
+            "a blank note must not force the multi-line shape"
+        );
+        let back = from_toml(&one).expect("and the text reads");
+        assert_eq!(
+            to_toml(&back).expect("re-serializes"),
+            one,
+            "a whitespace-only note must not make the writer non-idempotent: {one:?}"
         );
     }
 

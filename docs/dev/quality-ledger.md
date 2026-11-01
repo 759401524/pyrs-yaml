@@ -11246,6 +11246,53 @@ does not mistake it for this change. `to_toml_medium` is not image-keyed, and th
 reading sits 412 instructions from the committed floor, so +0.46% is a usable forecast rather than a
 verdict; the enforcing reading is CI's `ir` job.
 
+### (ih) A blank note met the layout predicate and dropped its own text, so the shape was not a fixed point (2026-11-01)
+
+`(hw)` added the conservation oracle and `(hy)` closed a loss it found; both left the byte fixed
+point alone, because a note that never reaches the text moves neither emission. A note whose text is
+blank once trimmed is the shape those two could not see: the oracle exempts it (`toml_missing_notes`
+skips a trimmed-empty text — there is nothing a comment can carry), the tree comes back identical,
+and only `prop_toml_writer_is_fixed_point`, which compares the emission to itself, asks whether the
+*form* settles. It drew `A = [[ "!"]]` — a single space standing as the inner sequence's leading
+note — at 20,000 cases.
+
+An element carrying that blank note still met the layout predicate by its bare *presence*, so
+`write_value` sent the outer array to `write_notated_array` and onto several lines; the note's empty
+text then dropped on write, so the emitted array carried no comment at all. A commentless multi-line
+array re-reads as the undecorated shape, the second emission is the compact one, and the two lines
+differed. Dropping the blank text at the point of write — the `write_note` / `container_note_line`
+guards — was the necessary half, and it stopped the bare `#` line the reader folded into a *second*
+empty note, but it left the first half unowned: a container still left the compact form for a note
+it refused to print, which is not a fixed point either.
+
+The writer now reads the note text where it picks the layout too, so the two halves agree.
+`note_is_writable` (a note is blank exactly when every char is whitespace, tested with
+`chars().all(is_whitespace)` so a real note costs the first non-space byte) gates both container
+arms' shape predicate, `element_has_note`, and the two notated routes' inline slot. It mirrors the
+YAML `write_note_line`, which already dropped the same note, and the conservation oracle's exemption
+— one rule, both spokes. `a_whitespace_note_in_a_nested_array_leaves_the_compact_shape_and_settles`
+holds the compact bytes and the fixed point; the control is `note_is_writable` made to answer `true`
+(presence again), which reddens it with `left: "A = [\n  [\n  \"!\"\n]\n]\n"` — the commentless
+multi-line first emission — against the compact right, and nothing else in the crate changes
+verdict. `emit_pair`'s trailing ` # ` was left ungated on purpose: a top-level value's blank inline
+note re-reads as that value's own inline note, so it is stable, and the 20,000-case run never drew
+an unstable form there; gating it cost +3.65% on the writer and bought nothing, so it ships as trunk
+wrote it.
+
+The price is note-shaped, which is the whole reason this row exists. The guard runs one pass over
+the note text on a decorated container and nothing on an undecorated one, so the movement lands only
+on the scenario carrying notes. On this host the gate's three repeats agree to 0.000%:
+`to_toml_notes` is 16,636,601 against its committed floor 16,468,905 — **+1.02%**, past the 0.5%
+line. The control that this is code, not the host, is `to_toml_medium` at 28,648,972 (−1.14% *under*
+the same floor: the note-free path the change cannot touch) and `from_toml_medium` at −0.08%, both
+sitting in the same direction trunk's own host reading moves. This host reproduces trunk's drift
+verbatim — `load_toml_medium` / `load_toml_long_strings` at +1.65% / +2.98% over their image-keyed
+floors and `documents_short_strings` / `documents_long_strings` 12.77% / 8.22% under committed
+floors, the rows `(hy)` names — so those are not this change. `to_toml_notes` is not image-keyed;
+the enforcing reading is CI's `ir` job, and the honest forecast is that it sits past the line, which
+routes it to the baseline refresh's `accept_drift` as its own floor commit rather than a local
+`--update` that would move the floor to this host.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
