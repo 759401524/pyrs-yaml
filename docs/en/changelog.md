@@ -319,11 +319,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the spec's reading, and a pair the writer could only have spelled apart by accident.
   `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` pins both sides, and the property
   tier's key table carries the same classes. The control is the pre-fix behaviour put back
-  (`note_tagged_key` answering "new" for every key): both tests redden and the archived seed
-  crashes with `deadly signal`, rc 77, where the fixed build replays it clean. Price: none on the
-  allocation gate — the table hangs off the receiver keyed by stack depth and is created by the
-  first tagged key, so `parse_medium` holds at 67 allocations / 24 512 bytes on std and 74 /
-  24 952 without it.
+  (`insert_tagged_key` answering "new" for every key): both tests redden and the archived seed
+  crashes with `deadly signal`, rc 77, where the fixed build replays it clean. A table filled
+  per key was the first shape and the instruction-count gate priced it off — its call site sat
+  in `push_node`, unreachable on a fixture that holds no tag, and moved every `parse_*` scenario
+  past the 0.50% line. The check therefore runs over a closed mapping's pair list, reached only
+  when the document carried a tag. Price: none on the allocation gate — `parse_medium` holds at
+  67 allocations / 24 512 bytes on std and 74 / 24 952 without it.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
