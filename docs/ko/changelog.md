@@ -43,6 +43,17 @@ status: new
   멤버가 아니라 항목 자체로 다시 읽힌다)와
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
   위에 남는다).
+- **YAML 기록 단의 주석 보존, 이제 생성 트리에서도 값을 매긴다** — 이쪽의 예언기는
+  `tests/note_survival.rs` 하나뿐이었고, 그것은 커밋된 fuzz 코퍼스를 걷는다. 시드가 적어 내지 못하는
+  모양은 한 번도 물어본 적이 없다. `prop_yaml_writer_carries_every_note`는 `arb_custom_node`에 같은
+  불변식을 요구한다. 앵커, 태그, 블록 스칼라, 플로 컨테이너, 여러 노드 트리에 쌓인 주석이며, 각
+  주석을 기록 단 자신의 표기 규칙으로 읽는다. `push_note_text`는 주석 바깥의 공백을 떼고 내부
+  줄바꿈을 공백으로 쓰며, `note_is_writable`은 공백뿐인 주석을 의도적으로 버리므로 빈 주석은 손실이
+  아니라 예외다. 실제로 빨개진다. `note_is_writable`이 `false`를 반환하게 하면 첫 표본이
+  `successes: 0`으로 실패하고, 이 트리에서는 10,000건의 생성 사례가 통과한다. 보이지 않는 것도 적어
+  둔다. 수집 단계에서 사라진 주석은 AST에 닿지 않았고, `Alias`는 생성기 밖에 있다. 계층은 이제 35개
+  속성이며, `QUALITY_MATRIX.md`의 행은 손으로 고치지 않고 `scripts/quality_matrix.py --write-rows`가
+  다시 썼다.
 - **Python 생성 계층, 잎으로는 이름을 붙일 수 없던 계열을 이제 그린다** — `arbitrary_json`은 잎을
   `None`, `bool`, ±10^12 안의 `int`, 유한한 `float`, `str`으로 제한했다. 무엇이 빠졌는지는 잎을 세면
   나온다. 25,000번의 추출은 잎 270,602개를 만들고, 다섯 종류가 각각 58,064 / 53,396 / 53,251 /

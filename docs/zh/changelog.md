@@ -41,6 +41,14 @@ status: new
   回到表项本身，而不是它的第一个成员）与
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（嵌套数组自己的注释留在它的括号上
   方）。
+- **YAML 写入端的注释守恒如今在生成树上计价** —— 这一侧此前只有一个预言机 `tests/note_survival.rs`，
+  它遍历已提交的 fuzz 语料：种子拼不出的形状从未被问到。`prop_yaml_writer_carries_every_note` 对
+  `arb_custom_node` 提出同一不变量——锚点、标签、块标量、流式容器以及多节点树上叠加的注释——并按写入端
+  自己的拼写规则读取：`push_note_text` 去掉注释两端的空白、把内部换行写成空格，`note_is_writable`
+  有意丢弃空白注释，因此空注释属豁免而非丢失。它真会红：让 `note_is_writable` 返回 `false`，第一个
+  样本即以 `successes: 0` 失败；在这棵树上 10,000 个生成用例通过。看不见的部分写明：摄取阶段丢掉的
+  注释从未进入 AST，`Alias` 不在生成器范围内。属性层现为 35 条，`QUALITY_MATRIX.md` 的行改由
+  `scripts/quality_matrix.py --write-rows` 重写，而非手改。
 - **Python 生成层如今画出它的叶子从前叫不出名字的家族** — `arbitrary_json` 原先把叶子限制在 `None`、
   `bool`、±10^12 以内的 `int`、有限 `float` 和 `str`，而清点它生成的叶子正好说明这排除了什么：25,000
   次抽样产出 270,602 片叶子，这五类各 58,064 / 53,396 / 53,251 / 52,978 / 52,913 片，此外一片别的类

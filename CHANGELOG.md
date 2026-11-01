@@ -37,6 +37,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
   above its brackets).
+- **The YAML writer's note conservation is charged on generated trees now** — the hub's writer had
+  one oracle, `tests/note_survival.rs`, and it walks the committed fuzz corpus: a shape no seed
+  spells was never asked. `prop_yaml_writer_carries_every_note` asks the same invariant of
+  `arb_custom_node` — anchors, tags, block scalars, flow containers and notes stacked on multi-node
+  trees — reading each note through the writer's own spelling rule: `push_note_text` drops the
+  note's outer blanks and writes every interior break as a space, and `note_is_writable` drops a
+  blank note on purpose, so an empty note is exempt rather than reported. It bites: make
+  `note_is_writable` return false and the first sample reddens with `successes: 0`; 10,000 generated
+  cases pass on this tree. What it cannot see is stated rather than implied — a note lost during
+  ingest never reached the AST, and `Alias` is outside the generator. The tier is 35 properties now,
+  and `QUALITY_MATRIX.md`'s rows were rewritten by `scripts/quality_matrix.py --write-rows` rather
+  than by hand.
 - **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
   fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
   `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602
