@@ -357,6 +357,11 @@ fn collapse_noted_map(pairs: &mut NodeMap<CustomNode, CustomNode>) {
 /// note and the writer's second round differed. All of them now go to the leading list, which holds
 /// any number and preserves source order. A lone same-line comment still owns the inline slot, so the
 /// nuance a human writes (`{"k": 1 // the port\n}`) is untouched.
+///
+/// A node can meet two batches, which is how a same-line note on either side of an array element
+/// reaches it (`[/*a*/ 1 /*b*/]`). The slot holds the first one; a later same-line note goes to the
+/// leading list rather than overwriting it - the same reason #361 promoted a colliding group, applied
+/// one batch at a time because the second batch is only known after the element has been read.
 fn attach_pending(node: &mut CustomNode, pending: &[PendingComment]) {
     // Every key and every value meets this function, and in a document without comments the whole
     // job is discovering that the list is empty - which `from_json_medium` measured at 3.23% of its
@@ -374,15 +379,19 @@ fn attach_pending(node: &mut CustomNode, pending: &[PendingComment]) {
         }
         return;
     }
+    let mut inline_taken = node.comment().is_some();
     for pc in pending {
-        let comment = pyrs_ast::ast::Comment {
-            text: alloc::sync::Arc::from(pc.text.as_str()),
-            standalone: pc.own_line,
-        };
-        if pc.own_line {
-            node.push_leading_comment(comment);
+        if pc.own_line || inline_taken {
+            node.push_leading_comment(pyrs_ast::ast::Comment {
+                text: alloc::sync::Arc::from(pc.text.as_str()),
+                standalone: true,
+            });
         } else {
-            node.set_comment(comment);
+            node.set_comment(pyrs_ast::ast::Comment {
+                text: alloc::sync::Arc::from(pc.text.as_str()),
+                standalone: false,
+            });
+            inline_taken = true;
         }
     }
 }
@@ -1706,9 +1715,20 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
     /// `side` says which node the group belongs to in the consumer's build order. The two facts
     /// are separate on purpose: `owns_line` is what the source did, `owner` is where the note
     /// lands, and only the producer knows the second one.
-    fn group(&mut self, group: Vec<PendingComment>, side: NoteSide, slot: GroupSlot) {
+    ///
+    /// `inline_taken` is the state of the target node's inline slot when the group begins, and the
+    /// answer is its state when the group ends. A node can meet two groups - the notes before an
+    /// array element and the ones after it - and the slot holds only the first same-line note, so
+    /// the second group must be told the slot is gone rather than promised it.
+    fn group(
+        &mut self,
+        group: Vec<PendingComment>,
+        side: NoteSide,
+        slot: GroupSlot,
+        mut inline_taken: bool,
+    ) -> bool {
         if group.is_empty() {
-            return;
+            return inline_taken;
         }
         let all_leading = slot == GroupSlot::AllLeading
             || (group.len() > 1 && group.iter().filter(|note| !note.own_line).count() > 1);
@@ -1716,7 +1736,10 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
             if self.stopped {
                 break;
             }
-            let leading = all_leading || note.own_line;
+            let leading = all_leading || note.own_line || inline_taken;
+            if !leading {
+                inline_taken = true;
+            }
             let owner = match (side, leading) {
                 (NoteSide::Following, true) => NoteOwner::FollowingLeading,
                 (NoteSide::Following, false) => NoteOwner::FollowingInline,
@@ -1733,6 +1756,7 @@ impl<'a, 's, S: EventSink<'a> + ?Sized> StreamOut<'a, 's, S> {
                 },
             );
         }
+        inline_taken
     }
 }
 
@@ -1797,7 +1821,12 @@ pub fn parse_stream_with_options_to<'a, S: EventSink<'a>>(
     // member, so the stream reports them before the root's own events and every one of them
     // leads - the one group whose slot the tree states outright.
     let root_leading = core::mem::take(&mut p.pending_comment);
-    out.group(root_leading, NoteSide::Following, GroupSlot::AllLeading);
+    out.group(
+        root_leading,
+        NoteSide::Following,
+        GroupSlot::AllLeading,
+        false,
+    );
     if out.stopped {
         return Ok(());
     }
@@ -1807,7 +1836,7 @@ pub fn parse_stream_with_options_to<'a, S: EventSink<'a>>(
     }
     p.ws();
     let root_trailing = core::mem::take(&mut p.pending_comment);
-    out.group(root_trailing, NoteSide::Preceding, GroupSlot::ByRule);
+    out.group(root_trailing, NoteSide::Preceding, GroupSlot::ByRule, false);
     if out.stopped {
         return Ok(());
     }
@@ -2363,7 +2392,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(self.err(self.key_expectation()));
             };
-            out.group(key_group, NoteSide::Following, GroupSlot::ByRule);
+            out.group(key_group, NoteSide::Following, GroupSlot::ByRule, false);
             out.decoded(token, self.pos, key, style);
             if out.stopped {
                 return Ok(());
@@ -2382,7 +2411,7 @@ impl<'a> Parser<'a> {
             // the stream reports it inside that container.
             self.ws();
             let value_group = core::mem::take(&mut self.pending_comment);
-            out.group(value_group, NoteSide::Preceding, GroupSlot::ByRule);
+            out.group(value_group, NoteSide::Preceding, GroupSlot::ByRule, false);
             if out.stopped {
                 return Ok(());
             }
@@ -2445,7 +2474,8 @@ impl<'a> Parser<'a> {
             // The notes above the element are the element's own leading group in the tree, so the
             // stream reports them before the element's own event.
             let element_group = core::mem::take(&mut self.pending_comment);
-            out.group(element_group, NoteSide::Following, GroupSlot::ByRule);
+            let element_inline =
+                out.group(element_group, NoteSide::Following, GroupSlot::ByRule, false);
             if out.stopped {
                 return Ok(());
             }
@@ -2454,10 +2484,17 @@ impl<'a> Parser<'a> {
                 return Ok(());
             }
             // The notes after the element are a second group, and the tree files them on the same
-            // node - so the stream reports them after the element's own events.
+            // node - so the stream reports them after the element's own events. The slot the first
+            // group may have filled is the state the second one starts from: it holds one same-line
+            // note, and the tree sends the second to the leading list rather than overwriting.
             self.ws();
             let after_group = core::mem::take(&mut self.pending_comment);
-            out.group(after_group, NoteSide::Preceding, GroupSlot::ByRule);
+            out.group(
+                after_group,
+                NoteSide::Preceding,
+                GroupSlot::ByRule,
+                element_inline,
+            );
             if out.stopped {
                 return Ok(());
             }

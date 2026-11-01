@@ -138,6 +138,54 @@ fn a_jsonc_document_rebuilds_itself_from_its_own_events() {
 }
 
 #[test]
+fn notes_straddling_one_element_fill_both_of_its_slots() {
+    // The replay fuzzer's input, verbatim, plus the same shape in the older dialect: a same-line
+    // note after `[` and another after the element both ride the element. The second batch used to
+    // overwrite the first in the one inline slot, so the tree kept one note while the stream
+    // reported both.
+    for (dialect, opts, text) in [
+        (
+            "json5",
+            JsonParseOptions::JSON5,
+            "[//E\r0XaA0//E\r]".to_string(),
+        ),
+        (
+            "jsonc",
+            JsonParseOptions::JSONC,
+            "[/*a*/ 1 /*b*/]".to_string(),
+        ),
+    ] {
+        let node = from_json_with_options(&text, opts).expect("valid document");
+        let events = parse_stream_with_options(&text, opts).expect("streams");
+        let replay = from_events(&events).expect("its own stream replays");
+        assert_eq!(
+            replay, node,
+            "{dialect}: the folded tree filed a note in another slot"
+        );
+        let mut kept = Vec::new();
+        tree_notes(&node, &mut kept);
+        let reported: Vec<(String, bool)> = stream_notes(&events)
+            .into_iter()
+            .map(|(text, _, owner)| (text, owner.is_leading()))
+            .collect();
+        let (mut kept_slots, mut reported_slots) = (kept.clone(), reported.clone());
+        kept_slots.sort();
+        reported_slots.sort();
+        assert_eq!(
+            kept_slots, reported_slots,
+            "{dialect}: the two walks kept different notes for {text:?}"
+        );
+        let first = reported.first().expect("two notes").0.clone();
+        let second = reported.get(1).expect("two notes").0.clone();
+        assert_eq!(
+            reported,
+            vec![(first, false), (second, true)],
+            "{dialect}: the first note keeps the inline slot, the second is displaced to the leading list"
+        );
+    }
+}
+
+#[test]
 fn the_two_walks_describe_the_same_document() {
     let mut driven = 0usize;
     let mut replayed = 0usize;
