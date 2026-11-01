@@ -405,7 +405,7 @@ fn write_notated_array(
             out.push('\n');
         }
         out.push_str("  ");
-        write_value(out, it)?;
+        write_value_inner(out, it, false)?;
         // The last element's line is the only one a note may finish: `1 # x,` is not TOML at all,
         // and a note written after the comma is reported by the reader as the *next* element's
         // leading note - so that placement moved the comment on every round and the text never
@@ -518,6 +518,24 @@ fn write_notated_table(
 /// result again. The allocation, not the scan, is what cost - the same lesson `write_basic_body`
 /// records.
 fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError> {
+    write_value_inner(out, node, true)
+}
+
+/// [`write_value`], with the container's own leading slot optionally withheld from the layout.
+///
+/// The slot is not only the container's: an array element carries its leading notes on the same
+/// list, because the reader has one place to report them from (a `#` above the element). So
+/// [`write_notated_array`] writes that list above the element and then called the full writer, which
+/// found the same list through [`container_leading_notes`] and wrote it again inside the braces -
+/// every re-read added one more copy, and the text never settled (libFuzzer `toml_roundtrip`
+/// crash-3e95a4cf). The element's caller passes `false`; every other caller keeps `true`, which is
+/// why this is a parameter rather than a field: a per-container flag would have to be reset on each
+/// nesting level, and the answer is known at the call site.
+fn write_value_inner(
+    out: &mut String,
+    node: &CustomNode,
+    emit_container_leading: bool,
+) -> Result<(), SerializeError> {
     match node {
         CustomNode::Scalar {
             value, style, meta, ..
@@ -632,7 +650,11 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // text on the second write. The note is not lost — [`unplaced_value_notes`] hands it to
             // the line the caller already owns, above the key.
             if !items.is_empty() {
-                let leading = container_leading_notes(node);
+                let leading: &[pyrs_ast::ast::Comment] = if emit_container_leading {
+                    container_leading_notes(node)
+                } else {
+                    &[]
+                };
                 if !leading.is_empty() || items.iter().any(element_has_note) {
                     return write_notated_array(out, items, leading);
                 }
@@ -664,7 +686,11 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // of every member value so the table demotes, and the member loop
             // writes the note on the member's own line.
             if !pairs.is_empty() {
-                let leading = container_leading_notes(node);
+                let leading: &[pyrs_ast::ast::Comment] = if emit_container_leading {
+                    container_leading_notes(node)
+                } else {
+                    &[]
+                };
                 if !leading.is_empty()
                     || pairs.iter().any(|(k, v)| {
                         !k.leading_comments().is_empty()
@@ -2150,6 +2176,29 @@ mod tests {
         ] {
             let out = to_toml(&from_toml(src).unwrap()).unwrap();
             assert_eq!(out, want, "the note did not come back for {src:?}");
+            let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+            assert_eq!(out, again, "not a fixed point: {out:?} -> {again:?}");
+        }
+    }
+
+    #[test]
+    fn an_element_note_over_an_inline_table_is_written_once_and_settles() {
+        // The reader has one place to report a `#` above an array element from - the end of the line
+        // it sits on - and files it on the element node. For an inline-table element that is the same
+        // slot `write_notated_table` reads as the table's own leading note, so hoisting it above the
+        // element and laying the table out both wrote it: one copy above the `{`, one inside, and the
+        // next round added another (libFuzzer `toml_roundtrip` crash-3e95a4cf and four siblings).
+        for src in [
+            "arr = [\n  # lead\n  {x = 1}\n]\n",
+            // The empty text the fuzz corpus actually carried: `#` with nothing after it.
+            "p = [\n  {a = 1},\n  # \n  {b = 2},\n  {c = 3}\n]\n",
+        ] {
+            let out = to_toml(&from_toml(src).unwrap()).unwrap();
+            assert_eq!(
+                out.matches("# ").count(),
+                1,
+                "the note was written more than once for {src:?}: {out}"
+            );
             let again = to_toml(&from_toml(&out).unwrap()).unwrap();
             assert_eq!(out, again, "not a fixed point: {out:?} -> {again:?}");
         }

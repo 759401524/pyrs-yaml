@@ -758,6 +758,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `50 deselected`), so the floor placed there would have run in neither leg. Control: putting the
   venv back on 0.1.3 turns it red with the release in the message; on 0.2.0 it is green. Recorded as
   `(gg)`.
+- **An array element's note stops being written once per round** — the reader has one place to
+  report a `#` above an array element from, the end of the line it sits on, and files it on the
+  element node; for an element that is an inline table that is the same slot `write_notated_table`
+  reads as the table's own leading note. So `write_notated_array` hoisted the note above the element
+  and the table layout wrote it again inside the braces — one more copy per round, and the text
+  never settled. Five artifacts: libFuzzer `toml_roundtrip` crash-3e95a4cf, crash-6802dabe and
+  crash-9c0b2acb, and `edit_yaml` crash-1ec1ea89 and crash-20cc6b69, 54-150-byte inputs whose second
+  emission differed only by that duplicate. `write_value` now takes the choice as an argument
+  through a private twin, and the element call site is the only one that asks for the container's
+  leading slot to be withheld: the note stays on the line above the element, where the reader
+  reports it from, and the table itself stays compact.
+  `an_element_note_over_an_inline_table_is_written_once_and_settles` pins both a readable `# lead`
+  and the note with empty text the corpus carried. The seeds are archived as
+  `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed` under `fuzz/seeds/toml_roundtrip`, replayed by
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` on every `cargo nextest`, and as
+  `former-crash-{1ec1ea89,20cc6b69}.seed` under `fuzz/seeds/edit_yaml`, which the fuzz job replays.
 
 ### Changed
 

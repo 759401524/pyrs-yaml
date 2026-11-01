@@ -709,6 +709,21 @@ status: new
   표지가 없는 사례를 모두 deselect하므로(실측 `50 deselected`), 하한은 leaderboard 파일에 두었습니다
   — 거기에 뒀다면 두 레그 모두에서 돌지 않습니다. 대조: venv를 0.1.3으로 되돌리면 메시지에 버전이
   찍혀 빨개지고, 0.2.0에서는 녹색입니다. `(gg)`로 기록합니다.
+- **배열 요소의 주석이 회차마다 한 번씩 더 쓰이던 것을 멈췄다** — 배열 요소 위의 `#`를 읽는 쪽이
+  보고할 수 있는 곳은 하나뿐이다. 그것이 놓인 줄의 끝이며, 읽는 쪽은 이를 요소 노드에 기록한다.
+  요소가 인라인 테이블이면, 그것은 `write_notated_table`가 테이블 자신의 선행 주석으로 읽는 것과
+  같은 슬롯이다. 그래서 `write_notated_array`가 주석을 요소 위로 끌어올리고, 테이블 배치가 다시
+  중괄호 안에 한 번 더 썼다——회차마다 한 부씩 늘어나 텍스트가 안정되지 않았다. 검체 5개:
+  `toml_roundtrip`의 crash-3e95a4cf, crash-6802dabe, crash-9c0b2acb, `edit_yaml`의 crash-1ec1ea89,
+  crash-20cc6b69. 54~150 바이트 입력으로, 두 번째 출력은 이 중복만 달랐다. `write_value`는 이제
+  선택을 인자로 비공개 쌍둥이 함수에 넘기고, 컨테이너 자신의 선행 슬롯을 억제하라고 요구하는 곳은
+  배열 요소의 호출 지점 하나뿐이다: 주석은 요소 위 줄에 남고(읽는 쪽이 바로 거기서 보고한다), 테이블
+  자체는 간결한 채로 있다. `an_element_note_over_an_inline_table_is_written_once_and_settles`는
+  읽히는 `# lead`와 코퍼스가 실제로 실어 온 빈 텍스트 주석을 모두 고정한다. 시드는
+  `fuzz/seeds/toml_roundtrip` 아래
+  `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed`로(`cargo nextest`마다
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus`가 재생), `fuzz/seeds/edit_yaml` 아래
+  `former-crash-{1ec1ea89,20cc6b69}.seed`로 보관했다(fuzz 작업이 재생).
 
 #### 변경
 

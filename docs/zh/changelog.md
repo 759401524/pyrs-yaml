@@ -581,6 +581,18 @@ status: new
   fixture。它住在排行榜文件里，因为基准文件在常规运行中被 deselect，而 `--codspeed` 又 deselect
   所有没有 `benchmark` 标记的用例（实测 `50 deselected`）——放在基准文件里，这条下限两条腿都不会
   跑。对照：venv 退回 0.1.3 它就变红，消息里带着版本号；在 0.2.0 上是绿的。记为 `(gg)`。
+- **数组元素上的注释不再每轮多写一遍** — 读取端只有一处能报告数组元素上方的 `#`：它所在行的
+  行尾，并把它记在元素节点上。元素是内联表时，那正是 `write_notated_table` 当作表自身前导注释
+  读取的同一个槽位。于是 `write_notated_array` 把注释提到元素上方，表布局又在花括号内写了一遍——
+  每轮多一份，文本永不稳定。共五个构件：`toml_roundtrip` 的 crash-3e95a4cf、crash-6802dabe、
+  crash-9c0b2acb，以及 `edit_yaml` 的 crash-1ec1ea89、crash-20cc6b69；54 到 150 字节的输入，
+  第二次发射只差这一份重复。`write_value` 现在通过一个私有孪生函数把选择作为参数传下去，只有
+  数组元素的调用点要求扣住容器自己的前导槽位：注释留在元素上方那一行（读取端正是从这里报告
+  它），表本身保持紧凑。`an_element_note_over_an_inline_table_is_written_once_and_settles`
+  同时钉住可读的 `# lead` 与语料实际携带的空文本注释。种子归档为 `fuzz/seeds/toml_roundtrip`
+  下的 `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed`（每次 `cargo nextest` 由
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` 重放），以及 `fuzz/seeds/edit_yaml`
+  下的 `former-crash-{1ec1ea89,20cc6b69}.seed`（由 fuzz 作业重放）。
 
 #### 变更
 
