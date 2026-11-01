@@ -41,7 +41,7 @@ use pyrs_json::{
 /// under the replay and note comparisons. One floor cannot cover both: a corpus of nothing but
 /// refusals would drive pairs and replay none, and the second claim would go untested in silence.
 ///
-/// Measured: 15 seeds over 3 dialects drove 51 pairs and replayed 28 accepted documents. Both
+/// Measured: 18 seeds over 3 dialects drove 54 pairs and replayed 30 accepted documents. Both
 /// floors sit below those numbers on purpose — slack for a seed being retired, not targets to hit.
 const MIN_SEEDED_PAIRS: usize = 30;
 const MIN_REPLAYED_PAIRS: usize = 15;
@@ -253,6 +253,15 @@ fn the_two_walks_describe_the_same_document() {
             assert_eq!(
                 replay, node,
                 "{name} [{dialect}]: the folded tree is not the scanned tree\ninput:\n{text}"
+            );
+            // Node equality is blind to the comment slots, so the notes are compared on their
+            // own: a fold that drops one rebuilds a tree the scanner would not have produced.
+            let mut replayed_notes = Vec::new();
+            tree_notes(&replay, &mut replayed_notes);
+            replayed_notes.sort();
+            assert_eq!(
+                replayed_notes, kept_slots,
+                "{name} [{dialect}]: the fold dropped a note the scanner kept\ninput:\n{text}"
             );
         }
     }
