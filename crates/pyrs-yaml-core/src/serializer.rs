@@ -330,8 +330,13 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
             && pairs.iter().all(|(k, v)| {
                 !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
                     // A standalone note cannot share the `- key:` line: it
-                    // would emit `# …` mid-line and strand the value.
-                    && v.leading_comment().is_none()
+                    // would emit `# …` mid-line and strand the value. An empty
+                    // container is the exception `write_mapping_pair` already
+                    // makes: it inlines `{}` and demotes the note to the
+                    // pair-line tail, so the note lands where the next read
+                    // reports it and the dash line stands (libFuzzer
+                    // `edit_yaml` crash-ad42b9cc).
+                    && (v.leading_comment().is_none() || Serializer::is_empty_container(v))
                     && inlineable_value(v)
             })
     )

@@ -297,6 +297,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note standing over an emptied container keeps the sequence item on its dash line** — the
+  reader files a note written above a container's first pair as that container's own leading note,
+  so an edit that deletes the last pair leaves a standalone note over nothing. `is_compact_item`
+  refused the compact `- key: value` line for any value carrying a standalone note, but an empty
+  container is the exception `write_mapping_pair` already makes for itself: it inlines `{}` and
+  demotes the note to the pair-line tail. Round one therefore wrote the dash alone, with the pair
+  indented below it, and round two, reading the demoted note as inline, took the dash line —
+  libFuzzer `edit_yaml` crash-ad42b9cc, a 46-byte input whose document is 14, archived as
+  `former-crash-ad42b9cc.seed`. The compactness test now follows the writer's rule;
+  `a_note_on_an_empty_container_value_settles_in_one_round` pins the three-edit sequence and the
+  emission `- ~: {}  # fuzz 47` byte for byte.
 - **An array element keeps the note on each side of its value** — a note after the comma and one
   after the value reach one element through two separate flushes (`array` takes the pending list
   before `value()` and flushes what follows it), and both land in the single inline slot: the

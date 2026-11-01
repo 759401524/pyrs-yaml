@@ -444,3 +444,63 @@ fn a_key_note_above_a_closed_pending_tag_line_settles_in_one_round() {
         "not a fixed point in one round: {one:?} -> {again:?}"
     );
 }
+
+/// libFuzzer `edit_yaml` crash-ad42b9cc, minimized to 14 bytes: a note the reader holds as a
+/// container's *standalone* leading note when a later edit empties that container.
+///
+/// The reader never spells this shape — the note is written above the container's first pair, so
+/// only emptying the body leaves it standing over nothing — and `is_compact_item` refused the
+/// compact `- key: value` line for any value with a standalone note. An empty container is the
+/// exception `write_mapping_pair` already makes for itself: it inlines `{}` and demotes the note to
+/// the pair-line tail. So round one wrote the dash alone and round two, reading the demoted note,
+/// took the dash line. The compactness test now follows the writer's own rule.
+#[test]
+fn a_note_on_an_empty_container_value_settles_in_one_round() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{delete_path, set_comment_path, set_flow_style_path};
+    use std::sync::Arc;
+
+    let src = "- : a:  !o?--- ";
+    let mut text = src.to_string();
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    for verb in 0..3 {
+        let path = match verb {
+            2 => vec![
+                Segment::Index(0),
+                Segment::Key("~".into()),
+                Segment::Key("a".into()),
+            ],
+            _ => vec![Segment::Index(0), Segment::Key("~".into())],
+        };
+        let accepted = match verb {
+            0 => set_comment_path(
+                &mut node,
+                &path,
+                Comment {
+                    text: Arc::from("fuzz 47"),
+                    standalone: false,
+                },
+                &text,
+                None,
+            ),
+            1 => set_flow_style_path(&mut node, &path, true, &text, None),
+            _ => delete_path(&mut node, &path, &text, None),
+        };
+        accepted.expect("the pinned edit sequence is accepted");
+        let emitted = to_yaml(&node);
+        node = parse(&emitted, Schema::Core).expect("the emission re-reads");
+        text = emitted;
+    }
+
+    let one = text;
+    assert_eq!(
+        one, "- ~: {}  # fuzz 47\n",
+        "the dash line is taken on the first round"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
