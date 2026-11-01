@@ -255,6 +255,18 @@ class TestJsonDialects:
         assert '"port": 8080' in out, out
         assert out.index("// above the key") < out.index('"port"'), out
 
+    def test_a_note_after_the_document_reaches_both_json_dialects(self):
+        # The document root is nobody's member, so the pair and element loops that emit every
+        # other note never see it. Before the fix both writers returned `{\n  "a": 1\n}` here and
+        # the note was simply gone; `fmt_pbt::prop_jsonc_writer_carries_every_note` is what found
+        # the shape, on a hand-built tree whose root carried it.
+        doc = pyrs_yaml.parse("a: 1\n# after\n")
+        assert "after" in doc.to_yaml()
+        for emit in (doc.to_jsonc, doc.to_json5):
+            for layout, out in (("pretty", emit()), ("compact", emit(indent=0))):
+                assert "// after" in out, f"{emit.__name__} ({layout}) dropped it: {out!r}"
+                assert out.index("// after") > out.rindex("}"), (layout, out)
+
     def test_document_to_jsonc_and_json5_are_parseable(self):
         doc = pyrs_yaml.parse("a: 1\nb: [1, 2]\n")
         import json

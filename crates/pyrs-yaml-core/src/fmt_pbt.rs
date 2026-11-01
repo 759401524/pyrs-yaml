@@ -113,11 +113,29 @@ fn toml_undecorated(node: &crate::ast::CustomNode) -> bool {
 /// once trimmed carries nothing a comment can hold, and is exempt rather than tolerated silently.
 fn toml_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
     let mut missing = Vec::new();
-    collect_note_texts(node, emitted, &mut missing);
+    collect_note_texts(node, emitted, &mut missing, false);
     missing
 }
 
-fn collect_note_texts(node: &crate::ast::CustomNode, emitted: &str, missing: &mut Vec<String>) {
+/// Every note the tree carries, as it must appear in the emitted JSONC / JSON5.
+///
+/// Same reach claim as [`toml_missing_notes`], with the JSON family's second spelling added: the
+/// compact flow loop writes a note as `/* {text} */` because a `//` there would swallow the
+/// separator that follows it, and `push_block_flat` splits an inner `*/` into `* /` so the comment
+/// cannot close early. Either spelling means the text arrived; what does not count is the text
+/// being absent from the document altogether.
+fn json_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    collect_note_texts(node, emitted, &mut missing, true);
+    missing
+}
+
+fn collect_note_texts(
+    node: &crate::ast::CustomNode,
+    emitted: &str,
+    missing: &mut Vec<String>,
+    block_aware: bool,
+) {
     use crate::ast::CustomNode as N;
     for text in node
         .comment()
@@ -129,20 +147,22 @@ fn collect_note_texts(node: &crate::ast::CustomNode, emitted: &str, missing: &mu
     {
         let trimmed = text.trim();
         let expected = trimmed.replace(['\n', '\r'], " ");
-        if !trimmed.is_empty() && !emitted.contains(&expected) {
+        let reached = emitted.contains(&expected)
+            || (block_aware && emitted.contains(&expected.replace("*/", "* /")));
+        if !trimmed.is_empty() && !reached {
             missing.push(format!("note never reached the document: {text:?}"));
         }
     }
     match node {
         N::Mapping { pairs, .. } => {
             for (k, v) in pairs {
-                collect_note_texts(k, emitted, missing);
-                collect_note_texts(v, emitted, missing);
+                collect_note_texts(k, emitted, missing, block_aware);
+                collect_note_texts(v, emitted, missing, block_aware);
             }
         }
         N::Sequence { items, .. } => {
             for item in items {
-                collect_note_texts(item, emitted, missing);
+                collect_note_texts(item, emitted, missing, block_aware);
             }
         }
         _ => {}
@@ -316,6 +336,52 @@ proptest! {
         prop_assert!(
             missing.is_empty(),
             "{} note(s) lost, on:\n{text}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+    }
+
+    // The JSON-family writers had no such oracle: their note machinery was pinned by the
+    // hand-written corpus in `tests/test_json.py` and by the fixed-point properties above, and a
+    // note that never reaches the document is invisible to both. The first run of the property
+    // below shrank to the root's *inline* slot — `{"a": 1} // after` parse -> write came back as
+    // `{"a": 1}` — because every note-emitting helper is reached from a member loop and the
+    // document root is not a member of anything.
+    #[test]
+    fn prop_jsonc_writer_carries_every_note(node in arb_custom_node()) {
+        let Ok(compact) = json::to_jsonc_text(&node) else { return Ok(()) };
+        let missing = json_missing_notes(&node, &compact);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost by compact JSONC, on:\n{compact}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+        let Ok(pretty) = json::to_jsonc_text_pretty(&node, 2) else { return Ok(()) };
+        let missing = json_missing_notes(&node, &pretty);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost by pretty JSONC, on:\n{pretty}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+    }
+
+    #[test]
+    fn prop_json5_writer_carries_every_note(node in arb_custom_node()) {
+        let Ok(compact) = json::to_json5_text(&node) else { return Ok(()) };
+        let missing = json_missing_notes(&node, &compact);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost by compact JSON5, on:\n{compact}\nlosses:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+        let Ok(pretty) = json::to_json5_text_pretty(&node, 2) else { return Ok(()) };
+        let missing = json_missing_notes(&node, &pretty);
+        prop_assert!(
+            missing.is_empty(),
+            "{} note(s) lost by pretty JSON5, on:\n{pretty}\nlosses:\n{}",
             missing.len(),
             missing.join("\n")
         );

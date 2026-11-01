@@ -373,6 +373,16 @@ status: new
   `the_fold_files_an_elements_second_note_group_where_the_tree_does` 钉住树、流的归属与折回；语料里
   的比较现在读取折回树的注释去对扫描树的，而不是只信节点相等。指令数 harness 驱动的是扫描器、写器与
   加载器，不是 `from_events`，所以这条路径上没有被测场景移动。
+- **文档闭合括号之后的注释会被写出，不再丢失** — JSONC 与 JSON5 写器发射的每一条注释都来自成员循环
+  （键值对的两侧、序列的元素），而文档根不属于任何成员，于是根自己的行尾槽位没有任何写器：解析
+  `{"a": 1} // after` 再写出得到 `{"a": 1}`，同一条注释经由 YAML 中枢也以同样方式丢失。
+  `emit_root_leading` 自紧凑路由加入起就覆盖了根的 leading 槽位，这正是这个缺口读起来像方言限制、
+  而不像少调用一次的原因。生成式跨格式层此前对本家族没有预言机——只有 TOML 记账注释守恒——所以先
+  补上 `prop_jsonc_writer_carries_every_note` 及其 JSON5 孪生；JSONC 那条在首次运行（400 例）就收缩
+  到一个带行尾注释的手工构造根。现在四个入口都在顶层值之后写出根的行尾注释，
+  `test_a_note_after_the_document_reaches_both_json_dialects` 钉住出货的 YAML→JSONC/JSON5 路由在两种
+  版式下的行为。反证就是修复前的输出——两条新性质在 `{"a": 1}` 上都变红。代价是每份文档一次
+  `has_notes()` 守卫，而不是每个成员一次。
 - **章节头的两条注释栈不再是二选一** — 章节键与它领衔的映射各有自己的 leading 列表，而
   `crates/pyrs-toml/src/writer.rs` 的章节 pass 只填一个切片：先问章节自己的列表，空了才回退去读键
   的。于是两者都非空时就少写一栈——键上带 `# K`、`[a]` 上带 `# T` 的节点实测只输出
