@@ -237,6 +237,19 @@ status: new
 
 #### 修复
 
+- **标记键首个条目的注释要到下一次发射才离开标记体** — 带锚点或标签的映射本身充当 `?` 标记的键
+  时，它的头部自占一行，`lift_first_entry_notes` 会把首个键的行内注释抬到该头部之上——而在标记之下，
+  “头部之上”仍在体内。`? &b` 加 `? > #I` 只输出 `?\n  # I\n  &b \n  "": ~\n`，读器把这一行记到容器
+  名下，于是要到第二次发射文本才稳定。现在 `hoist_marker_note` 在同一次行走里取走该行内注释，第一次
+  发射即是不动点：`# I\n?\n  &b \n  "": ~\n`。一个谓词 `header_lifted_inline_note` 同时回答标记
+  上抬、容器抬升与只读的 `spine_has_notes` 孪生体，三者不会对“移动哪条注释”给出分歧。libFuzzer
+  `yaml_roundtrip` crash-1bbd4d7f（62 字节）由两条钉住：
+  `a_first_key_note_under_a_marker_header_is_hoisted_above_the_marker`（同时钉住最小化的
+  `? &b\n ? > #I`）与归档的 `former-crash-1bbd4d7f.seed`——后者由 `note_survival` 每次运行的语料
+  遍历计费；关掉标记分支里的行内取用，测试即变红，注释滞留在体内。在钉住的 `rustc 1.97.1` 上这条
+  分支在指令层面看不见：`serialize_anchors` 26,720,251 → 26,720,205（−0.00 %）、
+  `serialize_note_flow` 64,411,669 → 64,411,644（−0.00 %）、`serialize_medium` 32,648,421 →
+  32,648,443（+0.00 %）。
 - **章节头的两条注释栈不再是二选一** — 章节键与它领衔的映射各有自己的 leading 列表，而
   `crates/pyrs-toml/src/writer.rs` 的章节 pass 只填一个切片：先问章节自己的列表，空了才回退去读键
   的。于是两者都非空时就少写一栈——键上带 `# K`、`[a]` 上带 `# T` 的节点实测只输出

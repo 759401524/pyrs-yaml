@@ -297,6 +297,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note on a marked key's first entry left the marker only on a later hop** — an anchored or
+  tagged mapping that is itself the *key* of a `?` marker writes its header on a line of its own, so
+  `lift_first_entry_notes` moves the first key's inline note above that header — and under a marker
+  "above the header" is still inside the body. `? &b` with `? > #I` emitted
+  `?\n  # I\n  &b \n  "": ~\n`; the reader files that line on the container, so the text settled
+  only on the second emission. `hoist_marker_note` takes that inline note in the same walk now and
+  the first emission is the fixed point: `# I\n?\n  &b \n  "": ~\n`. One predicate,
+  `header_lifted_inline_note`, answers for the marker hoist, the container lift and the read-only
+  `spine_has_notes` twin, so the three cannot disagree about which note moves. libFuzzer
+  `yaml_roundtrip` crash-1bbd4d7f (62 bytes) is pinned by
+  `a_first_key_note_under_a_marker_header_is_hoisted_above_the_marker`, which also holds the
+  minimised `? &b\n ? > #I`, and by the archived `former-crash-1bbd4d7f.seed`, which the
+  `note_survival` corpus walk charges on every run; switching the marker arm's inline take off
+  reddens the test with the note stranded in the body. The branch is instruction-invisible on the
+  pinned `rustc 1.97.1`: `serialize_anchors` 26,720,251 → 26,720,205 (−0.00 %),
+  `serialize_note_flow` 64,411,669 → 64,411,644 (−0.00 %), `serialize_medium` 32,648,421 →
+  32,648,443 (+0.00 %).
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is

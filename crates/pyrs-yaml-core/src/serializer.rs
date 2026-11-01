@@ -2485,6 +2485,31 @@ fn take_leading_notes(node: &mut CustomNode) -> Vec<crate::ast::Comment> {
     notes
 }
 
+/// The first key's inline note when the container writes its own anchor/tag header line.
+///
+/// That header occupies a line of its own, so the note cannot ride the pair line with the key
+/// it belongs to: [`lift_first_entry_notes`] moves it above the header, where a reader files a
+/// line on the container rather than on the key. Under a `?` marker "above the header" is still
+/// *inside* the marker's body, and the next emission hoists it above the marker — libFuzzer
+/// `yaml_roundtrip` crash-1bbd4d7f (`? &b` CR ` ? > #I`) settles only on its second round that
+/// way. The marker hoist and the container's own lift ask this one question, so they cannot
+/// disagree about which note is being moved.
+fn header_lifted_inline_note<'a>(
+    container: &NodeMeta,
+    first_key: &'a CustomNode,
+) -> Option<&'a Comment> {
+    if container.anchor().is_none() && container.tag().is_none() {
+        return None;
+    }
+    match first_key {
+        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
+            .comment()
+            .filter(|c| !c.standalone)
+            .filter(|c| note_is_writable(c)),
+        _ => None,
+    }
+}
+
 /// Pull up the notes that a nested explicit key would otherwise emit inside its
 /// own body: walk the first-pair-key spine of a block mapping (the chain of `?`
 /// markers a single line opens) and take **every** stack sitting on it, outer
@@ -2517,7 +2542,10 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
     let mut notes = Vec::new();
     match key {
         CustomNode::Mapping {
-            pairs, flow_style, ..
+            meta,
+            pairs,
+            flow_style,
+            ..
         } => {
             // The question is whether the body lands on its own lines, not what the node claims:
             // a flow-marked key that the demotion sends to block has the same spine, so asking the
@@ -2531,6 +2559,15 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
             // was.
             if let Some((mut first_key, first_value)) = pairs.shift_remove_index(0) {
                 notes.extend(take_leading_notes(&mut first_key));
+                // The inline slot is the other half of the header lift: a container that
+                // writes `&a` / `!tag` on its own line moves its first key's inline note
+                // above that line, and under a `?` marker that is still the body. Taking it
+                // here writes it above the marker on the first emission, where the reader
+                // reports it as this key's leading note and the next round agrees.
+                if let Some(note) = header_lifted_inline_note(meta, &first_key).cloned() {
+                    first_key.remove_comment();
+                    notes.push(note);
+                }
                 // Keep walking: a deeper marker can carry its own stack, and the reader
                 // reports that one at this level too.
                 notes.extend(hoist_marker_note(&mut first_key));
@@ -2763,14 +2800,7 @@ fn lift_first_entry_notes(
     // re-reads as the container's leading note, so it belongs in the same lift as
     // the key's leading stack (libFuzzer `yaml_roundtrip` crash-8b98eb75: a `!`
     // header over a first pair whose key carried `#: #*b`).
-    let first_key_inline = match first_key {
-        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
-            .comment()
-            .filter(|c| !c.standalone)
-            .filter(|c| note_is_writable(c))
-            .cloned(),
-        _ => None,
-    };
+    let first_key_inline = header_lifted_inline_note(meta, first_key).cloned();
     // Borrow before allocating. Taking the spine needs an owned key and a copy of
     // the map, and every anchored/tagged block container would pay both — even the
     // overwhelming majority that carry no note anywhere on the spine. Measured:
@@ -2814,7 +2844,10 @@ fn lift_first_entry_notes(
 fn spine_has_notes(key: &CustomNode) -> bool {
     match key {
         CustomNode::Mapping {
-            pairs, flow_style, ..
+            meta,
+            pairs,
+            flow_style,
+            ..
         } => {
             if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
                 return false;
@@ -2823,7 +2856,9 @@ fn spine_has_notes(key: &CustomNode) -> bool {
                 Some(entry) => entry,
                 None => return false,
             };
-            !first_key.leading_comments().is_empty() || spine_has_notes(first_key)
+            !first_key.leading_comments().is_empty()
+                || header_lifted_inline_note(meta, first_key).is_some()
+                || spine_has_notes(first_key)
         }
         // The sequence arm is what makes this the twin of [`hoist_marker_note`]: without it a note
         // riding the first item of a complex *sequence* key stays below the container's own
@@ -4473,6 +4508,38 @@ mod tests {
             let src = std::str::from_utf8(raw).expect("seed is utf-8");
             let one = to_yaml(&parse_core(src));
             assert_eq!(one, expected, "notes must sit above the header at once");
+            assert_eq!(
+                to_yaml(&parse_core(&one)),
+                one,
+                "one emission is enough to reach the fixed point"
+            );
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-1bbd4d7f (62 bytes, minimised to `? &b` CR ` ? > #I`):
+    /// the anchored mapping is the *key* of a `?` marker and its first key carries a line-end
+    /// note. Lifting that note above the container's own `&b` header puts it inside the marker's
+    /// body, where the reader files the line on the container — so the second round added a
+    /// hoist above the `?` and only the third stood still. The marker hoist takes the inline
+    /// note itself now, which is the position a re-read already reports as this key's leading
+    /// note.
+    #[test]
+    fn a_first_key_note_under_a_marker_header_is_hoisted_above_the_marker() {
+        let cases = [
+            (
+                include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-1bbd4d7f.seed")
+                    as &[u8],
+                "bg: &b\n  &!) yaAmlx> 1: ~\n# !!\"# &b\n# !!!\"I\n?\n  &? \n  &!) yaAmlx>: ~\n:\n  ~\n",
+            ),
+            (
+                b"? &b\n ? > #I" as &[u8],
+                "# I\n?\n  &b \n  \"\": ~\n:\n  ~\n",
+            ),
+        ];
+        for (raw, expected) in cases {
+            let src = std::str::from_utf8(raw).expect("seed is utf-8");
+            let one = to_yaml(&parse_core(src));
+            assert_eq!(one, expected, "the note must clear the body at once");
             assert_eq!(
                 to_yaml(&parse_core(&one)),
                 one,
