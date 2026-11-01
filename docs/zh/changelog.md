@@ -237,6 +237,16 @@ status: new
 
 #### 修复
 
+- **带标签的条目里，首个键的注释在第一次发射就落定** — 紧凑写法的 `- k: v` 会把首个 pair 的键注释
+  放到 dash 行上方；当这个条目是*带 header 的序列的第一个元素*时，那一位置落在 header 自己的块内，
+  读取端会把注释报成序列自身的前置注释，于是下一次发射把它提到 `!tag` / `&anchor` 行之上，一轮
+  永远到不了不动点——libFuzzer `yaml_roundtrip` crash-094d4d6a，最小化到八个字节（`!\n- ?\n#~`，
+  注释挂在显式 `?` 键上），归档为 `former-crash-094d4d6a.seed`。这类注释现在写到整条链最外层的
+  header 之上：那正是读取端认可的位置，也是本条目自身的内联注释与任何容器自己的注释早已使用的位置。
+  `a_first_key_note_of_a_headed_item_settles_above_the_header` 同时钉住 tag 与 anchor 两种 header、
+  注释恰好出现一次、以及一轮落定；把 `enclosing_header` 这个目标去掉，它就在第一条断言上带着修复前的
+  发射结果（`"! \n# ~\n- ~: ~\n"`）变红。无 header 的形状不变——那里
+  `a_standalone_note_above_a_compact_first_key_reaches_the_document` 早已钉住同一条规则。
 - **带标签的键：标签与文本相同即为同一个键，行上其余一切不参与判定** — 读取端原先把带标签的键
   按整节点比较，样式与锚点都算在内，而写入端选这两样是为读取端服务、并不属于键本身：同一个带标签
   键的明文与引号拼法都输出成 `!a "…"`，带锚点的 `Null` 输出成 `!a null`。于是它自己写出的文本回来

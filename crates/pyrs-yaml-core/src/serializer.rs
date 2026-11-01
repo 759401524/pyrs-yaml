@@ -1586,9 +1586,9 @@ impl Serializer {
         //
         // * the item's own leading stack, which only a line above the dash can hold — by the
         //   time the loop below runs, `- ` is already open on the key's line;
-        // * a *later* pair's key leading stack, which goes at the pair's own indent (a first
-        //   pair's key never owns one: measured across twelve crafted shapes, the reader
-        //   hands such a note to the item or to the enclosing sequence);
+        // * a *later* pair's key leading stack, which goes at the pair's own indent — and a
+        //   first pair's, which shares the dash line and so goes above it, or above the
+        //   chain's header when the item heads a headed sequence (crash-094d4d6a);
         // * a key's inline note, which rides its pair line.
         //
         // Measured once: `is_compact_item` walks every pair, and this is a hot path, so the
@@ -1648,11 +1648,17 @@ impl Serializer {
                     // dash - so they go above the item's line. `write_mapping_pair` prints a
                     // simple key's notes for every pair; this loop only printed them from the
                     // second one on, which is how `- null: 'x'` lost a `# 2` the key carried.
+                    // A first item of a headed chain is not that line: a note above its dash
+                    // sits *under* the sequence's own `&a` / `!tag` header, where the reader
+                    // files it as the sequence's leading note, so the next emission hoisted it
+                    // above the header and one round never reached a fixed point (libFuzzer
+                    // `yaml_roundtrip` crash-094d4d6a, minimised to `!\n- ?\n#~\n`, whose note
+                    // rides the explicit key). The outermost header of the chain is that slot -
+                    // the same one this item's own inline note and a container's own notes use.
+                    let settled = self.close_captured_pending_line(pending_before, own_line_start);
+                    let above = enclosing_header.unwrap_or(settled);
                     for comment in key.leading_comments() {
-                        let text = comment.text.to_string();
-                        let above =
-                            self.close_captured_pending_line(pending_before, own_line_start);
-                        self.note_line_above(above, &text);
+                        self.note_line_above(above, &comment.text);
                     }
                 }
                 self.block_header_break = None;
@@ -4883,6 +4889,40 @@ mod tests {
             .expect("re-parse");
             let twice = to_yaml(&again);
             assert_eq!(twice, out, "second emission drifted: {out:?} -> {twice:?}");
+        }
+    }
+
+    /// The same first key, in the first item of a *headed* sequence.
+    ///
+    /// The note still has no line of its own and goes above the dash — but under a
+    /// `&a` / `!tag` header that slot is inside the sequence's own block, where the reader
+    /// files it as the sequence's leading note, so the next emission hoisted it above the
+    /// header and one round never reached a fixed point (libFuzzer `yaml_roundtrip`
+    /// crash-094d4d6a, minimised to `!\n- ?\n#~`, where the note rides the explicit key).
+    /// The outermost header of the chain is the slot the reader agrees with — the same one
+    /// the item's own inline note already targets.
+    #[test]
+    fn a_first_key_note_of_a_headed_item_settles_above_the_header() {
+        let seed = std::str::from_utf8(include_bytes!(
+            "../../../fuzz/seeds/yaml_roundtrip/former-crash-094d4d6a.seed"
+        ))
+        .expect("seed is utf-8");
+        for yaml in [seed, "&a\n- ?\n#~"] {
+            let one = to_yaml(&parse_core(yaml));
+            assert!(
+                one.starts_with("# ~\n"),
+                "the note must be lifted above the header: {one:?}"
+            );
+            assert_eq!(
+                one.matches("# ~").count(),
+                1,
+                "the note appears exactly once: {one:?}"
+            );
+            let two = to_yaml(&parse_core(&one));
+            assert_eq!(
+                two, one,
+                "one emission step must settle: {one:?} -> {two:?}"
+            );
         }
     }
 
