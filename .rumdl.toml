@@ -2,7 +2,7 @@
 # https://rumdl.dev/configuration/
 
 [global]
-extend-disable = ["MD013", "MD051", "MD036"]  # MD013 counts characters, not display columns, and `rumdl fmt` does not re-wrap prose at all (measured: a 587-char line passes through unchanged) — width is enforced by the `doc-line-width` hook instead; MD051 false-positive on CJK anchors (rumdl slugs are ASCII-only, but GitHub/mkdocs keep CJK)
+extend-disable = ["MD013", "MD051", "MD036", "MD038"]  # MD013 counts characters, not display columns, and `rumdl fmt` does not re-wrap prose at all (measured: a 587-char line passes through unchanged) — width is enforced by the `doc-line-width` hook instead; MD051 false-positive on CJK anchors (rumdl slugs are ASCII-only, but GitHub/mkdocs keep CJK); MD038 *deletes* a space at either end of a code span, and in these pages that byte is content — a YAML/TOML sample's indentation is the shape (reproduced on 2026-11-01: `` ` ? > #I` `` came out of `rumdl fmt` as `` `? > #I` ``, reported only `[MD038] ... [fixed]`, and five changelog mirrors plus `docs/dev/quality-ledger.md` lost the same byte while the hook printed `Passed`). `rumdl check` over all 178 tracked pages reports 0 MD038 findings today, so the rule is currently buying nothing here; what it would buy is a lint for a space that renders invisibly (both ends), and that is the author's cue to fence the sample instead — `docs/dev/quality-ledger.md` `(id)` carries the measurement and the trade
 flavor = "mkdocs"
 exclude = [
     ".git",

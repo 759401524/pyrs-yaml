@@ -11282,6 +11282,51 @@ above while the other ten in the file pass (`11 tests run: 10 passed, 1 failed`)
 duplicate complex-key emission and the TOML inline-table note that will not settle - are separate
 root causes and get their own entries when they are fixed.
 
+### (id) The Markdown formatter's fix deletes a byte, and the sample was the byte (2026-11-01)
+
+While the marker-header note family was being pinned (#691), `prek run --all-files` rewrote the pull
+request's own prose: the span `` ` ? > #I` `` — the minimized crash input's second line, whose
+leading space *is* the nesting — came back as `` `? > #I` `` in all five changelog mirrors and in
+this file, and the hook printed `Passed`. Nothing else reported it. It surfaced two steps later by
+accident: the reflow had left a continuation line starting with `#688,`, which is the class
+`check_doc_headings.py --predamage` refuses, so a green-looking `pytest` run reddened on the
+*consequence* of the rewrite rather than on the rewrite.
+
+Reproduced with the pinned tool rather than inferred. A scratch page holding three spans, one
+` ? > #I`, one `  both  ` and one plain, through `rumdl fmt` at 0.2.78 printed
+`[MD038] Spaces inside code span elements [fixed]` and returned the file with both edge spaces gone.
+MD038's remedy is a deletion, and its premise — that a space at the edge of a code span is invisible
+padding — is true only for the paired case, where CommonMark strips one from each end at render
+time. For a leading-only or trailing-only space the byte renders, so the rule rewrites content while
+reporting a style fix.
+
+Why no gate could have seen it: the formatter's output *is* the fixed point, so a later
+`prek run --all-files` on the damaged text is clean, and CI's hook-set job compares the tree against
+itself rather than against what the author wrote. The damage is invisible by construction, and the
+only author who notices is the one who came back to read the byte.
+
+The remedy is to stop the edit rather than to police the author: `MD038` joins the `extend-disable`
+list in `.rumdl.toml`, beside `MD013`, `MD051` and `MD036`, each with its reason on the same line.
+The measurement that makes this cheap is `rumdl check --no-exclude` over all 178 tracked Markdown
+pages: **0** MD038 findings — and 0 is exactly what a fix-on-touch rule must leave behind, since a
+span of that shape is rewritten the first time its page is edited, so none of them can survive to be
+counted. The tree's cleanliness is the rule's effect, not evidence that no author ever wrote one.
+Re-running the same scratch page against
+the new config leaves ` ? > #I` intact and reports only `MD041` for the missing title. The
+end-to-end form holds as well: a governed page carrying that probe line came through a full
+`prek run --all-files` with `rumdl fmt` printing `Passed` and both spans still byte-for-byte as they
+were written, which is the state that used to lose the leading space.
+
+What is given up: a span that begins *and* ends with a space now survives the formatter even though
+the renderer strips a single space from each end, so that one shape becomes an authoring cue instead
+of a lint — fence the sample if the whitespace is the point. `tests/test_rumdl_span_rule.py` pins
+the disable, the three that came before it, and the presence of the reason next to the rule; each of
+the three mutations (drop `MD038`, drop `MD013`, strip the comment) reddens exactly its own test, so
+the list cannot be edited back without naming why.
+
+No engine code is touched, so there is nothing for the Ir gate to price: the counted regions in
+`crates/` are unchanged by this entry's change.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
