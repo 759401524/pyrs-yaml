@@ -63,10 +63,19 @@ jobs:
       # head - which is why the hole is that nothing was asking, not that unverified content shipped.
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      # The interpreter comes from uv, not `actions/setup-python`, for the reason `matrix-verdict` and
+      # the test legs give: `ubuntu-latest` rolled to Ubuntu 26.04, whose setup-python manifest has no
+      # CPython 3.8 build. This job is gated to `push`/`workflow_dispatch`, so it does not run on a pull
+      # request - but it is the one job a code change gets on trunk, and on the next push to `main` the
+      # old provider would have failed to fetch 3.8 and reddened the default-branch run for nothing.
+      - name: Install uv and the floor interpreter
+        uses: astral-sh/setup-uv@v10.3.0
         with:
+          version: "latest"
           python-version: "3.8"
+          # No cache, as on `matrix-verdict`: this job runs one stdlib script with no venv,
+          # so setup-uv's Post step would error on an empty cache path.
+          enable-cache: false
 
       - name: Prove this tip is content the merge gate judged
         env:
@@ -601,15 +610,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install uv
+      # The leg's interpreter is provided by uv, not `actions/setup-python`: `ubuntu-latest` rolled to
+      # Ubuntu 26.04, whose setup-python manifest has no CPython 3.8/3.9 build, so those two ubuntu legs
+      # died at install while the macOS/Windows 3.8 legs passed — the suite runs on 3.8 fine, only the
+      # interpreter fetch could not find one for that image. `setup-uv`'s `python-version` installs the
+      # version from uv's standalone builds on every runner and puts it on PATH, so `uv venv`, `pip`,
+      # `uv sync` and `uv run` below behave exactly as they did under `setup-python`.
+      - name: Install uv and the leg's interpreter
         uses: astral-sh/setup-uv@v10.3.0
         with:
           version: "latest"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -862,10 +873,21 @@ jobs:
       # `scripts/` and importing it is what exercises it on the interpreter that ships it.
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      # The interpreter comes from uv, not `actions/setup-python`, for the reason the test legs give
+      # below: `ubuntu-latest` rolled to Ubuntu 26.04, whose setup-python manifest has no CPython 3.8
+      # build - and this fan-in is the one job that must never be the one that breaks, so leaving it on
+      # the old provider reddened `Test matrix (all legs)` while every leg it judges had gone green.
+      # `setup-uv`'s `python-version` installs that version from uv's standalone build and puts it on
+      # PATH, so the bare `python scripts/...` below runs on 3.8 exactly as before.
+      - name: Install uv and the verdict interpreter
+        uses: astral-sh/setup-uv@v10.3.0
         with:
+          version: "latest"
           python-version: "3.8"
+          # No cache: this fan-in runs one stdlib script with no venv and no uv.lock
+          # download, so the cache dir is never populated and setup-uv's Post step errors
+          # "Cache path … does not exist." There is nothing here worth caching.
+          enable-cache: false
 
       # 3.8 on purpose: the fan-in is the job that must never be the one that breaks, so it runs on
       # the floor of the supported range as well, and `scripts/check_matrix_verdict.py` carries the
