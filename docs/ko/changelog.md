@@ -43,6 +43,16 @@ status: new
   멤버가 아니라 항목 자체로 다시 읽힌다)와
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
   위에 남는다).
+- **JSON의 주석 보존, 이제 코퍼스에서도 값을 매긴다** — `events_replay.rs`는 두 순회를 맞세우지만,
+  주석 슬롯을 의도적으로 잊는 `to_json_text`로 비교하고 `roundtrip_corpus.rs`는 고정점만 묻는다.
+  그래서 "트리가 남겼는데 JSONC나 JSON5 기록 단이 버린" 주석은 "어느 순회도 남기지 않은" 주석과 같은
+  텍스트가 된다. `crates/pyrs-json/tests/corpus_notes.rs`는 생성 계층의 규칙을 커밋된 두 코퍼스에
+  요구한다. 시드 36개 × 주석 지원 방언 2개＝72회 시행, 수용된 문서 56개 중 26개가 주석을 지니며,
+  컴팩트와 정렬 두 표기로 묻는다. 트리가 지닌 모든 주석은 `push_block_flat`과 `//` 줄 지점이 하는
+  것과 같은 평탄화를 거친 뒤 출력 문서에 나타나야 한다. 실제로 빨개진다. `to_jsonc_text` 또는
+  `to_json5_text`에서 루트 주석 호출을 지우면 새 `shape-root-line-note.seed`에서 빨개지고 해당
+  방언을 지목한다. 이 시드는 어느 코퍼스에도 루트의 줄 끝 슬롯(어떤 멤버 루프도 닿지 않는 유일한
+  위치)을 가진 문서가 없어서 추가했다. 바닥은 수용 38 / 주석 보유 15로, 측정치 56과 26보다 낮다.
 - **YAML 기록 단의 주석 보존, 이제 생성 트리에서도 값을 매긴다** — 이쪽의 예언기는
   `tests/note_survival.rs` 하나뿐이었고, 그것은 커밋된 fuzz 코퍼스를 걷는다. 시드가 적어 내지 못하는
   모양은 한 번도 물어본 적이 없다. `prop_yaml_writer_carries_every_note`는 `arb_custom_node`에 같은

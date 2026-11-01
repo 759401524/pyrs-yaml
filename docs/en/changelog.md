@@ -47,6 +47,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
   above its brackets).
+- **The JSON note-conservation claim reaches the corpus** — `events_replay.rs` charges the two walks
+  against each other but compares through `to_json_text`, which forgets comment slots on purpose,
+  and `roundtrip_corpus.rs` only asks for a fixed point, so a note the tree kept and the JSONC or
+  JSON5 writer dropped reads the same as a note neither walk kept.
+  `crates/pyrs-json/tests/corpus_notes.rs` asks the generative tier's rule of both committed corpora
+  — 36 seeds x 2 comment-capable dialects is 72 trials, 56 accepted documents, 26 of them
+  note-bearing, each in the compact and the pretty spelling: every note the tree carries, flattened
+  the way
+  `push_block_flat` and the `//` line sites flatten it, must appear in the emitted document. It
+  bites: deleting the root-note call from `to_jsonc_text` or from `to_json5_text` reddens it on the
+  new `shape-root-line-note.seed`, naming that dialect — the seed was added because no other
+  document in either corpus held the root's line-end slot, the one position no member loop reaches.
+  Floors sit at 38 accepted / 15 note-bearing, below the measured 56 and 26.
 - **The YAML writer's note conservation is charged on generated trees now** — the hub's writer had
   one oracle, `tests/note_survival.rs`, and it walks the committed fuzz corpus: a shape no seed
   spells was never asked. `prop_yaml_writer_carries_every_note` asks the same invariant of

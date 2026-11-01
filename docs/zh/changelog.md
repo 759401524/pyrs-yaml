@@ -41,6 +41,15 @@ status: new
   回到表项本身，而不是它的第一个成员）与
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（嵌套数组自己的注释留在它的括号上
   方）。
+- **JSON 的注释守恒如今在语料上计价** —— `events_replay.rs` 让两条遍历路径互相比对，但比较经由刻意遗
+  忘注释槽的 `to_json_text`，而 `roundtrip_corpus.rs` 只问不动点，因此“树保留了、JSONC 或 JSON5 写入
+  端丢掉了”的注释，与“两条遍历都没保留”的注释读起来完全相同。
+  `crates/pyrs-json/tests/corpus_notes.rs` 把生成层的规则用在两个已提交语料上——36 个种子 × 2 个支持
+  注释的方言共 72 次试验，56 份被接受、其中 26 份带注释，紧凑与美化两种拼写各问一遍：树携带的每条注
+  释，按 `push_block_flat` 与 `//` 行内各位置的做法压平后，都必须出现在输出文档里。它真会红：从
+  `to_jsonc_text` 或 `to_json5_text` 删掉根节点的注释调用，就会在新种子 `shape-root-line-note.seed`
+  上变红并点出对应方言——该种子之所以新增，是因为两个语料里都没有文档占据根节点的行尾槽，而那是唯一不
+  经过成员循环的位置。地板设在 38 份接受 / 15 份带注释，低于实测的 56 与 26。
 - **YAML 写入端的注释守恒如今在生成树上计价** —— 这一侧此前只有一个预言机 `tests/note_survival.rs`，
   它遍历已提交的 fuzz 语料：种子拼不出的形状从未被问到。`prop_yaml_writer_carries_every_note` 对
   `arb_custom_node` 提出同一不变量——锚点、标签、块标量、流式容器以及多节点树上叠加的注释——并按写入端
