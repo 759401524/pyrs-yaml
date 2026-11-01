@@ -297,7 +297,12 @@ status: new
   `Null` はその行が出力する `null` という語として同じ追跡に入るため、`&a !E null` と
   `&b !E null` は一つのキー、`!a k` と `!b k` は二つのキーである。アンカー、引用、コメント、
   スタイルはいまや何も区別しない。そのため `!a k` と `!a 'k'` も重複キーになる——仕様の読み方で
-  あり、書き込み側が偶然にしか書き分けられなかった組である。
+  あり、書き込み側が偶然にしか書き分けられなかった組である。マージ展開も同じモデルを問う
+  （`merge.rs::same_emitted_key`）：マッピングがすでに持つタグ付きキーの別表記は、二つ目の対ではなく
+  そのキーそのものになり、書き込み側が出力し読み取り側が拒否していた対が消える——
+  `a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key` が引用・アンカー付け替え・
+  ブロックスタイル・`"null"` 表記の四形状を固定し、
+  `a_merge_keeps_two_tagged_keys_whose_tags_differ` は `!a k` と `!b k` を二つのまま保つ。
   `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` が両側を固定し、property 層のキー表
   も同じ分類を持つ。対照は修正前の挙動を戻すこと（`insert_tagged_key` がすべてのキーに「新規」と
   答える）：両テストが赤くなり、アーカイブしたシードは `deadly signal`、rc 77 でクラッシュするが、

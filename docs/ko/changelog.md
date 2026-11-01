@@ -296,7 +296,12 @@ status: new
   이것이 YAML 스칼라 노드 자체의 동등성 정의다. 태그가 붙은 `Null`은 그 줄이 출력하는 `null`이라는
   단어로 같은 추적에 들어가므로 `&a !E null`과 `&b !E null`은 하나의 키이고 `!a k`와 `!b k`는
   둘이다. 앵커, 인용, 주석, 스타일은 이제 아무것도 구분하지 않는다. 그래서 `!a k` 옆의 `!a 'k'`도
-  중복 키가 된다 — 명세의 해석이며, 쓰기 쪽이 우연히만 다르게 쓸 수 있었던 쌍이다.
+  중복 키가 된다 — 명세의 해석이며, 쓰기 쪽이 우연히만 다르게 쓸 수 있었던 쌍이다. 병합 확장도 같은
+  모델을 묻는다(`merge.rs::same_emitted_key`): 맵핑이 이미 지닌 태그 키의 다른 표기는 두 번째 쌍이
+  아니라 그 키 자체가 되며, 쓰기 쪽이 출력하고 읽기 쪽이 거부하던 쌍이 사라진다 —
+  `a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key`가 인용, 앵커 재부착, 블록 스타일,
+  `"null"` 표기의 네 형태를 고정하고, `a_merge_keeps_two_tagged_keys_whose_tags_differ`는 `!a k`와
+  `!b k`를 둘로 유지한다.
   `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected`가 양쪽을 고정하고, property 계층의 키
   표도 같은 분류를 담는다. 대조는 수정 전 동작을 되돌리는 것(`insert_tagged_key`가 모든 키에 "새
   키"라고 답한다): 두 테스트가 모두 빨개지고 아카이브한 시드는 `deadly signal`, rc 77로 크래시하지만

@@ -306,7 +306,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for scalar nodes; a tagged `Null` joins that track as the word `null` its line carries, so
   `&a !E null` and `&b !E null` are one key while `!a k` and `!b k` stay two. Anchors, quotes,
   comments and style now separate nothing, which also makes `!a k` beside `!a 'k'` a duplicate —
-  the spec's reading, and a pair the writer could only have spelled apart by accident.
+  the spec's reading, and a pair the writer could only have spelled apart by accident. A merge asks
+  the same model (`merge.rs::same_emitted_key`): another spelling of a tagged key the mapping
+  already holds is now that key rather than a second pair, which the writer emitted and its reader
+  refused — `a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key` pins the quoted,
+  re-anchored, block-styled and `"null"`-spelled shapes, while
+  `a_merge_keeps_two_tagged_keys_whose_tags_differ` keeps `!a k` and `!b k` apart.
   `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` pins both sides, and the property
   tier's key table carries the same classes. The control is the pre-fix behaviour put back
   (`insert_tagged_key` answering "new" for every key): both tests redden and the archived seed

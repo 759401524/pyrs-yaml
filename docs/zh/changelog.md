@@ -244,7 +244,12 @@ status: new
   `former-crash-4bf6ee37.seed`。带标签的键现在按标签与值记录，这正是 YAML 对标量节点自身的相等
   定义；带标签的 `Null` 以它那一行写出的 `null` 一词并入同一轨，因此 `&a !E null` 与
   `&b !E null` 是一个键，而 `!a k` 与 `!b k` 仍是两个。锚点、引号、注释与样式不再区分任何键，这也
-  让 `!a k` 与 `!a 'k'` 成为重复键——这是规范的读法，而这对键在写入端原本只能靠偶然才写得开。
+  让 `!a k` 与 `!a 'k'` 成为重复键——这是规范的读法，而这对键在写入端原本只能靠偶然才写得开。合并
+  展开问的是同一个模型（`merge.rs::same_emitted_key`）：映射已持有的带标签键再出现另一种写法时，现在
+  就是那个键而不是第二对键值，而后者写入端会照写、读器会拒绝——
+  `a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key` 钉住引号、重挂锚点、块样式与写成
+  `"null"` 的四种形状，`a_merge_keeps_two_tagged_keys_whose_tags_differ` 则让 `!a k` 与 `!b k`
+  保持两个。
   `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` 钉住两侧，属性层的键表也带上同样的
   分类。对照是把修复前的行为放回去（`insert_tagged_key` 对每个键都答「新」）：两个测试同时变红，归档
   的种子以 `deadly signal`、rc 77 崩溃，而修复后的构建把它干净重放。按每个键填一张表是最初的形状，

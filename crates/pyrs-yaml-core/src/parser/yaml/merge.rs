@@ -1,4 +1,4 @@
-use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle};
+use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle, Tag};
 use crate::parser::is_null_key;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -350,6 +350,47 @@ fn owns_owning_key(
         .any(|(index, (own, _))| Some(index) != merge_index && same_emitted_key(own, key))
 }
 
+/// The tag on a scalar or null key, and `None` on every other node: those two are the variants
+/// `crate::parser::duplicate_tagged_key` tracks, so they are the only ones whose identity is
+/// `(tag, text)` rather than the node itself. This is the whole tag-free cost of
+/// [`same_emitted_key`]: one match per comparison.
+#[inline]
+fn scalar_key_tag(node: &CustomNode) -> Option<&Tag> {
+    match node {
+        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta } => meta.tag(),
+        _ => None,
+    }
+}
+
+/// The tag and the text a tagged key is tracked by, which is what
+/// `crate::parser::duplicate_tagged_key` keys its table on: a tagged scalar's own text, and the
+/// word `null` a tagged `Null` node's line carries.
+fn tagged_key_parts(node: &CustomNode) -> Option<(&Tag, &str)> {
+    match node {
+        CustomNode::Scalar { value, meta, .. } => meta.tag().map(|tag| (tag, value.as_ref())),
+        CustomNode::Null { meta } => meta.tag().map(|tag| (tag, "null")),
+        _ => None,
+    }
+}
+
+/// Whether two keys that both carry a tag are one key: YAML's own equality for scalar nodes, the
+/// tag and the text. That is [`CustomNode::key_identity`]'s tagged arm written out and kept out of
+/// line, and it is the model `crate::parser::duplicate_tagged_key` applies at `MappingEnd`.
+///
+/// Both halves of that sentence are load-bearing. Written inline it grew the fold enough to move
+/// `parse_inline_merge` and `parse_anchors` by another 0.1%; asked through `key_identity` instead
+/// of spelling the projection here, its body and `KeyIdentity::eq` joined the edit layer's
+/// inlining budget, and `edit_delete_key` — a document with no `<<` in it — read +2.10% for a
+/// comparison it never runs. `the_merge_key_projection_agrees_with_the_reader_identity` pins this
+/// spelling to the reader's.
+#[inline(never)]
+fn tagged_keys_collide(a: &CustomNode, b: &CustomNode) -> bool {
+    match (tagged_key_parts(a), tagged_key_parts(b)) {
+        (Some((tag_a, text_a)), Some((tag_b, text_b))) => tag_a == tag_b && text_a == text_b,
+        _ => false,
+    }
+}
+
 /// Whether two keys are the *same key as far as a re-read is concerned*.
 ///
 /// Two untagged scalars of one text emit one text, so they collide whatever their
@@ -362,9 +403,19 @@ fn owns_owning_key(
 /// the re-read then dropped — anchor and value with it (property tier CI seed
 /// `c9ef4fd3…`, where `prop_mapping_order_preserved` and `prop_tag_preserved` failed on
 /// the same tree for exactly that reason).
+///
+/// Tagged keys join through [`tagged_keys_collide`], which asks the same model the duplicate
+/// detector applies at `MappingEnd`: the tag and the text, with a tagged null spelled `null`.
+/// Whole-node equality kept a merge's block-styled, quoted, re-anchored or `"null"`-spelled twin
+/// as a second key, and the writer then emitted a pair its own reader refuses (libFuzzer
+/// `yaml_roundtrip` crash-4bf6ee37's merge shape). A tag-free merge pays one match per pair for
+/// it; asked unconditionally, the comparison read +0.95% on `parse_inline_merge`.
 fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
     if is_null_key(a) && is_null_key(b) {
         return true;
+    }
+    if scalar_key_tag(a).is_some() && scalar_key_tag(b).is_some() {
+        return tagged_keys_collide(a, b);
     }
     match (a, b) {
         (
@@ -660,6 +711,96 @@ mod tests {
             let again =
                 crate::serializer::to_yaml(&crate::parser::parse(&text, YamlSchema::Core).unwrap());
             assert_eq!(again, text, "expansion is not a fixed point for {yaml:?}");
+        }
+    }
+
+    #[test]
+    fn a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key() {
+        // The duplicate detector folds tagged keys by `(tag, text)`, so a merge that kept a
+        // second spelling of one tagged key wrote a pair the re-read refuses as `duplicate key`
+        // (libFuzzer `yaml_roundtrip` crash-4bf6ee37's merge shape). Each source here has one
+        // key written twice: a quoted twin, a re-anchored twin, a block-styled twin, and a
+        // tagged null beside a tagged scalar spelled `null`.
+        for yaml in [
+            "base: &b {!E k: 1}\nm:\n  <<: *b\n  !E 'k': 2\n",
+            "base: &b {&x !E null: 1}\nm:\n  <<: *b\n  &y !E null: 2\n",
+            "base: &b {!? \"abc\": 1}\nm:\n  <<: *b\n  ? !? |-\n    abc\n  : 2\n",
+            "base: &b {!E null: 1}\nm:\n  <<: *b\n  !E \"null\": 2\n",
+        ] {
+            let mut root = parse(yaml, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let merged = get_mapping(get_mapping(&root).get(&make_scalar("m")).unwrap());
+            assert_eq!(merged.len(), 1, "a merged twin survived in {yaml:?}");
+            let text = crate::serializer::to_yaml(&root);
+            let reread = crate::parser::parse(&text, YamlSchema::Core).unwrap_or_else(|e| {
+                panic!("source {yaml:?} expanded to unparseable {text:?}: {e}")
+            });
+            assert_eq!(
+                crate::serializer::to_yaml(&reread),
+                text,
+                "expansion is not a fixed point for {yaml:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_merge_keeps_two_tagged_keys_whose_tags_differ() {
+        // The other half of the rule: a different tag is a different key, and folding it would
+        // lose a pair the writer spells apart without any help.
+        let yaml = "base: &b {!a k: 1}\nm:\n  <<: *b\n  !b k: 2\n";
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        let merged = get_mapping(get_mapping(&root).get(&make_scalar("m")).unwrap());
+        assert_eq!(merged.len(), 2, "a key under a different tag was folded");
+        let text = crate::serializer::to_yaml(&root);
+        let reread = crate::parser::parse(&text, YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={text:?}"));
+        assert_eq!(crate::serializer::to_yaml(&reread), text);
+    }
+
+    #[test]
+    fn the_merge_key_projection_agrees_with_the_reader_identity() {
+        use crate::ast::KeyIdentity;
+
+        // The fold reads a tagged key as `(tag, text)`; the duplicate detector's model is
+        // `CustomNode::key_identity`. They are written apart on purpose (see
+        // `tagged_keys_collide`), so this pins them together: a shape one calls tagged the other
+        // must too, and two shapes the fold calls one key must be one key for the reader.
+        let shapes = [
+            "!E k: 1\n",
+            "!E 'k': 1\n",
+            "!E \"null\": 1\n",
+            "!E null: 1\n",
+            "!E ~: 1\n",
+            "!F k: 1\n",
+            "k: 1\n",
+            "~: 1\n",
+        ];
+        let roots: Vec<CustomNode> = shapes
+            .iter()
+            .map(|yaml| parse(yaml, YamlSchema::Core).unwrap())
+            .collect();
+        let keys: Vec<&CustomNode> = roots
+            .iter()
+            .map(|root| get_mapping(root).keys().next().unwrap())
+            .collect();
+        for key in &keys {
+            assert_eq!(
+                tagged_key_parts(key).is_some(),
+                matches!(key.key_identity(), KeyIdentity::Tagged { .. }),
+                "one model calls {key:?} tagged and the other does not"
+            );
+        }
+        for (position, a) in keys.iter().enumerate() {
+            for b in &keys[position..] {
+                if tagged_key_parts(a).is_some() && tagged_key_parts(b).is_some() {
+                    assert_eq!(
+                        tagged_key_parts(a) == tagged_key_parts(b),
+                        a.key_identity() == b.key_identity(),
+                        "{a:?} and {b:?} fold one way in the merge and the other in the reader"
+                    );
+                }
+            }
         }
     }
 
