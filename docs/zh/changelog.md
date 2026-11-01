@@ -448,6 +448,27 @@ status: new
   `a_first_entry_inline_note_under_a_marker_settles_in_one_round` 逐字节钉住最小化的发射与那份
   61 字节原件；把抬起门控回去（`if header && false`）它就以修复前的文本变红。没有新增遍历、没有新
   增分配：这个问题在已经跑过的首键走查里问，而且只对持有键值对的映射问。
+- **点号键不再嵌套得比深度守卫所能看见的更深** — `DEFAULT_MAX_DEPTH` 只约束 `parse_value`，也就是内
+  联表与数组的递归汇聚点。而点号键（`a.b.c = 1`）和表头（`[a.b.c]`）通过*迭代式*指针下降构建它们的嵌
+  套表，守卫因此从未计数，一条足够长的路径就会造出比预算更深的树。失效有两种：写器把这条链重新拼成内
+  联表，读者随即拒绝，于是 `parse → emit → parse` 拒绝了 `parse` 本已接受的文档；以及路径足够长时，
+  在任何守卫应答之前原生栈就溢出（`0xC00000FD`）。崩溃样本 `crash-7a3aac52`（2026-10-24 定时运行里一
+  条 2862 字节的 `a.b.b. …b = 1`）在 2 MiB 线程上中止，只有在 512 MiB 上才走到那次干净的重解析拒绝。
+  如今两条下降都被约束到同一预算，解析器自己那句注释——约束下降"封住每一条嵌套路径"——才为真：至多
+  1000 段的点号键或表头路径能往返并稳定，1001 段及以上则在构建任何一张表之前就是带类型的
+  `max depth exceeded`。`dotted_key_path_beyond_budget_errors_instead_of_overflowing`、
+  `header_path_beyond_budget_errors_instead_of_overflowing` 与
+  `dotted_key_within_budget_round_trips_without_inflation` 钉住这三条主张；崩溃样本被归档为
+  `fuzz/seeds/toml_roundtrip/former-crash-7a3aac52.seed`，由
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` 复放。2026-11-01 的定时运行又落下三条同形
+  样本——`crash-2503e079`、`crash-6c15f693` 与 `crash-837bd790`，点号路径分别为 1031、1026、1010 段
+  ——在这道守卫下于 1 MiB 线程上各自是带类型的 `max depth exceeded`，没有它时则是栈溢出；三条已归档到
+  `fuzz/seeds/parse_toml/`。守卫的代价在同一主机上与不含它的同一棵树实测：`load_toml_medium`
+  +0.006 %、`load_toml_long_strings` +0.046 %；而对已提交地板表面上的 +1.65 % / +2.98 % 在父树上同样
+  复现，是 WSL 主机的基线漂移、并非本次改动，故在执法镜像上刷新。留下的边界未经悄悄收窄：一棵合规的
+  约 900–1000 深树转换与写出仍需大于 1 MiB 的栈，而 Windows 主线程并不具备——这与数组测试靠跑在大栈上
+  就已承认的那道预算对原生栈的缺口同源（`docs/dev/quality-ledger.md` 的 `(hm)`），是它自己的一个决
+  定，而非本次改动移动的数字。
 - **带标签的键：标签与文本相同即为同一个键，行上其余一切不参与判定** — 读取端原先把带标签的键
   按整节点比较，样式与锚点都算在内，而写入端选这两样是为读取端服务、并不属于键本身：同一个带标签
   键的明文与引号拼法都输出成 `!a "…"`，带锚点的 `Null` 输出成 `!a null`。于是它自己写出的文本回来

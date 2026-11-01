@@ -11407,6 +11407,49 @@ nothing re-baselines. A *third* downloaded input, `crash-0f934648`, fails differ
 emits a bare `~` at line 2 column 1 that its own reader refuses as a colon-less simple key — and is
 deliberately left unfixed and unarchived here: a different root cause is a different change.
 
+### (ih) The depth guard bounded the value funnel but not the iterative table descent (2026-11-01)
+
+`DEFAULT_MAX_DEPTH` counted only `parse_value`, the recursion funnel for inline tables and arrays. A
+dotted key (`a.b.c = 1`) and a table header (`[a.b.c]`) instead build their nested tables by an
+*iterative* pointer descent in `register_kv` and `register_header`, so the guard never saw them and
+the parser's own comment — that bounding the descent "caps every nesting path" — was false for both
+shapes. The scheduled fuzz runs kept surfacing it: `crash-7a3aac52` is a single 2862-byte dotted
+path of ~1100 segments ending `b.b = 1`.
+
+A release probe over that input and synthetic dotted depths separated two failure modes. (A) Round-
+trip inflation: a path of 1002 segments or more parses, and the writer re-spells the chain as an
+inline table the reader then rejects with `max depth exceeded`, so `parse → emit → parse` refuses a
+document `parse` accepted — a lost document, invisible to the fixed point because the shortened text
+re-emits as itself. 1001 settled, 1002 rejected, the seam where the writer's `[header]` + inline
+spelling crosses the funnel's count. (B) Stack abort: ~2000 segments or more overflowed a 2 MiB
+thread inside the recursive conversion/writer/drop before the funnel could answer. On a 512 MiB
+stack `crash-7a3aac52` reached (A)'s clean rejection; on 2 MiB it aborted `0xC00000FD` — the same
+input, two readings, which is the probe picking the examples where the two hypotheses diverge.
+
+The fix bounds both descents to the same budget (`self.current.len() + key.len()` for a dotted path,
+`key.len()` for a header), checked before a single table is built, so the guard's promise holds for
+every construction route and a legal tree is never deeper than the funnel allows. Measured now: a
+dotted or header path of ≤1000 segments round-trips and settles, and ≥1001 is a typed
+`max depth exceeded` on both a 1 MiB and a 2 MiB thread; `crash-7a3aac52` is that rejection on both.
+Three parser tests (`dotted_key_path_beyond_budget_errors_instead_of_overflowing`,
+`header_path_beyond_budget_errors_instead_of_overflowing`,
+`dotted_key_within_budget_round_trips_without_inflation`) plus
+`dotted_key_at_the_budget_edge_still_round_trips` hold it, and the crash input is archived as
+`fuzz/seeds/toml_roundtrip/former-crash-7a3aac52.seed`, replayed by
+`toml_writer_reaches_a_fixed_point_over_the_seed_corpus` — revert the guard and that seed re-parses,
+emits, and the re-parse panics, so the corpus reddens by merge.
+
+The price is the guard, read by the same-host A/B this ledger keeps using: `load_toml_medium`
++0.006 % and `load_toml_long_strings` +0.046 % over the identical tree without it. The apparent
++1.65 % / +2.98 % over the committed floors is the host-versus-image drift `(hy)` already names — it
+reproduces on the parent tree with no guard — so it refreshes on the enforcing image, not here.
+
+Left open, not silently narrowed: a *legal* ~900–1000-deep dotted tree still needs a stack over 1
+MiB to convert and write, which the Windows main thread does not carry. That is the same
+budget-versus-native-stack class `(hm)` fixed for the YAML dump route, and closing it is a decision
+in its own right — lower `DEFAULT_MAX_DEPTH` below the smallest supported thread, or make the
+conversion and writer iterative — not a number this change quietly moves.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

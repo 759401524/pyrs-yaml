@@ -584,6 +584,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`if header && false`) reddens it with the pre-fix text. No new pass, no new allocation: the
   question is asked inside the first-key walk that already ran, and only for a mapping that holds a
   pair.
+- **A dotted key no longer nests deeper than the depth guard can see** — `DEFAULT_MAX_DEPTH` bounded
+  only `parse_value`, the recursion funnel for inline tables and arrays. A dotted key (`a.b.c = 1`)
+  and a table header (`[a.b.c]`) build their nested tables by an *iterative* pointer descent, so the
+  guard never counted them and a long-enough path produced a tree deeper than the budget. Two ways
+  that failed: the writer re-spelled the chain as an inline table the reader then refused, so
+  `parse → emit → parse` rejected a document `parse` had accepted; and a path long enough overflowed
+  the native stack (`0xC00000FD`) before any guard could answer. The crash `crash-7a3aac52` (a
+  2862-byte `a.b.b. …b = 1` from the 2026-10-24 scheduled run) aborted on a 2 MiB thread and only
+  reached the clean re-parse rejection on 512 MiB. Both descents are bounded to the same budget now,
+  so the parser's own comment — that bounding the descent "caps every nesting path" — is true: a
+  dotted or header path of at most 1000 segments round-trips and settles, and one of 1001 or more is
+  a typed `max depth exceeded` before a single table is built.
+  `dotted_key_path_beyond_budget_errors_instead_of_overflowing`,
+  `header_path_beyond_budget_errors_instead_of_overflowing` and
+  `dotted_key_within_budget_round_trips_without_inflation` hold the three claims, the crash input is
+  archived as `fuzz/seeds/toml_roundtrip/former-crash-7a3aac52.seed` and replayed by
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus`. The 2026-11-01 scheduled run landed
+  three more of the same shape — `crash-2503e079`, `crash-6c15f693` and `crash-837bd790`, dotted
+  paths of 1031, 1026 and 1010 segments — each a typed `max depth exceeded` on a 1 MiB thread under
+  this guard and a stack overflow without it; they are archived under `fuzz/seeds/parse_toml/`. The
+  guard's price is measured on
+  this host against the same tree without it: `load_toml_medium` +0.006 % and
+  `load_toml_long_strings` +0.046 %, while the apparent +1.65 % / +2.98 % over the committed floor
+  reproduces on the parent tree and is the WSL-host baseline drift, not this change, so it refreshes
+  on the enforcing image. The residual left standing, not silently narrowed: a legal ~900–1000-deep
+  tree still needs a stack over 1 MiB to convert and write, which the Windows main thread does not
+  carry — the same budget-versus-native-stack gap the array tests already acknowledge by running on
+  a big stack (`docs/dev/quality-ledger.md` `(hm)`), and a decision in its own right rather than a
+  number this change moves.
 - **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
   reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
   those for the reader and not for the key: plain and quoted spellings of one tagged key both emit
