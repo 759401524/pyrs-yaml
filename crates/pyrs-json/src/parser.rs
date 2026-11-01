@@ -382,6 +382,15 @@ fn attach_pending(node: &mut CustomNode, pending: &[PendingComment]) {
         if pc.own_line {
             node.push_leading_comment(comment);
         } else {
+            // A node can meet this function twice before its container takes it: an array element's
+            // note before the value and the one after it arrive through two separate flushes, and
+            // the single inline slot kept only the second - the first was overwritten and lost
+            // (libFuzzer `json_events_replay` crash-0449c0ae). The earlier note moves to the
+            // leading list, which holds any number of notes in source order; its `standalone` flag
+            // still says which slot it came from, so the slot it reports does not change.
+            if let Some(earlier) = node.comment().cloned() {
+                node.push_leading_comment(earlier);
+            }
             node.set_comment(comment);
         }
     }
