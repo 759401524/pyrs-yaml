@@ -335,6 +335,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A tagged sequence's marker note no longer needs two rounds** — `lift_first_entry_notes` hoists a
+  block mapping's whole marker spine above its `&anchor` / `!tag` header line, so a note riding a
+  nested `?` / `-` marker lands where the reader reports it and the first emission is the fixed
+  point. The sequence's twin read only the first item's own leading stack, so a note one level down
+  the spine stayed *below* the header — where the reader hands it to the sequence itself — and the
+  emission settled only on its second pass. The sequence lift now walks the spine with
+  `hoist_marker_note`, the same walk the mapping lift does. `crash-094d4d6a` and `crash-8492f5ee`
+  (the 2026-10-17 and 2026-10-24 scheduled runs, and not the family #691 or #689 covers — both still
+  drifted against those heads) pinned it, and `crash-701f76bf` is the same leak at its smallest:
+  eight bytes, one note on the explicit `?` key under a tag, with an `&a` twin for the anchor
+  spelling of the same header. They are archived as
+  `fuzz/seeds/yaml_roundtrip/former-crash-{094d4d6a,8492f5ee,701f76bf}.seed` and
+  `a_tagged_sequences_marker_note_settles_above_its_header` holds the one-round claim — for the
+  eight-byte pair it also holds the note above the header exactly once, so an emission that dropped
+  or doubled the note cannot pass on equality alone. The guard
+  costs the writer: read on this host against the same tree without it, `serialize_block` +0.18 %
+  and `serialize_note_flow` +0.17 %, `serialize_small` +0.10 %, `serialize_medium` +0.12 %,
+  `serialize_anchors` +0.06 %, `serialize_block_scalars` +0.03 % — every scenario inside the 0.5 %
+  line, so none FAILs; the no-fix tree sat at +0.00 % on the two named rows, so the whole move is
+  the guard and not host drift.
 - **The Markdown formatter no longer edits the inside of a code span** — `rumdl fmt`'s MD038 fixes
   "spaces inside code span elements" by *deleting* the byte, so a span written as backtick, space,
   `? > #I` came back without that space in all five changelog mirrors and in

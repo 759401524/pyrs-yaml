@@ -313,6 +313,24 @@ status: new
 
 #### 수정
 
+- **태그가 달린 순서의 마커 주석은 이제 두 번을 필요로 하지 않는다** — `lift_first_entry_notes`는
+  블록 맵핑의 마커 전체를 `&anchor` / `!tag` 헤더 줄 위로 들어 올린다. 그래서 중첩된 `?` / `-`
+  마커에 실린 주석은 읽기가 보고하는 자리에 떨어지고, 첫 기록이 곧 고정점이 된다. 순서에 대응하는
+  함수는 첫 항목 자신의 leading 스택만 읽었기에, 마커 아래 한 단계의 주석은 헤더 *아래*에
+  남았다—읽기가 순서 자체에 넘기는 자리—그래서 기록은 두 번째 순회에서야 안정됐다. 이제 순서 들어
+  올리기 역시 `hoist_marker_note`로 마커를 따라 간다. 맵핑 들어 올리기와 같은 길이다.
+  `crash-094d4d6a`와 `crash-8492f5ee`(2026-10-17과 2026-10-24 정기 실행, #691이나 #689가 덮는 계열이
+  아니라 둘 모두 그 브랜치에서 여전히 흔들렸다)이 이를 못박고, `crash-701f76bf`는 같은 누출의 가장
+  작은 모양이다. 여덟 바이트, 태그 아래 명시적 `?` 키에 실린 주석 하나, 그리고 같은 헤더의 앵커
+  표기인 `&a` 쌍둥이. 이들은
+  `fuzz/seeds/yaml_roundtrip/former-crash-{094d4d6a,8492f5ee,701f76bf}.seed`로 보관되며
+  `a_tagged_sequences_marker_note_settles_above_its_header`가 그 한-순회 주장을 갖는다—여덟 바이트
+  두 모양에 대해서는 주석이 헤더 위에 정확히 한 번 떨어진다는 것도 주장한다. 주석을 버리거나 두 번
+  쓰는 기록은 동등성만으로 통과할 수 없다. 가드는 쓰는 쪽에 값을 물렸다. 이 호스트에서 그것을 빼고
+  같은 트리에 대해 실측하면, `serialize_block` +0.18 %, `serialize_note_flow` +0.17 %,
+  `serialize_small` +0.10 %, `serialize_medium` +0.12 %, `serialize_anchors` +0.06 %,
+  `serialize_block_scalars` +0.03 %. 모든 시나리오가 0.5 % 선 안이라 `FAIL`은 없다. 고치지 않은
+  트리는 그 두 줄에서 +0.00 %였으니, 움직임 전체는 가드이지 호스트 드리프트가 아니다.
 - **Markdown 포매터가 인라인 code span 안을 고치지 않는다** — `rumdl fmt`의 MD038은 "code span 요소
   안의 공백"을 *그 바이트를 지워서* 고치기 때문에, 백틱·공백·`? > #I` 순으로 쓴 span은 다섯
   changelog 사본과 `docs/dev/quality-ledger.md`에서 그 공백을 잃은 채 돌아왔고, 후크는 `Passed`만

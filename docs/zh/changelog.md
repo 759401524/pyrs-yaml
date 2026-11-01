@@ -259,6 +259,20 @@ status: new
 
 #### 修复
 
+- **带标签的序列，其标记注释不再需要两轮** — `lift_first_entry_notes` 把块式映射的整条标记脊柱提升到
+  它的 `&anchor` / `!tag` 表头线之上，于是骑在嵌套 `?` / `-` 标记上的注释落在读者所报告的位置，首次
+  发射即固定点。序列的那一份孪生只读首项自己的前导栈，所以脊柱上低一层的注释留在表头*下方*—— 读者把
+  它交回序列本身的地方——发射要第二遍才稳定。序列提升现在用 `hoist_marker_note` 走脊柱，与映射提升同
+  一条路。`crash-094d4d6a` 与 `crash-8492f5ee`（2026-10-17、2026-10-24 定时运行，且并非 #691 或 #689
+  覆盖的家族——两者在那两个 head 上仍旧漂移）钉住它，而 `crash-701f76bf` 是同一泄漏的最小形状：
+  八个字节、一个挂在显式 `?` 键上的注释，标签之下；`&a` 孪生是同一表头的锚点写法。它们被归档为
+  `fuzz/seeds/yaml_roundtrip/former-crash-{094d4d6a,8492f5ee,701f76bf}.seed`，
+  `a_tagged_sequences_marker_note_settles_above_its_header` 持有第一轮的主张——对八字节那一对，它还要
+  求注释恰好在表头上方出现一次，于是丢弃或重复注释的发射无法仅凭相等通过。守卫让写端付了代价：
+  在同一主机上与不含它的同一棵树对照，`serialize_block` +0.18 %、`serialize_note_flow` +0.17 %、
+  `serialize_small` +0.10 %、`serialize_medium` +0.12 %、`serialize_anchors` +0.06 %、
+  `serialize_block_scalars` +0.03 %——每个场景都在 0.5 % 线内，无一 FAIL；不含修复的树在那两行是
+  +0.00 %，所以整段移动都是守卫、而非宿主漂移。
 - **Markdown 格式化器不再改动行内 code span 的内部** — `rumdl fmt` 的 MD038 把「code span 元素内的空
   格」以*删除那个字节*的方式修复，所以一个写成反引号、空格、`? > #I` 的 span 在五张 changelog 镜像和
   `docs/dev/quality-ledger.md` 里都丢了那个空格回来，而钩子只打印 `Passed`。这条规则的前提只在成对的
