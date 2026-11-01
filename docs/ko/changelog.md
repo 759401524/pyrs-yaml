@@ -17,6 +17,18 @@ status: new
 
 #### 추가
 
+- **코퍼스 주석 오라클이 이제 두 살대를 읽는다** — `crates/pyrs-yaml-core/tests/note_survival.rs`는
+  `yaml_roundtrip`과 `parse_yaml`만 걸어놓고 자기 머리글은 `fuzz/seeds/**.seed`를 돈다고 적어
+  두었다. 그리고 이 보존 주장은 TOML 코퍼스에는 한 번도 물린 적이 없다 —
+  `crates/pyrs-toml/tests/roundtrip_corpus.rs`는 그 시드들을 부동점 대해서만 재생한다.
+  `every_note_in_the_toml_corpus_survives_one_emission`은 2026-11-02 실측으로 주석이 있는 14개 시드
+  (`toml_roundtrip`과 `parse_toml`)에 과금을 걸고, YAML 쪽은 `document NUL script` 형태인
+  `edit_yaml` 항목의 문서 절반을 받아들인다. 두 주장은 같지 않고, 변형 실험이 그걸 보여 준다: 항목별
+  주석 덩어리를 `if false` 안에서 쓰면 부동점 재생은 **초록**으로 남고 새 테스트만 빨개진다. 주석을
+  지운 출력은 첫 라운드에 그대로 자리잡기 때문이고, 그것이 `(hw)`/`(hy)`가 적어 둔 실패 모양이다 —
+  이제 생성 트리가 아니라 코퍼스를 상대로 gate 된다. 머리글은 무엇을 읽고 무엇을 남기며 이유는
+  무엇인지(엄격한 `to_json_text`는 `//` 주석을 둘 자리가 없으니 JSONC 절반은 다른 주장)를 적고, 두
+  하한은 모두 실측에서 뽑았다: YAML은 과금된 60개 중 55, TOML은 14개 중 12.
 - **TOML 요소 주석 계열의 나머지 두 형태에 고정 테스트가 붙고, 이 배치의 입력도 코퍼스가 되었다** —
   2026-10-31 정기 퍼즈 실행이 남긴 `toml_roundtrip` 및 `edit_yaml` 산출물 여섯 개는 이번 릴리스의
   주석 수정이 해결한 바로 그 주장을 보고한다. 요소 자체가 컨테이너인 배열 요소 위의 `#` 줄이다. 그

@@ -19,6 +19,16 @@ status: new
 
 #### 新增
 
+- **语料注释预言机如今读两条辐条，而不是一条** — `crates/pyrs-yaml-core/tests/note_survival.rs` 只走
+  了 `yaml_roundtrip` 和 `parse_yaml`，可它自己的文件头声称走的是 `fuzz/seeds/**.seed`；而它做的「守
+  恒」断言从未向 TOML 语料提过：`crates/pyrs-toml/tests/roundtrip_corpus.rs` 只按不动点回放那些种
+  子。`every_note_in_the_toml_corpus_survives_one_emission` 把 `toml_roundtrip` 与 `parse_toml` 里带
+  注释的 14 条种子记上账（2026-11-02 实测），YAML 一侧补上 `edit_yaml` 的文档半段（其条目形如
+  `document NUL script`）。两个断言不是一回事，突变把这点说清了：把章节注释栈写进 `if false` 之后，
+  不动点回放**照样绿**，只有新测试变红——删掉注释的输出第一轮就收敛，这正是 `(hw)`/`(hy)` 记下的失败
+  形态，如今对着语料设防而不只对着生成树。文件头写明读了哪些、留下哪些以及为什么（严格的
+  `to_json_text` 无处安放 `//` 注释，所以 JSONC 那一半是另一个断言），两条下限都由实测导出：YAML 在
+  计上的 60 条里取 55，TOML 在 14 条里取 12。
 - **TOML 元素注释家族的另外两种形状有了钉子，这一批输入也进了语料** — 2026-10-31 的定时模糊测试留下
   六个 `toml_roundtrip` 与 `edit_yaml` 输入，它们报的正是本次发布里注释修复所解决的那条断言：数组元
   素自身是容器时，它上方的一行 `#`。在该修复的父提交上实测，三个 `toml_roundtrip` 输入的第二轮发射与

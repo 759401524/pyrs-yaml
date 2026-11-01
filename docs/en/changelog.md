@@ -19,6 +19,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The corpus note oracle now reads two spokes, not one** —
+  `crates/pyrs-yaml-core/tests/note_survival.rs` walked `yaml_roundtrip` and `parse_yaml` while its
+  own header claimed `fuzz/seeds/**.seed`, and the conservation claim it makes had never been asked
+  of the TOML corpora: `crates/pyrs-toml/tests/roundtrip_corpus.rs` replays those seeds for the
+  fixed point only. `every_note_in_the_toml_corpus_survives_one_emission` charges the 14
+  note-bearing seeds of `toml_roundtrip` and `parse_toml` (measured 2026-11-02), and the YAML walk
+  gains the document half of `edit_yaml`, whose entries are `document NUL script`. The two claims
+  are not the same and the mutation says so: writing the section note stack under `if false` leaves
+  the fixed-point replay **green** and reddens the new test, because an emission that deletes a note
+  settles on its first round — the `(hw)`/`(hy)` failure mode, now gated against the corpus rather
+  than only against generated trees. The header names what is walked, what is left alone and why
+  (strict `to_json_text` has nowhere to put a `//` note, so a JSONC half is a different claim), and
+  both floors are derived from the measurement — 55 of the 60 charged YAML seeds, 12 of the 14 TOML
+  ones.
 - **Two more shapes of the TOML element-note family are pinned, and the batch's inputs are corpus**
   — the scheduled fuzz run of 2026-10-31 left six `toml_roundtrip` and `edit_yaml` artifacts whose
   report is the claim the note fix in this release settles: a `#` line above an array element that
