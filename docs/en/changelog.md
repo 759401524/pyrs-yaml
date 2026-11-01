@@ -307,6 +307,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A first key's note under a tagged item's header settles on the first emission** — the compact
+  `- k: v` writer printed a first pair's key notes above the dash, which for the *first item of a
+  headed sequence* is inside that header's block: the reader there reports the note as the
+  sequence's own leading comment, so the next emission hoisted it above the `!tag` / `&anchor` line
+  and one round never reached a fixed point — libFuzzer `yaml_roundtrip` crash-094d4d6a, minimised
+  to eight bytes (`!\n- ?\n#~`, the note riding the explicit `?` key), archived as
+  `former-crash-094d4d6a.seed`. Such a note now goes above the outermost header of the chain — the
+  slot the reader agrees with, and the one this item's own inline note and every container's own
+  notes already use. `a_first_key_note_of_a_headed_item_settles_above_the_header` pins both header
+  kinds (tag and anchor), the note appearing exactly once, and one-round settling; taking the
+  `enclosing_header` target out reddens it on the first assertion with the pre-fix emission
+  (`"! \n# ~\n- ~: ~\n"`). The unheaded shape is unchanged — there
+  `a_standalone_note_above_a_compact_first_key_reaches_the_document` already pinned the same rule.
 - **An array element keeps the note on each side of its value** — a note after the comma and one
   after the value reach one element through two separate flushes (`array` takes the pending list
   before `value()` and flushes what follows it), and both land in the single inline slot: the
