@@ -709,6 +709,20 @@ status: new
   は `benchmark` 印のない用例をすべて deselect する（実測 `50 deselected`）ので、下限は
   ランキング側のファイルに置いた——あちらではどちらのレッグでも走らない。対照：venv を 0.1.3 に
   戻すとメッセージに版数が乗って赤になり、0.2.0 では緑。`(gg)` として記録。
+- **配列要素の注記が周回ごとに 1 回ずつ書かれるのをやめた** — 配列要素より上の `#` を読み手が報告で
+  きる場所は 1 つだけ、それが載っている行の末尾であり、読み手はそれを要素ノードに記録する。要素がイ
+  ンラインテーブルなら、それは `write_notated_table` がテーブル自身の前書き注記として読むのと同じス
+  ロットである。そのため `write_notated_array` は注記を要素の上へ持ち上げ、テーブル配置が波括弧の中
+  でさらに 1 回書いた——周回ごとに 1 部が増え、テキストは安定しない。5 本の検体：`toml_roundtrip` の
+  crash-3e95a4cf、crash-6802dabe、crash-9c0b2acb、`edit_yaml` の crash-1ec1ea89、crash-20cc6b69。54
+  〜150 バイトの入力で、2 回目の書き出しはこの重複だけが違っていた。`write_value` は選択を引数として
+  私有の双子関数へ渡すようになり、コンテナ自身の前書きスロットを伏せるよう求めるのは配列要素の呼び出
+  し点だけ：注記は要素の上の行に残り（読み手がそこから報告する）、テーブル自体はコンパクトなまま。
+  `an_element_note_over_an_inline_table_is_written_once_and_settles` は読める `# lead` と、コーパス
+  が実際に運んできた空テキストの注記の両方を固定する。シードは `fuzz/seeds/toml_roundtrip` の
+  `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed` として（`cargo nextest` のたびに
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` が再生）、`fuzz/seeds/edit_yaml` の
+  `former-crash-{1ec1ea89,20cc6b69}.seed` としてアーカイブした（fuzz ジョブが再生）。
 
 #### 変更
 
