@@ -297,6 +297,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note on each side of an array element no longer loses one of them** — the tree walk hands an
+  element two batches of pending notes, the ones before it and the ones after it, and both ride the
+  same node. `attach_pending` wrote a lone same-line note into the one inline slot and the second
+  batch overwrote the first. The event stream reported both, so `json_events_replay` named the
+  disagreement on a 15-byte input, `[//E\r0XaA0//E\r]`: the tree kept `[("E", false)]` where the
+  stream reported the note twice. The slot now keeps the first same-line note and a later one joins
+  the leading list — the #361 rule, applied one batch at a time because the after-batch is only
+  known once the element has been read — and `group()` carries the slot state from the element's
+  first group into the second, so the stream files the two notes where the tree does. Before the
+  change the new test failed on exactly that pair while its two neighbours in the file passed;
+  `notes_straddling_one_element_fill_both_of_its_slots` pins it in JSON5 (the fuzzer's bytes) and in
+  JSONC (`[/*a*/ 1 /*b*/]`), and the input is archived as `former-crash-0a0d4d4b.seed`. Both slots
+  read back through the JSONC and JSON5 writers, which
+  `every_comment_position_survives_both_dialect_writers` and the corpus fixed-point test cover.
+  Price: a document with no notes pays nothing, because the empty batch still returns before the
+  slot is read; one that carries notes pays a single slot read per batch.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
