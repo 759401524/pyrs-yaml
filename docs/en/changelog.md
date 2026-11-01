@@ -347,6 +347,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for byte (`~: ! ~` / `# *` / `# b` / `<<: e  # ~`) and the 104-byte original, and restoring the
   stale offset reddens it with the pre-fix text. No new pass or allocation: the re-anchor is the
   length already appended, read once.
+- **A container key's line-end note now lifts before the `?` marker does** — a block container that
+  writes an anchor or tag header re-reads a note riding its first entry's line end as its own, which
+  is why the header path empties that slot (`lift_first_entry_notes`). The `?` marker's own walk,
+  `hoist_marker_note`, took only the standalone stack, so an anchored container key wrote the note
+  inside its `?` body on the first emission and the re-read hoisted it above the marker — libFuzzer
+  `yaml_roundtrip` crash-6cfbaa57, 61 bytes, minimised to the 15-byte `? &x\n ? a  # c\n` and
+  archived as `former-crash-6cfbaa57.seed`. Both walks now ask one question
+  (`first_entry_inline_note`), and the lift is gated on the header rather than on the marker,
+  because a headerless container key keeps that note inside its own body: the position is what tells
+  two mapping keys apart in the table
+  `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` asserts, and the first shape of
+  this fix — unconditional — emitted `?\n  z: 1\n:\n  one\n# deep\n?\n  z: 1\n:\n  two\n`, which the
+  reader refused as a duplicate key. `a_first_entry_inline_note_under_a_marker_settles_in_one_round`
+  pins the minimised emission byte for byte and the 61-byte original; gating the lift back
+  (`if header && false`) reddens it with the pre-fix text. No new pass, no new allocation: the
+  question is asked inside the first-key walk that already ran, and only for a mapping that holds a
+  pair.
 - **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
   reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
   those for the reader and not for the key: plain and quoted spellings of one tagged key both emit
