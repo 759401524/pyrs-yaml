@@ -2534,7 +2534,9 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
     let mut notes = Vec::new();
     match key {
         CustomNode::Mapping {
-            pairs, flow_style, ..
+            pairs,
+            flow_style,
+            meta,
         } => {
             // The question is whether the body lands on its own lines, not what the node claims:
             // a flow-marked key that the demotion sends to block has the same spine, so asking the
@@ -2543,11 +2545,27 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
             if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
                 return notes;
             }
+            // Only a container that writes its own anchor/tag header line re-reads a note placed
+            // under it as its own, which is what [`lift_first_entry_notes`] reacts to. Without a
+            // header, the body keeps the note on the inner key - the reader honours that, and the
+            // position is load-bearing: it is what tells two mapping keys apart when the note is
+            // the only difference (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`).
+            let header = meta.anchor().is_some() || meta.tag().is_some();
             // `IndexMap` never hands out `&mut K` (it would break the hash invariant),
             // so take the entry out, work on the owned key, and put it back where it
             // was.
             if let Some((mut first_key, first_value)) = pairs.shift_remove_index(0) {
                 notes.extend(take_leading_notes(&mut first_key));
+                // The inline slot is the other half of the problem *where a header stands*: under
+                // the header both lifts would move it, and [`lift_first_entry_notes`] spells it
+                // above the header inside the marker body - where the next read hands it to the
+                // key mapping this walk is looking at, and it climbs above the outer `?`. Taking
+                // it here as well makes the first emission already the marker-level spelling
+                // (libFuzzer `yaml_roundtrip` crash-6cfbaa57, minimised to `? &x` + ` ? a  # c`).
+                if header && let Some(inline) = first_entry_inline_note(&first_key) {
+                    notes.push(inline);
+                    first_key.remove_comment();
+                }
                 // Keep walking: a deeper marker can carry its own stack, and the reader
                 // reports that one at this level too.
                 notes.extend(hoist_marker_note(&mut first_key));
@@ -2569,6 +2587,22 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
         _ => return notes,
     }
     notes
+}
+
+/// The note riding a block container's first entry key *on its own line end*, when the lift has to
+/// move it: a note between the key and the break is re-read one level shallower than the receiver
+/// put it whenever a marker line or an anchor/tag header stands above, which is why both
+/// [`hoist_marker_note`] and [`lift_first_entry_notes`] ask this one question. A container key's
+/// inline slot is never read - only a scalar or null key owns a line this can move a note off.
+fn first_entry_inline_note(key: &CustomNode) -> Option<Comment> {
+    match key {
+        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
+            .comment()
+            .filter(|c| !c.standalone)
+            .filter(|c| note_is_writable(c))
+            .cloned(),
+        _ => None,
+    }
 }
 
 /// Split an empty container's notes between the one inline slot the reader
@@ -2779,15 +2813,9 @@ fn lift_first_entry_notes(
     // value keeps the line's trailing slot; under a `&a` / `!tag` header that line
     // re-reads as the container's leading note, so it belongs in the same lift as
     // the key's leading stack (libFuzzer `yaml_roundtrip` crash-8b98eb75: a `!`
-    // header over a first pair whose key carried `#: #*b`).
-    let first_key_inline = match first_key {
-        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
-            .comment()
-            .filter(|c| !c.standalone)
-            .filter(|c| note_is_writable(c))
-            .cloned(),
-        _ => None,
-    };
+    // header over a first pair whose key carried `#: #*b`). The marker-chain half of
+    // the same slot is [`hoist_marker_note`]'s.
+    let first_key_inline = first_entry_inline_note(first_key);
     // Borrow before allocating. Taking the spine needs an owned key and a copy of
     // the map, and every anchored/tagged block container would pay both — even the
     // overwhelming majority that carry no note anywhere on the spine. Measured:

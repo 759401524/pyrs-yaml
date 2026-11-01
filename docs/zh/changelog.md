@@ -266,6 +266,19 @@ status: new
   `an_element_keeps_the_notes_on_both_sides_of_its_value` 在
   `[/* before */ 1 /* after */]` 上具名陈述该断言。把覆盖改回去，两者都会变红；语料现在驱动 51
   组判定对、重放 28 份被接受文档，文件中的实测注释即按此更新。
+- **容器键的行尾注释现在在 `?` 标记之前就被抬起** — 写出锚点或标签头的块容器，会把骑在它第一个
+  条目行尾的注释在重读时认作自己的，这正是头路径要清空那个槽位的原因（`lift_first_entry_notes`）。
+  而 `?` 标记自己的那趟走查 `hoist_marker_note` 只取了独占注释栈，于是带锚点的容器键在第一次发射时
+  把注释写进了自己的 `?` 体，重读又把它抬到标记之上——libFuzzer `yaml_roundtrip` crash-6cfbaa57，
+  61 字节，最小化为 15 字节的 `? &x\n ? a  # c\n`，并归档为 `former-crash-6cfbaa57.seed`。两趟走查
+  现在问同一个问题（`first_entry_inline_note`），而这次抬起挂在头上、不挂在标记上，因为不带头的容器
+  键会把这注释放回自己的体内：那个位置正是
+  `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` 所断言的表里区分两个映射键的东
+  西，而这个修复的第一种形状——无条件抬起——会写出
+  `?\n  z: 1\n:\n  one\n# deep\n?\n  z: 1\n:\n  two\n`，读取端以重复键拒绝了它。
+  `a_first_entry_inline_note_under_a_marker_settles_in_one_round` 逐字节钉住最小化的发射与那份
+  61 字节原件；把抬起门控回去（`if header && false`）它就以修复前的文本变红。没有新增遍历、没有新
+  增分配：这个问题在已经跑过的首键走查里问，而且只对持有键值对的映射问。
 - **带标签的键：标签与文本相同即为同一个键，行上其余一切不参与判定** — 读取端原先把带标签的键
   按整节点比较，样式与锚点都算在内，而写入端选这两样是为读取端服务、并不属于键本身：同一个带标签
   键的明文与引号拼法都输出成 `!a "…"`，带锚点的 `Null` 输出成 `!a null`。于是它自己写出的文本回来

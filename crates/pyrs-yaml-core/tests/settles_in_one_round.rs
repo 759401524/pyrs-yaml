@@ -67,6 +67,36 @@ fn a_first_key_inline_note_under_a_header_settles_in_one_round() {
     );
 }
 
+/// libFuzzer `yaml_roundtrip` crash-6cfbaa57: the same inline slot, on a container that is itself
+/// an explicit key.
+///
+/// The header lift moved the note above the `&x` line *inside* the `?` body, where the next read
+/// hands it to the key mapping - and an explicit pair writes a key mapping's own note above the
+/// marker. Round one therefore disagreed with round two. `hoist_marker_note` now takes the slot
+/// wherever the container writes a header, so the first emission already spells the note where a
+/// re-read puts it: above the `?`, which is the marker-level fixed point.
+///
+/// The header is the condition, not the marker: a headerless container key keeps that note inside
+/// its body, where a note is the only thing telling two otherwise equal mapping keys apart
+/// (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`).
+#[test]
+fn a_first_entry_inline_note_under_a_marker_settles_in_one_round() {
+    let one = emit("? &x\n ? a  # c\n");
+    assert_eq!(one, "# c\n?\n  &x \n  a: ~\n:\n  ~\n");
+    assert_eq!(emit(&one), one, "not a fixed point in one round");
+    let src = "bg: &b\n ? &!) yaAmlx> 2\n?  &?  \n ? &!) y &?  #!!\"#!\"chg0#~-.I";
+    let one = emit(src);
+    assert!(
+        one.contains("!!\"#!\"chg0#~-.I"),
+        "the note was dropped: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
 /// A note that follows a CR-only line break belongs to the item after it, not the container
 /// before it.
 ///
