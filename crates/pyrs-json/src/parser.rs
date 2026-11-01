@@ -279,6 +279,49 @@ fn park_notes(
     }
 }
 
+/// File a repeated name's value where the close-time fold will end: the name's last entry.
+///
+/// `insert_full` replaces the first entry whose key is equal, but a noted key made its repeat
+/// unequal, so a name can hold several entries and the close-time fold moves the last entry's value
+/// over the earlier ones. A clean occurrence arriving after a noted one therefore replaced the first
+/// entry and was then overwritten by the older noted entry - the second-to-last value won, which the
+/// replay fuzz target caught. Keeping every value monotone in index order moves the newest value to
+/// the last entry, which is where the fold stops, and parks the notes it displaced there too.
+///
+/// `noted` is the same signal that decides whether the map folds at all: a name split by a note is
+/// the only shape with more than one entry of the same name, so the no-note route keeps paying one
+/// `insert_full` and two slot reads per member and no scan.
+fn file_duplicate(
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    index: usize,
+    displaced: CustomNode,
+    carried: Vec<pyrs_ast::ast::Comment>,
+    noted: bool,
+) {
+    if noted {
+        let last = (index..pairs.len()).rev().find(|&candidate| {
+            matches!(
+                (pairs.get_index(index), pairs.get_index(candidate)),
+                (Some((first, _)), Some((other, _))) if same_key_name(first, other)
+            )
+        });
+        if let Some(last) = last.filter(|&last| last != index) {
+            // The newest value is the one `insert_full` just put at `index`.
+            let Some((_, newest)) = pairs.get_index_mut(index) else {
+                return;
+            };
+            let newest = core::mem::replace(newest, displaced);
+            let Some((_, target)) = pairs.get_index_mut(last) else {
+                return;
+            };
+            let displaced = core::mem::replace(target, newest);
+            park_notes(pairs, last, displaced, carried);
+            return;
+        }
+    }
+    park_notes(pairs, index, displaced, carried);
+}
+
 /// Collapse a repeated name inside one mapping after a key's note kept the two apart.
 ///
 /// `insert_full` collapses on node equality and a key's same-line note is part of it, so a repeated
@@ -1019,11 +1062,12 @@ impl<'a> Parser<'a> {
             // about the note per key measured +0.8% on `from_json_medium`.
             let (index, replaced) = pairs.insert_full(key_node, value);
             if let Some(displaced) = replaced {
-                park_notes(
+                file_duplicate(
                     &mut pairs,
                     index,
                     displaced,
                     collapsed_key_notes(&key_pending),
+                    inherited_note || self.inline_comments != inline_seen,
                 );
             }
             match self.peek() {
@@ -1951,14 +1995,18 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
 
     /// File a map member the way the tree walk files it: the last value wins, the first position
     /// is kept, and the notes the loser carried move to the survivor.
-    fn file_member(pairs: &mut NodeMap<CustomNode, CustomNode>, member: (CustomNode, CustomNode)) {
+    fn file_member(
+        pairs: &mut NodeMap<CustomNode, CustomNode>,
+        member: (CustomNode, CustomNode),
+        noted: bool,
+    ) {
         let (key, value) = member;
         // The key's own notes are part of its identity, so they have to be read before the key
         // moves into the map - a name repeated while a note kept the two apart stays twice.
         let carried = notes_of(&key);
         let (index, replaced) = pairs.insert_full(key, value);
         if let Some(displaced) = replaced {
-            park_notes(pairs, index, displaced, carried);
+            file_duplicate(pairs, index, displaced, carried, noted);
         }
     }
 
@@ -2074,7 +2122,7 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                                 return Err(refuse("a mapping ended on a key with no value"));
                             }
                             Some(Pending::Member(key, value)) => {
-                                file_member(&mut pairs, (key, value));
+                                file_member(&mut pairs, (key, value), noted);
                             }
                             None => {}
                         }
@@ -2165,7 +2213,12 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                     apply(&mut node, text, leading);
                 }
                 match stack.last_mut() {
-                    Some(Frame::Map { pairs, pending, .. }) => {
+                    Some(Frame::Map {
+                        pairs,
+                        pending,
+                        noted,
+                        ..
+                    }) => {
                         match pending.take() {
                             // This scalar is the first key of the mapping.
                             None => {
@@ -2178,7 +2231,7 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                             // The member before this one is complete, so it is filed now, and
                             // this scalar is the next key.
                             Some(Pending::Member(key, value)) => {
-                                file_member(pairs, (key, value));
+                                file_member(pairs, (key, value), *noted);
                                 *pending = Some(Pending::Key(node));
                             }
                         }
@@ -2719,6 +2772,40 @@ mod tests {
                 crate::to_json_text(&from_json(&strict).expect("its own output re-parses"))
                     .expect("writable"),
                 strict
+            );
+        }
+    }
+
+    #[test]
+    fn a_noted_key_between_repeats_keeps_the_last_value() {
+        // Found by `fuzz/fuzz_targets/json_events_replay.rs`: the note made the two `a` keys
+        // unequal, so both entries lived side by side. The next clean `a` then matched the first
+        // entry and replaced its value, and the close-time fold moved the noted entry's older value
+        // over it - the second-to-last value won. The newest value has to end on the name's last
+        // entry, which is the one the fold ends at.
+        for (text, last, len) in [
+            (r#"{"a": 1, /* n */ "a": 2, "a": 3}"#, "3", 1),
+            ("{\"a\": 1, \"a\": 2, /* n */ \"a\": 3, \"a\": 4}", "4", 1),
+            ("{/* n */ \"a\": 1, \"a\": 2}", "2", 1),
+            ("{\"a\": 1, /* n */ \"a\": 2, \"b\": 0, \"a\": 3}", "3", 2),
+        ] {
+            let tree = from_jsonc(text).expect("valid JSONC");
+            let CustomNode::Mapping { pairs, .. } = &tree else {
+                unreachable!()
+            };
+            assert_eq!(pairs.len(), len, "{text:?}");
+            let (key, value) = pairs.get_index(0).expect("first pair");
+            assert_eq!(scalar_text(key), "a", "{text:?}");
+            assert_eq!(scalar_text(value), last, "last value wins for {text:?}");
+            let written = to_jsonc_text(&tree).expect("writable");
+            assert!(
+                written.contains("n"),
+                "the note survives {text:?}: {written}"
+            );
+            assert_eq!(
+                to_jsonc_text(&from_jsonc(&written).expect("its own output re-parses"))
+                    .expect("writable"),
+                written
             );
         }
     }

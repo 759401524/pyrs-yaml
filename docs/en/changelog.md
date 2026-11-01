@@ -528,6 +528,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   YAML→JSONC/JSON5 route in both layouts. The counterexample is the pre-fix output — both new
   properties redden on `{"a": 1}`. The price is one `has_notes()` guard per document, not per
   member.
+- **A noted key between repeats kept the second-to-last value** — a same-line note on one of several
+  `"a"` keys made that key unequal to the rest, so the mapping held both entries; the next clean
+  `"a"` then matched the first entry and replaced its value, and the close-time fold moved the noted
+  entry's older value back over it. `{"a": 1, /* n */ "a": 2, "a": 3}` parsed to `{"a": 2}`, and the
+  shape is what the replay target `fuzz/fuzz_targets/json_events_replay.rs` found — its 66-byte
+  minimized input threads two notes through the same repeats. The fold ends on the name's last
+  entry, so the newest value has to be parked there: `file_duplicate` moves it, carrying the slots
+  it displaced, and the tree walk and `from_events` share that function instead of each spelling the
+  insert — a replayed stream and the scanner now resolve a repeated name alike. A mapping whose keys
+  carry no note pays nothing new: the branch runs only when `insert_full` reports a replacement, and
+  the noted signal is read inside it. `a_noted_key_between_repeats_keeps_the_last_value` pins four
+  shapes (the note first, in the middle, last, and beside an unrelated key), and the minimized input
+  joined the seed corpus — 20 seeds over 3 dialects drive 60 verdict pairs and replay 34 accepted
+  documents.
 - **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
   hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
   one slice by asking the section's list first and falling back to the key's. Both non-empty is
