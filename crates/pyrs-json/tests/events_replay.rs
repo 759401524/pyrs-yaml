@@ -41,7 +41,7 @@ use pyrs_json::{
 /// under the replay and note comparisons. One floor cannot cover both: a corpus of nothing but
 /// refusals would drive pairs and replay none, and the second claim would go untested in silence.
 ///
-/// Measured: 18 seeds over 3 dialects drove 54 pairs and replayed 30 accepted documents. Both
+/// Measured: 19 seeds over 3 dialects drove 57 pairs and replayed 32 accepted documents. Both
 /// floors sit below those numbers on purpose — slack for a seed being retired, not targets to hit.
 const MIN_SEEDED_PAIRS: usize = 30;
 const MIN_REPLAYED_PAIRS: usize = 15;
