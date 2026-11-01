@@ -17,6 +17,19 @@ status: new
 
 #### 追加
 
+- **コーパスの注釈オラクルが二つの spoke を読むようになった** —
+  `crates/pyrs-yaml-core/tests/note_survival.rs` は `yaml_roundtrip` と `parse_yaml` を歩いていただ
+  けなのに、自分の先頭コメントは `fuzz/seeds/**.seed` を歩くと公言していた。そしてこの保存の主張は
+  TOML コーパスへ一度も課されたことがない。`crates/pyrs-toml/tests/roundtrip_corpus.rs` はそれらの
+  seed を不動点についてしか再生しないからだ。`every_note_in_the_toml_corpus_survives_one_emission`
+  は 2026-11-02 の実測で注釈を持つ 14 の seed（`toml_roundtrip` と `parse_toml`）に課され、YAML 側は
+  `document NUL script` 形の `edit_yaml` エントリの document 半分を受け取る。二つの主張は同一ではな
+  く、mutation がそれを示した：section の注釈スタックを `if false` の中で書くと不動点の再生は **緑**
+  のままで、新しいテストだけが赤くなる。注釈を消した出力は第一ラウンドで確定してしまうからで、それは
+  `(hw)`/`(hy)` が記した失敗の形であり、いまは生成ツリーだけでなくコーパスに対して gate される。ヘッ
+  ダーは何を読み何を残し理由は何か（厳格な `to_json_text` には `//` 注釈を置ける場所がないので JSONC
+  の半分は別の主張）を書き、二つの下限はいずれも実測から導いた：YAML は計上 60 のうち 55、TOML は 14
+  のうち 12。
 - **TOML の要素コメント一族の残り二形状に固定テストが付き、このバッチの入力もコーパスになった** —
   2026-10-31 の定時ファズ実行が残した `toml_roundtrip` と `edit_yaml` の成果物六件は、本リリースのコ
   メント修正が解いた主張そのものを報告している。要素自身がコンテナである配列要素の上にある `#` 行で

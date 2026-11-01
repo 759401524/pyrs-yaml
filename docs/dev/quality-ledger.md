@@ -11327,6 +11327,44 @@ the list cannot be edited back without naming why.
 No engine code is touched, so there is nothing for the Ir gate to price: the counted regions in
 `crates/` are unchanged by this entry's change.
 
+### (ie) The conservation oracle read one spoke while its header claimed the whole corpus (2026-11-01)
+
+`crates/pyrs-yaml-core/tests/note_survival.rs` opens by saying it walks `fuzz/seeds/**.seed`. Its
+`seed_dirs()` walked two directories: `yaml_roundtrip` and `parse_yaml`. Nothing could see the
+mismatch — a header is prose, no gate reads it against the code, and the test was green and honest
+about the seeds it did read. The claim's shape is the problem: a reader who trusts the header stops
+asking which corpora are charged, and the number that matters (175 seeds, 87 files walked) appears
+nowhere.
+
+The gap is worth naming because the two halves of the comment invariant are not redundant.
+`crates/pyrs-toml/tests/roundtrip_corpus.rs` and its JSON twin already replay their corpora on every
+`cargo nextest`, but for the fixed point, and an emission that *deletes* a note is a fixed point on
+the first round — the exact blindness `(hw)` and `(hy)` record, where a lost line passed
+re-parseability, settlement and tree equality at once. Conservation for TOML existed only over
+generated trees (`prop_toml_writer_carries_every_note`), which is a draw rather than a replay of the
+crashes the fuzzer already surrendered.
+
+So the walk gained the TOML spoke (`every_note_in_the_toml_corpus_survives_one_emission`) and the
+document half of `edit_yaml`, whose entries are `document NUL script`. The split is measured, not
+assumed: 25 of 25 seeds there hold a NUL, **0** of the 25 parses whole, and cutting at the first NUL
+yields 13 documents — an unsplit walk would not have failed, it would have found nothing. Measured
+on 2026-11-01: 54 + 2 + 1 note-bearing seeds charged on the YAML spoke and 5 + 3 on the TOML one,
+all of them passing, with floors of 50 and 6 taken from those counts rather than typed.
+
+The sensitivity claim is a measurement, not a property of prose. Wrapping the section note stack in
+`if false` — i.e. deleting a note on a table header — leaves
+`toml_writer_reaches_a_fixed_point_over_the_seed_corpus` **green** while
+`every_note_in_the_toml_corpus_survives_one_emission` reddens, and the YAML walk stays green, so the
+new test answers for the new coverage and nothing else moved. `crates/pyrs-toml/src/writer.rs` was
+restored from its backup before anything was committed.
+
+What is still not charged, and now written where a reader will meet it: the three JSON corpora share
+one byte string across `from_json`, `from_jsonc` and `from_json5`, so the readers do record `//`
+notes — but `to_json_text` has nowhere to put one, so a conservation assertion against that emission
+fails by design. A JSONC half has to compare against `to_jsonc_text`, which is a different claim; it
+is left unbuilt here rather than folded in quietly. `parse_schema` holds one seed and has no comment
+vocabulary.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
