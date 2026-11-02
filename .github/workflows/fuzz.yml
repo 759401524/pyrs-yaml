@@ -188,26 +188,29 @@ jobs:
             echo "| target | crash inputs | distinct signatures |"
             echo "| --- | --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
-          for d in crashes/*/; do
+          # The download's shape is not part of a target's identity. Every archive holds both
+          # `artifacts/<target>/` and `collected/<target>/`, and the download keeps one directory per
+          # archive (`crashes/fuzz-artifacts-<target>/`) or extracts those roots straight into
+          # `crashes/` — run 41541555317 did the latter, and a loop over `crashes/*/` then printed
+          # rows named `artifacts` and `collected` while counting one target's inputs twice. Reading
+          # the `collected/` mirror alone names each target once in both shapes; it is also where
+          # `scripts/fuzz_rounds.sh` writes `findings.tsv` and the crash copies, while `artifacts/`
+          # only receives copies of those crashes at the end of a round.
+          # The runner invokes a bash step with `bash -eo pipefail`, and `set -uo pipefail` here
+          # does not turn `-e` back off: `grep -c` exits 1 when it matches nothing, which took
+          # this step down as soon as any archive held no crash file or no findings.tsv. The
+          # issue-filing step below then never ran, so a finding from a push to main reached no
+          # consumer at all. A zero count is a fact to report, not a failure.
+          # `-exec basename`, not `-printf '%f'`: the latter is a GNU primary, and BSD find
+          # on the macOS leg rejects it, which made this column read 0 for every archive there.
+          for d in crashes/*/collected/*/ crashes/collected/*/; do
             name=$(basename "$d")
-            # The archive holds both `artifacts/<target>/` and `collected/<target>/`, and
-            # the second mirrors the first, so inputs are counted by file *name*, not by
-            # path — counting paths reported 3 for 2 crash inputs (measured on run
-            # 37533230933). Signatures come from findings.tsv, which scripts/fuzz_rounds.sh
-            # writes as a normal file under the target's own directory; the previous step
-            # looked for a dotfile at the archive root, where it has never existed, so that
-            # column has been silently reading 0.
-            # The runner invokes a bash step with `bash -eo pipefail`, and `set -uo pipefail` here
-            # does not turn `-e` back off: `grep -c` exits 1 when it matches nothing, which took
-            # this step down as soon as any archive held no crash file or no findings.tsv. The
-            # issue-filing step below then never ran, so a finding from a push to main reached no
-            # consumer at all. A zero count is a fact to report, not a failure.
-            # `-exec basename`, not `-printf '%f'`: the latter is a GNU primary, and BSD find
-            # on the macOS leg rejects it, which made this column read 0 for every archive there.
+            # Inputs are counted by file *name*, not by path: the two mirrors used to both be
+            # read, and counting paths reported 3 for 2 crash inputs (measured on run 37533230933).
             files=$(find "$d" -name 'crash-*' -exec basename {} \; | sort -u | grep -c . || true)
             sigs=$(find "$d" -name 'findings.tsv' -exec cat {} + 2>/dev/null | cut -f1 | sort -u | grep -c . || true)
             total=$((total + files))
-            echo "| ${name#fuzz-artifacts-} | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| $name | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"
           done
           if [ "$total" -gt 0 ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"

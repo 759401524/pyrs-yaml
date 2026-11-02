@@ -11918,6 +11918,42 @@ as defined when it appears anywhere in the tree, the limit `(ip)` records, so an
 that precedes an alias while a later re-definition also exists is still not inlined; and the test
 asserts the emission and its re-parse, not the intermediate tree.
 
+### (is) The fuzz issue filer read the download's shape as a target (2026-11-03)
+
+The scheduled `yaml_roundtrip` artifact from run 41541555317 carried three crash inputs, and
+`fuzz_file_issues.py` filed them as two issues, #739 and #740, titled after `artifacts` and
+`collected`. The run has exactly one archive - `gh api .../runs/41541555317/artifacts` lists
+`fuzz-artifacts-yaml_roundtrip`, 2132 bytes - and the aggregate job's log shows
+`download-artifact@v8` with `merge-multiple: false` landing "to: .../crashes": the archive's own two
+roots, `artifacts/<target>/` and `collected/<target>/` (the upload's least common ancestor is
+`fuzz/`), were extracted at the destination root instead of under a
+`crashes/fuzz-artifacts-<target>/` layer. The filer read the first path segment as the target, so
+each root became a target. The aggregate step's table loop read `crashes/*/` the same way, printed
+those two rows, and counted every input twice - 6 for 3.
+
+The target is now the segment after an `artifacts` or `collected` root, falling back to the first
+segment with the `fuzz-artifacts-` prefix stripped, so a download that keeps one directory per
+archive reads the same way. Signatures aggregate per target rather than per directory, and the
+summary reads the `collected/` mirror alone - where `scripts/fuzz_rounds.sh` writes `findings.tsv`
+and the crash copies, while `artifacts/` only receives copies at the end of a round - through the
+two globs `crashes/*/collected/*/` and `crashes/collected/*/` rather than `globstar`, which the
+macOS 3.2 `bash` does not have.
+
+The pin is load-bearing by mutation, and the direction it fails in is the finding: with the root
+walk disabled, `the_download_shape_never_becomes_the_target[flat]` reddens with
+`['artifacts', 'collected']` verbatim while `[nested]` still passes, because the first segment
+there is the archive's own `fuzz-artifacts-<target>` directory and the fallback already strips it.
+The nested layout was the one shape the old code got right, which is why the defect reached a
+scheduled run instead of a pull request, and why one test now runs both layouts. The report step's
+own case also lays out a flat-layout archive and asserts no row is named after an archive
+directory.
+
+This is a CI-only fix: no Rust and no emission/fixed-point claim, so the seeds and the Rust
+`#[test]` count do not move. The matrix counts the one added pytest function, 2,132 -> 2,133
+Python test functions, written by `quality_matrix.py --write-rows`. What it cannot see: the flat
+layout is reproduced from the run's evidence, not from a second live run - the download's shape is
+GitHub's to choose, so both shapes are pinned rather than one being assumed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -397,6 +397,16 @@ status: new
 
 #### 修复
 
+- **模糊测试 issue 归档器读的是 target，不是下载目录的形状** — 每个归档同时含有
+  `artifacts/<target>/` 与 `collected/<target>/`，而 run 41541555317 的下载把这两个根目录直接解到
+  `--crashes`，没有为每个归档保留一层目录。把路径第一段当作 target，于是凭空得到 `artifacts` 和
+  `collected` 两个 target：一个 `yaml_roundtrip` 归档的三个输入被拆成 issue #739 与 #740，步骤摘要也
+  照这两个名字打印行，并把每个输入数了两遍（3 个记成 6 个）。现在 target 取任一根本身之后的路径段，
+  退回值是归档自己的 `fuzz-artifacts-<target>` 目录；摘要则只读 `collected/` 镜像
+  ——`scripts/fuzz_rounds.sh` 正是在那里写 `findings.tsv` 与崩溃副本——因此两种形状下同一个 glob 都给
+  每个 target 命名一次。两个用例钉住它：`the_download_shape_never_becomes_the_target` 覆盖两种布局，
+  报告步骤则对一个扁平布局归档运行；把首段读取改回去，扁平那条用例会原样报出
+  `['artifacts', 'collected']`。
 - **从别名改写出来的键会就地折叠** — 重复键折叠会丢掉承载某个锚点唯一定义的那个 pair，并把该节点交给
   `repair_orphaned_anchors`，由它内联进所有剩余的 `*name`，键位置也算在内。重建时用裸的
   `pairs.insert` 把内联节点插回去，于是本来已有自己 null 键的映射多出了第二个，两者都写作 `~:`。
