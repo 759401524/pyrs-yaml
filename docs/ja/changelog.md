@@ -1063,6 +1063,16 @@ status: new
   `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed` として（`cargo nextest` のたびに
   `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` が再生）、`fuzz/seeds/edit_yaml` の
   `former-crash-{1ec1ea89,20cc6b69}.seed` としてアーカイブした（fuzz ジョブが再生）。
+- **穴あき申告ゲートが free-threaded `3.15t` レッグでファイルを読む前に落ちていた** — どの PR にも赤
+  い `3.15t` ジョブが付き、トレースバックは `unreleased_lines` の中で終わっていた。同じモジュールの
+  95 行上で定義している定数 `_VERSION_HEADING_RE` の `NameError` である。未変更の main ツリーで
+  `scripts/__pycache__` を消せば再現する：コールドは 20 回すべて赤、ウォームは緑、しかも
+  `PYTHONDONTWRITEBYTECODE=1` でも結果は変わらないので、引き金はキャッシュの書き込みではなくモジュー
+  ルの初回コンパイルである。落ちていた式が機構そのもの——
+  `load_module(path, name).unreleased_lines(text)` ——であり、呼び出しの前にモジュールをローカル名へ
+  束ねるのが実測された処方である：`3.15t` のコールド 5 回すべて緑、`3.14t` は 2 回とも緑、既定のイン
+  タープリタの読みは変わらない。合成モジュールでは再現しなかったので、コメントは症状と処方だけを記録
+  し、機構は主張しない。
 
 #### 変更
 

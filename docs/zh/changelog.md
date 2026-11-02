@@ -869,6 +869,13 @@ status: new
   下的 `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed`（每次 `cargo nextest` 由
   `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` 重放），以及 `fuzz/seeds/edit_yaml`
   下的 `former-crash-{1ec1ea89,20cc6b69}.seed`（由 fuzz 作业重放）。
+- **漏洞声明门禁在 free-threaded `3.15t` 腿上还没读到文件就失败了** — 每个 PR 都带着一条红的
+  `3.15t` 作业，回溯终止在 `unreleased_lines` 里，报同一模块上方 95 行处定义的常量
+  `_VERSION_HEADING_RE` 的 `NameError`。在未改动的主干上清空 `scripts/__pycache__` 即可复现：
+  冷启动 20 次全红、热启动全绿，且 `PYTHONDONTWRITEBYTECODE=1` 不影响结果，说明触发点是模块的
+  首次编译而不是缓存写入。出事的表达式就是整个机制——`load_module(path, name).unreleased_lines(text)`
+  ——而调用前先把模块绑到局部变量是实测有效的那一半补救：`3.15t` 冷启动 5 次全绿，`3.14t` 2 次
+  全绿，默认解释器的读数不变。没有任何合成模块能复现，所以注释只记录症状与补救，不声称机制。
 
 #### 变更
 
