@@ -2632,7 +2632,14 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
                 // key mapping this walk is looking at, and it climbs above the outer `?`. Taking
                 // it here as well makes the first emission already the marker-level spelling
                 // (libFuzzer `yaml_roundtrip` crash-6cfbaa57, minimised to `? &x` + ` ? a  # c`).
-                if header && let Some(inline) = first_entry_inline_note(&first_key) {
+                //
+                // A marker body needs the same take without any header when the entry's value
+                // owns its line's trailing slot: the key note is then written on a line of its own
+                // above the entry, which the reader reports on the key mapping rather than on the
+                // entry - so the next round hoists it above `?` (crash-430f4f0e).
+                if let Some(inline) = first_entry_inline_note(&first_key)
+                    && (header || first_entry_note_climbs(&first_value))
+                {
                     notes.push(inline);
                     first_key.remove_comment();
                 }
@@ -2673,6 +2680,19 @@ fn first_entry_inline_note(key: &CustomNode) -> Option<Comment> {
             .cloned(),
         _ => None,
     }
+}
+
+/// Whether a first entry's key note cannot keep its pair line without a header: the value's own
+/// note owns the line's trailing slot, so the pair writer puts the key note on a line of its own
+/// above the entry. Inside a marker body the reader reports that line on the key mapping, not on
+/// the entry, so a marker lift has to take it even when the body writes no anchor/tag header.
+///
+/// Mirrors the pair writer's slot rule: a scalar or null value whose body starts below frees the
+/// pair line (its leading note forced the break), so the key note stays there.
+fn first_entry_note_climbs(value: &CustomNode) -> bool {
+    value.comment().is_some_and(|c| !c.standalone)
+        && !(matches!(value, CustomNode::Scalar { .. } | CustomNode::Null { .. })
+            && value.leading_comment().is_some())
 }
 
 /// Split an empty container's notes between the one inline slot the reader

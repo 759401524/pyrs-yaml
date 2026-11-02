@@ -523,6 +523,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A first entry's note climbs above the marker when its value takes the line** — inside a `?`
+  marker body the writer lifts the first entry's key note above the marker only when the container
+  writes an anchor or tag header, because the reader reports a note above that entry on the *key
+  mapping*, so the next round hoists it whatever the first emission did. The two agree while the
+  key note can stay on the entry's own line; the pair writer hands that line's trailing slot to the
+  value's own inline note unless the value is a scalar or null whose leading note has already forced
+  its body below the line, and with no slot the key note is spelled on a line of its own above the
+  entry. libFuzzer `yaml_roundtrip` crash-430f4f0e, 85 bytes, is one such body: the first emission
+  put `# *{+ &b?  !?*` under the `?` and the second above it. The lift now takes that note whenever
+  the value owns the slot, without needing a header, because inside the body that line cannot
+  survive a re-read. `a_first_entrys_note_climbs_above_the_marker_when_its_value_takes_the_line`
+  pins the input; mutating the predicate to `false` reddens it with the two-round move verbatim.
+  The input joins the corpus as `former-crash-430f4f0e.seed`.
 - **A first item's note stays under its own dash, not above the sequence's tag** —
   `lift_first_item_notes` moved a block sequence's first item's leading stack above the enclosing
   container's header, a slot the reader reports as the *sequence's* note. For an item the writer

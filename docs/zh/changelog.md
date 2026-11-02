@@ -397,6 +397,15 @@ status: new
 
 #### 修复
 
+- **值占住行尾槽位时，首条目的 note 升到 marker 之上** — 在 `?` marker 体内，写端只在容器写出锚点或
+  标签 header 时才把首条目键上的 note 提到 marker 之上，因为读端会把该条目上方的 note 记到 *key
+  mapping* 上，于是第二轮无论如何都会继续上提。只要键 note 还能留在条目自己那一行，两者就一致；当值
+  自带行内 note 时，pair 写端把该行的行尾槽位让给它——除非值是标量或 null，且其前导 note 已把主体逼到
+  下一行——此时键 note 没有槽位，只能单独写在条目上方一行。libFuzzer `yaml_roundtrip`
+  crash-430f4f0e（85 字节）正是这种主体：第一轮把 `# *{+ &b?  !?*` 写在 `?` 之下，第二轮写到了上面。
+  现在只要值占住槽位，上提就不再需要 header，因为在主体内部那一行无法经受一次重读。
+  `a_first_entrys_note_climbs_above_the_marker_when_its_value_takes_the_line` 固定该输入；把谓词
+  改成 `false` 会以逐字的两轮位移让它变红。该输入以 `former-crash-430f4f0e.seed` 加入语料。
 - **首项的注释留在自己的 dash 之下，而不是序列 tag 的上方** — `lift_first_item_notes` 会把块序列首项
   自带的 leading 注释栈移到外层容器的 header 之上，而读取器把那个位置的注释记为*序列*的注释。对于
   写器拆成独立行的项，这高了一层：libFuzzer `edit_yaml` crash-439f5d2c 给嵌在 `0X3[1]` 内的序列打了

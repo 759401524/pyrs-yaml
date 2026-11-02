@@ -76,9 +76,11 @@ fn a_first_key_inline_note_under_a_header_settles_in_one_round() {
 /// wherever the container writes a header, so the first emission already spells the note where a
 /// re-read puts it: above the `?`, which is the marker-level fixed point.
 ///
-/// The header is the condition, not the marker: a headerless container key keeps that note inside
-/// its body, where a note is the only thing telling two otherwise equal mapping keys apart
-/// (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`).
+/// The header is one condition, not the marker alone: a headerless container key keeps that note
+/// inside its body while the note can stay on the entry's own line, because a note is the only
+/// thing telling two otherwise equal mapping keys apart
+/// (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`). When the entry's value
+/// takes the line's trailing slot the note cannot stay there - see the test below.
 #[test]
 fn a_first_entry_inline_note_under_a_marker_settles_in_one_round() {
     let one = emit("? &x\n ? a  # c\n");
@@ -94,6 +96,28 @@ fn a_first_entry_inline_note_under_a_marker_settles_in_one_round() {
     assert_eq!(
         again, one,
         "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
+/// libFuzzer `yaml_roundtrip` crash-430f4f0e, minimized to 85 bytes: a first entry's inline note
+/// inside a headerless marker body, where the entry's *value* owns the line's trailing slot.
+///
+/// The pair writer then has no slot for the key's note and spells it on a line of its own above
+/// the entry. Inside a `?` body the reader reports that line on the key mapping, not on the entry,
+/// so round two wrote it above the marker - the first emission was not the fixed point. The marker
+/// lift takes the slot whenever the value takes the line, without needing an anchor or tag.
+#[test]
+fn a_first_entrys_note_climbs_above_the_marker_when_its_value_takes_the_line() {
+    let src = "?\n\n#?\n\n ?  \n#?\n  !?\n\n ?  1   |)?\r?  \n b<<: #*{+ &b?  !?*\n  ?eI? {+ &b *.. #&\n#ef irst";
+    let one = emit(src);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert!(
+        one.contains("# *{+ &b?  !?*\n?\n  b<<: \"?eI? {+ &b *..\"  # &\n"),
+        "the key note belongs above the marker the reader files it on: {one:?}"
     );
 }
 

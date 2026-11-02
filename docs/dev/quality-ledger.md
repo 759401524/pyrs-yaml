@@ -11848,6 +11848,38 @@ orphaned definition that precedes an alias while a later re-definition also exis
 inlined - the duplicate-key fold's repair has carried that limit since it landed; and both tests
 assert the emission and its re-parse, not the intermediate tree.
 
+### (iq) A first entry's note climbed above the marker only on the second round (2026-11-02)
+
+libFuzzer `yaml_roundtrip` reported two inputs in one batch (issue #733). One, `crash-1987191c`,
+replays clean on this tree - it names an anchor the delete pass now keeps, the family `(ip)` left
+covered - and is archived as corpus without a claim here. The other, `crash-430f4f0e`, was a live
+fixed-point defect: 85 bytes minimised, a top-level `?` pair whose body is a mapping.
+
+`hoist_marker_note` lifted the first entry's key note above the marker only when the container wrote
+an anchor or tag header. That condition is the writer's own agreement with the reader, not the
+reader's rule: inside a `?` body the reader files a note above the first entry on the key mapping,
+so the next round hoists it above the marker whatever the first emission did. The two readings agree
+while the key note can stay on the entry's own line. Here it could not: the entry's value carried an
+inline note, so `write_mapping_pair` gave the line's trailing slot to the value and spelled the key
+note on a line of its own above the entry - which the reader then reported on the mapping.
+
+The lift now asks the pair writer's own slot question through `first_entry_note_climbs`: the value
+owns the slot when it has a non-standalone note, unless it is a scalar or null whose leading note
+has already forced its body below the line. With that answer a headerless marker body takes the note
+on the first emission, and the output is its own fixed point.
+
+The pinned test is load-bearing by mutation: with the predicate's body replaced by `false`,
+`a_first_entrys_note_climbs_above_the_marker_when_its_value_takes_the_line` fails with the
+two-round move verbatim, the note under the `?` on the first emission and above it on the second.
+
+The input joins the corpus as `fuzz/seeds/yaml_roundtrip/former-crash-430f4f0e.seed` (85 bytes). The
+matrix counts move by the one Rust test and the one seed, 890 → 891 `#[test]` and 227 → 228 seeds
+(135 → 136 `former-crash-*`, `yaml_roundtrip`'s directory 104 → 105), written by
+`quality_matrix.py --write-rows`. What it still cannot see:
+the helper restates the pair writer's slot rule rather than sharing it, so a future change to that
+rule has to move both by hand; and the test asserts the emission and its re-parse, not the
+intermediate tree.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
