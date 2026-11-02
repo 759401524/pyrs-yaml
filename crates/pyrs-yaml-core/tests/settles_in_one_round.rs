@@ -437,6 +437,57 @@ fn a_tagged_sequences_marker_note_settles_above_its_header() {
     }
 }
 
+/// libFuzzer `edit_yaml` crash-439f5d2c: a tag on the sequence nested inside another sequence, then
+/// a note on that sequence's first item, which is a block mapping.
+///
+/// `lift_first_item_notes` moved the first item's own leading stack above the sequence's tag line.
+/// For an item the writer spells on lines of its own that is one level too high: round one put
+/// `# fuzz 47` below the item's `-`, the re-read reported it on the item - which is where it
+/// belongs - and the lift then wrote it above `!fuzz2`, where the reader files it on the *sequence*
+/// and the emission only settles on its second pass. The lift leaves that stack in the body now for
+/// an item that has a body line, and hoists it only for the compact spells, where the dash line is
+/// the item's only line and the sequence is the only node that can report a note above it.
+#[test]
+fn a_body_items_note_stays_under_its_dash_beneath_a_tag_line() {
+    use pyrs_yaml_core::ast::{Comment, Tag};
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_comment_path, set_tag_path};
+    use std::borrow::Cow;
+    use std::sync::Arc;
+
+    let src = "s:\n\n0X3:\n-   !a :s\n- - : a:  ! ";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let tagged = [Segment::Key(Cow::Borrowed("0X3")), Segment::Index(1)];
+    set_tag_path(&mut node, &tagged, Tag::local("fuzz2"), src, None).expect("the tag is set");
+    let item = [
+        Segment::Key(Cow::Borrowed("0X3")),
+        Segment::Index(1),
+        Segment::Index(0),
+    ];
+    set_comment_path(
+        &mut node,
+        &item,
+        Comment {
+            text: Arc::from("fuzz 47"),
+            standalone: false,
+        },
+        src,
+        None,
+    )
+    .expect("the note is set");
+
+    let one = to_yaml(&node);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert!(
+        one.contains("    !fuzz2 \n    - \n      # fuzz 47\n      ~:\n        a: !\n"),
+        "the note belongs to the item, below its own dash: {one:?}"
+    );
+}
+
 #[test]
 fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
     use pyrs_yaml_core::ast::Comment;

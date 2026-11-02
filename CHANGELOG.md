@@ -513,6 +513,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A first item's note stays under its own dash, not above the sequence's tag** —
+  `lift_first_item_notes` moved a block sequence's first item's leading stack above the enclosing
+  container's header, a slot the reader reports as the *sequence's* note. For an item the writer
+  spells on lines of its own that is one level too high: libFuzzer `edit_yaml` crash-439f5d2c tags
+  the sequence nested inside `0X3[1]` and notes that sequence's first item (a block mapping). The
+  first emission wrote `# fuzz 47` below the item's `-`, where the re-read put it back on the item;
+  the second lifted it above `!fuzz2` — the text moved, so the emission was not a fixed point. The
+  lift now leaves the stack in the body for an item the writer breaks onto its own line (the
+  non-compact branch of `write_sequence_item`: a non-compact mapping, a block container, or a scalar
+  carrying a note) and hoists it only for the compact spell, where the dash line is the item's only
+  line and the sequence is the only node that can report a note above it. The regression is pinned
+  by `a_body_items_note_stays_under_its_dash_beneath_a_tag_line`, load-bearing by mutation: removing
+  the split reproduces the two-round move verbatim. The input joins the corpus as
+  `former-crash-439f5d2c.seed`.
 - **A consumed merge entry keeps the anchor its value defined** — the merge pass deletes the `<<`
   entry and inserts the pairs that entry supplied, so the node carrying the entry's anchor leaves
   the tree while `*name` still stands in the merged pairs or beside them. `finish_document` repairs
