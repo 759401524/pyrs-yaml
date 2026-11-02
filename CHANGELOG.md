@@ -513,6 +513,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The fuzz issue filer reads the target, not the download's directory shape** — every archive
+  holds `artifacts/<target>/` and `collected/<target>/`, and on run 41541555317 the download
+  extracted those roots straight into `--crashes` instead of keeping one directory per archive.
+  Reading the first path segment as the target then minted two targets named `artifacts` and
+  `collected`, so one `yaml_roundtrip` archive's three inputs were filed as issues #739 and #740,
+  and the step summary printed the same two rows while counting every input twice (6 for 3). The
+  target is now the segment after either root, with the archive's own `fuzz-artifacts-<target>`
+  directory as the fallback, and the summary reads the `collected/` mirror alone — where
+  `scripts/fuzz_rounds.sh` writes `findings.tsv` and the crash copies — so one glob names each
+  target once in both shapes. Two cases pin it: `the_download_shape_never_becomes_the_target` over
+  both layouts, and the report step run against a flat-layout archive. Restoring the first-segment
+  read reddens the flat case with `['artifacts', 'collected']` verbatim.
 - **A key rewritten from an alias folds where it lands** — the duplicate-key fold drops the pair
   that carried an anchor's only definition and hands that node to `repair_orphaned_anchors`, which
   inlines it into every `*name` left, key position included. The rebuild re-inserted the inlined

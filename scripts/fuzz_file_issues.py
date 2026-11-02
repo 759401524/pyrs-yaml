@@ -43,9 +43,14 @@ from typing import Callable, List, Optional
 
 TITLE = "fuzz: {target} has untriaged crash inputs"
 
-# `upload-artifact` names each archive `fuzz-artifacts-<target>`; the download keeps that name as a
-# directory. Sliced rather than `str.removeprefix`, which is 3.9 and this script must import on 3.8.
+# `upload-artifact` names each archive `fuzz-artifacts-<target>`; a download that keeps one directory
+# per archive uses that name. Sliced rather than `str.removeprefix`, which is 3.9 and this script must
+# import on 3.8.
 ARCHIVE_PREFIX = "fuzz-artifacts-"
+
+# The two roots `upload-artifact` stores inside every archive: it uploads
+# `fuzz/artifacts/<target>/` and `fuzz/collected/<target>/`, so the least common ancestor is `fuzz/`.
+ARCHIVE_ROOTS = ("artifacts", "collected")
 
 # Four backticks so a signature carrying a fenced block of its own cannot end the fence early.
 FENCE = "````"
@@ -67,34 +72,62 @@ class TargetFindings:
         self.signatures = signatures
 
 
-def _signatures(directory: Path) -> Counter:
-    """Signature -> number of inputs that reached it, read from every `findings.tsv` below `directory`."""
-    counts: Counter = Counter()
-    for findings in directory.rglob("findings.tsv"):
+def _target_of(relative: Path) -> str | None:
+    """The fuzz target a downloaded path belongs to, or `None` when it names none.
+
+    Every archive carries `artifacts/<target>/` and `collected/<target>/`, so the segment after
+    either root names the target. The download does not always keep the archive's own directory
+    around: on run 41541555317 `download-artifact@v8` extracted those roots straight into
+    `--crashes`, and reading the first segment filed two issues - `artifacts` and `collected` -
+    for one target's three inputs (issues #739 and #740). A download that keeps one directory per
+    artifact only moves the same two roots one level down, which this walk reads alike.
+    """
+    parts = relative.parts
+    for index, part in enumerate(parts[:-1]):
+        if part in ARCHIVE_ROOTS:
+            return parts[index + 1]
+    if len(parts) < 2:
+        return None
+    first = parts[0]
+    if first.startswith(ARCHIVE_PREFIX):
+        first = first[len(ARCHIVE_PREFIX) :]
+    return first
+
+
+def _signatures(crashes: Path) -> dict[str, Counter]:
+    """Target -> signature counts, read from every `findings.tsv` below `crashes`."""
+    counts: dict[str, Counter] = {}
+    for findings in crashes.rglob("findings.tsv"):
+        target = _target_of(findings.relative_to(crashes))
+        if target is None:
+            continue
+        counter = counts.setdefault(target, Counter())
         for line in findings.read_text(encoding="utf-8", errors="replace").splitlines():
             signature = line.partition("\t")[0].strip()
             if signature:
-                counts[signature] += 1
+                counter[signature] += 1
     return counts
 
 
 def collect(crashes: Path) -> list[TargetFindings]:
     """Every target that found anything, with its input names and signature counts.
 
-    `merge-multiple: false` on the download gives `crashes/fuzz-artifacts-<target>/`, and each
-    archive mirrors `artifacts/<target>/` under `collected/<target>/`, so inputs are counted by file
-    name - the same reduction the aggregate step's `sort -u` performs, for the same reason.
+    Each archive mirrors `artifacts/<target>/` under `collected/<target>/`, so inputs are counted by
+    file name - the same reduction the aggregate step's `sort -u` performs, for the same reason.
     """
-    found: list[TargetFindings] = []
-    for directory in sorted(p for p in crashes.iterdir() if p.is_dir()):
-        inputs = sorted({p.name for p in directory.rglob("crash-*") if p.is_file()})
-        if not inputs:
+    inputs: dict[str, set[str]] = {}
+    for crash in crashes.rglob("crash-*"):
+        if not crash.is_file():
             continue
-        name = directory.name
-        if name.startswith(ARCHIVE_PREFIX):
-            name = name[len(ARCHIVE_PREFIX) :]
-        found.append(TargetFindings(name, inputs, _signatures(directory)))
-    return found
+        target = _target_of(crash.relative_to(crashes))
+        if target is None:
+            continue
+        inputs.setdefault(target, set()).add(crash.name)
+    signatures = _signatures(crashes)
+    return [
+        TargetFindings(target, sorted(names), signatures.get(target, Counter()))
+        for target, names in sorted(inputs.items())
+    ]
 
 
 def build_body(finding: TargetFindings, run_url: str) -> str:

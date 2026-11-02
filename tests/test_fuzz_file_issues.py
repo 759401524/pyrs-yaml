@@ -54,16 +54,27 @@ class Recorder:
         return [args[:2] for args, _body in self.calls]
 
 
-def archive(root: Path, target: str, inputs, findings) -> Path:
-    """Lay out one downloaded archive the way `merge-multiple: false` produces it."""
-    collected = root / "crashes" / f"fuzz-artifacts-{target}" / "collected" / target
-    collected.mkdir(parents=True, exist_ok=True)
-    for name in inputs:
-        (collected / name).write_bytes(b"x")
+def archive(root: Path, target: str, inputs, findings, layout: str = "nested") -> Path:
+    """Lay out one downloaded archive the way `download-artifact@v8` leaves it.
+
+    `upload-artifact` stores `fuzz/artifacts/<target>/` and `fuzz/collected/<target>/` in every
+    archive, so those two roots appear together whichever shape the download takes: one directory
+    per archive (`layout="nested"`, from `merge-multiple: false`) or the roots extracted straight
+    into `--crashes` (`layout="flat"`, which run 41541555317 produced). `scripts/fuzz_rounds.sh`
+    copies crash inputs into both mirrors but writes `findings.tsv` only under `collected/`, which
+    is what this builds.
+    """
+    crashes = root / "crashes"
+    base = crashes / f"fuzz-artifacts-{target}" if layout == "nested" else crashes
+    for mirror in ("collected", "artifacts"):
+        directory = base / mirror / target
+        directory.mkdir(parents=True, exist_ok=True)
+        for name in inputs:
+            (directory / name).write_bytes(b"x")
     if findings:
         rows = "".join(f"{sig}\t{name}\n" for sig, name in findings)
-        (collected / "findings.tsv").write_bytes(rows.encode("utf-8"))
-    return root / "crashes"
+        (base / "collected" / target / "findings.tsv").write_bytes(rows.encode("utf-8"))
+    return crashes
 
 
 def test_a_target_with_findings_and_no_open_issue_opens_one(mod, tmp_path):
@@ -134,15 +145,34 @@ def test_an_archive_holding_both_mirrors_counts_each_input_once(mod, tmp_path):
     """`upload-artifact` stores `artifacts/<target>/` and `collected/<target>/`; the aggregate's own
     `sort -u` exists because counting paths reported 3 inputs for 2."""
     crashes = archive(tmp_path, "parse_toml", ["crash-aaa", "crash-bbb"], [("panicked at x", "crash-aaa")])
-    collected = crashes / "fuzz-artifacts-parse_toml" / "collected" / "parse_toml"
-    mirrored = crashes / "fuzz-artifacts-parse_toml" / "artifacts" / "parse_toml"
-    mirrored.mkdir(parents=True)
-    for crash in collected.glob("crash-*"):
-        (mirrored / crash.name).write_bytes(b"x")
     found = mod.collect(crashes)
     assert [f.target for f in found] == ["parse_toml"]
     assert found[0].inputs == ["crash-aaa", "crash-bbb"]
     assert sum(found[0].signatures.values()) == 1
+
+
+@pytest.mark.parametrize("layout", ["nested", "flat"])
+def test_the_download_shape_never_becomes_the_target(mod, tmp_path, layout):
+    """Run 41541555317's download landed `artifacts/` and `collected/` directly in `--crashes`.
+
+    Reading the first path segment then treated each root as a target, so one `yaml_roundtrip`
+    archive's three inputs were filed as two issues - `artifacts` (#739) and `collected` (#740).
+    A layout that keeps one directory per archive has to read the same way.
+    """
+    crashes = archive(
+        tmp_path,
+        "yaml_roundtrip",
+        ["crash-aaa", "crash-bbb"],
+        [
+            ("panicked at fuzz_targets/yaml_roundtrip.rs:37:5 boom", "crash-aaa"),
+            ("panicked at fuzz_targets/yaml_roundtrip.rs:37:5 boom", "crash-bbb"),
+        ],
+        layout=layout,
+    )
+    found = mod.collect(crashes)
+    assert [f.target for f in found] == ["yaml_roundtrip"]
+    assert found[0].inputs == ["crash-aaa", "crash-bbb"]
+    assert sum(found[0].signatures.values()) == 2
 
 
 def test_a_target_directory_without_crash_files_is_not_filed(mod, tmp_path):
@@ -183,6 +213,14 @@ def test_the_report_step_survives_an_archive_with_nothing_to_count(tmp_path):
     # crash file of its own. Either one makes a `grep -c` match nothing.
     archive(tmp_path, "parse_yaml", ["crash-aaa"], [])
     archive(tmp_path, "edit_yaml", [], [("panicked at fuzz_targets/edit_yaml.rs:1:1 boom", "crash-bbb")])
+    # The download may also extract the archive's own roots into `crashes/` (run 41541555317).
+    archive(
+        tmp_path,
+        "toml_roundtrip",
+        ["crash-ccc"],
+        [("panicked at fuzz_targets/toml_roundtrip.rs:2:1 boom", "crash-ccc")],
+        layout="flat",
+    )
     (tmp_path / "report-step.sh").write_bytes(
         b'export GITHUB_STEP_SUMMARY="summary.md"\n' + step["run"].encode("utf-8")
     )
@@ -198,6 +236,10 @@ def test_the_report_step_survives_an_archive_with_nothing_to_count(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert "| parse_yaml | 1 | 0 |" in summary
     assert "| edit_yaml | 0 | 1 |" in summary
+    assert "| toml_roundtrip | 1 | 1 |" in summary
+    assert "fuzz-artifacts-" not in summary, (
+        "a row names the target; a row per archive directory counted both mirrors of every input"
+    )
 
 
 def test_the_report_step_uses_no_gnu_only_find_primaries():

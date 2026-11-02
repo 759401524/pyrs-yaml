@@ -481,6 +481,18 @@ status: new
 
 #### 수정
 
+- **fuzz issue 작성기는 target을 읽지, 다운로드 디렉터리 모양을 읽지 않는다** — 모든 아카이브에는
+  `artifacts/<target>/` 와 `collected/<target>/` 가 함께 들어 있고, run 41541555317 의 다운로드는
+  아카이브마다 디렉터리를 유지하지 않고 이 두 루트를 `--crashes` 에 바로 풀었다. 경로의 첫
+  세그먼트를 target으로 읽자 `artifacts` 와 `collected` 라는 두 target이 생겨, 하나의
+  `yaml_roundtrip` 아카이브가 가진 세 입력이 issue #739 와 #740 으로 나뉘었고, 단계 요약도 같은 두
+  행을 찍으면서 각 입력을 두 번 세었다(3개를 6개로). 이제 target은 두 루트 중 하나 다음
+  세그먼트이고, 대체값은 아카이브 자신의 `fuzz-artifacts-<target>` 디렉터리다. 요약은 `collected/`
+  미러만 읽는다 — `scripts/fuzz_rounds.sh` 가 `findings.tsv` 와 크래시 복사본을 쓰는 곳이 거기다 —
+  따라서 두 모양 모두에서 하나의 glob이 각 target을 한 번만 지목한다. 두 케이스가 이를 고정한다:
+  `the_download_shape_never_becomes_the_target` 은 두 레이아웃을, 보고 단계는 플랫 레이아웃
+  아카이브를 실행한다. 첫 세그먼트 읽기로 되돌리면 플랫 케이스가 `['artifacts', 'collected']` 를
+  그대로 내며 빨개진다.
 - **에일리어스에서 다시 쓰인 키는 그 자리에서 접힌다** — 중복 키 접기는 어떤 앵커의 유일한 정의를
   실은 pair를 버리고 그 노드를 `repair_orphaned_anchors` 로 넘기며, 이는 남은 모든 `*name` 에, 키
   위치까지 포함해 그 노드를 인라인한다. 재구성은 인라인된 노드를 평범한 `pairs.insert` 로 되삽입했기
