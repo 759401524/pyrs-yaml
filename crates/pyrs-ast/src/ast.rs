@@ -1693,21 +1693,38 @@ pub mod proptest_strategies {
             })
     }
 
+    /// The text a scalar can carry. Inline styles take printable ASCII; a block style is
+    /// *about* line structure, and `[ -~]+` never draws a break, so literal/folded content
+    /// with blank lines, leading blanks and trailing breaks had no property asking for it
+    /// (`QUALITY_MATRIX.md`'s property row names that as "shapes outside the generator").
+    /// A lone `\r` stays out: every YAML reader reads it as a line break, so only a
+    /// double-quoted escape could carry it and the value would come back as `\n`.
+    fn arb_scalar_text(block: bool) -> impl Strategy<Value = String> {
+        let pattern = if block { "[ -~\\n\\t]+" } else { "[ -~]+" };
+        proptest::string::string_regex(pattern).expect("regex")
+    }
+
     fn arb_scalar() -> impl Strategy<Value = CustomNode> {
-        let meta = arb_node_meta();
-        let style = arb_scalar_style();
-        let value = proptest::string::string_regex("[ -~]+").expect("regex");
-        (style, value, meta)
-            .prop_flat_map(|(style, value, meta)| {
-                let chomp = match style {
-                    ScalarStyle::Literal | ScalarStyle::Folded => arb_chomping().boxed(),
-                    _ => Just(Chomping::Clip).boxed(),
+        (arb_scalar_style(), arb_node_meta())
+            .prop_flat_map(|(style, meta)| {
+                let block = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
+                let chomp = if block {
+                    arb_chomping().boxed()
+                } else {
+                    Just(Chomping::Clip).boxed()
                 };
-                let indent = match style {
-                    ScalarStyle::Literal | ScalarStyle::Folded => arb_block_indent().boxed(),
-                    _ => Just(None).boxed(),
+                let indent = if block {
+                    arb_block_indent().boxed()
+                } else {
+                    Just(None).boxed()
                 };
-                (Just(style), Just(value), Just(meta), chomp, indent)
+                (
+                    Just(style),
+                    arb_scalar_text(block),
+                    Just(meta),
+                    chomp,
+                    indent,
+                )
             })
             .prop_map(
                 |(style, value, meta, chomping, block_indent)| CustomNode::Scalar {

@@ -1178,6 +1178,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   call is the measured remedy: 5 of 5 cold runs green on `3.15t`, 2 of 2 on `3.14t`, the default
   interpreter's reading unchanged. No synthetic module reproduced it, so the comment records the
   symptom and the remedy and claims no mechanism.
+- **A block scalar's header could not spell the line break its value carried** — the property
+  tier's scalar generator drew `[ -~]+`, printable ASCII with no break in it, which for
+  `Literal`/`Folded` is the one thing the style is about; `QUALITY_MATRIX.md`'s property row names
+  that gap as "shapes outside the generator". The block half now draws `[ -~\n\t]+`, and its first
+  run reddened `needs_double_quoted`: the edge check guarded spaces and tabs but not a break,
+  while the non-string shortcut runs first, so `"\n"` (which resolves to null) was emitted bare,
+  the break ended the line and the value came back `~`. The edge set now includes `\n` and `\r`;
+  with the old generator and the old edge set the same tree passes, so the widening is what
+  reaches the shape. The other class the widening found was the tier's, not the writer's: `|-` on
+  a value that ends in a break drops that break by design (`set_chomping("strip")` is the edit
+  that says so), so the tier now resolves the claim the way the reader does before comparing, keys
+  included — a block scalar is a legal explicit key, and that side alone reddened three properties.
+  That resolution stops at a simple scalar key, which the writer quotes and so keeps the break; a
+  container key's contents lose it. Resolving the simple key too collapsed `"'\n"` onto the plain
+  `'` beside it, and the writer then emitted the duplicate its own reader refuses — the 20k-case
+  `prop_idempotent` failure this branch fixed.
+  A lone `\r` stays outside the generator: every reader reads it as a break, so only a
+  double-quoted escape could carry it and the value returns as `\n`. Pinned by
+  `an_edge_line_break_is_quoted_even_when_the_text_resolves_to_null`, by
+  `a_strip_claim_survives_a_value_that_ends_in_a_break`, by
+  `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`, and by the shrunk cases replayed from
+  `proptest-regressions/pbt.txt`.
 
 ### Changed
 
