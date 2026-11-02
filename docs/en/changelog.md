@@ -523,6 +523,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A consumed merge entry keeps the anchor its value defined** — the merge pass deletes the `<<`
+  entry and inserts the pairs that entry supplied, so the node carrying the entry's anchor leaves
+  the tree while `*name` still stands in the merged pairs or beside them. `finish_document` repairs
+  exactly that loss for the duplicate-key fold one pass upstream, and the merge pass ran after it
+  with no repair of its own: `<<: &b` / `  x: *b`, 15 bytes, reached the page as a bare `x: *b`,
+  which this library's reader refuses (`found unknown anchor at char 3`). Three larger inputs that
+  anchor the merge value from a pair inside it fail the same way (`char 38`, `39` and `57`).
+  `resolve_merge_keys` now reads the consumed entry's own anchor from its key and its value, and
+  collects a contributed pair's definitions only where that pair is dropped — the mapping owns the
+  key, two sources name it, or the mapping's own pair wins — then inlines the survivors once the
+  whole pass has run. A definition nested in a pair that does reach the tree needs no collection:
+  it travels inside the pair. The replacement keeps its anchor metadata, so the first use
+  re-defines the name: a definition whose body holds its own alias settles as a nested `&b`
+  instead of a dangling `*b`. Both pinned tests are load-bearing by mutation: dropping the
+  collection reddens `a_consumed_merge_entrys_anchor_survives_the_merge` with `"x: *b" … found
+  unknown anchor`, and putting `inline_aliases` back to the value-only walk reddens the fold test
+  with `? *b` left in key position, where `IndexMap` hands keys out immutably. The four inputs join
+  the corpus as `former-crash-{a7b68980,72afef34,d336d8b9,e31d0300}.seed`; two more from the same
+  run (`0941667d`, `25769705`) already replay clean on the parent tree and are archived as corpus
+  rather than claimed here. `anchor_graph.rs` walks 135 documents now, against a 2026-10-20 reading
+  of 102; six of the additions are this run's, four of which failed on the parent tree. One known
+  narrowing is inherited rather than introduced: `repair_orphaned_anchors`
+  treats a name as defined when it appears anywhere in the tree, so an orphaned definition that
+  precedes an alias while a later re-definition also exists is still not inlined — the duplicate-key
+  fold's repair has had the same limit since it landed.
 - **A container key the writer cannot spell apart is refused, not emitted twice** —
   `yaml_roundtrip` crash-b88f1b4f is a two-pair mapping whose keys are themselves mappings over the
   same tagged empty scalar, one as an empty literal block (`!? |2`) and one as an empty plain key.

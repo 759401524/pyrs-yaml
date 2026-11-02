@@ -75,7 +75,13 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// Only names with **no remaining definition** are inlined, so ordinary shared aliases
 /// are never touched, and the walk runs solely when a fold actually dropped an
 /// anchored entry — the common path pays nothing.
-fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNode)>) {
+///
+/// The merge pass owns the same obligation (`crate::parser::yaml::merge`): consuming a
+/// `<<` entry drops the anchor its value node defined, while the pairs the merge
+/// contributes can still hold `*name`. The replacement keeps the anchor metadata, so the
+/// first use it lands on re-defines the name and a self-referential definition (whose
+/// inlined `*name` would otherwise dangle) emits a valid nested anchor.
+pub(crate) fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNode)>) {
     if orphans.is_empty() {
         return;
     }
@@ -100,7 +106,7 @@ fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNo
 /// `use: *x`), and YAML resolves an alias against any definition in the document. Registering
 /// only the outer node left such a name undefined while its uses survived, so the writer emitted
 /// text this library's own reader refused.
-fn collect_anchored_nodes(node: &CustomNode, out: &mut Vec<(String, CustomNode)>) {
+pub(crate) fn collect_anchored_nodes(node: &CustomNode, out: &mut Vec<(String, CustomNode)>) {
     if let Some(name) = node.anchor() {
         out.push((name.to_string(), node.clone()));
     }
@@ -141,13 +147,17 @@ fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
     }
 }
 
-/// Replace each `*name` value-alias in the subtree whose name is in `replacements`.
+/// Replace each `*name` alias in the subtree whose name is in `replacements`.
 ///
-/// Mapping keys are deliberately not rewritten: swapping a key node changes the
-/// mapping's identity and order mid-iteration, and the fold that orphans an anchor never
-/// leaves an alias in a key slot pointing at the dropped definition (the surviving
-/// entry supplies the key). If a future finding lands that shape, it owes a deliberate
-/// key-slot rewrite with its own ordering proof — not a silent leave-behind here.
+/// Key position is rewritten too, and it costs a rebuild of every mapping in the
+/// subtree: `IndexMap` hands keys out immutably, so an alias standing where the fold
+/// left it (`? *b`) or one nested inside a container used as a key is unreachable
+/// through `iter_mut`. The rebuild preserves the order the fold already fixed —
+/// re-inserting in iteration order, and a replacement can only collide with a key the
+/// re-read would have folded the same way. That guarantee is what keeps this cold: the
+/// walk runs only for a document whose fold dropped an anchor definition, and the
+/// shape that reached it (libFuzzer `yaml_roundtrip` crash-a7b68980) emitted `? *b`
+/// with no `&b` anywhere, which its own reader refused.
 fn inline_aliases(node: &mut CustomNode, replacements: &NodeMap<String, CustomNode>) {
     if let Some(replacement) = match node {
         CustomNode::Alias { name } => replacements.get(name).cloned(),
@@ -158,8 +168,11 @@ fn inline_aliases(node: &mut CustomNode, replacements: &NodeMap<String, CustomNo
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
-            for (_, value) in pairs.iter_mut() {
-                inline_aliases(value, replacements);
+            let old = core::mem::take(pairs);
+            for (mut key, mut value) in old {
+                inline_aliases(&mut key, replacements);
+                inline_aliases(&mut value, replacements);
+                pairs.insert(key, value);
             }
         }
         CustomNode::Sequence { items, .. } => {

@@ -1,5 +1,5 @@
 use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle, Tag};
-use crate::parser::is_null_key;
+use crate::parser::{collect_anchored_nodes, is_null_key, repair_orphaned_anchors};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -28,7 +28,15 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
     // this path is recognised as a cycle and left alone instead of recursing
     // until the stack is exhausted.
     let mut path: Vec<String> = Vec::new();
-    resolve_merges_recursive(node, &anchors, &mut path, 0);
+    // Consuming a `<<` entry removes the node that carried its anchor, while the
+    // pairs the merge contributes can still hold `*name` (a merge value anchored
+    // `&b` whose own body says `*b` is the shape libFuzzer `yaml_roundtrip` kept
+    // finding). Those definitions are collected here and inlined once every merge
+    // has run — the duplicate-key fold's repair happens in `finish_document`,
+    // which is upstream of this pass and cannot see it.
+    let mut orphaned: Vec<(String, CustomNode)> = Vec::new();
+    resolve_merges_recursive(node, &anchors, &mut path, 0, &mut orphaned);
+    repair_orphaned_anchors(node, orphaned);
 }
 
 /// Return true if any mapping in the tree has a `<<` merge key.
@@ -91,17 +99,18 @@ fn resolve_merges_recursive(
     anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
+    orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     if depth >= MAX_MERGE_DEPTH {
         return;
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
-            resolve_mapping_merges(pairs, anchors, path, depth);
+            resolve_mapping_merges(pairs, anchors, path, depth, orphaned);
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
-                resolve_merges_recursive(item, anchors, path, depth + 1);
+                resolve_merges_recursive(item, anchors, path, depth + 1, orphaned);
             }
         }
         _ => {}
@@ -158,6 +167,7 @@ fn resolve_mapping_merges(
     anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
+    orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     // The merge entry is addressed by position, never by value: `IndexMap` compares
     // whole nodes, and a note or an anchor on the key is metadata, not identity. See
@@ -195,9 +205,14 @@ fn resolve_mapping_merges(
         .and_then(|index| pairs.get_index(index))
         .and_then(|(_, merge_value)| match merge_value {
             CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
-            CustomNode::Alias { .. } => {
-                Some(collect_merge_data(merge_value, pairs, anchors, path, depth))
-            }
+            CustomNode::Alias { .. } => Some(collect_merge_data(
+                merge_value,
+                pairs,
+                anchors,
+                path,
+                depth,
+                orphaned,
+            )),
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
                 // Resolve the source before collecting from it. A `<<` inside a merge
                 // source is a merge key *of that source*, and the pairs it brings are
@@ -221,12 +236,12 @@ fn resolve_mapping_merges(
                 let mut resolved;
                 let source = if source_carries_merge_key(merge_value) {
                     resolved = merge_value.clone();
-                    resolve_merges_recursive(&mut resolved, anchors, path, depth + 1);
+                    resolve_merges_recursive(&mut resolved, anchors, path, depth + 1, orphaned);
                     &resolved
                 } else {
                     merge_value
                 };
-                let merged = collect_merge_data(source, pairs, anchors, path, depth);
+                let merged = collect_merge_data(source, pairs, anchors, path, depth, orphaned);
                 if !merged.is_empty() || references_alias(merge_value) {
                     Some(merged)
                 } else {
@@ -256,6 +271,25 @@ fn resolve_mapping_merges(
     // pairs are dropped below. They are content of this mapping too, so they join
     // the same re-homing as the merge entry's own notes.
     let mut overridden_notes: Vec<Comment> = Vec::new();
+    // The consumed entry's own nodes leave the tree — the value node is replaced by the
+    // pairs it supplies — so an anchor either of them defines has nothing left to sit on.
+    // The contributing pairs can still hold `*name` (the merge value anchored `&b` whose
+    // own body says `*b` is the shape libFuzzer `yaml_roundtrip` kept finding), so the
+    // definitions are held for the repair pass that runs once every merge is resolved.
+    // Only the entry's own anchor is read here: a definition nested inside the value
+    // rides along in the pairs it contributes, and the two places that then drop a
+    // contributed pair collect from it instead. Walking the whole value up front is the
+    // same answer at a price the `Ir` gate read as `parse_inline_merge` +0.95%, on a
+    // fixture whose merges define no anchor at all.
+    if merge_data.is_some()
+        && let Some((key, value)) = merge_index.and_then(|index| pairs.get_index(index))
+    {
+        for node in [key, value] {
+            if let Some(name) = node.anchor() {
+                orphaned.push((name.to_string(), node.clone()));
+            }
+        }
+    }
     if let Some(merged_pairs) = merge_data {
         // Expansions resolve against the *original* mapping, so an anchor that
         // transitively merges another still sees the latter's own merge keys.
@@ -268,7 +302,19 @@ fn resolve_mapping_merges(
         let mut pending: NodeMap<CustomNode, (String, CustomNode)> =
             NodeMap::with_capacity_and_hasher(pairs.len(), Default::default());
         for (source, key, value) in merged_pairs {
-            pending.entry(key).or_insert((source, value));
+            match pending.entry(key) {
+                indexmap::map::Entry::Occupied(_) => {
+                    // Two sources do not get to name the same key twice; the value that
+                    // loses never reaches the tree, so a definition it carries leaves
+                    // with it. The key needs no collection: node equality includes the
+                    // anchor, so the stored key that stays behind names the same
+                    // definition the discarded one carried.
+                    collect_anchored_nodes(&value, orphaned);
+                }
+                indexmap::map::Entry::Vacant(slot) => {
+                    slot.insert((source, value));
+                }
+            }
         }
 
         // The anchor name stays on the path while its expansion is walked, so a
@@ -277,10 +323,10 @@ fn resolve_mapping_merges(
         // anchor, so there is nothing to guard against.
         for value in pending.values_mut() {
             if value.0.is_empty() {
-                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1);
+                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1, orphaned);
             } else {
                 path.push(value.0.clone());
-                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1);
+                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1, orphaned);
                 path.pop();
             }
         }
@@ -304,6 +350,10 @@ fn resolve_mapping_merges(
             let overridden = owns_owning_key(pairs, merge_index, &key)
                 || kept.keys().any(|own| same_emitted_key(own, &key));
             if overridden {
+                // The pair is dropped whole, so any definition inside it leaves the tree
+                // while a contributed alias may still spell the name.
+                collect_anchored_nodes(&key, orphaned);
+                collect_anchored_nodes(&value, orphaned);
                 for carried in [&key, &value] {
                     overridden_notes.extend(carried.leading_comments().iter().cloned());
                     overridden_notes.extend(carried.comment().filter(|c| !c.standalone).cloned());
@@ -320,7 +370,7 @@ fn resolve_mapping_merges(
     // snapshot positions still address them.
     for index in own_indices {
         if let Some((_, value)) = pairs.get_index_mut(index) {
-            resolve_merges_recursive(value, anchors, path, depth + 1);
+            resolve_merges_recursive(value, anchors, path, depth + 1, orphaned);
         }
     }
 
@@ -449,12 +499,21 @@ fn collect_merge_data(
     anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &[String],
     depth: usize,
+    orphaned: &mut Vec<(String, CustomNode)>,
 ) -> AnchoredPairs {
     let mut merged_pairs = AnchoredPairs::new();
 
     match merge_value {
         CustomNode::Alias { name } => {
-            collect_merged_pairs_for_anchor(name, pairs, anchors, path, depth, &mut merged_pairs);
+            collect_merged_pairs_for_anchor(
+                name,
+                pairs,
+                anchors,
+                path,
+                depth,
+                &mut merged_pairs,
+                orphaned,
+            );
         }
         CustomNode::Sequence { items, .. } => {
             for item in items {
@@ -466,9 +525,10 @@ fn collect_merge_data(
                         path,
                         depth,
                         &mut merged_pairs,
+                        orphaned,
                     ),
                     CustomNode::Mapping { pairs: sub, .. } => {
-                        collect_inline_pairs(sub, pairs, &mut merged_pairs);
+                        collect_inline_pairs(sub, pairs, &mut merged_pairs, orphaned);
                     }
                     _ => {
                         // Any other element type invalidates the whole merge
@@ -479,7 +539,7 @@ fn collect_merge_data(
             }
         }
         CustomNode::Mapping { pairs: sub, .. } => {
-            collect_inline_pairs(sub, pairs, &mut merged_pairs);
+            collect_inline_pairs(sub, pairs, &mut merged_pairs, orphaned);
         }
         _ => {}
     }
@@ -521,9 +581,14 @@ fn collect_inline_pairs(
     source: &NodeMap<CustomNode, CustomNode>,
     pairs: &NodeMap<CustomNode, CustomNode>,
     result: &mut AnchoredPairs,
+    orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     for (key, value) in source {
         if pairs.contains_key(key) {
+            // The mapping owns this key, so the pair never reaches the tree and a
+            // definition nested in it leaves with it.
+            collect_anchored_nodes(key, orphaned);
+            collect_anchored_nodes(value, orphaned);
             continue;
         }
         let mut key = key.clone();
@@ -542,6 +607,7 @@ fn collect_merged_pairs_for_anchor(
     path: &[String],
     depth: usize,
     result: &mut AnchoredPairs,
+    orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     let Some(merged) = anchors.get(name) else {
         return;
@@ -570,19 +636,24 @@ fn collect_merged_pairs_for_anchor(
         resolved = merged.clone();
         let mut nested = path.to_vec();
         nested.push(name.to_string());
-        resolve_mapping_merges(&mut resolved, anchors, &mut nested, depth + 1);
+        resolve_mapping_merges(&mut resolved, anchors, &mut nested, depth + 1, orphaned);
         &resolved
     } else {
         merged
     };
     for (k, v) in body {
-        if !pairs.contains_key(k) {
-            let mut key = k.clone();
-            let mut value = v.clone();
-            clear_source_ranges(&mut key);
-            clear_source_ranges(&mut value);
-            result.push((name.to_string(), key, value));
+        if pairs.contains_key(k) {
+            // Same drop as the inline path: the mapping owns the key, so this pair
+            // never reaches the tree and a definition it carries leaves with it.
+            collect_anchored_nodes(k, orphaned);
+            collect_anchored_nodes(v, orphaned);
+            continue;
         }
+        let mut key = k.clone();
+        let mut value = v.clone();
+        clear_source_ranges(&mut key);
+        clear_source_ranges(&mut value);
+        result.push((name.to_string(), key, value));
     }
 }
 
@@ -1034,8 +1105,51 @@ mod tests {
             "\n<<: &b\n<<:\n <: *b",
             "<<: &b\n<<: {k: *b}",
             "i: &c 1\n<<: &b\n<<: {j: *b}\nk: *c",
+            // The alias can stand in key position, which `IndexMap` hands out immutably:
+            // the fold left `? *b` behind, so the repair has to rebuild the mapping to
+            // reach it (libFuzzer `yaml_roundtrip` crash-a7b68980, minimised to 15 bytes).
+            "<<: &b\n<<:\n? *b\n",
         ] {
             let mut root = parse(src, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let one = crate::serializer::to_yaml(&root);
+            let re = parse(&one, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} expanded to unparseable {one:?}: {e}"));
+            let again = crate::serializer::to_yaml(&re);
+            assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+        }
+    }
+
+    /// Consuming a merge entry removes the nodes that anchored it: the `<<` pair is
+    /// replaced by the pairs its value supplied, so an `&name` on that value (or on the
+    /// key) has nothing left to sit on while a surviving pair still says `*name`. YAML
+    /// resolves an alias against a definition in the document, so the emission used `*b`
+    /// with no `&b` anywhere — text our own reader rejects as `found unknown anchor`,
+    /// breaking the "we never emit unparseable output" contract (libFuzzer
+    /// `yaml_roundtrip` crash-72afef34, crash-d336d8b9 and crash-e31d0300, minimised to
+    /// `<<: &b` / `  x: *b`).
+    ///
+    /// The repair inlines the lost definition at the uses that survive and keeps its
+    /// anchor metadata, so the first one re-defines the name: a self-referential value
+    /// emits a nested anchor rather than a dangling alias, and the two spellings unfold
+    /// to the same infinite tree. The entry is walked as a whole, so a definition nested
+    /// in a pair that loses the override race joins the same repair. The merge pass runs
+    /// after `finish_document`, whose duplicate-key repair cannot see any of this.
+    #[test]
+    fn a_consumed_merge_entrys_anchor_survives_the_merge() {
+        for src in [
+            // Self-reference: the definition travels inside the pair it contributes.
+            "<<: &b\n  x: *b\n",
+            // The alias sits outside the merge value, so the definition is inlined there.
+            "<<: &b\n  x: 1\ny: *b\n",
+            // The fuzz minimisation, notes on the value's own lines included.
+            "<<: &b\n#y?\n  x: *b\n",
+            // The merge key can carry the definition too.
+            "&k <<: {x: *k}\n",
+            // An overridden merge pair drops the definition nested in its value.
+            "m:\n  a: 1\n  <<: {a: &c {v: *c}}\nu: *c\n",
+        ] {
+            let mut root = parse(src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?}: {e}"));
             resolve_merge_keys(&mut root);
             let one = crate::serializer::to_yaml(&root);
             let re = parse(&one, YamlSchema::Core)
