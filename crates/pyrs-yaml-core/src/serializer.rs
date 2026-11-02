@@ -2989,11 +2989,33 @@ fn lift_first_item_notes(
     };
     // Borrow before allocating: a tagged sequence whose first item carries no note anywhere on its
     // spine keeps the clone off the hot path, the same guard [`lift_first_entry_notes`] uses.
-    if first_item.leading_comments().is_empty() && !spine_has_notes(first_item) {
+    // An item the writer spells on lines of its own keeps its own leading stack in the body: the
+    // note lands below the item's `-`, deeper than the marker, and the reader files it on the item
+    // (libFuzzer `edit_yaml` crash-439f5d2c). Lifting it above the sequence's header, as this
+    // function used to do for every first item, put it one level too high: the reader filed it on
+    // the sequence, and the second emission hoisted it above the tag line.
+    //
+    // The split is the writer's own branch in `write_sequence_item`: an item there takes either the
+    // compact form - where a note above the dash is the only slot it has, and only the sequence can
+    // report it - or a body on lines of its own. `is_compact_item` answers the mapping half; a
+    // sequence always takes the body, and a scalar or flow node takes it only when a note forces
+    // the break.
+    let own = first_item.leading_comments();
+    if own.is_empty() && !spine_has_notes(first_item) {
         return (None, None);
     }
-    let mut notes = first_item.leading_comments().to_vec();
-    let mut worked = strip_leading_comment(first_item);
+    let body_below = !Serializer::is_empty_container(first_item)
+        && match first_item {
+            CustomNode::Mapping { .. } => !is_compact_item(first_item),
+            _ => is_block_container(first_item) || !own.is_empty(),
+        };
+    let own: &[Comment] = if body_below { &[] } else { own };
+    let mut notes = own.to_vec();
+    let mut worked = if own.is_empty() {
+        first_item.clone()
+    } else {
+        strip_leading_comment(first_item)
+    };
     notes.extend(hoist_marker_note(&mut worked));
     if notes.is_empty() {
         return (None, None);
