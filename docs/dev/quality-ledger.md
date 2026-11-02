@@ -11457,9 +11457,11 @@ reach a fixed point, their output re-parses, the parsers survive arbitrary bytes
 tree carries reaches the document. None of them compares the tree. An emission that writes `null`
 and reads back `0` settles byte-for-byte on both passes and drops no note, so all four stay green
 while the value changed — the class `former-crash-09341b75` belonged to (a 119-digit string that
-went out bare and came back numeric), and the same blindness `(hw)` and `(hy)` record for TOML and
-YAML. `QUALITY_MATRIX.md` names it in the property row's own words: "invariants weaker than
-equality". TOML closed it for its own format; the JSON family had no equality claim at all.
+went out bare and came back numeric). `QUALITY_MATRIX.md` names it in the property row's own words:
+"invariants weaker than equality". The other two formats had already closed it for themselves: TOML
+with `prop_toml_roundtrip_preserves_the_tree`, and YAML with `prop_roundtrip` in
+`crates/pyrs-yaml-core/src/pbt.rs`, which compares AST to AST and admits a difference only when it
+is one of the normalizations the property names. The JSON family had no equality claim at all.
 
 `prop_json_roundtrip_preserves_the_tree` adds one. Each scalar is folded to the typed value its own
 side names — the standard tag it carries, or the Core schema when untagged, with every quoted or
