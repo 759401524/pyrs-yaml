@@ -450,7 +450,7 @@ def rewrite_docs(snapshot):
             found += 1
         if not found:
             raise ValueError(f"{path}: no bench markers, so its tables are no longer generated")
-        path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        path.write_bytes("\n".join(lines).encode("utf-8"))
         print(f"{path.relative_to(ROOT)}: {found} table(s)")
 
 
@@ -477,7 +477,7 @@ def main():
 
     snapshot = collect()
     if args.update:
-        SNAPSHOT.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8", newline="\n")
+        SNAPSHOT.write_bytes((json.dumps(snapshot, indent=2) + "\n").encode("utf-8"))
         print(f"wrote {SNAPSHOT.relative_to(ROOT)}")
         return
 
