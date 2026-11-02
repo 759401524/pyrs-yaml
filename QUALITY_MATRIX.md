@@ -588,7 +588,7 @@ those bridges grew a long-value twin at both ends, since the long-value shape th
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 76,854,817<!-- ir-floor: documents_short_strings --> against 119,424,775<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 76,854,839<!-- ir-floor: documents_short_strings --> against 119,424,797<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` on the row the file
 keys `20261023.334.3` at 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 --> and
@@ -608,12 +608,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 64,411,669<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 18,005,160<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 18,123,124<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,678,102<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,858,102<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 59,356,060<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 13,397,856<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 13,515,856<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,692,096<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,872,096<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 701,896,643<!-- ir-floor: parse_notes --> and `stream_notes` 578,827,532<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 704,233,470<!-- ir-floor: parse_notes --> and `stream_notes` 579,067,526<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
@@ -625,13 +625,13 @@ and 93,952,438 on the event route (+16.30 % and +19.37 %, which is 4,473 and 4,2
 note), and 31,022,014 of the first and 33,738,000 of the second sit in eight functions the note-free
 control never enters at all; `docs/dev/perf.md` names them. TOML grew both halves of the same pair on
 a fixture of its own, because a note there has a shape neither bridge shows:
-`to_toml_notes` 16,468,905<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
+`to_toml_notes` 11,921,732<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
 dialect writers write, so its number sits beside `to_jsonc_notes` and `to_json5_notes` as the same
-document through a third writer, and `from_toml_notes` 148,375,308<!-- ir-floor: from_toml_notes -->
+document through a third writer, and `from_toml_notes` 148,375,293<!-- ir-floor: from_toml_notes -->
 reads a seven-comment TOML document holding `MEDIUM_TOML`'s values and nothing else
 (`crates/pyrs-yaml-core/tests/ir_fixtures.rs` requires the two to render identical JSON), so that half is a measured pair
-rather than a named one: against `from_toml_medium` 121,153,784<!-- ir-floor: from_toml_medium --> the
-seven comments cost 27,225,477 loop instructions, +22.47 % or 1,945 per comment once the harness's
+rather than a named one: against `from_toml_medium` 121,149,778<!-- ir-floor: from_toml_medium --> the
+seven comments cost 27,225,515 loop instructions, +22.47 % or 1,945 per comment once the harness's
 2,000 iterations are divided out, the comment bytes included. The attribution names where each half
 goes, re-profiled on this head: `pyrs_toml::writer::push_note_text` 14.98 % of the writer's loop — it
 was 13.35 % before the container's own note started going through it — and
@@ -669,8 +669,8 @@ inline note beside a header that carries none still rides the header line and mo
 the second emission, measured on this head and green in the fixed-point property, which never reaches
 that slot combination. `docs/dev/quality-ledger.md` `(hu)` and `(hv)` record the pair as they were
 measured, `(hw)` records this correction and the price. The Python-object write route joined too
-(`safe_dump_small` 13,297,727<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
-`safe_dump_medium` 110,613,266<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
+(`safe_dump_small` 13,297,253<!-- ir-floor: safe_dump_small @ 20261026.354.1 --> and
+`safe_dump_medium` 110,613,117<!-- ir-floor: safe_dump_medium @ 20261026.354.1 -->, the same two
 documents `to_python_small` and `to_python_medium` read, turned into objects by that channel's own
 body outside the counted loop and then written back by `safe_dump`) — 8.32x the instructions at the
 larger input. The route `safe_dump` and `from_dict` serve had moved no number since the harness
