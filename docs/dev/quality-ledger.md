@@ -11704,6 +11704,41 @@ emission fails for depth is skipped rather than refused, which leaves that failu
 instead of naming it as a duplicate; and the check covers container keys only, because a scalar
 key's identity is already settled at ingest by text and by tag.
 
+### (in) A duplicate JSON key dropped the notes inside the value it replaced (2026-11-02)
+
+libFuzzer `json_events_replay` (crash-e294755f) minimised to 132 bytes of JSON5 - a top-level object
+with two `"a"` members whose values are objects carrying the same three notes. Both walks accepted
+it, and then the note multisets disagreed: the stream reported eight notes, the tree kept five. The
+duplicate rule keeps the first position and the last value, so the first object is dropped whole;
+the rescue added for the key-node half (#450, ledger `(dy)`/`(dz)`) handed the survivor the notes
+riding the dropped key and the dropped value node, but `notes_of` reads only the node it is handed,
+so the three notes *inside* the dropped object went with it. Nothing else could see it: the strict
+writer forgets comment slots, so the fixed point held while text vanished from JSONC and JSON5
+output.
+
+`park_notes` now builds its list with `subtree_notes`, which walks a node and every node under it in
+source order - own leading notes, the inline note, then mapping keys and values or sequence items.
+The fixture has no duplicate, so the read path pays nothing there; a document that does pays one
+walk of the value it was already discarding.
+
+The mutation is the recursion: replacing the match with `let _ = node;` keeps the build clean and
+reddens both pins - `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` (its first shape
+writes `{"a":1}`, the note gone) and the corpus walk naming
+`former-crash-e294755f.seed [json5]: the stream and the tree hold different notes`.
+
+Price, three samples per scenario on one host with the pinned `rustc 1.97.1`: `from_json_medium`
+78,623,459 → 78,692,516 (+0.09%) and `from_jsonc_medium` 91,944,323 → 92,008,303 (+0.07%), both
+inside the 0.5% tolerance and neither fixture holding a repeated container key.
+
+The input is archived as `fuzz/seeds/json_events_replay/former-crash-e294755f.seed` (132 bytes), and
+`crates/pyrs-json/tests/events_replay.rs` moves its measured corpus line to 21 seeds, 63 verdict
+pairs and 35 accepted replays. The matrix counts move by the one test and that seed, 882 → 883
+`#[test]` and 210 → 211 seeds (118 → 119 `former-crash-*`), written by
+`quality_matrix.py --write-rows`. What it still cannot see: the parked notes read beside the
+survivor, not where the input wrote them - the same residual `(dy)` names - and the order of notes
+that came from two different dropped slots is the source order of the discarded value, which one
+leading list cannot express.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

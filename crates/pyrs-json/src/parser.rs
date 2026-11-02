@@ -219,6 +219,32 @@ fn notes_of(node: &CustomNode) -> Vec<pyrs_ast::ast::Comment> {
     notes
 }
 
+/// Every note a node and every node under it carry, in source order.
+///
+/// A repeated name replaces a whole value, so a note anywhere inside the value that lost is dropped
+/// with it - `notes_of` sees only the node it is handed, which is why the replay gate found a
+/// container value whose inner notes vanished while the stream still reported them.
+fn subtree_notes(node: &CustomNode, into: &mut Vec<pyrs_ast::ast::Comment>) {
+    into.extend(node.leading_comments().iter().cloned());
+    if let Some(inline) = node.comment() {
+        into.push(inline.clone());
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                subtree_notes(key, into);
+                subtree_notes(value, into);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                subtree_notes(item, into);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The notes the key node a duplicate name just destroyed owned.
 ///
 /// Rebuilt by running the same `attach_pending` over a throwaway node rather than by restating its
@@ -262,7 +288,8 @@ fn park_notes(
     displaced: CustomNode,
     carried: Vec<pyrs_ast::ast::Comment>,
 ) {
-    let mut dead = notes_of(&displaced);
+    let mut dead = Vec::new();
+    subtree_notes(&displaced, &mut dead);
     if dead.is_empty() && carried.is_empty() {
         return;
     }
@@ -2742,6 +2769,25 @@ mod tests {
         let again = to_jsonc_text(&from_jsonc(&written).expect("its own output re-parses"))
             .expect("writable");
         assert_eq!(written, again);
+    }
+
+    #[test]
+    fn a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces() {
+        // Found by `fuzz/fuzz_targets/json_events_replay.rs` (crash-e294755f): the collapse drops
+        // the earlier value outright, and a note stored anywhere inside that value went with it -
+        // `notes_of` reads the node it is handed, never its children. The stream still reported
+        // the notes, so the two walks disagreed about a document neither writer had to change.
+        for text in [
+            "{\"a\": {\"x\": 0 /* inner */}, \"a\": 1}",
+            "{\"a\": [0 /* inner */], \"a\": 1}",
+        ] {
+            let tree = from_jsonc(text).expect("valid JSONC");
+            let written = to_jsonc_text(&tree).expect("writable");
+            assert!(written.contains("inner"), "{written} for {text:?}");
+            let again = to_jsonc_text(&from_jsonc(&written).expect("its own output re-parses"))
+                .expect("writable");
+            assert_eq!(written, again, "not a fixed point for {text:?}");
+        }
     }
 
     #[test]

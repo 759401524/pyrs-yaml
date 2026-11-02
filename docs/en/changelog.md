@@ -542,6 +542,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   34-byte seed, a colon-bearing inner key, a tagged empty plain/quoted pair and the hoisted note —
   with flow-versus-block keys as the control that must still parse and settle; forcing the check
   off reddens it.
+- **A repeated JSON key keeps the notes inside the value it replaces** — a duplicate name keeps the
+  first position and the last value, so the earlier value is dropped whole. The earlier rescue
+  handed the survivor the notes riding the dropped key and the dropped value node, but `notes_of`
+  reads only the node it is handed - so any note *inside* a dropped container went with it while the
+  event stream still reported it. libFuzzer `json_events_replay` crash-e294755f is the 132-byte
+  JSON5 shape: two `"a"` values are objects with three notes each; the stream reported eight notes
+  and the tree kept five, the three inside the discarded object going with it. `subtree_notes` now
+  collects a node and every node under it in source order, so the parked list is the whole displaced
+  value. Forcing the recursion off reddens
+  `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` and the corpus walk, which now
+  replays the new `former-crash-e294755f.seed`. The Ir gate reads +0.09% on `from_json_medium` and
+  +0.07% on `from_jsonc_medium`; neither fixture contains such a duplicate, so the move is layout.
 - **A dotted path inside an inline table is bounded like every other descent** —
   `parse_inline_table` collected members as key paths and laid them out in `nest_inline`, so
   `t = { a.b.… = 1 }` nested one table per segment without entering the `parse_value` funnel or
