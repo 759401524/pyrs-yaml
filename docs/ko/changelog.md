@@ -43,6 +43,34 @@ status: new
   멤버가 아니라 항목 자체로 다시 읽힌다)와
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
   위에 남는다).
+- **태그만 있는 줄 뒤에 온 주석이 그 줄 안으로 들어갔다** — `yaml_roundtrip` 의 crash-2c76568e 는 첫
+  쌍이 맨 태그(`bg: !`)인 매핑을 라이터에 넘긴다. 스칼라 텍스트를 쓰지 않으므로 그 줄은 값을 null 텍
+  스트로 삽입하는 무언가가 닫을 때까지 열린 채 남는다. 다음 쌍의 leading 주석 스택이
+  `write_note_line` 에서 그것을 닫고, 그 바이트들이 첫 줄을 오른쪽으로 밀어낸다.
+  `crates/pyrs-yaml-core/src/serializer.rs` 는 스택을 쓰기 전에 그 줄의 시작 위치를 기억했으므로, 키
+  주석 배치——값이 자기 주석을 가져 끝 슬롯을 거부당한——는 "쌍 위"로 오래된 오프셋에 썼고, 결과적으
+  로 앞 줄 안쪽에 들어갔다: `bg: !: # *b` / `~` / `# *b` / `<<: …`. 엔진 자신의 리더는 이 텍스트를
+  그대로 거부한다(`simple key expected ':'`). 태그만 있는 줄이 보통 치르는 한 라운드의 흔들림보다 무
+  거운 실패다. 이제 두 키 분기 모두 leading 스택을 쓴 뒤 시작 위치를 다시 잡는다.
+  `a_key_note_behind_a_tag_only_line_settles_in_one_round` 는 25바이트 최소 입력과 112바이트 보관된
+  크래시를 바이트 단위로 고정하고, 첫 출력이 다시 파싱되고 두 번째에서 안정되며 두 주석이 각각 자기
+  줄로 남는지 확 인한다. 대조군(단순 키 분기의 재기록을 오래된 오프셋으로 되돌림)은 수정 전 바이트와
+  함께 빨개진다. `?` 마커 분기도 같은 불변량을 위해 같은 재기록을 하지만 이를 재는 사례는 없다——명시
+  키에서는 키 주 석 블록이 건너뛰어진다——그래서 이 항목은 그쪽에 측정된 주장을 두지 않는다. 입력은
+  `former-crash-2c76568e.seed` 로 코퍼스에 들어가며, 이후 `note_survival` 순회가 계속 과금한다.
+  WSL 에서 고정한 `rustc 1.97.1` 로 재면 YAML 라이터 여섯 시나리오 중 어느 것도 0.5 % 선을 넘지
+  않는다 — `serialize_anchors` −0.24 %, `serialize_medium` −0.22 %, `serialize_note_flow` −0.06 % —
+  두 곳의 `len()` 저장은 측정되지 않는다. 이 호스트가 평면 표 바닥보다 1.65–2.99 % 높게 읽는 두 TOML
+  리더 시나리오는 부모 트리에서도 같은 값을 읽으며, 이 변경은 거기에 닿지 않는다.
+- **예약 샘플링의 마지막 미결 입력이 코퍼스가 되었고, 그 다섯 모양에도 이름이 붙었다** — libFuzzer
+  `yaml_roundtrip`의 crash-1bbd4d7f는 열두 바이트로 축소된다: `? &b` 위에 한 단 들여쓴 `? > #I`. 그
+  marker body의 앵커 헤더 아래에 있는 note는 marker 위에 있어야 하고, 실행 이후에 착지한 writer가
+  이미 그렇게 쓴다 — 이 트리에서 측정한 결과, 이 계열이 다루는 다섯 모양 모두 첫 라운드에 hoist된
+  표기를 쓰고 두 번째 라운드도 버틴다. 빠져 있던 것은 깨뜨릴 이름이었다:
+  `crates/pyrs-yaml-core/tests/settles_in_one_round.rs`의
+  `a_note_under_a_marker_header_settles_above_the_marker`가 각 방출과 note 개수, 2라운드 동등성을
+  단언하고, `crash-1bbd4d7f` 입력은 `fuzz/seeds/yaml_roundtrip` 아래 `former-crash-*` seed로
+  보관되어 fuzz job도 재생한다. 엔진 변경은 없다: 이 계열이 지목한 모양은 모두 이미 안정돼 있었다.
 - **JSON의 주석 보존, 이제 코퍼스에서도 값을 매긴다** — `events_replay.rs`는 두 순회를 맞세우지만,
   주석 슬롯을 의도적으로 잊는 `to_json_text`로 비교하고 `roundtrip_corpus.rs`는 고정점만 묻는다.
   그래서 "트리가 남겼는데 JSONC나 JSON5 기록 단이 버린" 주석은 "어느 순회도 남기지 않은" 주석과 같은

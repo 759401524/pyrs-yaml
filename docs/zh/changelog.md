@@ -41,6 +41,29 @@ status: new
   回到表项本身，而不是它的第一个成员）与
   `a_note_above_a_nested_array_element_stays_above_it_and_settles`（嵌套数组自己的注释留在它的括号上
   方）。
+- **标签独行之后，键上的注释落进了那一行里面** — `yaml_roundtrip` 的 crash-2c76568e 交给写入器的映
+  射，第一对就是一个裸标签（`bg: !`）。它不写出任何标量文本，所以这一行一直开着，直到有东西用该值的
+  null 文本把它关上；下一对的 leading 注栈在 `write_note_line` 里做了这件事，而那几行字节把第一行往
+  右推。`crates/pyrs-yaml-core/src/serializer.rs` 记下那一行的起点时注栈还没写，于是键注释的落位——因
+  为它的值自带注释而被拒绝走尾槽——按“放在这一对之上”用了过期的偏移，实际写进了上一行内部：
+  `bg: !: # *b` / `~` / `# *b` / `<<: …`。引擎自己的读取器直接拒绝这段文本
+  （`simple key expected ':'`），比标签独行平白多出的那一轮漂移更严重。现在两条键分支都在 leading 栈
+  写完之后重新记录行起点。`a_key_note_behind_a_tag_only_line_settles_in_one_round` 钉住 25 字节的最
+  小输入与 112 字节归档崩溃的原始字节：第一次写出即可重新解析、第二次写出即稳定，且两条注释都各自占
+  一行；对照组（把简单键分支的重取换回过期偏移）会红，并逐字节给出修复前的输出。`?` 标记分支按同一不
+  变量做了同一处重取，但没有实测用例到达它——显式键会跳过键注释块——所以本条不为它宣称任何测量。输入以
+  `former-crash-2c76568e.seed` 进入语料，此后由 `note_survival` 的遍历持续计费。在 WSL 中按钉住的
+  `rustc 1.97.1` 计价，六个 YAML 写器场景没有一个越过 0.5 % 线——`serialize_anchors` −0.24 %、
+  `serialize_medium` −0.22 %、`serialize_note_flow` −0.06 %——所以两处 `len()` 存储不可测。本机读出
+  比平坦表地板高 1.65–2.99 % 的两个 TOML 读器场景，在父树上读出的数值相同，而这个改动够不到它们。
+- **计划采样最后一条未结的输入已成语料，它的五种形状也各自有了名字** — libFuzzer `yaml_roundtrip` 的
+  crash-1bbd4d7f 缩到十二字节：`? &b` 之下一行缩进的 `? > #I`。该 `?` 体上锚点头行之下的注释属于标记
+  行之上，而运行之后落地的写入路径本就把放在那里 —— 在本树上实测，这一族覆盖的五种形状首轮即写出上
+  提后的拼法，第二轮不变。缺的不是行为，而是一个会被打破的名字：
+  `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` 里的
+  `a_note_under_a_marker_header_settles_above_the_marker` 逐条断言五份输出、各自的注释条数与二次
+  输出相等；`crash-1bbd4d7f` 输入也以 `former-crash-*` 种子落进 `fuzz/seeds/yaml_roundtrip`，模糊
+  作业因此会回放它。没有引擎改动：这一族点名的形状本已稳定。
 - **JSON 的注释守恒如今在语料上计价** —— `events_replay.rs` 让两条遍历路径互相比对，但比较经由刻意遗
   忘注释槽的 `to_json_text`，而 `roundtrip_corpus.rs` 只问不动点，因此“树保留了、JSONC 或 JSON5 写入
   端丢掉了”的注释，与“两条遍历都没保留”的注释读起来完全相同。
