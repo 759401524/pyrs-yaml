@@ -199,7 +199,10 @@ holds it - not a per-shape patch.
   (`former-crash-68adf94c.seed`).
 - **Empty block headers.** granit reports the *default* chomping for a header with no content to act
   on, so `>+` cannot survive; `effective_chomping` now drops the indicator the way both writers
-  already dropped the indent (`former-crash-{89d81d99,b5dcc38f}.seed`).
+  already dropped the indent (`former-crash-{89d81d99,b5dcc38f}.seed`). Superseded 2026-11-02: an
+  empty body now gets no body line at all, so every indicator re-reads as `""` and the declared
+  chomping is written back verbatim - dropping it merged two container keys that differed only
+  there into text the reader refuses (`former-crash-469125e3.seed`, ledger (ik)).
 - **Null keys.** Two spellings of null differ in metadata, so `IndexMap` kept both and the document
   shrank a line per round; ingest folds them to the entry a re-read produces
   (`former-crash-00e31785.seed`, minimised 9 bytes), and `<<` folds the same way

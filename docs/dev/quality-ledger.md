@@ -11546,6 +11546,50 @@ plus `\n` and `\t`, so tabs-as-content and non-ASCII inside a block body remain 
 territory. The matrix counts move only by the unit tests: 36 proptest properties unchanged, 875 →
 877 Rust `#[test]`, written by `quality_matrix.py --write-rows` from its own measurement.
 
+### (ik) Map equality reads a claim the writer had been normalising away (2026-11-02)
+
+libFuzzer `yaml_roundtrip` (crash-469125e3) minimised to 48 bytes of a two-pair mapping whose keys
+are the same scalar except for the chomping of an empty block scalar inside them: one says
+`? hF&a?k !tag o: |+1`, the other `? hF&a?k !tag o:  |`. `CustomNode` equality reads `chomping`, so
+the reader kept both pairs. The writer forced `Clip` on every empty body - the rule an earlier
+generation of this code introduced for crash-89d81d99 and crash-b5dcc38f, where normalising the
+header did make that emission a fixed point - so both keys spelled `?`/`|` identically and the
+writer's own reader refused the text with `duplicate key`, a `DuplicateKey` the fuzz contract treats
+as a crash.
+
+The normalisation was answering the wrong question. An empty body has no content line, so the header
+is the whole scalar, and every indicator re-reads it as `""` whether it says `|`, `|-` or `|+`. The
+drift the old rule saw came from the *terminator*: `write_scalar_node` pushed a newline after the
+header, and under `Keep` that blank line is a body line whose content is one break, so `|+` re-read
+as `"\n"`. Two changes, and the mutation shows they are two claims. `effective_chomping` returns the
+declared chomping for an empty value; restoring the old `Clip` branch reddens
+`container_keys_differing_only_in_chomping_survive` with the reader's own "duplicate key" and
+`empty_block_header_reaches_a_fixed_point` with `">\n"` where `">+\n"` was expected. The two block
+writers now leave the header line unterminated, so the caller's existing terminator closes it;
+putting that newline back leaves the container-key test green - the keys are still spelled apart -
+and reddens the fixed-point test with `">+\n\n"`, the blank line that re-reads as `"\n"`. Nothing
+else moved: `k: |` is not promoted, a non-empty `|+` keeps its indicator, and
+`clip_cannot_carry_an_all_break_block_body` keeps its non-empty cases.
+
+Placement was the third claim, and it is the one the tests cannot see. The first version asked the
+question at the call site, where every scalar passes, and it read `serialize_small +2.49%`,
+`serialize_medium +2.15%`, `serialize_block +2.54%`, `serialize_block_scalars +0.98%`,
+`serialize_anchors +2.30%` and `serialize_note_flow +0.44%` while the same host's base tree
+read -0.00%…+0.32% on those six - the movement was the branch, not the box. The same rule inside
+`write_literal_scalar`/`write_folded_scalar`, which already compute `no_content_line`, leaves the
+six at -0.14%…+0.20%, because the emptiness question is only asked where a block body could have
+existed. The two FAILs left standing, `load_toml_medium +1.86%` and `load_toml_long_strings +3.04%`,
+read identically on the base tree: this host is not the enforcing image, so they are the baseline's
+drift and not this change's.
+
+The repro is archived as `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`; the matrix counts
+move by the one new Rust test and that seed, 877 -> 878 `#[test]` and 205 -> 206 seeds (114
+`former-crash-*`), written by `quality_matrix.py --write-rows`. What it still cannot see: the rule
+is asserted through the writer's output and the re-parse, not through `set_chomping` on a
+content-less scalar, where the API's own contract decides; and the reader still accepts two map keys
+that differ only in metadata the writer cannot spell (the family #689 and #695 orbit), so a future
+key shape that collapses for a different reason still needs its own repro.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

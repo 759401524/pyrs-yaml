@@ -1286,6 +1286,19 @@ status: new
   下面。记为 `(gi)`，连同 `(gh)`：harness 曾把一个地板抄进注释（`parse_medium` 写成 "321,836,091"，
   提交值是 321,580,801），而刷新只重写 JSON、从不碰注释，所以这些引用现在只说关系，数字留给
   `.ci/ir-baseline.json`。
+- **空块标量写回它声明的 chomping，且不写空行体，于是只在这方面不同的两个容器键仍是两个键** —— 映射
+  相等会读 `chomping`，所以读取端同时保留了 `? hF&a?k !tag o: |+1` 与 `? hF&a?k !tag o:  |`；写入端
+  却把每个空体一律强制成 `Clip`、两者都写成 `|`，于是它自己的读取端以 `DuplicateKey` 拒绝了这版输出
+  （libFuzzer `yaml_roundtrip` crash-469125e3，最小化后 48 字节）。`effective_chomping` 现在对空值返
+  回其声明的 chomping，两个块标量写入器把标题行交给调用方的终止换行收尾、不再自己开一行空体 —— 两半
+  缺一不可，变异也证明它们是两条断言：把 `Clip` 恢复回去会用读取端自己的 "duplicate key" 打红
+  `container_keys_differing_only_in_chomping_survive`；而把标题换行放回去，该测试仍绿，却以
+  `">+\n\n"` 对 `">+\n"` 打红 `empty_block_header_reaches_a_fixed_point`，因为 `Keep` 下的空行会被重
+  读成 `"\n"`。旧规则曾归一化的空 `Keep` 种子（`>+8\r#`、`ancho: |+`；crash-89d81d99、
+  crash-b5dcc38f）现在第一次发射就是不动点，`k: |` 不会被提升成 `|+`，非空 `|+` 体仍保留指示符。归档
+  为 `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`。分支落在两个块标量写入器里，所以没有别
+  的标量需要回答空值问题，每个非空体也还是原路径；指令数门禁已在本 head 上运行，没有写端场景越过
+  0.5 % 那条线。
 
 ### [v0.18.3] — 2026-10-22
 

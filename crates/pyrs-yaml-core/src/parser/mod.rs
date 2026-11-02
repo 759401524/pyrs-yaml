@@ -2450,15 +2450,11 @@ mod tests {
     }
 
     /// libFuzzer `yaml_roundtrip` (crash-89d81d99, 5 bytes `>+8<CR>#`, and
-    /// crash-b5dcc38f, 55 bytes): a block scalar with an **empty** body cannot carry
-    /// a chomping indicator, because granit reports the default chomping when it
-    /// re-reads a header that has no content to act on. The first round wrote `>+`
-    /// (the explicit indentation indicator in the source is what made the reader
-    /// report `Keep` that once) and the second wrote `>`, so `to_yaml` never reached
-    /// a fixed point. The writers now drop the indicator for an empty body — the
-    /// same "emit the re-readable form" rule they already apply to the indentation
-    /// indicator there, and nothing is lost because an empty body has no trailing
-    /// break to keep or strip.
+    /// crash-b5dcc38f, 55 bytes): a block scalar with an **empty** body. The header's
+    /// declared chomping is written back verbatim and the body gets no line at all, so
+    /// `>+` re-reads as an empty `Keep` scalar instead of as `"\n"`, and the first
+    /// emission is already a fixed point. The indentation indicator is still dropped:
+    /// it has no content line to act on and re-reads as absent.
     #[test]
     fn empty_block_header_reaches_a_fixed_point() {
         let first =
@@ -2466,8 +2462,8 @@ mod tests {
         let src = std::str::from_utf8(first).expect("seed is utf-8");
         let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("input parses"));
         assert_eq!(
-            one, ">\n\n",
-            "empty folded body must be written without a `+`"
+            one, ">+\n",
+            "an empty body keeps its declared chomping and gets no body line"
         );
         let two = crate::serializer::to_yaml(
             &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
@@ -2479,8 +2475,8 @@ mod tests {
         let src = std::str::from_utf8(second).expect("seed is utf-8");
         let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("input parses"));
         assert!(
-            !one.contains("|+\n") && !one.contains(">+\n"),
-            "an empty body still advertised a chomping indicator: {one:?}"
+            one.contains("ancho: |+\n"),
+            "an empty body lost its declared chomping: {one:?}"
         );
         let two = crate::serializer::to_yaml(
             &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
@@ -2490,6 +2486,15 @@ mod tests {
             "block header must be a fixed point: {one:?} -> {two:?}"
         );
 
+        // A `Clip` header is not promoted: the declared indicator is written back, not
+        // normalised toward `Keep`.
+        let one =
+            crate::serializer::to_yaml(&parse("k: |\n", YamlSchema::Core).expect("input parses"));
+        assert_eq!(
+            one, "k: |\n",
+            "empty Clip body gained an indicator: {one:?}"
+        );
+
         // A body that is not empty keeps its `+` — the rule is scoped to empty.
         let src = "k: |+\n  x\n\n";
         let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("input parses"));
@@ -2497,6 +2502,29 @@ mod tests {
             one.contains("|+"),
             "non-empty Keep body lost its indicator: {one:?}"
         );
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-469125e3, 48 bytes after minimisation): two
+    /// container keys that differ only in the chomping of an empty block scalar inside
+    /// them. Map equality reads `chomping`, so the reader kept both; the writer used to
+    /// force `Clip` on every empty body and emit `|` for both, and its own reader then
+    /// refused the emission as a duplicate key. Both keys now spell their own header.
+    #[test]
+    fn container_keys_differing_only_in_chomping_survive() {
+        let src = "\r\n? hF&a?k !tag o: |+1\r: ho\r\n? hF&a?k !tag o:  |";
+        let node = parse(src, YamlSchema::Core).expect("input parses");
+        let one = crate::serializer::to_yaml(&node);
+        let again = parse(&one, YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("emitted document refused: {e}\n---\n{one:?}"));
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "second round must not mutate the first: {one:?}"
+        );
+        let CustomNode::Mapping { pairs, .. } = &again else {
+            panic!("expected a mapping, got {again:?}");
+        };
+        assert_eq!(pairs.len(), 2, "both container keys must survive: {one:?}");
     }
 
     /// A YAML mapping holds exactly one null key. `IndexMap` compares whole

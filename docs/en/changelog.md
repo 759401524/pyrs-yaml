@@ -1705,6 +1705,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   comment (`parse_medium` "321,836,091" against a committed 321,580,801), and a refresh rewrites the
   JSON without ever touching a comment, so those citations state the relationship now and leave the
   numbers to `.ci/ir-baseline.json`.
+- **An empty block body writes the chomping it declares and takes no body line, so two container
+  keys that differ only there stay two keys** - map equality reads `chomping`, so the reader kept
+  `? hF&a?k !tag o: |+1` beside `? hF&a?k !tag o:  |`; the writer forced `Clip` on every empty body,
+  spelled both `|`, and its own reader refused the emission as `DuplicateKey` (libFuzzer
+  `yaml_roundtrip` crash-469125e3, 48 bytes minimised). `effective_chomping` returns the declared
+  chomping for an empty value now, and the two block writers leave the header line for the caller's
+  terminator instead of opening a body line - both halves are load-bearing, and a mutation says they
+  are two claims: restoring `Clip` reddens `container_keys_differing_only_in_chomping_survive` with
+  the reader's own "duplicate key", while putting the header newline back leaves that test green and
+  reddens `empty_block_header_reaches_a_fixed_point` with `">+\n\n"` where `">+\n"` was expected,
+  because a blank line under `Keep` re-reads as `"\n"`. The empty-`Keep` seeds the old rule
+  normalised (`>+8\r#`, `ancho: |+`; crash-89d81d99, crash-b5dcc38f) settle on their first emission,
+  `k: |` is not promoted to `|+`, and a non-empty `|+` body keeps its indicator. Archived as
+  `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`. The branch sits in the two block writers,
+  so no other scalar asks the emptiness question and every non-empty body takes the old path; the
+  instruction-count gate ran on this head and no writer scenario crossed the 0.5 % line.
 
 ### [v0.18.3] — 2026-10-22
 

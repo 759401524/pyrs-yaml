@@ -1572,6 +1572,21 @@ status: new
   기록합니다: harness는 하한을 주석에 옮겨 적었습니다 (`parse_medium`을 "321,836,091"로, 제출값은
   321,580,801). 갱신은 JSON을 다시 쓰면서 주석은 건드리지 않으므로, 이 인용들은 관계만 밝히고 숫자는
   `.ci/ir-baseline.json`에 남깁니다.
+- **빈 블록 본문은 선언된 chomping을 그대로 쓰고 본문 줄을 갖지 않으므로, 그 점만 다른 두 컨테이너
+  키가 두 키로 남습니다** — 맵 동등성은 `chomping`을 읽으므로 리더는 `? hF&a?k !tag o: |+1`과
+  `? hF&a?k !tag o:  |`를 모두 유지했지만, 라이터는 모든 빈 본문을 `Clip`으로 강제해 둘 다 `|`로
+  적었고, 자신의 리더가 그 출력을 `DuplicateKey`로 거부했습니다 (libFuzzer `yaml_roundtrip`
+  crash-469125e3, 최소화 후 48바이트). `effective_chomping`은 이제 빈 값에 대해 선언된 chomping을
+  돌려주고, 두 블록 라이터는 헤더 줄을 호출자의 종결 개행에 맡겨 본문 줄을 열지 않습니다 — 두 절반
+  모두 필수이며, 변이가 둘이 별개의 주장임을 보여 줍니다: `Clip`으로 되돌리면 리더 자신의 "duplicate
+  key"로 `container_keys_differing_only_in_chomping_survive`가 빨개지고, 헤더 개행을 되돌리면 그
+  테스트는 초록인 채 `empty_block_header_reaches_a_fixed_point`가 `">+\n"`이어야 할 자리에
+  `">+\n\n"`로 빨개집니다. `Keep` 아래의 빈 줄이 `"\n"`으로 다시 읽히기 때문입니다. 옛 규칙이
+  정규화했던 빈 `Keep` 시드(`>+8\r#`, `ancho: |+`; crash-89d81d99, crash-b5dcc38f)는 첫 출력에서
+  고정점이 되고, `k: |`는 `|+`로 승격되지 않으며, 비어 있지 않은 `|+` 본문은 지시자를 유지합니다.
+  `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`로 보관합니다. 분기는 두 블록 라이터 안에
+  있으므로 다른 스칼라가 빈 값 질문을 지지 않고, 비어 있지 않은 본문은 기존 경로를 그대로 갑니다.
+  명령어 수 게이트는 이 head에서 실행했고 어떤 쓰기 시나리오도 0.5 % 선을 넘지 않았습니다.
 
 ### [v0.18.3] — 2026-10-22
 
