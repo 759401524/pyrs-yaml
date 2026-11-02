@@ -1160,6 +1160,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed` under `fuzz/seeds/toml_roundtrip`, replayed by
   `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` on every `cargo nextest`, and as
   `former-crash-{1ec1ea89,20cc6b69}.seed` under `fuzz/seeds/edit_yaml`, which the fuzz job replays.
+- **The hole-claims gate failed on the free-threaded `3.15t` leg before it had read a file** — every
+  pull request carried a red `3.15t` job whose traceback ended inside `unreleased_lines` with a
+  `NameError` for `_VERSION_HEADING_RE`, a constant defined 95 lines above it in the same module.
+  Reproduced on the untouched main tree by clearing `scripts/__pycache__`: 20 of 20 runs red cold
+  and green warm, unaffected by `PYTHONDONTWRITEBYTECODE=1`, so the trigger is the module's first
+  compilation rather than the cache write. The failing expression is the whole mechanism —
+  `load_module(path, name).unreleased_lines(text)` — and binding the module to a local before the
+  call is the measured remedy: 5 of 5 cold runs green on `3.15t`, 2 of 2 on `3.14t`, the default
+  interpreter's reading unchanged. No synthetic module reproduced it, so the comment records the
+  symptom and the remedy and claims no mechanism.
 
 #### Changed
 

@@ -104,7 +104,13 @@ def scope_lines(path: pathlib.Path) -> list[tuple[int, str]]:
     text = path.read_text(encoding="utf-8")
     if not is_changelog(path):
         return list(enumerate(text.splitlines(), start=1))
-    return load_module(MIRRORS, "check_changelog_mirrors").unreleased_lines(text)
+    # Bound to a name on purpose: `load_module(...).unreleased_lines(text)` reads the same module,
+    # but on the free-threaded 3.15 build the temporary form loses the module's globals before the
+    # call when no bytecode cache exists yet - measured as `NameError` inside `unreleased_lines` on
+    # a cold `scripts/__pycache__` (20 of 20 runs) and never on a warm one. That is the red the
+    # `3.15t` leg reported on every pull request.
+    mirrors = load_module(MIRRORS, "check_changelog_mirrors")
+    return mirrors.unreleased_lines(text)
 
 
 def stale_line_claims(lines: list[tuple[int, str]], kinds: set[str], measured: set[str]) -> list[tuple[int, str, str]]:

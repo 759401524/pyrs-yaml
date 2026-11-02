@@ -1063,6 +1063,15 @@ status: new
   `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed`로(`cargo nextest`마다
   `toml_writer_reaches_a_fixed_point_over_the_seed_corpus`가 재생), `fuzz/seeds/edit_yaml` 아래
   `former-crash-{1ec1ea89,20cc6b69}.seed`로 보관했다(fuzz 작업이 재생).
+- **구멍 주장 게이트가 free-threaded `3.15t` 레그에서 파일을 읽기도 전에 실패했다** — 모든 PR에 빨간
+  `3.15t` 작업이 붙었고, 트레이스백은 `unreleased_lines` 안에서 끝났다. 같은 모듈의 95줄 위에서
+  정의한 상수 `_VERSION_HEADING_RE`의 `NameError`다. 변경하지 않은 main 트리에서
+  `scripts/__pycache__`를 지우면 재현된다: 콜드 20회 모두 빨강, 웜 실행은 초록이며
+  `PYTHONDONTWRITEBYTECODE=1`도 결과를 바꾸지 않으므로 방아쇠는 캐시 쓰기가 아니라 모듈의 최초
+  컴파일이다. 실패한 식이 곧 기제다—— `load_module(path, name).unreleased_lines(text)` — 그리고 호출
+  전에 모듈을 지역 변수에 묶는 것이 측정된 처방이다: `3.15t` 콜드 5회 모두 초록, `3.14t` 2회 모두
+  초록, 기본 인터프리터의 측정값은 그대로다. 합성 모듈로는 재현되지 않았으므로 주석은 증상과 처방만
+  기록하고 기제를 주장하지 않는다.
 
 #### 변경
 
