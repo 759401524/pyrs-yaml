@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -162,6 +164,40 @@ def test_a_sampler_that_failed_without_leaving_bytes_is_exit_2(mod, tmp_path, ar
 
 def test_a_missing_artifact_tree_after_a_failed_sampler_is_also_exit_2(mod, tmp_path):
     assert mod.main(["--crashes", str(tmp_path / "absent"), "--fuzz-result", "failure"]) == 2
+
+
+def test_the_report_step_survives_an_archive_with_nothing_to_count(tmp_path):
+    """A count of zero is a fact to report, not a failure.
+
+    The runner invokes a bash step with `-eo pipefail`, and the step's own `set -uo pipefail` does
+    not turn `-e` back off, so a `grep -c` that matched nothing ended the step: the table was left
+    header-only and the filing step below never ran, which is how a finding from a push to main
+    reached no consumer. Reproduced on this layout before the fix: exit 1, header-only summary.
+    """
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("this case runs the workflow's bash step, and bash is not on this host")
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    step = next(s for s in workflow["jobs"]["report"]["steps"] if s.get("name") == "Report every target's findings")
+    # One archive holds crash bytes but no findings.tsv; the other holds a findings.tsv but no
+    # crash file of its own. Either one makes a `grep -c` match nothing.
+    archive(tmp_path, "parse_yaml", ["crash-aaa"], [])
+    archive(tmp_path, "edit_yaml", [], [("panicked at fuzz_targets/edit_yaml.rs:1:1 boom", "crash-bbb")])
+    (tmp_path / "report-step.sh").write_bytes(
+        b'export GITHUB_STEP_SUMMARY="summary.md"\n' + step["run"].encode("utf-8")
+    )
+    (tmp_path / "summary.md").write_bytes(b"")
+
+    proc = subprocess.run(
+        [bash, "--noprofile", "--norc", "-eo", "pipefail", "report-step.sh"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    assert "| parse_yaml | 1 | 0 |" in summary
+    assert "| edit_yaml | 0 | 1 |" in summary
 
 
 def test_the_aggregate_job_grants_issues_write_and_runs_this_script():
