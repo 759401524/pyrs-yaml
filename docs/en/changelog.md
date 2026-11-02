@@ -523,6 +523,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A key rewritten from an alias folds where it lands** — the duplicate-key fold drops the pair
+  that carried an anchor's only definition and hands that node to `repair_orphaned_anchors`, which
+  inlines it into every `*name` left, key position included. The rebuild re-inserted the inlined
+  node with a plain `pairs.insert`, so a mapping that already held its own null key came to hold
+  two, both written `~:`. libFuzzer `yaml_roundtrip` crash-49f44d18, 33 bytes, wrote `!? "": ~` /
+  `~: ~` / `&b ~: ~` on the first round, and the re-read folded the first of the two null keys
+  away, so the second round differed. The rebuild now runs the fold the receiver runs — last pair
+  wins, the dropped pair's notes re-home onto the survivor — and queues the anchored nodes that
+  pair carried for another inline round, because displacing it can strip a sibling anchor of its
+  own last definition. `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` pins the input
+  and two hand-reduced shapes (22 and 24 bytes); replacing the duplicate lookup with `None`
+  reddens it with the two-round move verbatim. The run's other two inputs replay clean and join
+  the corpus too: `former-crash-49f44d18.seed`, `former-crash-663b71ab.seed`,
+  `former-crash-cf1a63bf.seed`.
 - **A first entry's note climbs above the marker when its value takes the line** — inside a `?`
   marker body the writer lifts the first entry's key note above the marker only when the container
   writes an anchor or tag header, because the reader reports a note above that entry on the *key

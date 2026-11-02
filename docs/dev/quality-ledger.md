@@ -11880,6 +11880,44 @@ the helper restates the pair writer's slot rule rather than sharing it, so a fut
 rule has to move both by hand; and the test asserts the emission and its re-parse, not the
 intermediate tree.
 
+### (ir) A key rewritten from an alias folded only on the second round (2026-11-02)
+
+libFuzzer `yaml_roundtrip` reported three inputs in one batch (issue #739). One, `crash-49f44d18`,
+was a live fixed-point defect: 33 bytes, `<<: &b` beside a second `<<:` entry, a `?  !? |2`
+fragment, and `? *b`. The other two, `crash-663b71ab` and `crash-cf1a63bf`, replay clean on this
+tree and are archived as corpus without a claim here.
+
+The reader folds a mapping by identity: one null key and one merge key, the last pair wins, and the
+anchored nodes of a dropped pair go to `orphaned_anchors`. `repair_orphaned_anchors` then inlines a
+definition whose only site left the tree into every alias naming it - an alias standing in key
+position included, because the definition is gone and nothing else can supply it. That rewrite
+rebuilt the mapping with `pairs.insert`, the one insert path that does not fold. The mapping already
+held its own null key, the inlined node was an anchored null, and both survived: the emission wrote
+`!? "": ~` / `~: ~` / `&b ~: ~`, the reader kept the last of the two null keys, and the second round
+differed from the first.
+
+The rebuild now folds through `fold_rewritten_key` with the identity predicates the receiver uses,
+`is_null_key` and `is_merge_key`: the last pair wins, the dropped pair's notes are re-homed onto the
+survivor, and the anchored nodes that pair carried are queued for another inline round. That second
+part is load-bearing - displacing a sibling pair can itself remove the only definition of another
+anchor - so `repair_orphaned_anchors` loops until a round queues no definition left to inline. A
+document with nothing orphaned never enters the loop body, so the hot reader pays what it paid
+before.
+
+The pinned test is load-bearing by mutation: with the duplicate lookup replaced by `None::<usize>`,
+`an_inlined_alias_key_folds_into_the_null_key_it_lands_on` fails with the two-round move verbatim.
+It pins the 33-byte input and two hand-reduced shapes (22 and 24 bytes) that reach the same rebuild
+without the block scalar; both are hand-derived, not `cargo fuzz tmin` output.
+
+The three inputs join the corpus as `fuzz/seeds/yaml_roundtrip/former-crash-49f44d18.seed` (33
+bytes), `former-crash-663b71ab.seed` and `former-crash-cf1a63bf.seed` (70 bytes each). The matrix
+counts move by the one Rust test and the three seeds, 891 -> 892 `#[test]` and 228 -> 231 seeds
+(136 -> 139 `former-crash-*`, `yaml_roundtrip`'s directory 105 -> 108), written by
+`quality_matrix.py --write-rows`. What it still cannot see: `repair_orphaned_anchors` treats a name
+as defined when it appears anywhere in the tree, the limit `(ip)` records, so an orphaned definition
+that precedes an alias while a later re-definition also exists is still not inlined; and the test
+asserts the emission and its re-parse, not the intermediate tree.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
