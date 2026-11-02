@@ -11739,6 +11739,58 @@ survivor, not where the input wrote them - the same residual `(dy)` names - and 
 that came from two different dropped slots is the source order of the discarded value, which one
 leading list cannot express.
 
+### (io) A rename dropped the name a key carried, and a lift guard asked a narrower question (2026-11-02)
+
+libFuzzer `edit_yaml` left three artifacts on issue #726 - crash-8b6110c5 (28 bytes),
+crash-b44f7f1c (35 bytes) and crash-db718a7e (58 bytes) - and all three still failed on `main` at
+7dcf0f88. Two defects sit behind them, one in the edit layer and one in the writer.
+
+`rename_path` synthesized the renamed key with `named_key_node(new_key)`, so the `Fidelity` a simple
+key carries - its anchor and its tag - was dropped. The first two inputs minimise to
+`!base: &x 0se: *x`: renaming `&x 0se` to `k7` emitted `k7: *x`, an alias naming an anchor no node
+defines, and this reader refused the text the edit had just written. A rename changes the key's
+*text*; the entry it names keeps existing, so `renamed_key_node` copies the old key's anchor and tag
+onto the new name. The mutation is what makes the test load-bearing: making the helper ignore the
+old node reddens `renaming_a_key_keeps_the_anchor_and_tag_that_name_the_entry` with
+`left: "k7: *x\n"`, the crash's own spelling.
+
+The third input failed the one-round settle instead, and the cause was a guard narrower than the
+walk it guards. Under an anchor/tag header, `hoist_marker_note` takes the first key's *inline* note
+as well as its leading stack - `k: !s:  # n` leaves the note on the key, because a tag-only value
+owns no line-end slot of its own - while `spine_has_notes`, the cheap question asked before the lift
+allocates anything, looked only at the leading stacks. With a header over a header the walk had
+something to lift, the guard said no, and the first emission left the note below the header; the
+reader then handed it to the container, so the next round hoisted it one header further and the
+emission only settled once it had climbed out. The guard now mirrors the walk
+(`header && first_entry_inline_note(first_key).is_some()`). Reverting it reddens
+`a_first_key_inline_note_climbs_a_chain_of_headers_in_one_round`, which reads
+`- \n  &a0 \n  - \n    # n\n    &a3 \n    \"k\": !s:\n` - the note under `&a3` - where the fixed
+point carries it above `&a0`. One header is not enough to tell the two readings apart: the first pin
+used a single `&a3` and passed with and without the fix, because the lifted note already sat at the
+top of that document. Two chained headers are the shape that discriminates, and the smaller one is
+the better test.
+
+Price, on the WSL host with the baseline's `rustc 1.97.1`, largest of three samples per scenario:
+`serialize_small` -0.00%, `serialize_medium` +0.19%, `serialize_block` +0.18%,
+`serialize_block_scalars` +0.25%, `serialize_anchors` +0.28%, `serialize_note_flow` -0.08%. That
+band is this host's untouched-code noise rather than the guard: `safe_dump_small` read +0.26% and
+`from_jsonc_medium` +0.11% on scenarios this change cannot reach. The two FAILs left standing,
+`load_toml_medium` +1.87% and `load_toml_long_strings` +3.04%, are the same pair `(ik)` recorded on
+its base tree at +1.86% and +3.04% - the baseline's drift on a host that is not the enforcing image,
+not this tree's. The added condition runs only after the leading-stack test says no, and only when
+the spine node carries an anchor or a tag, so a document without a header never evaluates it.
+
+The three inputs are archived as
+`fuzz/seeds/edit_yaml/former-crash-{8b6110c5,b44f7f1c,db718a7e}.seed` (28, 35 and 58 bytes). The
+matrix counts move by the two new Rust tests and those three seeds, 882 → 884 `#[test]` and
+210 → 213 seeds (118 → 121 `former-crash-*`), written by `quality_matrix.py --write-rows`. Replayed
+through that target on the fixed tree (`cargo fuzz run edit_yaml` over the three files, `-runs=0`,
+nightly under WSL), all three executed - 3 ms, 3 ms, 10 ms - and none wrote an artifact. What it
+still cannot see: both tests assert the emission and its re-parse, not the intermediate tree; the
+guard's new half covers the inline slot of a *simple* first key, and a container key owns no such
+slot for either side to read; and only the fuzz job's `-runs=0` replays these seeds, not
+`cargo nextest`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -2929,7 +2929,9 @@ fn lift_first_entry_notes(
 fn spine_has_notes(key: &CustomNode) -> bool {
     match key {
         CustomNode::Mapping {
-            pairs, flow_style, ..
+            pairs,
+            flow_style,
+            meta,
         } => {
             if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
                 return false;
@@ -2938,7 +2940,15 @@ fn spine_has_notes(key: &CustomNode) -> bool {
                 Some(entry) => entry,
                 None => return false,
             };
-            !first_key.leading_comments().is_empty() || spine_has_notes(first_key)
+            // Mirrors the walk below: under a header, [`hoist_marker_note`] also takes the first
+            // key's inline note. Asking only the leading stacks here skipped the lift that the
+            // walk would have made, so the first emission left the note under the header, the
+            // reader handed it to the container, and the next emission hoisted it - the
+            // one-round failure of libFuzzer `edit_yaml` crash-db718a7e.
+            let header = meta.anchor().is_some() || meta.tag().is_some();
+            !first_key.leading_comments().is_empty()
+                || (header && first_entry_inline_note(first_key).is_some())
+                || spine_has_notes(first_key)
         }
         // The sequence arm is what makes this the twin of [`hoist_marker_note`]: without it a note
         // riding the first item of a complex *sequence* key stays below the container's own
@@ -5736,6 +5746,43 @@ mod tests {
             "both stacks survive above the header: {one:?}"
         );
         assert_eq!(one, "# a\n# b\n!5b4? \n~: ~\nk: v\n", "and in source order");
+        let again = crate::parser::parse_with_options(
+            &one,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "one emission step must reach the fixed point: {one:?}"
+        );
+    }
+
+    /// A note in the first key's inline slot, under a header inside a header, lifts in one round.
+    ///
+    /// `"k": !s:  # n` leaves the note in the *key's* inline slot - a tag-only value occupies no
+    /// line-end slot of its own. Under one header the reader hands that lifted note to the mapping
+    /// and returns it there, which is already a fixed point; under a second header (`&a0` over
+    /// `&a3`) it belongs one level further out, so the lift has to go all the way in the emission
+    /// that saw it. The guard on the lift asked only the leading stacks, skipped the lift the walk
+    /// makes, and the note then climbed one header per round: libFuzzer `edit_yaml`
+    /// crash-db718a7e.
+    #[test]
+    fn a_first_key_inline_note_climbs_a_chain_of_headers_in_one_round() {
+        let yaml = "- &a0\n  - &a3\n    \"k\": !s:  # n\n";
+        let ast = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let one = crate::serializer::to_yaml(&ast);
+        assert_eq!(one, "- \n  # n\n  &a0 \n  - \n    &a3 \n    \"k\": !s:\n");
         let again = crate::parser::parse_with_options(
             &one,
             true,
