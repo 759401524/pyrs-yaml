@@ -421,6 +421,18 @@ status: new
   `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` 与语料回放同时变红，后者
   现在回放新种子。Ir 门禁读到 `from_json_medium` +0.09%、`from_jsonc_medium` +0.07%；
   两个夹具都不含这种重复键，移动来自布局。
+- **issue #726 的三条 `edit_yaml` 输入如今撑过了当初找出它们的编辑** — 三条输入在 `main` 的
+  7dcf0f88 上仍然失败，背后是两个缺陷。`rename_path` 用新文本合成重命名后的键，丢掉了简单键携带的
+  `Fidelity`：把 `!base: &x 0se: *x` 里的 `&x 0se` 改名为 `k7`，发射出 `k7: *x`——一个指向没有任何
+  节点定义的锚点的别名，读者因此拒绝这次编辑写出的文本。键现在保留自己的锚点与标签
+  （`renamed_key_node`），因为改名改变的是键的文本，而不是它所命名的那个条目。第三条输入失败在一轮
+  收敛上：提升的廉价守卫 `spine_has_notes` 只问了前置注释栈，而 `hoist_marker_note` 在锚点/标签头行
+  之下还会取首键的行内注释——`k: !s:  # n` 的注释留在键上，因为只有标签的值不占用行尾槽位——于是
+  第一次发射把注释留在头行之下，读者把它交给容器，下一轮再把它往上一层头行提升。守卫现在镜像那次
+  遍历。`renaming_a_key_keeps_the_anchor_and_tag_that_name_the_entry` 与
+  `a_first_key_inline_note_climbs_a_chain_of_headers_in_one_round` 分别钉住两半，突变实验说明两者
+  都承重：撤掉任一修复都会用它自己的测试变红，并复现崩溃的拼写（`k7: *x`，或头行之下的注释）。三条
+  输入回放干净，已归档为 `fuzz/seeds/edit_yaml/former-crash-{8b6110c5,b44f7f1c,db718a7e}.seed`。
 - **内联表里的点号路径与其它任何下行共用同一个预算** — `parse_inline_table` 把成员收集成键路径，
   再在 `nest_inline` 里逐段铺开，于是 `t = { a.b.… = 1 }` 每段嵌套一张表，既没进 `parse_value`
   的漏斗，也没过 `register_kv` 的检查。libFuzzer `toml_roundtrip` 的 crash-2a5ea394 就是这种形状，

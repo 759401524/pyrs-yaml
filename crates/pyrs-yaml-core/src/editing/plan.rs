@@ -345,6 +345,25 @@ fn named_key_node(name: &str) -> CustomNode {
     }
 }
 
+/// [`named_key_node`] for a rename: the entry keeps its place, so it also keeps the properties that
+/// name it.
+///
+/// The key's text is the only thing a rename changes. Synthesizing a bare node dropped the anchor or
+/// tag the key carried, so renaming `&x 0se` in `!base: &x 0se: *x` emitted `k7: *x` - an alias
+/// naming an anchor no node defines, which this reader refuses (libFuzzer `edit_yaml`
+/// crash-8b6110c5 and crash-b44f7f1c). The tag states the key's type and the anchor is the name
+/// other nodes refer to, so both travel with the entry that keeps existing.
+fn renamed_key_node(old: Option<&CustomNode>, name: &str) -> CustomNode {
+    let mut node = named_key_node(name);
+    if let Some(anchor) = old.and_then(CustomNode::anchor) {
+        node.set_anchor(anchor);
+    }
+    if let Some(tag) = old.and_then(CustomNode::tag) {
+        node.set_tag(tag.clone());
+    }
+    node
+}
+
 /// `set_path` with `create_missing`: walk as deep as the path allows and
 /// synthesize the missing intermediate mappings as a single nested Insert at
 /// the end of the deepest existing mapping. Only key segments may be created;
@@ -656,7 +675,7 @@ pub fn rename_path(
             if !is_scalar {
                 return Err("cannot-rename-complex-key".to_string());
             }
-            let new_key_node = named_key_node(new_key);
+            let new_key_node = renamed_key_node(key_node, new_key);
             if !key_eq(&new_key_node, &old_key_node)
                 && mapping_key_index(pairs, &new_key_node).is_some()
             {
@@ -1276,6 +1295,23 @@ mod tests {
         let emitted = to_yaml(&node);
         assert_eq!(emitted, "base: &x 2\nuse: *x\n");
         parse(&emitted, Schema::Core).expect("the emission still parses");
+    }
+
+    /// A rename changes the key's text, not the entry: the anchor and tag naming that entry stay.
+    ///
+    /// The key node was synthesized from the new name, so the properties granit attaches to a
+    /// simple key were lost. Renaming `&x 0se` in `!base: &x 0se: *x` emitted `k7: *x`, whose
+    /// alias names no anchor at all, and the reader refused what the edit wrote (libFuzzer
+    /// `edit_yaml` crash-8b6110c5 and crash-b44f7f1c).
+    #[test]
+    fn renaming_a_key_keeps_the_anchor_and_tag_that_name_the_entry() {
+        let source = "!base: &x 0se: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        rename_path(&mut node, &segments("0se"), "k7", source, None)
+            .expect("renaming the key is the caller's to make");
+        let emitted = to_yaml(&node);
+        assert_eq!(emitted, "&x !base: k7: *x\n");
+        parse(&emitted, Schema::Core).expect("the alias still names the anchor on the key");
     }
 
     /// The hole `preserve_metadata` cannot cover: the anchor is not on the node being replaced, it is

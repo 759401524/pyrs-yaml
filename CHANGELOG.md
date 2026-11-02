@@ -544,6 +544,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` and the corpus walk, which now
   replays the new `former-crash-e294755f.seed`. The Ir gate reads +0.09% on `from_json_medium` and
   +0.07% on `from_jsonc_medium`; neither fixture contains such a duplicate, so the move is layout.
+- **The three `edit_yaml` inputs of issue #726 survive the edits that found them** — all three still
+  failed on `main` at 7dcf0f88, and two defects sit behind them. `rename_path` synthesized the
+  renamed key from its new text, dropping the `Fidelity` a simple key carries: renaming `&x 0se` in
+  `!base: &x 0se: *x` emitted `k7: *x`, an alias naming an anchor no node defines, and this reader
+  refused the text the edit wrote. The key now keeps its anchor and tag (`renamed_key_node`),
+  because a rename changes the key's text and not the entry it names. The third input failed the
+  one-round settle instead: `spine_has_notes`, the cheap guard on the lift, asked only the leading
+  stacks, while `hoist_marker_note` under an anchor/tag header also takes the first key's inline
+  note - `k: !s:  # n` leaves the note on the key, because a tag-only value owns no line-end slot -
+  so the first emission left the note below the header, the reader handed it to the container, and
+  the next round hoisted it one header further. The guard now mirrors the walk.
+  `renaming_a_key_keeps_the_anchor_and_tag_that_name_the_entry` and
+  `a_first_key_inline_note_climbs_a_chain_of_headers_in_one_round` pin the two halves, and the
+  mutation says they are load-bearing: reverting either fix reddens its own test with the crash's
+  spelling (`k7: *x`, or the note under the header). All three inputs replay clean and are archived
+  as `fuzz/seeds/edit_yaml/former-crash-{8b6110c5,b44f7f1c,db718a7e}.seed`.
 - **A dotted path inside an inline table is bounded like every other descent** —
   `parse_inline_table` collected members as key paths and laid them out in `nest_inline`, so
   `t = { a.b.… = 1 }` nested one table per segment without entering the `parse_value` funnel or
