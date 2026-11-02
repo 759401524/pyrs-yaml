@@ -202,7 +202,9 @@ jobs:
             # this step down as soon as any archive held no crash file or no findings.tsv. The
             # issue-filing step below then never ran, so a finding from a push to main reached no
             # consumer at all. A zero count is a fact to report, not a failure.
-            files=$(find "$d" -name 'crash-*' -printf '%f\n' | sort -u | grep -c . || true)
+            # `-exec basename`, not `-printf '%f'`: the latter is a GNU primary, and BSD find
+            # on the macOS leg rejects it, which made this column read 0 for every archive there.
+            files=$(find "$d" -name 'crash-*' -exec basename {} \; | sort -u | grep -c . || true)
             sigs=$(find "$d" -name 'findings.tsv' -exec cat {} + 2>/dev/null | cut -f1 | sort -u | grep -c . || true)
             total=$((total + files))
             echo "| ${name#fuzz-artifacts-} | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"

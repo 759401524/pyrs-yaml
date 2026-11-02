@@ -200,6 +200,20 @@ def test_the_report_step_survives_an_archive_with_nothing_to_count(tmp_path):
     assert "| edit_yaml | 0 | 1 |" in summary
 
 
+def test_the_report_step_uses_no_gnu_only_find_primaries():
+    """`-printf` is a GNU primary, and the macOS leg's BSD find rejects it outright.
+
+    The step reads the archive layout with `find` on every leg. On macOS an unknown primary
+    makes find exit non-zero, so `grep -c .` saw nothing and the crash-input column read 0 for
+    every archive, while the ubuntu and windows legs - both GNU find - passed. No run of this
+    step on a GNU host can see that, which is why the guard is static.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    step = next(s for s in workflow["jobs"]["report"]["steps"] if s.get("name") == "Report every target's findings")
+    commands = "\n".join(line for line in step["run"].splitlines() if not line.lstrip().startswith("#"))
+    assert "-printf" not in commands, "GNU-only find primary: the macOS leg's BSD find rejects it"
+
+
 def test_the_aggregate_job_grants_issues_write_and_runs_this_script():
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     report = workflow["jobs"]["report"]
