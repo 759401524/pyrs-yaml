@@ -502,6 +502,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A dotted path inside an inline table is bounded like every other descent** —
+  `parse_inline_table` collected members as key paths and laid them out in `nest_inline`, so
+  `t = { a.b.… = 1 }` nested one table per segment without entering the `parse_value` funnel or
+  `register_kv`'s check. libFuzzer `toml_roundtrip` crash-2a5ea394 is that shape at 1059 segments:
+  `from_toml` accepted it, `to_toml` re-spelled the chain as 1059 nested inline tables, and the 1.1
+  reader refused the writer's own output with `max depth exceeded (max=1000)` — a document lost
+  between two calls that both reported success. The budget now adds the path about to be laid out
+  and every path expanded above it (`depth + inline_path_shift + key.len()`), so a containing
+  member's path keeps counting while its value is parsed; the mutation says both halves are
+  load-bearing, because dropping the shift still rejects the 1100-segment case and reddens
+  `inline_dotted_paths_accumulate_across_nesting` at 600 + 600. Four parser tests hold it — beyond
+  budget under both dialects, accumulation across nesting, a 300-segment fixed point, and the
+  999-segment edge whose emission is exactly 1000 tables and re-parses — and the input is archived
+  as `fuzz/seeds/toml_roundtrip/former-crash-2a5ea394.seed`; the fuzz target replays it clean. What
+  the guard does not change: it bounds what a document can build, not what a legal tree costs the
+  native stack, which stays the residual `(ih)` names.
 - **A tagged sequence's marker note no longer needs two rounds** — `lift_first_entry_notes` hoists a
   block mapping's whole marker spine above its `&anchor` / `!tag` header line, so a note riding a
   nested `?` / `-` marker lands where the reader reports it and the first emission is the fixed
