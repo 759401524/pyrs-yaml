@@ -19,6 +19,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **Two more shapes of the TOML element-note family are pinned, and the batch's inputs are corpus**
+  — the scheduled fuzz run of 2026-10-31 left six `toml_roundtrip` and `edit_yaml` artifacts whose
+  report is the claim the note fix in this release settles: a `#` line above an array element that
+  is itself a container. Measured on the parent of that fix, the three `toml_roundtrip` inputs emit
+  a second round that differs from the first; on this tree all six replay clean, so all six are
+  archived. `former-crash-969291e0.seed`, `former-crash-b750553e.seed` and
+  `former-crash-fe4a2b80.seed` sit under `fuzz/seeds/toml_roundtrip` and are replayed by
+  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` on every `cargo nextest`;
+  `former-crash-445ddfff.seed`, `former-crash-450cac9b.seed` and `former-crash-dce5f5ed.seed` sit
+  under `fuzz/seeds/edit_yaml`, which the fuzz job replays. Two shapes the fix settled had no pin of
+  their own and both do now: `a_note_above_an_array_of_tables_item_stays_above_it_and_settles`
+  (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
+  `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
+  above its brackets).
 - **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
   fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
   `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602

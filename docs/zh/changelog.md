@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **TOML 元素注释家族的另外两种形状有了钉子，这一批输入也进了语料** — 2026-10-31 的定时模糊测试留下
+  六个 `toml_roundtrip` 与 `edit_yaml` 输入，它们报的正是本次发布里注释修复所解决的那条断言：数组元
+  素自身是容器时，它上方的一行 `#`。在该修复的父提交上实测，三个 `toml_roundtrip` 输入的第二轮发射与
+  第一轮不同；在本树上六个全部回放干净，因此六个都归档。`former-crash-969291e0.seed`、
+  `former-crash-b750553e.seed` 与 `former-crash-fe4a2b80.seed` 放在 `fuzz/seeds/toml_roundtrip`，由
+  每次 `cargo nextest` 的 `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` 回放；
+  `former-crash-445ddfff.seed`、`former-crash-450cac9b.seed` 与 `former-crash-dce5f5ed.seed` 放在
+  `fuzz/seeds/edit_yaml`，由 fuzz 作业回放。该修复解决的两种形状原先都没有自己的钉子，现在都有了：
+  `a_note_above_an_array_of_tables_item_stays_above_it_and_settles`（`[[p]]` 头上方的一行 `# [` 会读
+  回到表项本身，而不是它的第一个成员）与
+  `a_note_above_a_nested_array_element_stays_above_it_and_settles`（嵌套数组自己的注释留在它的括号上
+  方）。
 - **Python 生成层如今画出它的叶子从前叫不出名字的家族** — `arbitrary_json` 原先把叶子限制在 `None`、
   `bool`、±10^12 以内的 `int`、有限 `float` 和 `str`，而清点它生成的叶子正好说明这排除了什么：25,000
   次抽样产出 270,602 片叶子，这五类各 58,064 / 53,396 / 53,251 / 52,978 / 52,913 片，此外一片别的类

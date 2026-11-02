@@ -17,6 +17,19 @@ status: new
 
 #### 追加
 
+- **TOML の要素コメント一族の残り二形状に固定テストが付き、このバッチの入力もコーパスになった** —
+  2026-10-31 の定時ファズ実行が残した `toml_roundtrip` と `edit_yaml` の成果物六件は、本リリースのコ
+  メント修正が解いた主張そのものを報告している。要素自身がコンテナである配列要素の上にある `#` 行で
+  ある。その修正の親で測ると、`toml_roundtrip` の三件は二巡目の出力が一巡目と異なる。このツリーでは
+  六件すべてがクリーンに再実行できるため、六件ともアーカイブする。`former-crash-969291e0.seed`、
+  `former-crash-b750553e.seed`、`former-crash-fe4a2b80.seed` は `fuzz/seeds/toml_roundtrip` に置き、
+  `cargo nextest` ごとに `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` が再実行する。
+  `former-crash-445ddfff.seed`、`former-crash-450cac9b.seed`、`former-crash-dce5f5ed.seed` は
+  `fuzz/seeds/edit_yaml` に置き、ファズジョブが再実行する。この修正が解いた二形状には固定テストが無
+  かったが、今は両方ある。`a_note_above_an_array_of_tables_item_stays_above_it_and_settles`（`[[p]]`
+  ヘッダ上の `# [` は最初のメンバーではなく項目自身に読み戻される）と
+  `a_note_above_a_nested_array_element_stays_above_it_and_settles`（入れ子配列自身のコメントはそのブ
+  ラケットの上に残る）。
 - **Python の生成層が、葉では名前の付けられなかった家族を描くようになった** — `arbitrary_json` は葉
   を `None`、`bool`、±10^12 内の `int`、有限の `float`、`str` に限っていた。何が除外されていたかは葉
   を数えれば出る。25,000 回の抽出は 270,602 枚の葉を作り、この五種がそれぞれ 58,064 / 53,396 /
