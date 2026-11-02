@@ -494,6 +494,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   *mentioned* (in a docstring, a `dir()` string, a bare attribute bind) rather than called, a gate
   pointed at an artifact other than the file the wheel ships, and the two names this row was written
   for.
+- **The JSON property tier compares trees, not only text** — the three dialects had a writer fixed
+  point, a re-parseability claim and note conservation, and none of them compares the tree: an
+  emission that wrote `null` and read back `0` settles on both passes and loses no note, so all of
+  them stay green while the value changes. TOML has had the equality claim since
+  `prop_toml_roundtrip_preserves_the_tree`; the JSON family had only the invariants the matrix's
+  property row names as the tier's blind spot. `prop_json_roundtrip_preserves_the_tree` folds each
+  scalar to the typed value its own side names — the tag it carries, or the Core schema when
+  untagged, with every quoted or block scalar a string — and compares value, shape and order across
+  `to_json_text`, `to_jsonc_text` and `to_json5_text`. Spelling stays the dialect's: a plain `0x1f`
+  is written `31` by strict JSON and read back as the same integer. The oracle is priced by
+  mutation, not by intent: writing `0` where the writer wrote `null` leaves the seven text-level
+  JSON properties green and reddens this one at its first generated case with `strict JSON round
+  trip changed the tree: scalar value Null -> Int(0)`. 20 000 generated trees per dialect pass on
+  the restored writer. Notes remain conservation's claim, and the object-domain filter still
+  excludes the two AST keys one JSON name folds together.
 
 #### Fixed
 

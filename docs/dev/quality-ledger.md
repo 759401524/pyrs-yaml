@@ -11450,6 +11450,40 @@ budget-versus-native-stack class `(hm)` fixed for the YAML dump route, and closi
 in its own right — lower `DEFAULT_MAX_DEPTH` below the smallest supported thread, or make the
 conversion and writer iterative — not a number this change quietly moves.
 
+### (ii) The JSON property tier compared bytes, and a value could change without moving them (2026-11-02)
+
+`crates/pyrs-yaml-core/src/fmt_pbt.rs` gave the three JSON dialects four claims each: the writers
+reach a fixed point, their output re-parses, the parsers survive arbitrary bytes, and every note the
+tree carries reaches the document. None of them compares the tree. An emission that writes `null`
+and reads back `0` settles byte-for-byte on both passes and drops no note, so all four stay green
+while the value changed — the class `former-crash-09341b75` belonged to (a 119-digit string that
+went out bare and came back numeric), and the same blindness `(hw)` and `(hy)` record for TOML and
+YAML. `QUALITY_MATRIX.md` names it in the property row's own words: "invariants weaker than
+equality". TOML closed it for its own format; the JSON family had no equality claim at all.
+
+`prop_json_roundtrip_preserves_the_tree` adds one. Each scalar is folded to the typed value its own
+side names — the standard tag it carries, or the Core schema when untagged, with every quoted or
+block scalar a string — which is the rule `pyrs_json`'s `write_plain` already applies when it
+decides what to emit; `json_tree_diff` then compares value, shape and order, keys by the JSON *name*
+(`key_text`, since an object is keyed by text), and leaves style, tags and notes out. Spelling stays
+the dialect's: a plain `0x1f` is written `31` in strict JSON and read back as the same integer, so a
+text comparison would call a correct projection a loss.
+
+The oracle is priced by a mutation rather than asserted: writing `0` where `pyrs-json`'s writer
+wrote `null` leaves the seven text-level JSON properties **green** — both fixed points, all three
+re-parseability claims, both conservation claims — and reddens the new property at its first
+generated case with `strict JSON round trip changed the tree: scalar value Null -> Int(0)`. The
+writer was restored before anything was committed, and 20 000 generated trees per dialect (62.5 s on
+this host, shrunk from a `NodeMeta` tree) pass on that restored tree.
+
+What it still cannot see is written where a reader meets it: a note that never reaches the document
+is conservation's claim, not equality's; the `json_object_domain` filter keeps excluding the two AST
+keys one JSON name folds together, because no JSON text represents that shape; a node the writer
+refuses is skipped like every other documented rejection; and a tag this engine cannot name never
+reaches JSON, so only standard tags take part in the folding. The matrix counts move with the
+property: 35 → 36 proptest properties (31 → 32 named `prop_*`) and 874 → 875 Rust `#[test]`, both
+rewritten by `quality_matrix.py --write-rows` from its own measurement.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

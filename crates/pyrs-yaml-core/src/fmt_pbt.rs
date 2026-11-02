@@ -331,6 +331,31 @@ proptest! {
         prop_assert_eq!(text, text2, "pretty JSON5 writer not idempotent on own output");
     }
 
+    // -- tree preservation ---------------------------------------------------
+    // The text-level properties above answer "does it settle" and "does it re-parse"; neither can see
+    // a value that changed on the way, because both passes carry the change. TOML has had this
+    // equality claim since `prop_toml_roundtrip_preserves_the_tree`; the JSON family had only
+    // invariants over its text, which the matrix's property row names as the tier's blind spot.
+    // Spelling belongs to the dialect, not to the tree: a plain `0x1f` goes out as `31` in strict
+    // JSON and is read back as the same integer, so each scalar is folded to the typed value its own
+    // side names and style, tags and notes are left out of the comparison.
+    #[test]
+    fn prop_json_roundtrip_preserves_the_tree(node in arb_custom_node()) {
+        prop_assume!(json_object_domain(&node));
+        let Ok(text) = json::to_json_text(&node) else { return Ok(()) };
+        if let Some(diff) = json_tree_diff(&node, &json::from_json(&text)?) {
+            prop_assert!(false, "strict JSON round trip changed the tree: {diff}\n--- emitted ---\n{text}");
+        }
+        let Ok(text) = json::to_jsonc_text(&node) else { return Ok(()) };
+        if let Some(diff) = json_tree_diff(&node, &json::from_jsonc(&text)?) {
+            prop_assert!(false, "JSONC round trip changed the tree: {diff}\n--- emitted ---\n{text}");
+        }
+        let Ok(text) = json::to_json5_text(&node) else { return Ok(()) };
+        if let Some(diff) = json_tree_diff(&node, &json::from_json5(&text)?) {
+            prop_assert!(false, "JSON5 round trip changed the tree: {diff}\n--- emitted ---\n{text}");
+        }
+    }
+
     #[test]
     fn prop_toml_writer_is_fixed_point(node in arb_custom_node()) {
         prop_assume!(toml_root_note_ok(&node));
@@ -501,6 +526,111 @@ fn toml_tree_diff(a: &crate::ast::CustomNode, b: &crate::ast::CustomNode) -> Opt
             }
             for (i, (x, y)) in ai.iter().zip(bi.iter()).enumerate() {
                 if let Some(d) = toml_tree_diff(x, y) {
+                    return Some(format!("item {i}: {d}"));
+                }
+            }
+            None
+        }
+        _ if kind(a) == kind(b) => None,
+        _ => Some(format!("{} -> {}", kind(a), kind(b))),
+    }
+}
+
+/// The typed value a JSON-family reader hands back for one scalar, with the dialect's *spelling*
+/// folded away.
+///
+/// A plain scalar is resolved through the standard tag it carries, or through the Core schema when
+/// untagged — the rule `pyrs_json`'s `write_plain` applies when it decides what to emit; a quoted or
+/// block scalar is a string whatever its text spells. This is the model the text-level fixed point
+/// cannot express: two passes agree on bytes even when the value changed type, which is exactly the
+/// shape `former-crash-09341b75` was (a 119-digit string that went out bare and came back numeric).
+///
+/// `None` is a tag whose text does not satisfy it; the writer refuses that node, so the property
+/// skips it the same way it skips every other documented rejection.
+fn json_scalar_value(node: &crate::ast::CustomNode) -> Option<pyrs_schema::types::YamlType<'_>> {
+    use crate::ast::CustomNode as N;
+    use pyrs_ast::ast::ScalarStyle;
+    use pyrs_schema::schema::standard_tag_kind;
+    use pyrs_schema::types::{Schema, YamlType};
+    match node {
+        N::Null { .. } => Some(YamlType::Null),
+        N::Scalar {
+            value,
+            style: ScalarStyle::Plain,
+            meta,
+            ..
+        } => match meta
+            .tag()
+            .and_then(|t| standard_tag_kind(&t.handle, &t.suffix))
+        {
+            Some(kind) => kind.resolve(value),
+            None => Some(Schema::Core.resolve(value)),
+        },
+        N::Scalar { value, .. } => Some(YamlType::Str(value.as_ref().into())),
+        _ => None,
+    }
+}
+
+/// Equality of two folded scalar values, with the one pair `PartialEq` cannot answer yes to:
+/// `Float(value)` resolves both `NaN` and `.nan` to the same number, and `NaN != NaN`.
+fn json_values_equal(
+    a: &pyrs_schema::types::YamlType<'_>,
+    b: &pyrs_schema::types::YamlType<'_>,
+) -> bool {
+    use pyrs_schema::types::YamlType;
+    a == b
+        || matches!(
+            (a, b),
+            (YamlType::Float(x), YamlType::Float(y)) if x.is_nan() && y.is_nan()
+        )
+}
+
+/// The first value, shape or order a JSON-family round trip changed.
+///
+/// Keys compare by the *name* JSON gives them, not by their typed value: an object is keyed by
+/// text, so a `null` key and the string `"null"` are one JSON member, and the writer already
+/// refuses a pair of distinct AST keys that spell one name.
+fn json_tree_diff(a: &crate::ast::CustomNode, b: &crate::ast::CustomNode) -> Option<String> {
+    use crate::ast::CustomNode as N;
+    fn kind(n: &crate::ast::CustomNode) -> &'static str {
+        match n {
+            N::Scalar { .. } => "scalar",
+            N::Mapping { .. } => "mapping",
+            N::Sequence { .. } => "sequence",
+            N::Alias { .. } => "alias",
+            N::Null { .. } => "null",
+        }
+    }
+    match (a, b) {
+        (N::Scalar { .. } | N::Null { .. }, N::Scalar { .. } | N::Null { .. }) => {
+            match (json_scalar_value(a), json_scalar_value(b)) {
+                (Some(x), Some(y)) if json_values_equal(&x, &y) => None,
+                (Some(x), Some(y)) => Some(format!("scalar value {x:?} -> {y:?}")),
+                (None, None) => None,
+                (_, _) => Some("scalar value no JSON reader can name".to_string()),
+            }
+        }
+        (N::Mapping { pairs: ap, .. }, N::Mapping { pairs: bp, .. }) => {
+            if ap.len() != bp.len() {
+                return Some(format!("mapping size {} -> {}", ap.len(), bp.len()));
+            }
+            for ((ak, av), (bk, bv)) in ap.iter().zip(bp.iter()) {
+                let (an, bn) = (json::key_text(ak).ok()?, json::key_text(bk).ok()?);
+                if an != bn {
+                    return Some(format!("key {an:?} -> {bn:?}"));
+                }
+                if let Some(d) = json_tree_diff(av, bv) {
+                    return Some(format!("value of {an:?}: {d}"));
+                }
+            }
+            None
+        }
+        (N::Sequence { items: ai, .. }, N::Sequence { items: bi, .. }) => {
+            if ai.len() != bi.len() {
+                return Some(format!("sequence size {} -> {}", ai.len(), bi.len()));
+            }
+            for (i, (x, y)) in ai.iter().zip(bi.iter()).enumerate() {
+                if let Some(d) = json_tree_diff(x, y) {
                     return Some(format!("item {i}: {d}"));
                 }
             }
