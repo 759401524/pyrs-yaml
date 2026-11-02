@@ -411,6 +411,16 @@ status: new
   `container_keys_the_writer_spells_alike_are_refused` 里——归档的 34 字节种子、含冒号的内层键、
   带标签的空 plain 与空引号对，以及被抬升的注释——并以流式对块式键作对照，后者必须照常解析并
   一轮稳定；把该检查强行关掉，测试转红。
+- **JSON 重复键保留被替换值内部的注释** — 重名键保留首个位置与末个值，先前那个值被整体丢弃。
+  此前的救援把被丢弃的键节点和值节点上的注释交给幸存值，但 `notes_of` 只读它拿到的那个节点，
+  于是被丢弃容器**内部**的注释随之消失，而事件流仍然报告它们。libFuzzer `json_events_replay`
+  crash-e294755f 就是 132 字节 JSON5 形状：两个 `"a"` 值都是各带三条注释的对象，事件流报告
+  八条、树只留下五条，先被丢弃的那个对象里的三条随之消失。`subtree_notes` 现在按源码顺序收集
+  节点及其全部后代，停放的列表因此是
+  整个被替换值。强制关闭递归会让
+  `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` 与语料回放同时变红，后者
+  现在回放新种子。Ir 门禁读到 `from_json_medium` +0.09%、`from_jsonc_medium` +0.07%；
+  两个夹具都不含这种重复键，移动来自布局。
 - **内联表里的点号路径与其它任何下行共用同一个预算** — `parse_inline_table` 把成员收集成键路径，
   再在 `nest_inline` 里逐段铺开，于是 `t = { a.b.… = 1 }` 每段嵌套一张表，既没进 `parse_value`
   的漏斗，也没过 `register_kv` 的检查。libFuzzer `toml_roundtrip` 的 crash-2a5ea394 就是这种形状，
