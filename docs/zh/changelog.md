@@ -19,6 +19,15 @@ status: new
 
 #### 新增
 
+- **三条既无种子也无记录的老 fuzz 产物进入语料** — `fuzz/artifacts/` 里躺着 `yaml_roundtrip` 的
+  crash-3528db38（2026-10-07）与 crash-d461a3f2（2026-10-16），以及 `parse_json` 的
+  crash-331b36ec（2026-10-17），旁边没有 `former-crash-*` 种子，任何账本、changelog 或提交信息
+  里也没有它们的名字，于是语料这一档不可能注意到其中任何一条的回归。三条输入在当前树上都回放
+  干净——重编的 `nightly` 目标，3 ms 内退出 0——所以这里没有活着的缺陷；三条输入现已作为
+  `former-crash-3528db38.seed`、`former-crash-d461a3f2.seed`、`former-crash-331b36ec.seed`
+  （各 5–16 字节）落在 `fuzz/seeds/{yaml_roundtrip,parse_json}`，PR 档的 `-runs=0` 回放就从那里
+  读它们。哪次改动关掉了每一条，这里不记录，因为从未记录过：它们早于随后那一轮修复，而归档是
+  能被证明的那部分——目标今天接受这三条输入。
 - **每周 fuzz 采样器有了消费者：每个目标一条 issue，之后每次发现都追加** — 聚合任务此前只把表格写进
   `$GITHUB_STEP_SUMMARY` 并打印一条 `::warning::`，两者都没有任何读者。2026-10-03 到 2026-10-31 的五
   次定时跑全部失败，且全部带回了崩溃输入（仍用 `collected/` 布局的四份归档合计 39 个互不相同的哈
