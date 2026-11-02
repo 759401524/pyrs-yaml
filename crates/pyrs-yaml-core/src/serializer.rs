@@ -114,6 +114,26 @@ pub fn to_yaml_with_options(
     Ok(serializer.output)
 }
 
+/// The writer entry a cold caller inside this crate uses for one node.
+///
+/// `key_position_text` in the parser is its only caller, and it runs once per mapping
+/// that holds at least two container keys. Sharing the public entry's call site is the
+/// obvious shape and a measured one: a second `to_yaml` caller drawn from the parser made
+/// LLVM outline `to_yaml_with_options`, and the six `serialize_*` scenarios each read
+/// +74,000 counted instructions (+2.35% on `serialize_small`) with identical emitted
+/// bytes. Building the serializer here keeps the public writer's call graph exactly as
+/// the Ir floors priced it; the body mirrors the default-options path line for line.
+#[doc(hidden)]
+#[inline(never)]
+pub fn to_yaml_default_outlined(node: &CustomNode) -> Option<String> {
+    let options = SerializeOptions::default();
+    let mut serializer = Serializer::new(&options);
+    serializer
+        .serialize_node_internal(node, options.indent_offset, options.indent_offset, false, 0)
+        .ok()?;
+    Some(serializer.output)
+}
+
 struct Serializer {
     output: String,
     indent_size: usize,

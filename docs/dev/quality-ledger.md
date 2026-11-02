@@ -11625,6 +11625,85 @@ build, not what a legal tree costs the native stack, which stays the residual `(
 writer is unchanged, so a dotted path built through the AST API rather than read from text can still
 be emitted at any depth and refused on the way back in.
 
+### (im) Key position is lossy, so the reader asks the writer (2026-11-02)
+
+libFuzzer `yaml_roundtrip` (crash-b88f1b4f) minimised to 34 bytes:
+`?\n\n#?\n\n \n\n ?  !? |2  \r?  \n ?  !?  `. It reads as a two-pair mapping whose keys are
+themselves mappings over the same tagged empty scalar - the first key's inner value is an empty
+literal block carrying `|2`, the second's is an empty plain key. `CustomNode` equality compares the
+whole node, so the reader kept both pairs; the writer has to quote a block scalar in key position
+(`write_scalar_for_key` maps `Literal` to `DoubleQuoted`) and has to quote an empty plain key, so
+both keys came out as `? !? "": ~` and the writer's own reader refused the emission as a duplicate
+key, which the fuzz contract treats as a crash. `(ik)` settled the chomping half of this family by
+teaching the writer a second spelling; here there is no second spelling, because the two keys
+genuinely differ only in a detail key position cannot carry.
+
+The ruling was already recorded (session tasks #3/#8, trunk commits 078f54e1 and 852f19e7): where
+the writer cannot spell two keys apart, the reader folds or refuses - it does not project a
+spelling. This change takes the refusal half, at the same `MappingEnd` seam `duplicate_tagged_key`
+uses, and it does not decide *whether* two keys collide by re-deriving the writer's rules. It asks
+the writer: `key_position_text` emits the key as the key of a one-pair mapping - the same `?`
+marker, body indent, note hoisting and key-position normalisation the document itself runs - and
+`read_back_key` re-parses that text with `allow_duplicate_keys = true` and returns the key node.
+Two container keys whose read-backs are equal are one written key. Reading the probe back rather
+than comparing its text is what catches the second live shape: a note riding the key node is hoisted
+above the `?` marker, so `? {a: 1}` and a noted twin differ as text while the reader reports the
+note at the marker's level and folds the keys. The probe's own parse cannot recurse into this check
+because duplicates are allowed there.
+
+The gate is a receiver-level `saw_container_key`, set where a container node lands in key position
+(`push_node`'s `current_key.is_none()` arm), plus `pairs.len() >= 2` at the seam: a one-pair mapping
+cannot hold a colliding pair, and a document whose keys are all scalars - the shape both Ir fixtures
+have - never enters the probe at all. The first cut carried a `complex_keys: usize` counter in
+`ParseState::Mapping`; the allocation gate priced it at `parse_medium` 24,544 bytes against the
+committed 24,512 ceiling - 32 bytes past. The bool lives on `AstReceiver`, a stack value, not
+on the per-container state that is pushed into a `Vec`, so the allocation gate does not see it.
+The mutation says the check is load-bearing: turning the flag's test into `&& false`
+(`self.saw_container_key && false` - the field stays read, so the build keeps `-D warnings`
+clean) reddens `container_keys_the_writer_spells_alike_are_refused` at its first assertion, and
+the crash input then parses into the two collapsing keys again.
+
+The probe is priced, and the price is a codegen one rather than a work one. It asks the writer and
+the reader from inside the reader, and fat LTO is whole-program: a second caller of
+`to_yaml_with_options` made LLVM stop inlining it where it was inlined before, and the six
+`serialize_*` scenarios each read +74,000 counted instructions (+2.35% on `serialize_small`) with
+identical emitted bytes. `serializer::to_yaml_default_outlined` is the cold caller's own outlined
+entry, and with it `serialize_small` reads 2,969,407 against its 2,973,435 floor (-0.14%), the
+other five writer scenarios inside ±0.20%. On the parse side the re-entry puts `load_ast` in the
+receiver's recursive SCC, which keeps `on_mapping_end` from being inlined into `on_event`:
+`parse_small` read +234 instructions per parse with the probe inline, +149 with
+`parse_with_options`' address taken, and +88 with the flag plus a thin `parse_probe` reached through
+`core::hint::black_box` - 46,023,892 against the 45,852,036 floor, +0.37% inside the 0.5% tolerance.
+A second build tree of the same two sources read 45,848,504 -> 46,024,541 on the reader, the same
++88 per parse. The barrier is load-bearing because LLVM's call graph treats an indirect call as
+reaching every address-taken function: a probe that calls the parser at all closes the cycle, and
+hiding only the outer edge moved the cost instead of removing it.
+
+The same run's two failing rows are the host, not this tree: `load_toml_medium` and
+`load_toml_long_strings` read 145,124,524 and 139,573,619, which is +1.87% and +3.04% against the
+`image_floors` row of image 20261026.354.1 and +0.15% and +0.08% against the 20261023.334.3 row this
+WSL host matches (`docs/dev/ir-environment.md`), and the base tree under the same environment reads
+145,063,752 and 139,574,069 - within 0.04% of this tree, on a path this change does not touch.
+
+Four shapes are pinned - the archived 34-byte seed, `? {a:b: 1}` against `? {"a:b": 1}` (the plain
+writer quotes text that would not read back unchanged), `? {!t : 1}` against `? {!t "": 1}` (a tag
+replaces the implicit resolution but not the spelling), and a note above the second `?` - with two
+controls that must keep working: flow-versus-block container keys (`? - ~` against `? [~]`) still
+parse and settle in one round, and a mapping whose only container key has nothing to collide with
+is untouched. The input is archived as
+`fuzz/seeds/yaml_roundtrip/former-crash-b88f1b4f.seed`, and the 2026-11-02 discovery run's three
+further crashes of this family - `3ff42607`, `41c6594b` and `f59d4ae3`, each the same pair of
+collapsing keys with a comment or a blank line moved - are archived beside it, where the same check
+refuses them at the source. The matrix counts move by those four seeds and the one test, 882 -> 883
+`#[test]` and 210 -> 214 seeds (118 -> 122 `former-crash-*`), written by
+`quality_matrix.py --write-rows`.
+
+What it still cannot see: the probe runs under `SerializeOptions::default()`, so a caller
+serialising with a different indent or width is judged against a layout it will not use; a key whose
+emission fails for depth is skipped rather than refused, which leaves that failure to `to_yaml`
+instead of naming it as a duplicate; and the check covers container keys only, because a scalar
+key's identity is already settled at ingest by text and by tag.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -653,6 +653,10 @@ struct AstReceiver<'a> {
     /// the shape both Ir fixtures have - then never walks a finished mapping for
     /// tagged keys, and pays one bool.
     saw_tag: bool,
+    /// Set once a container stands in mapping-key position. A document whose keys are all
+    /// scalars - both Ir fixtures among them - then never enters the complex-key probe,
+    /// which asks the writer and re-reads its text (see `duplicate_complex_key`).
+    saw_container_key: bool,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Whether to collect completed documents for multi-doc parsing. When
@@ -802,6 +806,96 @@ fn insert_tagged_key(seen: &mut SeenTaggedKeys, tag: &Tag, value: &Arc<str>) -> 
     }
 }
 
+/// The first pair of container keys whose written lines carry the same node, or `None`.
+///
+/// Key position is lossy on purpose: a block scalar cannot stand on a key line, so
+/// `write_scalar_for_key` quotes it; an empty plain key has to be quoted or it reads back
+/// as null; and the plain writer quotes text that would not read back unchanged (`a:b`
+/// reaches the page as `"a:b"`). Two keys that differ only in such spellings stay apart in
+/// the node map - the reader compares nodes - while the writer lays them down identically
+/// and its own reader then refuses the second as a duplicate: libFuzzer `yaml_roundtrip`
+/// crash-b88f1b4f emitted `? !? "": ~` twice for a mapping whose keys were
+/// `{!? <empty literal>: ~}` and `{!? <empty plain>: ~}`.
+///
+/// The comparison is not a hand-held model of those rules: each key is emitted as the key
+/// of a one-pair mapping and read back, and the nodes are compared - the reader's own
+/// verdict on the writer's own text. Reading it back is also what puts a note the writer
+/// hoists above the `?` where the reader reports it (at the marker's level, not on the
+/// key), which node equality alone would miss. The probe is read with duplicates allowed,
+/// so this check cannot recurse into itself.
+///
+/// A key the writer cannot lay out at all is skipped: that refusal belongs to `to_yaml`,
+/// and reporting it as a duplicate would name the wrong failure.
+fn duplicate_complex_key(pairs: &NodeMap<CustomNode, CustomNode>, flow: bool) -> Option<String> {
+    let mut seen: NodeMap<CustomNode, ()> = NodeMap::default();
+    for (key, _) in pairs {
+        if !matches!(
+            key,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        ) {
+            continue;
+        }
+        let Some(read_back) = read_back_key(key, flow) else {
+            continue;
+        };
+        if seen.insert(read_back, ()).is_some() {
+            return Some(format!("{key:?}"));
+        }
+    }
+    None
+}
+
+/// The text the writer lays down for `node` in mapping-key position.
+///
+/// Wrapping the node in a one-pair mapping is what makes this the writer's own key path
+/// rather than a second model of it: the `?` marker, the body indent, the hoisting of a
+/// standalone note above the marker, and every key-position normalisation are the same
+/// code the document itself runs.
+///
+/// The entry it calls is the outlined one for a reason. Fat LTO is whole-program: a
+/// second caller of `to_yaml_with_options` drawn from here made LLVM stop inlining it
+/// where it was inlined before, and the six `serialize_*` scenarios each read +74,000
+/// counted instructions (+2.35% on `serialize_small`) while the emitted bytes stayed
+/// identical.
+fn key_position_text(node: &CustomNode, flow: bool) -> Option<String> {
+    let mut pairs = NodeMap::default();
+    pairs.insert(node.clone(), CustomNode::plain_null());
+    let probe = CustomNode::Mapping {
+        pairs,
+        flow_style: flow,
+        meta: NodeMeta::default(),
+    };
+    crate::serializer::to_yaml_default_outlined(&probe)
+}
+
+/// Read one probe document with duplicates allowed, so the caller's own check cannot
+/// recurse into itself.
+#[inline(never)]
+fn parse_probe(text: &str) -> Result<CustomNode, ParseError> {
+    parse_with_options(text, false, Schema::Core, 1000, true)
+}
+
+/// The key node the reader builds from `key`'s own written key line.
+///
+/// The probe entry is reached through a codegen barrier on purpose, and it is this thin
+/// wrapper rather than `parse_with_options` itself. Fat LTO otherwise sees this edge as
+/// the parser calling itself: `parse_with_options` enters the receiver's recursive SCC,
+/// `on_mapping_end` stops being inlined into `on_event`, and `parse_small` read +234
+/// instructions per parse on a document holding no container key, where this function
+/// never runs. Taking the big entry's address instead only moved the cost - it was
+/// outlined and `load_ast` with it, +149 per parse. The barrier costs one indirect call
+/// on a path that only runs for a mapping holding at least two container keys.
+fn read_back_key(key: &CustomNode, flow: bool) -> Option<CustomNode> {
+    let text = key_position_text(key, flow)?;
+    type Probe = fn(&str) -> Result<CustomNode, ParseError>;
+    let parse: Probe = core::hint::black_box(parse_probe);
+    let node = parse(&text).ok()?;
+    let CustomNode::Mapping { pairs, .. } = node else {
+        return None;
+    };
+    pairs.into_iter().next().map(|(key, _)| key)
+}
+
 #[derive(Debug)]
 enum ParseState {
     /// Building a mapping
@@ -880,6 +974,7 @@ impl<'a> AstReceiver<'a> {
             anchors: NodeMap::default(),
             comment_stack: Vec::new(),
             saw_tag: false,
+            saw_container_key: false,
             pending_standalone_comment: Vec::new(),
             document_ended: false,
             max_depth,
@@ -1151,6 +1246,10 @@ impl<'a> AstReceiver<'a> {
                 ..
             }) => {
                 if current_key.is_none() {
+                    self.saw_container_key |= matches!(
+                        node,
+                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                    );
                     **current_key = Some(node);
                 } else if let Some(mut key) = current_key.take() {
                     if self.max_depth_exceeded || self.allow_duplicate_keys {
@@ -1695,6 +1794,20 @@ impl<'a> AstReceiver<'a> {
                 && !self.allow_duplicate_keys
                 && self.duplicate_key_error.is_none()
                 && let Some(key) = duplicate_tagged_key(&pairs)
+            {
+                self.duplicate_key_error = Some(ParseError::DuplicateKey(key));
+            }
+            // A container key is what the probe needs to see: a scalars-only document
+            // - both Ir fixtures among them - pays the `saw_container_key` test and
+            // nothing else, the way a tag-free one skips the tagged-key walk above.
+            // Two keys at least are needed for any pair of them to collapse (see
+            // `duplicate_complex_key`); the length test keeps a one-pair mapping -
+            // the common leaf - from entering the loop at all.
+            if self.saw_container_key
+                && pairs.len() >= 2
+                && !self.allow_duplicate_keys
+                && self.duplicate_key_error.is_none()
+                && let Some(key) = duplicate_complex_key(&pairs, flow_style)
             {
                 self.duplicate_key_error = Some(ParseError::DuplicateKey(key));
             }
@@ -2525,6 +2638,57 @@ mod tests {
             panic!("expected a mapping, got {again:?}");
         };
         assert_eq!(pairs.len(), 2, "both container keys must survive: {one:?}");
+    }
+
+    /// The other answer to a container-key pair the writer cannot spell apart.
+    ///
+    /// `write_scalar_for_key` quotes a block scalar and an empty plain key, and the plain
+    /// writer quotes text that would not read back unchanged, so two keys that stay apart in
+    /// the node map can still reach the page as one line. libFuzzer `yaml_roundtrip`
+    /// crash-b88f1b4f is that shape: its two keys were `{!? <empty literal>: ~}` and
+    /// `{!? <empty plain>: ~}`, and the writer emitted `? !? "": ~` for both, which its own
+    /// reader then refused. Unlike crash-469125e3 the writer has no second spelling to offer
+    /// here, so the reader refuses the source instead of trading a crash for a lossy round.
+    #[test]
+    fn container_keys_the_writer_spells_alike_are_refused() {
+        // The authoritative bytes, replayed from the committed seed rather than a hand-copy.
+        let raw =
+            include_bytes!("../../../../fuzz/seeds/yaml_roundtrip/former-crash-b88f1b4f.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let err = parse(src, YamlSchema::Core).expect_err("crash-b88f1b4f must be refused");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "{err:?}");
+
+        // The same writer rule in the other three shapes it reaches: a plain inner key whose
+        // text must be quoted, a tag that replaces the implicit resolution, and a note the
+        // writer hoists above the `?` marker instead of onto the key line.
+        for src in [
+            "? {a:b: 1}\n: 0\n? {\"a:b\": 1}\n: 1\n",
+            "? {!t : 1}\n: 0\n? {!t \"\": 1}\n: 1\n",
+            "? {a: 1}\n: 0\n# n\n? {a: 1}\n: 1\n",
+        ] {
+            let err = parse(src, YamlSchema::Core).expect_err(&format!("{src:?} must be refused"));
+            assert!(
+                matches!(err, ParseError::DuplicateKey(_)),
+                "{src:?}: {err:?}"
+            );
+        }
+
+        // The negative control: spellings the writer keeps apart still parse and settle, and
+        // so does a mapping whose only container key has nothing to collide with.
+        for src in [
+            "? - ~\n:\n  A\n? [~]\n:\n  B\n",
+            "? {a: 1}\n: 0\nplain: 1\n",
+        ] {
+            let node = parse(src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            let one = crate::serializer::to_yaml(&node);
+            let again = parse(&one, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} emitted text refused: {e}\n---\n{one:?}"));
+            assert_eq!(
+                crate::serializer::to_yaml(&again),
+                one,
+                "{src:?} must settle in one round"
+            );
+        }
     }
 
     /// A YAML mapping holds exactly one null key. `IndexMap` compares whole
