@@ -11590,6 +11590,41 @@ content-less scalar, where the API's own contract decides; and the reader still 
 that differ only in metadata the writer cannot spell (the family #689 and #695 orbit), so a future
 key shape that collapses for a different reason still needs its own repro.
 
+### (il) An inline table's dotted member path was the one descent with no budget (2026-11-02)
+
+libFuzzer `toml_roundtrip` (crash-2a5ea394) minimised to one inline table whose single member is a
+1059-segment dotted key. `parse_inline_table` collects each member as a key path and `nest_inline`
+lays that path out as one table per segment, so the tree came out 1060 levels deep without passing
+either funnel the cap counted - `parse_value`'s container entry and `register_kv`'s
+`current.len() + key.len()`. `to_toml` then re-spelled the chain as 1059 nested inline tables, and
+the 1.1 reader refused the writer's own emission with `max depth exceeded (max=1000)`, which the
+round-trip contract treats as a crash.
+
+The fix charges the path where it is collected: `depth + inline_path_shift + key.len()` over
+`DEFAULT_MAX_DEPTH` refuses the member, and `inline_path_shift` carries `key.len() - 1` into the
+value's own parse so a path nested inside a path keeps counting. Inline tables are only entered
+through `parse_value`, so `depth` already carries the enclosing container chain, and the shift is
+the part the tree gains outside that funnel. The mutation separates the two halves: deleting the
+guard aborts both the 1100-segment test and the 600 + 600 accumulation test; deleting only
+`inline_path_shift` keeps the 1100-segment input rejected (its path alone exceeds the cap) and
+reddens `inline_dotted_paths_accumulate_across_nesting`, where neither path alone is near 1000.
+
+Price, three samples per scenario on one host with the pinned `rustc 1.97.1`, base tree against this
+one: `from_toml_medium` 120,899,359 on both, `from_toml_long_strings` 108,650,182 on both,
+`from_toml_notes` 147,545,669 → 147,547,669. Both harnesses call their work 2,000 times, so the only
+movement is one instruction per iteration on the fixture that holds inline tables; the branch sits
+inside `parse_inline_table`, and a document without an inline table pays nothing.
+
+Four tests hold the claim - beyond budget under both dialects, accumulation across nesting, a
+300-segment fixed point, and the 999-segment edge whose emission is exactly 1000 tables and
+re-parses - and the input is archived as
+`fuzz/seeds/toml_roundtrip/former-crash-2a5ea394.seed` (2714 bytes). The matrix counts move by those
+four tests and that seed, 878 → 882 `#[test]` and 206 → 207 seeds (115 `former-crash-*`), written by
+`quality_matrix.py --write-rows`. What it still cannot see: the cap bounds what a document can
+build, not what a legal tree costs the native stack, which stays the residual `(ih)` names; and the
+writer is unchanged, so a dotted path built through the AST API rather than read from text can still
+be emitted at any depth and refused on the way back in.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

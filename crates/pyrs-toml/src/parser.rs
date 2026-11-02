@@ -103,6 +103,7 @@ pub(crate) fn parse_ir(
         text: src,
         pos: 0,
         depth: 0,
+        inline_path_shift: 0,
         root: CowTable::new(0, 0),
         current: Vec::new(),
         pending_leading: Vec::new(),
@@ -287,6 +288,10 @@ struct Parser<'a> {
     /// Current `parse_value` recursion depth, gated against
     /// [`DEFAULT_MAX_DEPTH`] to reject (not crash) over-nested input.
     depth: usize,
+    /// Tables the dotted member paths enclosing the value now being parsed will add when
+    /// `nest_inline` lays them out. `depth` counts only containers `parse_value` enters, so an
+    /// inline table's budget adds this shift on top of its own path.
+    inline_path_shift: usize,
     root: CowTable,
     /// Path of the active table (set by `[a.b]` or `[[a.b]]` headers).
     current: Vec<Arc<str>>,
@@ -1405,11 +1410,25 @@ impl<'a> Parser<'a> {
             let leading = core::mem::take(&mut self.pending_inline_comment);
             let key_at = self.pos;
             let key = self.parse_key_path()?;
+            // `nest_inline` lays a dotted member out as one table per segment, and the writer
+            // re-spells that chain as nested inline tables. `parse_value` counts only containers
+            // it enters, so the path itself and every path expanded above it are added here:
+            // without that, `t = { a.a.… = 1 }` built a tree deeper than the one the reader
+            // would accept back from `to_toml` (fuzz crash-2a5ea394, "max depth exceeded").
+            if self.depth + self.inline_path_shift + key.len() > DEFAULT_MAX_DEPTH {
+                return Err(ParseError::MaxDepthExceeded(DepthError(DEFAULT_MAX_DEPTH)));
+            }
             self.skip_inline_ws();
             self.expect_byte(b'=', "expected `=` in inline table")?;
             self.skip_inline_ws();
             let value_at = self.pos;
-            let v = self.parse_value()?;
+            // The value lands `key.len() - 1` tables below this one, and anything nested inside
+            // it inherits that shift.
+            let shift = self.inline_path_shift;
+            self.inline_path_shift = shift + key.len() - 1;
+            let v = self.parse_value();
+            self.inline_path_shift = shift;
+            let v = v?;
             let trailing = self.take_inline_trailing_comment();
             let anns = KVAnnotations {
                 leading,
@@ -2317,6 +2336,67 @@ mod tests {
         let again = from_toml(&once).expect("and re-parse the emission");
         let twice = crate::to_toml(&again).expect("and re-emit");
         assert_eq!(once, twice, "a within-budget dotted path is a fixed point");
+    }
+
+    #[test]
+    fn inline_dotted_key_beyond_budget_errors_instead_of_overflowing() {
+        // `parse_inline_table` collects members as key paths and lays them out in
+        // `nest_inline`, so a dotted member nests one table per segment without entering the
+        // `parse_value` funnel or `register_kv`'s check. Unbounded, `t = { <1100> = 1 }`
+        // parsed into a tree 1101 tables deep and the writer re-spelled it as nested inline
+        // tables its own reader refused - fuzz crash-2a5ea394 panicked on that emission with
+        // "max depth exceeded (max=1000)".
+        let path = vec!["a"; 1100].join(".");
+        let src = format!("t = {{ {path} = 1 }}\n");
+        let err = from_toml(&src).expect_err("over-nested inline path must be rejected");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+        // The guard is not a 1.1-only spelling: the 1.0 reader takes the same one-line form.
+        let err = from_toml_v1_0(&src).expect_err("and the same under the 1.0 dialect");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+    }
+
+    #[test]
+    fn inline_dotted_paths_accumulate_across_nesting() {
+        // Writing `{a.b = 1}` as `{a = {b = 1}}` pushes the value one level below the table
+        // that held the path, so a nested inline table's budget has to count the paths
+        // expanded above it. 600 + 600 segments inside `t` is 1201 tables in the emission
+        // while each table's own path stays well inside 1000.
+        let outer = vec!["a"; 600].join(".");
+        let inner = vec!["b"; 600].join(".");
+        let src = format!("t = {{ {outer} = {{ {inner} = 1 }} }}\n");
+        let err = from_toml(&src).expect_err("the expanded chain exceeds the budget");
+        assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+    }
+
+    #[test]
+    fn inline_dotted_key_within_budget_round_trips() {
+        // The sibling of `dotted_key_within_budget_round_trips_without_inflation`: the same
+        // promise holds for a path a member writes, and 301 tables is comfortably inside
+        // both the budget and the default test thread.
+        let path = vec!["a"; 300].join(".");
+        let src = format!("t = {{ {path} = 1 }}\n");
+        let node = from_toml(&src).expect("within-budget inline path must parse");
+        let once = crate::to_toml(&node).expect("and emit");
+        let again = from_toml(&once).expect("and re-parse the emission");
+        let twice = crate::to_toml(&again).expect("and re-emit");
+        assert_eq!(once, twice, "a within-budget inline path is a fixed point");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn inline_dotted_key_at_the_budget_edge_still_round_trips() {
+        // The accepted edge, measured the way the reader measures it: 999 segments under `t`
+        // is exactly 1000 tables once the writer nests them, so the emission's re-parse lands
+        // on the cap rather than past it. Big stack for the reason the sibling edge test names.
+        on_big_stack(|| {
+            let path = vec!["a"; 999].join(".");
+            let src = format!("t = {{ {path} = 1 }}\n");
+            let node = from_toml(&src).expect("at-edge inline path must parse");
+            let once = crate::to_toml(&node).expect("and emit");
+            let again = from_toml(&once).expect("the emission must re-parse");
+            let twice = crate::to_toml(&again).expect("and re-emit");
+            assert_eq!(once, twice, "the accepted inline edge is a fixed point");
+        });
     }
 
     #[cfg(feature = "std")]
