@@ -1207,6 +1207,19 @@ status: new
   `a_strip_claim_survives_a_value_that_ends_in_a_break`,
   `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`, 그리고
   `proptest-regressions/pbt.txt`에서 재생되는 축소 사례다.
+- **매핑 키에 붙은 앵커도 정의이므로, 그 쌍을 지우면 거부된다** — `edit_yaml`의 crash-6a9b6538과
+  crash-718abefa는 같은 두 쌍 문서이고, 첫 앵커는 값이 아니라 키에 붙어 있다(`!base: &x 0set:`
+  옆의 `:e: *x`). `delete_path`는 경로가 가리키는 노드에 정의된 앵커를 묻는데, 그 노드는 쌍의
+  *값*이고 키 노드는 쌍과 함께 사라진다. 그래서 `&x`는 보이지 않았고 삭제가 허용되어, 아무것도
+  정의하지 않는 이름을 가리키는 `k8: *x`가 출력되었다 — 이 라이브러리 자신의 리더가
+  `found unknown anchor`로 거부한다. 가드는 이제 삭제할 쌍의 키 노드도 읽는다. 앵커와 그것을
+  가리키는 별칭을 같은 부분 트리가 함께 가질 때 이미 받아들인 폭과 같으며, 참조되지 않는 앵커 달린
+  키는 여전히 삭제된다(`deleting_an_unreferenced_anchored_key_is_allowed`가 그쪽). 두 입력은
+  `fuzz/seeds/edit_yaml/former-crash-{6a9b6538,718abefa}.seed`로 들어가고, 스크립트는 끝까지 돌아
+  리더가 거부하는 텍스트를 내지 않는다 — 전에는 이 삭제가 스크립트를 끝냈다. 같은 삭제는
+  바인딩에서도 `anchor-is-referenced`로 거부된다. 키 노드 수집을 빼면
+  `deleting_a_key_that_defines_a_referenced_anchor_is_refused`가 거부되었어야 할 `DirtyUnit`을
+  안고 빨개진다.
 
 #### 변경
 

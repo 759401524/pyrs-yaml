@@ -988,6 +988,17 @@ status: new
   `a_strip_claim_survives_a_value_that_ends_in_a_break`、
   `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`，以及从 `proptest-regressions/pbt.txt`
   重放的收缩用例。
+- **映射键上的锚点也是定义，删除该键值对会被拒绝** — `edit_yaml` 的 crash-6a9b6538 与 crash-718abefa
+  是同一份两对文档，第一个锚点挂在键上而不是值上（`!base: &x 0set:` 旁边的 `:e: *x`）。`delete_path`
+  只向路径解析到的节点询问它定义了哪些锚点，而那个节点是键值对的*值*；键节点随该对一起离开，于是
+  `&x` 从未被看到，删除被接受，`k8: *x` 被写到页面上，指向无人定义的锚点——本库自己的读取端以
+  `found unknown anchor` 拒绝它。守卫现在连同即将删除的键值对的键节点一起读取，与它早已接受的宽度
+  一致（子树同时持有锚点与指向它的别名时同样拒绝）：未被引用的带锚键仍然可以删除，
+  `deleting_an_unreferenced_anchored_key_is_allowed` 就是那一侧。两条输入以
+  `fuzz/seeds/edit_yaml/former-crash-{6a9b6538,718abefa}.seed` 归档，脚本现在跑到结尾而不写出读取端
+  拒绝的文本，此前正是这次删除让脚本中止；同一删除在绑定层以 `anchor-is-referenced` 被拒绝。去掉
+  键节点的收集会让 `deleting_a_key_that_defines_a_referenced_anchor_is_refused` 带着本该被拒绝的
+  `DirtyUnit` 变红。
 
 #### 变更
 

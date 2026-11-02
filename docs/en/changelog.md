@@ -1314,6 +1314,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `a_strip_claim_survives_a_value_that_ends_in_a_break`, by
   `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`, and by the shrunk cases replayed from
   `proptest-regressions/pbt.txt`.
+- **An anchor on a mapping key is a definition, so deleting its pair is refused** — `edit_yaml`
+  crashes 6a9b6538 and 718abefa are one two-pair document whose first anchor sits on the key rather
+  than on the value (`!base: &x 0set:` beside `:e: *x`). `delete_path` asks the node a path resolves
+  to for the anchors it defines, and that node is the entry's *value*; the key travels out with the
+  pair, so `&x` was never seen, the delete was accepted, and `k8: *x` reached the page naming an
+  anchor nothing defines — this library's own reader refused it with `found unknown anchor`. The
+  guard now reads the key node of the entry it is about to remove as well, the same width it already
+  accepts for a subtree holding both an anchor and the alias naming it: an unreferenced anchored key
+  still deletes, and `deleting_an_unreferenced_anchored_key_is_allowed` is that side. Both inputs
+  land as `fuzz/seeds/edit_yaml/former-crash-{6a9b6538,718abefa}.seed` and now run their script to
+  its end without emitting text the reader refuses, where before the delete ended it; the binding
+  refuses the same edit with `anchor-is-referenced`. Withdrawing the key walk reddens
+  `deleting_a_key_that_defines_a_referenced_anchor_is_refused` with the accepted `DirtyUnit` the
+  guard should have refused.
 
 #### Changed
 
