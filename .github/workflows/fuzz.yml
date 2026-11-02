@@ -157,7 +157,18 @@ jobs:
     needs: fuzz
     if: always()
     runs-on: ubuntu-latest
+    # `issues: write` belongs to the last step alone: it turns each target's findings into one
+    # assignable issue, because until it existed nothing consumed the aggregate beyond a step
+    # summary and a `::warning::` line - five scheduled runs reddened in a row (2026-10-03 to
+    # 2026-10-31) and every finding reached the fix queue only because a person read the run page.
+    # A job-level `permissions` block replaces the workflow's, so `contents: read` is repeated for
+    # the checkout below.
+    permissions:
+      contents: read
+      issues: write
     steps:
+      - uses: actions/checkout@v7
+
       - name: Download crash artifacts
         uses: actions/download-artifact@v8
         with:
@@ -197,3 +208,22 @@ jobs:
             echo "reach the same \`assert_eq!\`. Read the signature column as a lower bound." >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::$total crash input(s) collected; each owes the minimize -> regression test -> seed -> fix pipeline"
           fi
+
+      # The summary table above is read by whoever opens the run page. This step is the reader that
+      # is not a person: one issue per target, appended to on every later finding, because a red
+      # sampler needs an assignable entry point and a run page that scrolls away is not one.
+      - name: File one issue per target that found something
+        # A pull-request leg replays the seed corpus with `-runs=0` and never explores, so it cannot
+        # produce a finding this step would act on; and a fork PR's token is read-only, which would
+        # fail the job rather than the gate. The two events that explore are the schedule and a push
+        # to main, and both run with this repository's own token.
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 scripts/fuzz_file_issues.py \
+            --crashes crashes \
+            --fuzz-result "${{ needs.fuzz.result }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

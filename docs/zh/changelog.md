@@ -19,6 +19,14 @@ status: new
 
 #### 新增
 
+- **每周 fuzz 采样器有了消费者：每个目标一条 issue，之后每次发现都追加** — 聚合任务此前只把表格写进
+  `$GITHUB_STEP_SUMMARY` 并打印一条 `::warning::`，两者都没有任何读者。2026-10-03 到 2026-10-31 的五
+  次定时跑全部失败，且全部带回了崩溃输入（仍用 `collected/` 布局的四份归档合计 39 个互不相同的哈
+  希），而每条发现能进队列，只是因为有个人打开了 run 页面。现在 `scripts/fuzz_file_issues.py` 为每
+  个目标开一条 issue，附上 run 链接、签名计数与输入名，并追加到该目标已有的 issue。去重用的是标题
+  精确匹配而不是搜索，因为近似标题不能吞掉新的 run；签名是来自不可信输入的 panic 文本，所以只进围
+  栏代码块，永不进 argv。该任务获得 `issues: write`，该步骤在 `pull_request` 上跳过——那一档用
+  `-runs=0` 重放种子，且 fork 的令牌只读。采样器失败却没留下字节时退出 2，而不是报告「没有发现」。
 - **语料注释预言机如今读两条辐条，而不是一条** — `crates/pyrs-yaml-core/tests/note_survival.rs` 只走
   了 `yaml_roundtrip` 和 `parse_yaml`，可它自己的文件头声称走的是 `fuzz/seeds/**.seed`；而它做的「守
   恒」断言从未向 TOML 语料提过：`crates/pyrs-toml/tests/roundtrip_corpus.rs` 只按不动点回放那些种

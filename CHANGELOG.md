@@ -9,6 +9,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The weekly fuzz sampler has a consumer: one issue per target** — the aggregate job wrote its
+  table to `$GITHUB_STEP_SUMMARY` and printed a `::warning::`, and nothing read either. The five
+  scheduled runs from 2026-10-03 to 2026-10-31 all failed and all carried crash inputs (39 distinct
+  hashes across the four archives that still use the `collected/` layout), and every finding reached
+  the queue only because a person opened the run page. `scripts/fuzz_file_issues.py` now files one
+  issue per target with the run link, the signature counts and the input names, and appends to the
+  issue that target already has. Dedupe is an exact title match rather than a search, because a
+  near-miss title must not absorb a new run; and a signature is panic text from an untrusted input,
+  so it goes into a fenced body and never into argv. The job gains `issues: write`, and the step is
+  skipped on `pull_request`, where the tier replays seeds with `-runs=0` and a fork's token is
+  read-only. A sampler that failed without leaving bytes exits 2 instead of reporting "nothing
+  found".
 - **The corpus note oracle now reads two spokes, not one** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` walked `yaml_roundtrip` and `parse_yaml` while its
   own header claimed `fuzz/seeds/**.seed`, and the conservation claim it makes had never been asked
