@@ -1212,6 +1212,19 @@ status: new
   `a_strip_claim_survives_a_value_that_ends_in_a_break`、
   `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`、そして `proptest-regressions/pbt.txt` か
   ら再生される縮小ケースである。
+- **マッピングのキー上のアンカーも定義であり、そのペアの削除は拒否される** — `edit_yaml` の
+  crash-6a9b6538 と crash-718abefa は同じ二対の文書で、最初のアンカーは値ではなくキーに載っている
+  （`!base: &x 0set:` の隣の `:e: *x`）。`delete_path` はパスが解決するノードに定義されたアンカーを
+  問い合わせるが、そのノードはペアの*値*であり、キーノードはペアとともに木から出ていく。だから
+  `&x` は見られず削除が受理され、何も定義しない名前を指す `k8: *x` が出力された——このライブラリ
+  自身の読み手が `found unknown anchor` で拒否する。ガードはいま、削除するペアのキーノードも読む。
+  アンカーとそれを指す別名を同じ部分木が持つ場合に既に受け入れているのと同じ広さであり、参照されない
+  アンカー付きキーは今も削除できる（`deleting_an_unreferenced_anchored_key_is_allowed` がその側）。
+  二つの入力は `fuzz/seeds/edit_yaml/former-crash-{6a9b6538,718abefa}.seed` として入り、スクリプトは
+  最後まで走って読み手の拒むテキストを出さない——以前はこの削除がスクリプトを止めていた。同じ削除は
+  バインディングでも `anchor-is-referenced` で拒否される。キーノードの収集を外すと
+  `deleting_a_key_that_defines_a_referenced_anchor_is_refused` が、拒否されるべき `DirtyUnit` を
+  抱えて赤くなる。
 
 #### 変更
 

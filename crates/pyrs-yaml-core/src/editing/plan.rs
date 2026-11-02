@@ -589,9 +589,17 @@ pub fn delete_path(
     // both an anchor and the alias that names it is safe to remove, and this refuses that too:
     // deciding it needs the document order of a tree that is about to change, and over-refusing costs
     // the caller one more edit while under-refusing writes a file nothing can read.
-    if let Ok(target) = crate::editing::navigate(node, segments) {
+    if let Some((key, target)) = removed_entry(node, segments) {
         let mut defined = Vec::new();
         anchors_in(target, &mut defined);
+        // The path resolves to the entry's *value*, and the key node is removed with it. A key can
+        // carry an anchor of its own - `&x k: 1` is one key node with an anchor - so the walk above
+        // cannot see it: measured on `edit_yaml` crashes 6a9b6538 and 718abefa, whose document is a
+        // pair anchored on its key (`!base: &x 0set:` beside `:e: *x`). Deleting `$.0set` emitted
+        // `k8: *x` alone, and this library's own reader refused it with `found unknown anchor`.
+        if let Some(key) = key {
+            anchors_in(key, &mut defined);
+        }
         if defined.iter().any(|name| any_alias_names(node, name)) {
             return Err("anchor-is-referenced".to_string());
         }
@@ -949,6 +957,32 @@ fn any_alias_names(node: &CustomNode, anchor: &str) -> bool {
 /// The anchor name of the node at `segments`, if it carries one.
 fn anchor_at<'a>(node: &'a CustomNode, segments: &[Segment<'_>]) -> Option<&'a str> {
     crate::editing::navigate(node, segments).ok()?.anchor()
+}
+
+/// The entry a removal takes out: its key node, when the path names a mapping key, and the node
+/// itself. Asking for both in one walk is what keeps the anchor guard off the hot path's bill: the
+/// same lookup that resolves the path hands back the key beside it, so seeing a key's own anchor
+/// costs the guard one node it already had rather than a second descent (measured: the version that
+/// descended twice read +8.45% on `edit_delete_key` and +8.67% on `edit_delete_notes` in the Ir gate).
+fn removed_entry<'a>(
+    node: &'a CustomNode,
+    segments: &[Segment<'_>],
+) -> Option<(Option<&'a CustomNode>, &'a CustomNode)> {
+    let (last, parent_segments) = segments.split_last()?;
+    match (crate::editing::navigate(node, parent_segments).ok()?, last) {
+        (CustomNode::Mapping { pairs, .. }, Segment::Key(key)) => {
+            let key_node = CustomNode::plain_scalar(key.as_ref());
+            let index = mapping_key_index(pairs, &key_node)?;
+            pairs
+                .get_index(index)
+                .map(|(key_node, value)| (Some(key_node), value))
+        }
+        (CustomNode::Sequence { items, .. }, Segment::Index(index)) => {
+            let at = normalize_index(*index, items.len())?;
+            items.get(at).map(|value| (None, value))
+        }
+        _ => None,
+    }
 }
 
 /// The anchor names a subtree defines, at any depth and in key positions too.
@@ -1389,6 +1423,41 @@ mod tests {
             .expect("nothing refers to the node being removed");
         let emitted = to_yaml(&node);
         assert_eq!(emitted, "base: &x 1\n");
+        parse(&emitted, Schema::Core).expect("the emission still parses");
+    }
+
+    /// The fourth door, found by `edit_yaml` crashes 6a9b6538 and 718abefa: the anchor can be on the
+    /// *key* of the entry rather than on the value the path resolves to, and the key node leaves with
+    /// the pair. Measured before this arm existed on `&x k: 1\nuse: *x`: deleting `$.k` emitted
+    /// `use: *x` alone, and this library's own reader refused it with `found unknown anchor`.
+    #[test]
+    fn deleting_a_key_that_defines_a_referenced_anchor_is_refused() {
+        let source = "&x k: 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        assert_eq!(
+            match &node {
+                CustomNode::Mapping { pairs, .. } =>
+                    pairs.get_index(0).and_then(|(key, _)| key.anchor()),
+                _ => None,
+            },
+            Some("x"),
+            "the fixture has to put the anchor on the key, which is the whole point"
+        );
+        let error = delete_path(&mut node, &segments("k"), source, None)
+            .expect_err("the alias would outlive the anchor the key defines");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source);
+    }
+
+    /// The other side of that door: with nothing naming the key's anchor, the entry goes.
+    #[test]
+    fn deleting_an_unreferenced_anchored_key_is_allowed() {
+        let source = "&x k: 1\nother: 2\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        delete_path(&mut node, &segments("k"), source, None)
+            .expect("no alias names the anchor the key carries");
+        let emitted = to_yaml(&node);
+        assert_eq!(emitted, "other: 2\n");
         parse(&emitted, Schema::Core).expect("the emission still parses");
     }
 }
