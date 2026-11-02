@@ -548,6 +548,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   treats a name as defined when it appears anywhere in the tree, so an orphaned definition that
   precedes an alias while a later re-definition also exists is still not inlined — the duplicate-key
   fold's repair has had the same limit since it landed.
+- **A finding from a push to main reaches the issue queue again** — the aggregate job's report step
+  counted each target with `grep -c .`, and a bash step on the runner starts with `-eo pipefail`:
+  the step's own `set -uo pipefail` does not turn `-e` back off, so a count of zero exited 1 and
+  ended the step. An archive holding no crash file, or no `findings.tsv`, therefore left the table
+  header-only and the filing step below never ran — a finding from a push to main reached no
+  consumer at all. Both counts now treat zero as a value to report, and
+  `tests/test_fuzz_file_issues.py` runs the workflow's own step under `-eo pipefail` against an
+  archive with nothing to count: the old form exits 1 there, the new one writes both rows.
 - **A container key the writer cannot spell apart is refused, not emitted twice** —
   `yaml_roundtrip` crash-b88f1b4f is a two-pair mapping whose keys are themselves mappings over the
   same tagged empty scalar, one as an empty literal block (`!? |2`) and one as an empty plain key.
