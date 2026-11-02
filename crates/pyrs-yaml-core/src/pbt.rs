@@ -357,10 +357,64 @@ mod tests {
     /// like writer data loss (CI seed `8e067f67…`, `prop_tag_preserved`), and the
     /// writer must keep spelling `<<` plainly because a tree parsed with
     /// `resolve_merges=false` carries a real directive there.
+    ///
+    /// A block scalar's `Strip` claim resolves here too, for the same reason: the
+    /// writer honours `|-` over the value (that is the one chomping it does not
+    /// correct, because `set_chomping("strip")` on a clipped value means exactly
+    /// "drop the break" — see `a_strip_claim_survives_a_value_that_ends_in_a_break`
+    /// and `tests/test_node_style.py`), so the value that survives the cycle is
+    /// the body with its trailing breaks removed. Applying that to the sample is
+    /// not a licence for the writer to lose bytes: a header that did not spell
+    /// every claim still shows up as a value change, because the parsed side is
+    /// compared as it re-read, not re-normalized here.
     fn as_the_reader_sees(node: &crate::ast::CustomNode) -> crate::ast::CustomNode {
         let mut composed = node.clone();
         crate::parser::yaml::resolve_merge_keys(&mut composed);
+        strip_claimed_trailing_breaks(&mut composed);
         composed
+    }
+
+    /// Drop the trailing breaks a `Strip` claim denotes, as the reader does.
+    fn strip_claimed_trailing_breaks(node: &mut crate::ast::CustomNode) {
+        use crate::ast::{Chomping, CustomNode, ScalarStyle};
+        match node {
+            CustomNode::Scalar {
+                value,
+                style: ScalarStyle::Literal | ScalarStyle::Folded,
+                chomping: Chomping::Strip,
+                ..
+            } => {
+                let trimmed = value.trim_end_matches('\n');
+                if trimmed.len() != value.len() {
+                    *value = trimmed.into();
+                }
+            }
+            CustomNode::Mapping { pairs, .. } => {
+                // A simple scalar key is *not* resolved here. `write_scalar_for_key` quotes every
+                // block style, so the writer keeps the trailing break a `Strip` header would drop:
+                // stripping `"'\n"` collapsed it onto the plain `'` beside it, and the writer then
+                // emitted two `"'"` keys its own reader refuses (CI job 125257954602,
+                // `prop_idempotent`). A container key is different - its contents are laid out by
+                // the value path, where a block scalar keeps its header and the break does go.
+                let taken = core::mem::take(pairs);
+                for (mut key, mut value) in taken {
+                    if matches!(
+                        key,
+                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                    ) {
+                        strip_claimed_trailing_breaks(&mut key);
+                    }
+                    strip_claimed_trailing_breaks(&mut value);
+                    pairs.insert(key, value);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for item in items.iter_mut() {
+                    strip_claimed_trailing_breaks(item);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Key *content* bytes for order-property comparisons, deliberately
@@ -1908,6 +1962,72 @@ mod tests {
         assert!(
             parse_with_options(&flow, true, Schema::Core, 1000, false).is_err(),
             "{flow:?} was read as one document"
+        );
+    }
+
+    /// Where the reader-side `Strip` resolution stops: on a **simple scalar** key, which the
+    /// writer quotes (`write_scalar_for_key` downgrades every block style), so the break the
+    /// header denotes survives the cycle. Resolving it there collapsed `"'\n"` onto the plain
+    /// `'` beside it and the writer emitted two `"'"` keys its own reader refused - the
+    /// `DuplicateKey("'")` that reddened `prop_idempotent` (CI job 125257954602). A container
+    /// key still resolves, because its contents are laid out by the value path, where the
+    /// header is spelled.
+    #[test]
+    fn a_strip_claim_resolves_inside_a_key_but_not_on_the_key() {
+        use crate::ast::{Chomping, CustomNode, NodeMap, ScalarStyle};
+
+        let strip = |value: &str| CustomNode::Scalar {
+            value: value.into(),
+            style: ScalarStyle::Folded,
+            chomping: Chomping::Strip,
+            block_indent: None,
+            meta: Default::default(),
+        };
+        let block = |pairs| CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+
+        let mut pairs = NodeMap::default();
+        pairs.insert(strip("'\n"), CustomNode::plain_scalar("a"));
+        pairs.insert(CustomNode::plain_scalar("'"), CustomNode::plain_scalar("0"));
+        let resolved = as_the_reader_sees(&block(pairs));
+        let CustomNode::Mapping { pairs, .. } = &resolved else {
+            panic!("the resolution changed the node kind: {resolved:?}");
+        };
+        assert_eq!(
+            pairs.len(),
+            2,
+            "the resolution collapsed two keys: {resolved:?}"
+        );
+        let yaml = to_yaml(&resolved);
+        match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+            Ok(CustomNode::Mapping { pairs: read, .. }) => {
+                assert_eq!(read.len(), 2, "{yaml:?} re-read as {read:?}");
+            }
+            other => panic!("{yaml:?} re-read as {other:?}"),
+        }
+
+        let mut pairs = NodeMap::default();
+        pairs.insert(
+            CustomNode::plain_sequence(vec![strip("'\n")]),
+            CustomNode::plain_scalar("v"),
+        );
+        let resolved = as_the_reader_sees(&block(pairs));
+        let CustomNode::Mapping { pairs, .. } = &resolved else {
+            panic!("the resolution changed the node kind: {resolved:?}");
+        };
+        let Some(CustomNode::Sequence { items, .. }) = pairs.keys().next() else {
+            panic!("the container key did not survive: {resolved:?}");
+        };
+        let CustomNode::Scalar { value, .. } = &items[0] else {
+            panic!("the container key lost its item: {resolved:?}");
+        };
+        assert_eq!(
+            value.as_ref(),
+            "'",
+            "a container key's item keeps the claim"
         );
     }
 }

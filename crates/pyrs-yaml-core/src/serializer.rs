@@ -2419,8 +2419,25 @@ fn needs_double_quoted(value: &str) -> bool {
     // parser strips it (`" "` reparses as an empty — or in flow, broken —
     // token), so quote it even when the raw text would schema-resolve to a
     // non-string (e.g. `" "` → null). The schema promise is moot once
-    // re-parsing cannot recover the token at all.
-    if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
+    // re-parsing cannot recover the token at all. Line breaks belong to that
+    // set for the same reason and were the half this test was missing: `"\n"`
+    // resolves to null, so the non-string shortcut below sent it out bare, and
+    // a bare break is not an inline token at all — it ended the line and the
+    // value came back as `~` (found by `prop_style_setting_roundtrip` once the
+    // generator could draw a break).
+    //
+    // Byte tests rather than `starts_with([' ', '\t', '\n', '\r'])`: the four-element
+    // char-array pattern is a search the inliner copies into every caller, and this
+    // predicate sits on the writer's per-scalar path. Measured on one host with the
+    // `serialize_anchors` scenario, the pattern form costs 60,000 instructions a run
+    // over this one (22,577,384 against 22,517,384, 2,000 iterations, 30 each) - which
+    // is both the +0.59% that reddened the Ir gate and the whole margin it had.
+    // All four are ASCII, so the first (last) byte answers the first (last) character,
+    // and the binding is reused by the scan below.
+    let bytes = value.as_bytes();
+    if matches!(bytes[0], b' ' | b'\t' | b'\n' | b'\r')
+        || matches!(bytes[bytes.len() - 1], b' ' | b'\t' | b'\n' | b'\r')
+    {
         return true;
     }
     // A plain scalar that BEGINS with a document indicator is read back as the
@@ -2457,7 +2474,6 @@ fn needs_double_quoted(value: &str) -> bool {
     // already been answered by the loop. The test
     // `needs_double_quoted_agrees_with_the_scan_for_every_code_point` pins both
     // halves against the reference form.
-    let bytes = value.as_bytes();
     if leading_indicator(bytes[0]) {
         return true;
     }
@@ -3098,13 +3114,15 @@ mod tests {
 
     /// The six-scan form this module replaced, kept here and never shipped, so the
     /// one-byte-pass claim can be checked against an independent restatement rather than
-    /// against itself. Every code point, in the leading position and embedded, plus both
-    /// edge-whitespace cases: the positions the fast path answers differently.
+    /// against itself. Every code point, in the leading position and embedded, plus the
+    /// edge cases the fast path answers differently: edge whitespace, and an edge break,
+    /// which this clause has to catch before the non-string shortcut below it — a bare
+    /// `"\n"` resolves to null, so the shortcut would send the break out unquoted.
     fn reference_needs_double_quoted(value: &str) -> bool {
         if value.is_empty() {
             return true;
         }
-        if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
+        if value.starts_with([' ', '\t', '\n', '\r']) || value.ends_with([' ', '\t', '\n', '\r']) {
             return true;
         }
         if value == "..."
@@ -3181,6 +3199,20 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn an_edge_line_break_is_quoted_even_when_the_text_resolves_to_null() {
+        // `"\n"` resolves to null, so the non-string shortcut inside `needs_double_quoted` sent it
+        // out bare; a bare break ends the line, and the value came back as `~`. Found by
+        // `prop_style_setting_roundtrip` once the generator could draw a break.
+        for value in ["\n", "\r", "\na", "a\n", "\r\n", "a\r"] {
+            assert!(needs_double_quoted(value), "{value:?}");
+        }
+        // A break that is not at an edge is caught by the embedded-newline clause, and plain text
+        // without one stays unquoted.
+        assert!(needs_double_quoted("a\nb"));
+        assert!(!needs_double_quoted("a b"));
+    }
+
     use crate::ast::Tag;
     use std::sync::Arc;
 
@@ -3289,6 +3321,13 @@ mod tests {
         );
         assert_eq!(
             effective_chomping("x", &Chomping::Strip, false),
+            Chomping::Strip
+        );
+        // The other direction stays the caller's: `|-` is a header that spells "strip", so a value
+        // ending in a break is dropped on purpose there - see
+        // `a_strip_claim_survives_a_value_that_ends_in_a_break`.
+        assert_eq!(
+            effective_chomping("x\n", &Chomping::Strip, false),
             Chomping::Strip
         );
     }

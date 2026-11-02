@@ -11486,6 +11486,66 @@ reaches JSON, so only standard tags take part in the folding. The matrix counts 
 property: 35 → 36 proptest properties (31 → 32 named `prop_*`) and 874 → 875 Rust `#[test]`, both
 rewritten by `quality_matrix.py --write-rows` from its own measurement.
 
+### (ij) The block-scalar generator drew one line, and the break had nowhere to go (2026-11-02)
+
+`arb_custom_node`'s scalar strategy drew `[ -~]+` for every style. For `Plain`,
+`SingleQuoted` and `DoubleQuoted` that is the whole alphabet — those styles cannot carry a line
+break as content — but for `Literal` and `Folded` it removes the one thing the style exists for.
+`QUALITY_MATRIX.md`'s property row already named the consequence in its own words, "shapes
+outside the generator": no property had ever asked the writer to place a break, a blank line, a
+leading blank or a trailing run of breaks, so the fixed-point, re-parse and equality claims were
+green over a corpus that contained none of them. The block half now draws `[ -~\n\t]+`; the
+inline half is unchanged, because a break there is a different claim (whether the value can be a
+plain token at all, `PlainRequoted`'s business) rather than more of the same.
+
+The first run reached `needs_double_quoted`. Its edge check guarded a leading or trailing space
+and tab, then deferred to `core_type_is_non_string`, which runs before the byte scan: `"\n"`
+resolves to null under the Core schema, so the shortcut answered "no quotes needed" and the
+writer emitted the break as the token itself. A bare break is not an inline token — it ends the
+line — and the value came back as `~`. The edge set now takes `\n` and `\r` with the spaces and
+tabs, and `an_edge_line_break_is_quoted_even_when_the_text_resolves_to_null` pins the six edge
+forms plus the two controls (a mid-token break is already the embedded-newline clause, plain text
+stays unquoted). The widening is what reaches the shape, measured rather than assumed: the same
+mutated edge set with the old `[ -~]+` generator passes `prop_style_setting_roundtrip`, and with
+the widened generator it fails; the fix was restored before anything was committed.
+
+Widening that edge set was not free, and the instruction-count gate charged it before anything
+landed: the four-element `starts_with`/`ends_with` char-array pattern is a search the inliner copies
+into the writer's per-scalar path, so `serialize_anchors` read 22,577,359 instructions on the
+enforcing image, +0.59% against a 0.50% tolerance, with the other writer scenarios up 0.28-0.40%.
+The clause is now two byte `matches!` on the first and last byte of one `as_bytes()` binding; all
+four characters are ASCII, so the bytes answer them. Measured on one host, that scenario reads
+22,577,384 with the pattern form and 22,517,384 with the byte form - 60,000 fewer per run, 30 per
+iteration of the harness's 2,000 - which is +0.32% against the committed baseline. No scenario was
+named in a refresh and the floor did not move: the same gate on the same image now reads inside it.
+
+The other class the widening found is not a writer defect, and closing it as one would have been
+wrong. `effective_chomping` rewrites Clip/Keep to `Strip` for a value with no trailing break —
+the header must not denote a break the body does not carry — but it does not rewrite the other
+direction, because `|-` on a value that ends in a break is the edit `set_chomping("strip")`
+makes: the caller asked for the break to go, and the next read is where it goes. That contract is
+pinned in `a_strip_claim_survives_a_value_that_ends_in_a_break` and at the Python boundary, so
+the tier resolves the claim the way the reader does before comparing, in
+`as_the_reader_sees`/`strip_claimed_trailing_breaks`. That resolution is a model of the writer,
+and the model had an edge. `write_scalar_for_key` quotes every block style in key position, so
+a *simple scalar* key keeps the break its `Strip` header would drop, while a *container* key's
+contents are laid out by the value path and lose it. Resolving the simple key too collapsed
+`"'\n"` onto the plain `'` beside it, and the writer then emitted two `"'"` keys its own reader
+refuses - the `DuplicateKey("'")` that reddened `prop_idempotent` at 20k cases (CI job
+125257954602), reachable only because the widened generator can now draw the break. The key side
+is narrowed to containers, and `a_strip_claim_resolves_inside_a_key_but_not_on_the_key` pins both
+directions; with the guard removed it fails on `"'": a` / `"'": 0` re-reading as `DuplicateKey`.
+A writer that ignored a header it did not spell still surfaces: the parsed tree is compared as it
+re-read, not re-normalized, so a dropped break under a `|` claim is still a value change.
+
+What it still cannot see: a lone `\r` is outside the generator on purpose, because every reader
+treats it as a line break and only a double-quoted escape could carry it, which returns as `\n`;
+the resolution above applies to the sample, so a Stripped value is compared without its breaks
+while the claim itself is not part of equality; and the block half still draws printable ASCII
+plus `\n` and `\t`, so tabs-as-content and non-ASCII inside a block body remain the fuzz tier's
+territory. The matrix counts move only by the unit tests: 36 proptest properties unchanged, 875 →
+877 Rust `#[test]`, written by `quality_matrix.py --write-rows` from its own measurement.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
