@@ -513,6 +513,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A container key the writer cannot spell apart is refused, not emitted twice** —
+  `yaml_roundtrip` crash-b88f1b4f is a two-pair mapping whose keys are themselves mappings over the
+  same tagged empty scalar, one as an empty literal block (`!? |2`) and one as an empty plain key.
+  Both stay in the node map, which compares whole nodes, but key position is lossy: the writer has
+  to quote a block scalar and an empty plain key, so both reach the page as `!? ""` and the
+  writer's own reader refuses its own output as a duplicate — a document lost between two calls
+  that both reported success. The reader now asks the writer what each container key looks like in
+  key position, reads that one-pair mapping back with duplicates allowed, and refuses the source
+  when two keys read back equal. Judging the writer's text by the reader's own rules is also what
+  catches a note the writer hoists above the `?` marker instead of onto the key line, a second live
+  shape this settles; the sibling crash-469125e3 ended in the writer learning a second spelling,
+  and here there is none to learn, so the refusal is the honest answer. It runs only for a document
+  that puts a container in key position — the receiver records that where a key node lands — so a
+  document whose keys are all scalars pays one test per finished mapping and `parse_medium`'s
+  allocation line does not move.
+  Four shapes are pinned in `container_keys_the_writer_spells_alike_are_refused` — the archived
+  34-byte seed, a colon-bearing inner key, a tagged empty plain/quoted pair and the hoisted note —
+  with flow-versus-block keys as the control that must still parse and settle; forcing the check
+  off reddens it.
 - **A dotted path inside an inline table is bounded like every other descent** —
   `parse_inline_table` collected members as key paths and laid them out in `nest_inline`, so
   `t = { a.b.… = 1 }` nested one table per segment without entering the `parse_value` funnel or
