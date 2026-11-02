@@ -115,14 +115,19 @@ class TestNodeChomping:
         # as "clip", and the AST did not keep what the source wrote.
         assert Node(pyrs_yaml.parse(source)).find("$.key").chomping == expected
 
-    def test_a_content_less_block_is_still_written_with_the_safe_header(self):
-        """Recording the indicator is not the same as emitting it. `|-` and `|+` for an empty body
-        both re-read as the default, so writing either one drifts on the next round (libFuzzer
-        crash-89d81d99, crash-b5dcc38f). The three spellings denote the same empty value; the AST
-        keeps the claim the author made, the writer keeps the fixed point."""
-        doc = pyrs_yaml.parse("key: |-\n\n")
-        assert doc.to_yaml() == "key: |\n\n"
-        assert pyrs_yaml.parse(doc.to_yaml()).to_yaml() == "key: |\n\n"
+    def test_a_content_less_block_writes_the_claimed_header_without_a_body_line(self):
+        """Recording the indicator is now the same as emitting it. An empty body gets no body
+        line, so every header re-reads as the empty value and writing the claim back is already a
+        fixed point (libFuzzer crash-469125e3 was two container keys that differed only here and
+        were emitted as the same text). Normalising to `|` would merge such keys; the AST keeps
+        the claim the author made and the writer spells it."""
+        for source, expected in (
+            ("key: |-\n\n", "key: |-\n"),
+            ("key: |+\n", "key: |+\n"),
+        ):
+            doc = pyrs_yaml.parse(source)
+            assert doc.to_yaml() == expected
+            assert pyrs_yaml.parse(expected).to_yaml() == expected
 
     def test_set_chomping_strip(self):
         doc = pyrs_yaml.parse("key: |\n  line1\n  line2\n")

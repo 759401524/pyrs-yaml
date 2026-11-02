@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 877 Rust `#[test]`, 2,130 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 878 Rust `#[test]`, 2,130 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 205 seeds of which 113 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 91 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 206 seeds of which 114 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 92 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -821,7 +821,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (113 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (114 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

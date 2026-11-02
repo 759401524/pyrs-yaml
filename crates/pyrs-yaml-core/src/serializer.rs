@@ -191,29 +191,26 @@ struct Serializer {
 /// `no_content_line` is the caller's already-computed `first_text_line.is_empty()`: the
 /// body holds no line with text in it, so it is either empty or made of nothing but
 /// line breaks. Both spellings lose the indentation indicator on re-read — measured,
-/// `>+8\n\n` comes back as `Folded`/`Clip`/`block_indent: None` — and for an all-break
-/// body the drift is worse than cosmetic, because the re-read `Clip` then strips the
-/// only break the value consists of, so the *value* decays
-/// (`">+8\r\r#" -> ">+8\n\n" -> ">\n\n" -> ""`). Sharing one computation of that flag
-/// between `effective_chomping` and the indicator branch is a gate requirement, not
-/// micro-optimisation: a standalone scan measured `+0.65%` on
-/// `serialize_block_scalars` (deterministic, three runs identical) which, with the
-/// ~1.45% WSL-to-runner drift the 2% tolerance was calibrated on, landed at `+2.11%`
-/// and failed the committed instruction-count gate for duplicating work both writers
-/// already do.
+/// `>+8\n\n` comes back as `Folded`/`Keep`/`block_indent: None` — but the chomping is
+/// kept, and for an all-break body that is load-bearing: the value consists of breaks
+/// alone, so a re-read `Clip` would strip them (`">+8\r\r#" -> ">+8\n\n" -> ">\n\n" ->
+/// ""`). Sharing one computation of that flag between `effective_chomping` and the
+/// indicator branch is a gate requirement, not micro-optimisation: a standalone scan
+/// measured `+0.65%` on `serialize_block_scalars` (deterministic, three runs identical)
+/// which, with the ~1.45% WSL-to-runner drift the 2% tolerance was calibrated on,
+/// landed at `+2.11%` and failed the committed instruction-count gate for duplicating
+/// work both writers already do.
 ///
-/// An **empty** body writes as Clip whatever the AST claims, for the same reason
-/// the indentation indicator is dropped there: there is no content for the
-/// indicator to act on, so granit reports the default chomping when it re-reads
-/// the header. Writing `|+`/`>+` for an empty scalar therefore drifts to `|`/`>`
-/// on the next round — libFuzzer `yaml_roundtrip` crash-89d81d99 (`>+8\r#`, where
-/// the explicit indicator is exactly what makes the reader report `Keep` this once)
-/// and crash-b5dcc38f (`ancho: |+`). Nothing is lost: an empty body has no trailing
-/// break to keep or strip, so the three spellings denote the same value, and the
-/// AST keeps whatever was parsed.
+/// An **empty** body writes its declared chomping back verbatim, and the scalar
+/// terminator is skipped so the header is the whole emission. With no body line, every
+/// indicator re-reads the header as `""`, so the AST's claim is the faithful spelling.
+/// Forcing `Clip` here made nodes that differ only in `chomping` spell identically, and
+/// map equality reads that field: a container key `|+1` beside `|` was accepted by the
+/// reader and emitted as two identical `? …: |` keys its own reader refuses (libFuzzer
+/// `yaml_roundtrip` crash-469125e3).
 fn effective_chomping(value: &str, chomping: &Chomping, no_content_line: bool) -> Chomping {
     if value.is_empty() {
-        return Chomping::Clip;
+        return *chomping;
     }
     if matches!(chomping, Chomping::Clip) && (no_content_line || value.ends_with("\n\n")) {
         return Chomping::Keep;
@@ -953,6 +950,8 @@ impl Serializer {
         // body's last content line nor a wrapped continuation can host one.
         self.trailing_note_slot_open =
             !noted && !block_body && !self.output[line_start..].contains('\n');
+        // An empty block body left its header line unterminated, so this newline closes
+        // that line; for every other scalar it ends the line just written.
         self.output.push('\n');
         Ok(())
     }
@@ -1942,9 +1941,16 @@ impl Serializer {
             comment: block.comment,
         };
         self.write_block_header('|', header, &chomping);
-        self.output.push('\n');
-        self.record_block_header_break();
-        self.write_base_indent(value, block_base, indent);
+        if value.is_empty() {
+            // With no body line the header line is the whole emission, and the
+            // caller's terminator closes it. A newline here would be a blank body
+            // line, which `|+` reads back as "\n" (crash-469125e3's sibling claim).
+            self.block_header_break = None;
+        } else {
+            self.output.push('\n');
+            self.record_block_header_break();
+            self.write_base_indent(value, block_base, indent);
+        }
     }
 
     fn write_folded_scalar(
@@ -1987,8 +1993,14 @@ impl Serializer {
             comment: block.comment,
         };
         self.write_block_header('>', header, &chomping);
-        self.output.push('\n');
-        self.record_block_header_break();
+        if value.is_empty() {
+            // Mirror of the literal writer: the caller's terminator closes the
+            // header line, and no body line exists for a note to ride.
+            self.block_header_break = None;
+        } else {
+            self.output.push('\n');
+            self.record_block_header_break();
+        }
         let mut rest = value;
         let mut started = false;
         loop {
@@ -3316,10 +3328,6 @@ mod tests {
             Chomping::Keep
         );
         assert_eq!(
-            effective_chomping("", &Chomping::Keep, true),
-            Chomping::Clip
-        );
-        assert_eq!(
             effective_chomping("x", &Chomping::Strip, false),
             Chomping::Strip
         );
@@ -3494,23 +3502,26 @@ mod tests {
         );
     }
 
-    /// An empty block body cannot carry a chomping indicator: granit reports the
-    /// default chomping when it re-reads a header with no content, so `|+` written
-    /// for an empty scalar drifts to `|` on the next round (libFuzzer
-    /// `yaml_roundtrip` crash-89d81d99, crash-b5dcc38f). `effective_chomping`
-    /// therefore pins Clip for that shape whatever the AST claims — the same
-    /// "emit the re-readable form" rule both writers already apply to the
-    /// indentation indicator.
+    /// An empty block body writes back the chomping the AST declares. It gets no body
+    /// line, so every indicator re-reads the header as `""` and none has to be
+    /// normalised — and normalising would spell two nodes that differ only in
+    /// `chomping` identically, which map equality reads as two distinct keys (libFuzzer
+    /// `yaml_roundtrip` crash-469125e3). The indentation indicator is still dropped
+    /// (see the writer tests): it has no content line to act on.
     #[test]
-    fn empty_block_body_writes_the_default_chomping() {
+    fn empty_block_body_writes_its_declared_chomping() {
         for claimed in [Chomping::Keep, Chomping::Strip, Chomping::Clip] {
             assert_eq!(
                 effective_chomping("", &claimed, true),
-                Chomping::Clip,
-                "an empty body must not advertise a chomping indicator"
+                claimed,
+                "an empty body must keep the chomping it claims"
             );
         }
         // Nothing else about the rule moves.
+        assert_eq!(
+            effective_chomping("\n", &Chomping::Clip, true),
+            Chomping::Keep
+        );
         assert_eq!(
             effective_chomping("x\n", &Chomping::Keep, false),
             Chomping::Keep
