@@ -2205,6 +2205,59 @@ mod tests {
     }
 
     #[test]
+    fn a_note_above_an_array_of_tables_item_stays_above_it_and_settles() {
+        // The same withholding, on the shape libFuzzer `toml_roundtrip` crash-969291e0 carried: a `# [`
+        // line above a `[[p]]` header, which this crate's reader hands back on the table *item's* own
+        // leading list rather than on its first member. `write_notated_array` writes that list above
+        // the element and descends with the container's leading slot withheld, so the item keeps the
+        // owner its line already reports and the table itself stays compact.
+        let text = "# [\n\n\n\n\n\n[[p]]\nname = \"a\"\namE = \"b\"\n";
+        let out = to_toml(&from_toml(text).unwrap()).unwrap();
+        assert_eq!(
+            out, "p = [\n  # [\n  {name = \"a\", amE = \"b\"}\n]\n",
+            "the note did not stay above its element: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_above_a_nested_array_element_stays_above_it_and_settles() {
+        // libFuzzer `edit_yaml` crash-dce5f5ed: an outer array holding a nested array that carries a
+        // note of its own. A note above `[` reads back on the array while one inside the brackets
+        // reads back on its first item, so writing both left the second round with an undecorated
+        // inner array - the multi-line layout was dropped and the text moved rather than settling.
+        let mut inner = CustomNode::plain_sequence(vec![
+            CustomNode::plain_scalar("v0"),
+            CustomNode::plain_scalar("2J"),
+        ]);
+        inner.set_leading_comment(Comment {
+            text: "fuzz 155".into(),
+            standalone: true,
+        });
+        let root = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("list"),
+                CustomNode::plain_sequence(vec![
+                    CustomNode::plain_scalar("1 1"),
+                    inner,
+                    CustomNode::plain_scalar("v0"),
+                ]),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "list = [\n  \"1 1\",\n  # fuzz 155\n  [\"v0\", \"2J\"],\n  \"v0\"\n]\n",
+            "the note did not stay above its element: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
     fn an_array_without_notes_keeps_the_compact_form() {
         // The control for the rule above: nothing decorated, nothing reformatted.
         let out = to_toml(&from_toml("arr = [1, 2]\n").unwrap()).unwrap();

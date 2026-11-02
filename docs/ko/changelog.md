@@ -17,6 +17,20 @@ status: new
 
 #### 추가
 
+- **TOML 요소 주석 계열의 나머지 두 형태에 고정 테스트가 붙고, 이 배치의 입력도 코퍼스가 되었다** —
+  2026-10-31 정기 퍼즈 실행이 남긴 `toml_roundtrip` 및 `edit_yaml` 산출물 여섯 개는 이번 릴리스의
+  주석 수정이 해결한 바로 그 주장을 보고한다. 요소 자체가 컨테이너인 배열 요소 위의 `#` 줄이다. 그
+  수정의 부모에서 측정하면 `toml_roundtrip` 세 입력은 두 번째 라운드 출력이 첫 번째와 다르다. 이
+  트리에서는 여섯 개 모두 깨끗하게 재생되므로 여섯 개 모두 보관한다. `former-crash-969291e0.seed`,
+  `former-crash-b750553e.seed`, `former-crash-fe4a2b80.seed`는 `fuzz/seeds/toml_roundtrip`에 있고
+  `cargo nextest`마다 `toml_writer_reaches_a_fixed_point_over_the_seed_corpus`가 재생한다.
+  `former-crash-445ddfff.seed`, `former-crash-450cac9b.seed`, `former-crash-dce5f5ed.seed`는
+  `fuzz/seeds/edit_yaml`에 있고 퍼즈 작업이 재생한다. 이 수정이 해결한 두 형태에는 고정 테스트가
+  없었지만 이제 둘 다 있다.
+  `a_note_above_an_array_of_tables_item_stays_above_it_and_settles`(`[[p]]` 헤더 위의 `# [`는 첫
+  멤버가 아니라 항목 자체로 다시 읽힌다)와
+  `a_note_above_a_nested_array_element_stays_above_it_and_settles` (중첩 배열 자신의 주석은 브래킷
+  위에 남는다).
 - **Python 생성 계층, 잎으로는 이름을 붙일 수 없던 계열을 이제 그린다** — `arbitrary_json`은 잎을
   `None`, `bool`, ±10^12 안의 `int`, 유한한 `float`, `str`으로 제한했다. 무엇이 빠졌는지는 잎을 세면
   나온다. 25,000번의 추출은 잎 270,602개를 만들고, 다섯 종류가 각각 58,064 / 53,396 / 53,251 /
