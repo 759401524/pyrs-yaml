@@ -11791,6 +11791,63 @@ guard's new half covers the inline slot of a *simple* first key, and a container
 slot for either side to read; and only the fuzz job's `-runs=0` replays these seeds, not
 `cargo nextest`.
 
+### (ip) A consuming merge entry took the anchor its value defined (2026-11-02)
+
+libFuzzer `yaml_roundtrip` reported six inputs in one batch. Four are one defect: `to_yaml` emits a
+document this library's own reader refuses, `found unknown anchor`. The other two (`0941667d`,
+`25769705`) replay clean on `main` at 4633a0b3 and are archived as corpus without a claim.
+
+The minimised shape is 15 bytes - `<<: &b` over `  x: *b`. `resolve_merge_keys` deletes the `<<`
+entry and inserts the pairs that entry supplied, so the value node that carried `&b` leaves the tree
+while the pair it contributed still says `*b`. `finish_document` repairs exactly that loss for the
+duplicate-key fold one pass upstream, and the merge pass ran after it with no repair of its own.
+
+`resolve_merge_keys` now reads the consumed entry's own anchor from its key and its value, and
+collects a contributed pair's subtree exactly where that pair is dropped - the mapping owns the
+key (`collect_inline_pairs` and the inherited-anchor path), two sources name the same key (the
+`pending` dedupe), or the mapping's own pair wins (`kept`) - then repairs once the whole pass has
+run. A definition nested in a pair that does reach the tree needs no collection: it travels inside
+the pair. The narrowed form keeps the entry-level read O(1) and pays subtree work only for pairs
+that leave the tree.
+
+The first version of this repair walked every consumed value's subtree and then asked the whole
+document whether a dropped name was used at all. On the enforcing image that read
+`parse_inline_merge` +0.95%, over the 0.50% line, with `parse_anchors` +0.47% and `parse_small`
++0.49% - and `parse_small` holds no `<<`, so the pass returns at `has_merge_key` there and the
+figure is the image's own band rather than this change's.
+
+Both halves are load-bearing by mutation. Dropping the collection reddens
+`a_consumed_merge_entrys_anchor_survives_the_merge` with the crash's own text, `x: *b` and
+`found unknown anchor at char 3`; putting `inline_aliases` back to its value-only walk reddens
+`a_folded_merge_entrys_anchor_survives_the_fold` with `? *b` left in key position, which `IndexMap`
+cannot reach because it hands keys out immutably.
+
+Price, on the WSL host with the baseline's `rustc 1.97.1`, largest of three samples per scenario,
+with the parent tree measured on the same host as the control. On the narrowed form
+`parse_inline_merge` reads 359,733,620 on `main` (+0.63% over the 357,478,819 floor) and 359,993,758
+here (+0.70%); `parse_anchors` reads 268,917,509 (+0.35%) and 269,206,563 (+0.46%). The differential
+is +0.07% and +0.11%, while `parse_small` - whose fixture holds no `<<` either - moved +0.10%
+between the same two runs, so the narrowed form sits inside this host's own band. The walk version
+it replaced read 362,014,443 on `parse_inline_merge` (+1.27% over the floor, +0.63% over its
+control) and 270,358,214 on `parse_anchors` (+0.89%, +0.54%); on the enforcing image the same tree
+read +0.95% and +0.47%. The walk version's run also carried the two local FAILs `load_toml_medium`
++1.87% and `load_toml_long_strings` +3.04%, which are the pair `(ik)` recorded on its base tree at
++1.86% and +3.04%. The local reading cannot answer the enforcing image's number; the head's `ir`
+leg does, and a failure there is met by the refresh dispatch naming the scenario, never a wider
+`tolerance_hint`.
+
+The four failing inputs join the corpus as
+`fuzz/seeds/yaml_roundtrip/former-crash-{a7b68980,72afef34,d336d8b9,e31d0300}.seed` (15, 33, 48 and
+32 bytes), and the two that replay clean on the parent are archived beside them (`0941667d`,
+`25769705`, 41 and 40 bytes) so the batch is whole. `crates/pyrs-yaml-core/tests/anchor_graph.rs`
+walks 135 curated documents, against the 2026-10-20 reading of 102. The matrix counts move by the
+one Rust test and those six seeds, 886 → 887 `#[test]` and 218 → 224 seeds (126 → 132
+`former-crash-*`), written by `quality_matrix.py --write-rows`. What it still cannot see:
+`repair_orphaned_anchors` treats a name as defined when it appears anywhere in the tree, so an
+orphaned definition that precedes an alias while a later re-definition also exists is still not
+inlined - the duplicate-key fold's repair has carried that limit since it landed; and both tests
+assert the emission and its re-parse, not the intermediate tree.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

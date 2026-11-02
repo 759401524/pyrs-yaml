@@ -27,8 +27,12 @@
 //! `a_definition_folded_away_from_inside_the_dropped_value_is_still_emitted` in this file. The
 //! gate asks about the tree the read path built; the `edit_yaml` oracle asks about the document
 //! *after* a script, which is why that input cleared the fuzz tier's `-runs=0` replay while this
-//! gate refused it. Measured 2026-10-20: 102 curated `.seed` documents, and 1,131 with the
-//! extension filter widened, walk clean.
+//! gate refused it. Measured 2026-11-02: 135 curated `.seed` documents walk clean, against the
+//! 2026-10-20 reading of 102 — the corpus has taken many seeds since, six of them from the merge
+//! pass's own finding set (`former-crash-{0941667d,25769705,a7b68980,72afef34,d336d8b9,e31d0300}
+//! .seed`). Four of those six failed on the parent tree, a consuming `<<` entry having taken the
+//! anchor its value node held; the other two were already clean there and are corpus only.
+//! Widening the extension filter walked 1,131 on 2026-10-20.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
