@@ -82,20 +82,24 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// first use it lands on re-defines the name and a self-referential definition (whose
 /// inlined `*name` would otherwise dangle) emits a valid nested anchor.
 pub(crate) fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNode)>) {
-    if orphans.is_empty() {
-        return;
-    }
-    let mut defined = Vec::new();
-    collect_anchor_names(root, &mut defined);
-    let mut replacements = NodeMap::default();
-    for (name, node) in orphans {
-        if defined.contains(&name) || replacements.contains_key(&name) {
-            continue;
+    let mut pending = orphans;
+    while !pending.is_empty() {
+        let mut defined = Vec::new();
+        collect_anchor_names(root, &mut defined);
+        let mut replacements = NodeMap::default();
+        for (name, node) in pending.drain(..) {
+            if defined.contains(&name) || replacements.contains_key(&name) {
+                continue;
+            }
+            replacements.insert(name, node);
         }
-        replacements.insert(name, node);
-    }
-    if !replacements.is_empty() {
-        inline_aliases(root, &replacements);
+        if replacements.is_empty() {
+            return;
+        }
+        // A rewrite can displace a sibling pair (see `fold_rewritten_key`), and the definitions that
+        // pair carried may be the only ones their aliases have left — so the next round inlines
+        // those too. Each round replaces at least one alias, so this terminates.
+        pending = inline_aliases(root, &replacements);
     }
 }
 
@@ -158,29 +162,81 @@ fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
 /// walk runs only for a document whose fold dropped an anchor definition, and the
 /// shape that reached it (libFuzzer `yaml_roundtrip` crash-a7b68980) emitted `? *b`
 /// with no `&b` anywhere, which its own reader refused.
-fn inline_aliases(node: &mut CustomNode, replacements: &NodeMap<String, CustomNode>) {
+fn inline_aliases(
+    node: &mut CustomNode,
+    replacements: &NodeMap<String, CustomNode>,
+) -> Vec<(String, CustomNode)> {
     if let Some(replacement) = match node {
         CustomNode::Alias { name } => replacements.get(name).cloned(),
         _ => None,
     } {
         *node = replacement;
-        return;
+        return Vec::new();
     }
+    let mut displaced = Vec::new();
     match node {
         CustomNode::Mapping { pairs, .. } => {
             let old = core::mem::take(pairs);
             for (mut key, mut value) in old {
-                inline_aliases(&mut key, replacements);
-                inline_aliases(&mut value, replacements);
+                let rewritten = matches!(key, CustomNode::Alias { .. });
+                displaced.append(&mut inline_aliases(&mut key, replacements));
+                displaced.append(&mut inline_aliases(&mut value, replacements));
+                if rewritten {
+                    fold_rewritten_key(pairs, &mut key, &mut displaced);
+                }
                 pairs.insert(key, value);
             }
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
-                inline_aliases(item, replacements);
+                displaced.append(&mut inline_aliases(item, replacements));
             }
         }
         _ => {}
+    }
+    displaced
+}
+
+/// Fold the sibling a key rewritten from an alias now duplicates.
+///
+/// The receiver folds a mapping's null key and merge key as the pairs are inserted, because the
+/// writer spells both spellings alike and a re-read keeps only the last of them. A key only becomes
+/// one of those *after* the rewrite, and the rebuild in `inline_aliases` re-inserts it without that
+/// fold: `? *b` inlined into an anchored null then stood beside the mapping's own `:` key, the
+/// writer emitted both as `~:`, and the `~: ~` line vanished on the next read (libFuzzer
+/// `yaml_roundtrip` crash-49f44d18). Notes and the dropped pair's definitions are handled the way
+/// the receiver handles them, so folding here loses neither.
+fn fold_rewritten_key(
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    key: &mut CustomNode,
+    displaced: &mut Vec<(String, CustomNode)>,
+) {
+    let is_merge = is_merge_key(key);
+    if !is_merge && !is_null_key(key) {
+        return;
+    }
+    let duplicate = pairs.keys().position(|k| {
+        if is_merge {
+            is_merge_key(k)
+        } else {
+            is_null_key(k)
+        }
+    });
+    let Some(index) = duplicate else {
+        return;
+    };
+    let mut notes: Vec<Comment> = Vec::new();
+    if let Some((dropped_key, dropped_value)) = pairs.shift_remove_index(index) {
+        for carried in [dropped_key, dropped_value] {
+            notes.extend(carried.leading_comments().iter().cloned());
+            collect_anchored_nodes(&carried, displaced);
+            if let Some(inline) = carried.comment().filter(|c| !c.standalone) {
+                notes.push(inline.clone());
+            }
+        }
+    }
+    for note in notes {
+        key.push_leading_comment(note);
     }
 }
 

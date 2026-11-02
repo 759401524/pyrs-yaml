@@ -767,3 +767,40 @@ fn a_key_note_behind_a_tag_only_line_settles_in_one_round() {
         );
     }
 }
+
+/// libFuzzer `yaml_roundtrip` crash-49f44d18 (issue #739): an alias standing as a key is inlined
+/// into the anchored null a folded merge entry left behind, and that null key then sits beside the
+/// mapping's own null key.
+///
+/// `<<: &b` defines an anchor on a null the duplicate-merge fold drops, `<<: {a}` supplies the
+/// merge, `:` is the mapping's null key and `? *b` names the dropped definition from key position.
+/// `repair_orphaned_anchors` inlines it there, so one mapping ends up holding two null keys —
+/// though the reader keeps exactly one (the last) and folds the other away on the next read. The
+/// first emission therefore was not its own fixed point: `~: ~` vanished on round two.
+#[test]
+fn an_inlined_alias_key_folds_into_the_null_key_it_lands_on() {
+    for (src, emitted) in [
+        // libFuzzer `yaml_roundtrip` crash-49f44d18, 33 bytes, whose `?  ` fragment is the
+        // mapping's own null key and whose `? *b` is the alias key.
+        (
+            "<<: &b\n<<:\r\n\n\n ?  !? |2 \r?  \n? *b",
+            "!? \"\": ~\n&b ~: ~\n",
+        ),
+        // The same mechanism hand-reduced to 20 bytes, where the merge value is a flow mapping.
+        ("<<: &b\n<<: {a}\n:\n? *b\n", "a: ~\n&b ~: ~\n"),
+        ("<<: &b\n<<: {a: 1}\n:\n? *b", "a: 1\n&b ~: ~\n"),
+    ] {
+        let one = emit(src);
+        assert_eq!(one, emitted, "the alias key folds where it lands");
+        assert_eq!(
+            one.matches("~: ~").count(),
+            1,
+            "one mapping holds one null key: {one:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}

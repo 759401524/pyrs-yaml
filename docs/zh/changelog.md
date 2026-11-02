@@ -397,6 +397,16 @@ status: new
 
 #### 修复
 
+- **从别名改写出来的键会就地折叠** — 重复键折叠会丢掉承载某个锚点唯一定义的那个 pair，并把该节点交给
+  `repair_orphaned_anchors`，由它内联进所有剩余的 `*name`，键位置也算在内。重建时用裸的
+  `pairs.insert` 把内联节点插回去，于是本来已有自己 null 键的映射多出了第二个，两者都写作 `~:`。
+  libFuzzer `yaml_roundtrip` crash-49f44d18（33 字节）第一轮写出 `!? "": ~` / `~: ~` / `&b ~: ~`，重
+  读时前一个 null 键被折叠掉，于是第二轮不同。现在重建也执行接收端的那套折叠——保留最后一个 pair，被
+  丢 pair 的 note 重新挂到幸存者上——并把该 pair 携带的锚定节点排入下一轮内联，因为替换它可能让兄弟锚
+  点失去自己最后的定义。`an_inlined_alias_key_folds_into_the_null_key_it_lands_on` 固定该输入与两个
+  人手缩减的形状（22 与 24 字节）；把重复查找换成 `None` 会以逐字的两轮位移让它变红。该次运行另外两
+  个输入重放干净，也一并加入语料：`former-crash-49f44d18.seed`、`former-crash-663b71ab.seed`、
+  `former-crash-cf1a63bf.seed`。
 - **值占住行尾槽位时，首条目的 note 升到 marker 之上** — 在 `?` marker 体内，写端只在容器写出锚点或
   标签 header 时才把首条目键上的 note 提到 marker 之上，因为读端会把该条目上方的 note 记到 *key
   mapping* 上，于是第二轮无论如何都会继续上提。只要键 note 还能留在条目自己那一行，两者就一致；当值
