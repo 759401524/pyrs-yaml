@@ -608,3 +608,87 @@ fn a_note_on_an_empty_container_value_settles_in_one_round() {
         "not a fixed point in one round: {one:?} -> {again:?}"
     );
 }
+
+/// The 2026-10-31 report's marker-header shape: a note under an `?`-keyed body's anchor/tag header
+/// belongs above the marker, and the first emission already says so.
+///
+/// libFuzzer `yaml_roundtrip` crash-1bbd4d7f, minimized to the 12 bytes `? &b` above an indented
+/// `? > #I`. The placement landed with the marker-note work that followed the run, and no named
+/// test owned these five shapes, so a later rule that moves a marker body's notes had nothing to
+/// break here; the input is archived as a `former-crash-*` seed for the fuzz job as well.
+#[test]
+fn a_note_under_a_marker_header_settles_above_the_marker() {
+    for (src, emitted, notes) in [
+        ("? &b\n ? > #I", "# I\n?\n  &b \n  \"\": ~\n:\n  ~\n", 1),
+        ("? !t\n ? > #I", "# I\n?\n  !t \n  \"\": ~\n:\n  ~\n", 1),
+        (
+            "? &b !t\n ? > #I",
+            "# I\n?\n  &b !t \n  \"\": ~\n:\n  ~\n",
+            1,
+        ),
+        (
+            "? &b\n # I\n ? k > #J",
+            "# I\n# J\n?\n  &b \n  k >: ~\n:\n  ~\n",
+            2,
+        ),
+        ("?\n ? > #I", "?\n  \"\": ~  # I\n:\n  ~\n", 1),
+    ] {
+        let one = emit(src);
+        assert_eq!(
+            one, emitted,
+            "{src:?} did not emit the hoisted spelling: {one:?}"
+        );
+        assert_eq!(
+            one.matches("# ").count(),
+            notes,
+            "the notes are placed, not copied or lost: {one:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}
+
+/// libFuzzer `yaml_roundtrip` crash-2c76568e: the same tag-only line, with a key's inline note
+/// arriving right after it.
+///
+/// `bg: !` writes no scalar text, so the pair's line stays open until something closes it by
+/// inserting the value's null text; `close_pending_tag_line` does that from `write_note_line`. Those
+/// bytes move the pair line right, and the offset remembered as that line's start had been taken
+/// before the leading stack was written — so the key's inline note, which cannot take the tail slot
+/// because its value carries one, was placed "above the pair" at a stale byte position, i.e. inside
+/// the previous line: `bg: !: # *b` / `~` / `# *b` / `<<: …`. A reader refuses that text outright
+/// (`simple key expected ':'`), which is worse than the one-round drift the tag-only line usually
+/// costs. Recapturing the line start after the leading stack — the same fix the `?`-marker branch
+/// needs — puts the note on a line of its own, and the first emission both re-parses and settles.
+#[test]
+fn a_key_note_behind_a_tag_only_line_settles_in_one_round() {
+    for (src, emitted) in [
+        (
+            ": !\n<<: #*\n<<: #b\n :# #!\n",
+            "~: ! ~\n# *\n# b\n<<: \":#\"  # !\n",
+        ),
+        (
+            "bg: !:\t\n<<: #*b\n  :rue999999999: !:\t\n<<: #*b\n  :rue99999999999999999999999999999?  ? 0&3# #!!\"#~? 0?  &3# #!!\"#~",
+            "bg: !: ~\n# *b\n# *b\n<<: \":rue99999999999999999999999999999?  ? 0&3#\"  # !!\"#~? 0?  &3# #!!\"#~\n",
+        ),
+    ] {
+        let one = emit(src);
+        assert_eq!(one, emitted, "the note has to sit on a line of its own");
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+        assert_eq!(
+            one.lines()
+                .filter(|line| line.trim_start().starts_with("# "))
+                .count(),
+            2,
+            "both notes that had to become lines of their own survive; an emission that folds one \
+             is a loss even when it is stable: {one:?}"
+        );
+    }
+}

@@ -37,6 +37,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
   `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
   above its brackets).
+- **A note behind a tag-only line landed inside that line** — `yaml_roundtrip` crash-2c76568e hands
+  the writer a mapping whose first pair is a bare tag (`bg: !`). No scalar text is written for it,
+  so that line stays open until something closes it by inserting the value's null text; the leading
+  note stack of the *next* pair does that from `write_note_line`, and those bytes move the first
+  line right. `crates/pyrs-yaml-core/src/serializer.rs` had remembered that line's start before the
+  stack was written, so the key-note placement — refused the tail slot because its value carries a
+  note of its own — wrote "above the pair" at a stale offset, i.e. inside the previous line:
+  `bg: !: # *b` / `~` / `# *b` / `<<: …`. The engine's own reader refuses that text outright
+  (`simple key expected ':'`), a stronger failure than the one-round drift a tag-only line normally
+  costs. Both key branches recapture the line start after the leading stack now.
+  `a_key_note_behind_a_tag_only_line_settles_in_one_round` pins the 25-byte minimised input and the
+  archived 112-byte crash, byte for byte: each first emission re-parses, settles on the second, and
+  keeps both notes as lines of their own; the control — the simple-key recapture put back to the
+  stale offset — reddens it with exactly the pre-fix bytes. The `?`-marker branch takes the same
+  recapture for the same invariant, and no measured case reaches it, because the key-note block is
+  skipped for explicit keys — so this entry does not claim one. The input joins the corpus as
+  `former-crash-2c76568e.seed`, charged by the `note_survival` walk from now on. Priced on the
+  pinned `rustc 1.97.1` in WSL, none of the six YAML writer scenarios crosses the 0.5 % line —
+  `serialize_anchors` −0.24 %, `serialize_medium` −0.22 %, `serialize_note_flow` −0.06 % — so the
+  two `len()` stores are not measurable. The two TOML reader scenarios that this host reads
+  1.65–2.99 % over their flat-table floors read the same way on the parent tree, which this change
+  cannot reach.
+- **The scheduled run's last open input is corpus, and its five shapes are pinned** — libFuzzer
+  `yaml_roundtrip` crash-1bbd4d7f reduced to twelve bytes: `? &b` above an indented `? > #I`. The
+  note under that marker body's anchor header belongs above the marker, and the writer that landed
+  after the run already puts it there — measured on this tree, all five shapes the family covers
+  write the hoisted spelling on the first round and survive a second. What was missing was a name to
+  break: `a_note_under_a_marker_header_settles_above_the_marker` in
+  `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` asserts each emission, its note count and
+  its round-2 equality, and the `crash-1bbd4d7f` input is archived as a `former-crash-*` seed under
+  `fuzz/seeds/yaml_roundtrip`, so the fuzz job replays it too. No engine change: every shape the
+  family names already settled.
 - **The JSON note-conservation claim reaches the corpus** — `events_replay.rs` charges the two walks
   against each other but compares through `to_json_text`, which forgets comment slots on purpose,
   and `roundtrip_corpus.rs` only asks for a fixed point, so a note the tree kept and the JSONC or
