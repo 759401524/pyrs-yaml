@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Three old fuzz artifacts with no seed and no record enter the corpus** — `fuzz/artifacts/` held
+  `yaml_roundtrip` crash-3528db38 (2026-10-07) and crash-d461a3f2 (2026-10-16) plus `parse_json`
+  crash-331b36ec (2026-10-17) with no `former-crash-*` seed beside them and no mention in any
+  ledger, changelog or commit message, so the corpus tier could not have noticed a regression in
+  any of them. Each replays clean on the current tree — rebuilt `nightly` targets, exit 0 in 3 ms —
+  so nothing here is a live bug, and the three inputs now sit in
+  `fuzz/seeds/{yaml_roundtrip,parse_json}` as `former-crash-3528db38.seed`,
+  `former-crash-d461a3f2.seed` and `former-crash-331b36ec.seed` (5–16 bytes each), which is where
+  the PR tier's `-runs=0` replay reads them. Which change closed each one is not recorded here,
+  because none was: they predate the fix wave that followed, and the archive is the part that can
+  be proved — the target accepts each input today.
 - **The weekly fuzz sampler has a consumer: one issue per target** — the aggregate job wrote its
   table to `$GITHUB_STEP_SUMMARY` and printed a `::warning::`, and nothing read either. The five
   scheduled runs from 2026-10-03 to 2026-10-31 all failed and all carried crash inputs (39 distinct
