@@ -321,7 +321,9 @@ def test_the_refusal_is_wired_into_the_update_path():
     assert following, "the enforcing path moved; re-derive the slice below"
     update_branch = source[source.index("if args.update:") : following.start()]
     assert "drift_report" in update_branch, "the check runs after the file is already written"
-    assert "BASELINE.write_text" in update_branch
+    # `write_bytes`: the baseline is LF-exact, and `write_text` cannot say `newline="\n"` on the 3.8
+    # floor the script has to run on.
+    assert "BASELINE.write_bytes(" in update_branch
 
 
 def test_two_builds_are_never_reported_as_the_same_code():

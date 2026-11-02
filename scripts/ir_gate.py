@@ -798,7 +798,7 @@ def main() -> int:
             "scenarios": final,
             "image_floors": rows,
         }
-        BASELINE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        BASELINE.write_bytes((json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"))
         print(f"wrote {BASELINE.relative_to(REPO)} ({len(final)} scenarios)")
         return 0
 

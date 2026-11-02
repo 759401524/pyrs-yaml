@@ -59,9 +59,8 @@ def archive(root: Path, target: str, inputs, findings) -> Path:
     for name in inputs:
         (collected / name).write_bytes(b"x")
     if findings:
-        (collected / "findings.tsv").write_text(
-            "".join(f"{sig}\t{name}\n" for sig, name in findings), encoding="utf-8", newline="\n"
-        )
+        rows = "".join(f"{sig}\t{name}\n" for sig, name in findings)
+        (collected / "findings.tsv").write_bytes(rows.encode("utf-8"))
     return root / "crashes"
 
 

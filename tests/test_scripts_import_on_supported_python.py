@@ -41,6 +41,11 @@ FLOOR = (3, 8)
 # names one API with a documented first release; every one of them is reachable in this
 # repository's own history or in the standard library changelog.
 #
+# The three call entries allow one level of nesting inside the argument list, because `[^)]*` stops
+# at the first `)` and that is a paren the call itself opened: `.write_text("".join(rows),
+# newline="\n")` answered nothing while it reddened four matrix legs in November 2026. A pattern
+# that cannot see the shape it was written for is worse than no pattern.
+#
 # Two entries were rejected as written, and the reason is the lesson of this list: a pattern that
 # collides with the code it polices is worse than no pattern, because the fix is an exemption and the
 # exemptions outlive the API. Measured here, `\.walk\(\)` answered seven findings for this project's
@@ -48,13 +53,13 @@ FLOOR = (3, 8)
 # `typing_extensions.override` shim this repository standardises on - legal on 3.8, so the entry
 # below names the import that actually breaks instead of the identifier that is everywhere.
 TOO_NEW_FOR_THE_FLOOR = [
-    (r"\.write_text\([^)]*\bnewline=", "Path.write_text with the newline keyword", (3, 10)),
-    (r"\.read_text\([^)]*\bnewline=", "Path.read_text with the newline keyword", (3, 13)),
+    (r"\.write_text\((?:[^()]|\([^()]*\))*\bnewline=", "Path.write_text with the newline keyword", (3, 10)),
+    (r"\.read_text\((?:[^()]|\([^()]*\))*\bnewline=", "Path.read_text with the newline keyword", (3, 13)),
     (r"\.removeprefix\(|\.removesuffix\(", "str.removeprefix / str.removesuffix", (3, 9)),
     (r"\bis_relative_to\(", "Path.is_relative_to", (3, 9)),
     (r"\brandbytes\(", "random.randbytes", (3, 9)),
     (r"\bfunctools\.cache\b", "the functools.cache decorator", (3, 9)),
-    (r"\bzip\([^)]*\bstrict=", "zip with the strict keyword", (3, 10)),
+    (r"\bzip\((?:[^()]|\([^()]*\))*\bstrict=", "zip with the strict keyword", (3, 10)),
     (r"\.bit_count\(", "int.bit_count", (3, 10)),
     (r"\bdatetime\.UTC\b", "the datetime.UTC alias", (3, 11)),
     (r"\bStrEnum\b", "enum.StrEnum", (3, 11)),
@@ -165,15 +170,17 @@ def test_the_scan_fires_on_every_shape_it_is_about():
     """
     fixture = "\n".join(
         [
-            'path.write_text(body, encoding="utf-8", newline="\\n")',
-            'path.read_text(encoding="utf-8", newline="")',
+            # The hard shape, not the flat one: a call of its own inside the arguments closes a paren
+            # before the keyword, on a line the keyword does not start on.
+            'path.write_text(\n    "".join(rows), encoding="utf-8", newline="\\n"\n)',
+            'path.read_text(\n    "".join(rows), encoding="utf-8", newline=""\n)',
             'name.removeprefix("x")',
             'name.removesuffix("y")',
             "path.is_relative_to(root)",
             "random.randbytes(8)",
             "@functools.cache",
             "value.bit_count()",
-            "zip(left, right, strict=True)",
+            'zip(left.split(","), right, strict=True)',
             "datetime.UTC",
             "enum.StrEnum",
             "except* as ExceptionGroup:",
