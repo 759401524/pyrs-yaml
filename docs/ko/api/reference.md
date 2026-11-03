@@ -18,7 +18,7 @@ status: new
 YAML 문자열 또는 바이트를 파싱하여 `YamlDocument`로 변환합니다.
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **매개변수:**
@@ -27,7 +27,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `resolve_merges` — 파싱 후 병합 키 (`<<: *alias`)를 해석할지 여부 (기본값: `True`)
 - `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
 - `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
-- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `None`, `"as_is"`와 동일)
+- `duplicate_keys` — 하나의 매핑에 YAML 이 같은 키로 세는 키가 둘 있을 때 읽는 쪽이 어떻게 행동하는지 (기본값: `"as_is"`). `"as_is"` 는 신원 등급마다 그동안과 같은 답을 준다: 스칼라 충돌과 일반/인용 표기의 충돌은 거부되고, 두 번째 null 키와 병합 키는 첫 자리에 접히며, 태그는 모든 값에서 두 키를 갈라 놓는다. `"error"` 는 기본이 면제하는 등급도 거부한다. `"last_wins"`는 나중 쌍에 조용히 접는데, 이것이 `allow_duplicate_keys=True` 의 뜻이다. `"first_wins"` 는 앞선 쌍의 값을 지키고, 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮긴다. 이 항목과 `allow_duplicate_keys` 를 함께 넘기면 우선순위로 정하지 않고 거부한다.
 - `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **반환값:** 파싱된 YAML를 포함하는 `YamlDocument`
@@ -54,7 +55,7 @@ doc = pyrs_yaml.parse(
 YAML 파일을 파싱합니다.
 
 ```python
-parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **매개변수:**
@@ -79,7 +80,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 문자열에서 여러 YAML 문서를 파싱합니다.
 
 ```python
-parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[YamlDocument]
 ```
 
 **매개변수:**
@@ -88,7 +89,8 @@ parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "cor
 - `resolve_merges` — 파싱 후 병합 키 (`<<: *alias`)를 해석할지 여부 (기본값: `True`)
 - `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
 - `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
-- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `None`, `"as_is"`와 동일)
+- `duplicate_keys` — 하나의 매핑에 YAML 이 같은 키로 세는 키가 둘 있을 때 읽는 쪽이 어떻게 행동하는지 (기본값: `"as_is"`). `"as_is"` 는 신원 등급마다 그동안과 같은 답을 준다: 스칼라 충돌과 일반/인용 표기의 충돌은 거부되고, 두 번째 null 키와 병합 키는 첫 자리에 접히며, 태그는 모든 값에서 두 키를 갈라 놓는다. `"error"` 는 기본이 면제하는 등급도 거부한다. `"last_wins"`는 나중 쌍에 조용히 접는데, 이것이 `allow_duplicate_keys=True` 의 뜻이다. `"first_wins"` 는 앞선 쌍의 값을 지키고, 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮긴다. 이 항목과 `allow_duplicate_keys` 를 함께 넘기면 우선순위로 정하지 않고 거부한다.
 - `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **반환값:** `YamlDocument` 객체 목록
@@ -106,7 +108,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML를 파싱하여 네이티브 Python 타입을 반환합니다.
 
 ```python
-safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> dict[Any, Any] | list[Any]
 ```
 
 **매개변수:**
@@ -114,7 +116,8 @@ safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_d
 - `yaml` — `str` 또는 `bytes` YAML 콘텐츠
 - `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
 - `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
-- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `None`, `"as_is"`와 동일)
+- `duplicate_keys` — 하나의 매핑에 YAML 이 같은 키로 세는 키가 둘 있을 때 읽는 쪽이 어떻게 행동하는지 (기본값: `"as_is"`). `"as_is"` 는 신원 등급마다 그동안과 같은 답을 준다: 스칼라 충돌과 일반/인용 표기의 충돌은 거부되고, 두 번째 null 키와 병합 키는 첫 자리에 접히며, 태그는 모든 값에서 두 키를 갈라 놓는다. `"error"` 는 기본이 면제하는 등급도 거부한다. `"last_wins"`는 나중 쌍에 조용히 접는데, 이것이 `allow_duplicate_keys=True` 의 뜻이다. `"first_wins"` 는 앞선 쌍의 값을 지키고, 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮긴다. 이 항목과 `allow_duplicate_keys` 를 함께 넘기면 우선순위로 정하지 않고 거부한다.
 - `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **다음과 동일:** PyYAML의 `yaml.safe_load()`
@@ -130,7 +133,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 여러 YAML 문서를 파싱합니다.
 
 ```python
-safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **매개변수:**
@@ -138,7 +141,8 @@ safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 - `yaml` — `str` 또는 `bytes` YAML 콘텐츠
 - `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
 - `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
-- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `None`, `"as_is"`와 동일)
+- `duplicate_keys` — 하나의 매핑에 YAML 이 같은 키로 세는 키가 둘 있을 때 읽는 쪽이 어떻게 행동하는지 (기본값: `"as_is"`). `"as_is"` 는 신원 등급마다 그동안과 같은 답을 준다: 스칼라 충돌과 일반/인용 표기의 충돌은 거부되고, 두 번째 null 키와 병합 키는 첫 자리에 접히며, 태그는 모든 값에서 두 키를 갈라 놓는다. `"error"` 는 기본이 면제하는 등급도 거부한다. `"last_wins"`는 나중 쌍에 조용히 접는데, 이것이 `allow_duplicate_keys=True` 의 뜻이다. `"first_wins"` 는 앞선 쌍의 값을 지키고, 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮긴다. 이 항목과 `allow_duplicate_keys` 를 함께 넘기면 우선순위로 정하지 않고 거부한다.
 - `honor_version_directive` — 명시된 `%YAML` 지시문에 대한 버전 협상 (기본값: `False`). `True`이면 `%YAML 1.1`을 선언한 문서를 YAML 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 여전히 우선합니다.
 
 **다음과 동일:** PyYAML의 `yaml.safe_loads()`

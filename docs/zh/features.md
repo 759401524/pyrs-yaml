@@ -111,6 +111,8 @@ doc.get("key")  # "second"
 
 该开关适用于 `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs` 以及 `YAML(allow_duplicate_keys=True)`。往返模式下，允许重复键的文档序列化时输出最后一个出现的键值对。
 
+要直接点名这个选择，`duplicate_keys` 可取 `"as_is"`（默认，即上面按类别给出的答案）、`"error"`（每一类都拒绝，包括默认会折叠的空键与合并键）、`"last_wins"`（也就是 `allow_duplicate_keys=True` 的意思），或 `"first_wins"`（保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键）。两种写法是并列的替代，不是叠加的层次：同时传入会被拒绝。每个读取 YAML 的命令行子命令也收同一个选择，写作 `--duplicate-keys`。
+
 ## 序列化选项
 
 `to_yaml_with_options()` 控制缩进与换行：

@@ -111,6 +111,8 @@ doc.get("key")  # "second"
 
 このスイッチは `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs`、`YAML(allow_duplicate_keys=True)` に適用されます。往復モードでは、重複キーが許可されたドキュメントは最後のキーと値のペアを出力してシリアライズされます。
 
+選び方を名前で示すのが `duplicate_keys` です。`"as_is"`（既定、上のクラス別の答え）、`"error"`（既定が畳む null キーとマージキーも含めてすべて拒否）、`"last_wins"`（`allow_duplicate_keys=True` の意味）、`"first_wins"`（先のペアの値を保ち、畳み込まれる側のコメントとアンカー定義は生き残りのキーへ引き継ぐ）から選びます。二つの書き方は層ではなく並列の代替なので、同時に渡すと拒否されます。YAML を読み込む CLI サブコマンドもすべて同じ選び方を受け取ります（`--duplicate-keys`）。
+
 ## シリアライズオプション
 
 `to_yaml_with_options()` はインデントと行折り返しを制御します：

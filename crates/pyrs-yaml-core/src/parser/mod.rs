@@ -60,6 +60,42 @@ pub(crate) fn is_null_key(key: &CustomNode) -> bool {
 fn is_merge_key(key: &CustomNode) -> bool {
     matches!(key, CustomNode::Scalar { value, .. } if value.as_ref() == "<<")
 }
+/// What the reader does when one mapping holds two keys that YAML counts as one key.
+///
+/// The ambiguity is real rather than hypothetical: the same shape answers three different ways
+/// today, split by the identity class of the colliding keys, and a caller could only choose
+/// between two of those behaviours with a boolean. `AsIs` is that boolean's `false`, `LastWins`
+/// is its `true`, and the two new values name what no spelling of the boolean could ask for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DuplicateKeys {
+    /// Answer class by class, which is what this reader has always done: two scalar keys of one
+    /// value are refused, a second null or merge key folds onto the first, and spellings YAML
+    /// counts as distinct keys (`!base 0set` beside `0set`) stay separate pairs.
+    #[default]
+    AsIs,
+    /// Refuse every class, including the null and merge keys the default exempts. A document
+    /// that parses under `AsIs` without a duplicate still parses here; only the collisions differ.
+    Error,
+    /// Keep the last pair and refuse nothing. This is `allow_duplicate_keys = true`.
+    LastWins,
+    /// Keep the first pair's value and refuse nothing. The dropped pair keeps travelling: its
+    /// notes are re-homed onto the surviving key and any anchor it defined is collected for the
+    /// orphan repair, so a fold cannot silently delete content.
+    FirstWins,
+}
+
+impl DuplicateKeys {
+    /// Whether a collision is reported at all. The two quiet spellings differ in direction:
+    /// `LastWins` lets the incoming pair take the slot, `FirstWins` keeps the one already in it.
+    pub fn refuses(self) -> bool {
+        matches!(self, Self::AsIs | Self::Error)
+    }
+
+    /// Whether the pair already in the map keeps its value and the incoming one is folded away.
+    pub fn keeps_first(self) -> bool {
+        matches!(self, Self::FirstWins)
+    }
+}
 
 /// Inline the nodes that defined anchors the duplicate-key fold removed.
 ///
@@ -256,7 +292,7 @@ fn fold_rewritten_key(
 ///
 /// Parse a YAML string into a CustomNode AST using granit-parser
 pub fn parse(yaml: &str, schema: impl Into<Schema>) -> Result<CustomNode, ParseError> {
-    parse_with_options(yaml, true, schema, 1000, false)
+    parse_with_options(yaml, true, schema, 1000, DuplicateKeys::default())
 }
 
 /// Whether a granit comment placement denotes a standalone (own-line)
@@ -320,10 +356,10 @@ pub(crate) fn line_break_between(text: &str, node_end: usize, comment_byte: usiz
 fn load_ast<'a>(
     yaml: &'a str,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
     collect_documents: bool,
 ) -> Result<AstReceiver<'a>, ParseError> {
-    let mut receiver = AstReceiver::new(yaml, max_depth, allow_duplicate_keys);
+    let mut receiver = AstReceiver::new(yaml, max_depth, duplicate_keys);
     receiver.collect_documents = collect_documents;
     let mut parser = SaphyrParser::new_from_str(yaml);
     parser
@@ -367,16 +403,9 @@ pub fn parse_with_options(
     resolve_merges: bool,
     schema: impl Into<Schema>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 ) -> Result<CustomNode, ParseError> {
-    Ok(parse_document(
-        yaml,
-        resolve_merges,
-        schema,
-        max_depth,
-        allow_duplicate_keys,
-    )?
-    .node)
+    Ok(parse_document(yaml, resolve_merges, schema, max_depth, duplicate_keys)?.node)
 }
 
 /// A parsed document together with the version its `%YAML` directive declared.
@@ -406,7 +435,7 @@ pub fn parse_document(
     resolve_merges: bool,
     schema: impl Into<Schema>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 ) -> Result<ParsedDocument, ParseError> {
     let _schema = schema.into();
     // Handle empty YAML - by YAML's own vocabulary. `str::trim` is Unicode-based
@@ -420,7 +449,7 @@ pub fn parse_document(
         });
     }
 
-    let mut receiver = load_ast(yaml, max_depth, allow_duplicate_keys, false)?;
+    let mut receiver = load_ast(yaml, max_depth, duplicate_keys, false)?;
     let has_merge_key = receiver.has_merge_key;
     let version = receiver.document_version.take();
 
@@ -451,7 +480,7 @@ pub fn parse_document(
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
 pub fn parse_all(yaml: &str, schema: impl Into<Schema>) -> Result<Vec<CustomNode>, ParseError> {
-    parse_all_with_options(yaml, true, schema, 1000, false)
+    parse_all_with_options(yaml, true, schema, 1000, DuplicateKeys::default())
 }
 
 /// 解析包含多个 YAML 文档的字符串，支持选项。
@@ -460,18 +489,14 @@ pub fn parse_all_with_options(
     resolve_merges: bool,
     _schema: impl Into<Schema>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 ) -> Result<Vec<CustomNode>, ParseError> {
-    Ok(parse_all_documents(
-        yaml,
-        resolve_merges,
-        _schema,
-        max_depth,
-        allow_duplicate_keys,
-    )?
-    .into_iter()
-    .map(|doc| doc.node)
-    .collect())
+    Ok(
+        parse_all_documents(yaml, resolve_merges, _schema, max_depth, duplicate_keys)?
+            .into_iter()
+            .map(|doc| doc.node)
+            .collect(),
+    )
 }
 
 /// 解析多文档流，并报告每个文档各自的 `%YAML` 指令。
@@ -483,7 +508,7 @@ pub fn parse_all_documents(
     resolve_merges: bool,
     schema: impl Into<Schema>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 ) -> Result<Vec<ParsedDocument>, ParseError> {
     let _schema = schema.into();
     // Handle empty YAML (same YAML-blank rule as `parse`; see crash-512814).
@@ -491,7 +516,7 @@ pub fn parse_all_documents(
         return Ok(Vec::new());
     }
 
-    let mut receiver = load_ast(yaml, max_depth, allow_duplicate_keys, true)?;
+    let mut receiver = load_ast(yaml, max_depth, duplicate_keys, true)?;
     let has_merge_key = receiver.has_merge_key;
 
     if receiver.documents.is_empty() {
@@ -752,8 +777,8 @@ struct AstReceiver<'a> {
     max_depth: usize,
     /// Set to true when the maximum nesting depth is exceeded
     max_depth_exceeded: bool,
-    /// When false, duplicate mapping keys cause a parse error
-    allow_duplicate_keys: bool,
+    /// What the reader does with two keys that YAML counts as one.
+    duplicate_keys: DuplicateKeys,
     /// Stored duplicate key error (since on_event can't return Result)
     duplicate_key_error: Option<ParseError>,
     /// Anchors defined by entries the duplicate-key fold removed, paired with the node
@@ -810,6 +835,93 @@ fn note_scalar_key(seen: &mut SeenValueKeys, key: &Arc<str>) -> bool {
 #[cfg(not(feature = "std"))]
 fn note_scalar_key(seen: &mut SeenValueKeys, key: &Arc<str>) -> bool {
     seen.insert(Arc::clone(key), ()).is_none()
+}
+
+/// The name a duplicate is reported under: a scalar by its value, anything else by its debug form.
+fn shown_key(key: &CustomNode) -> String {
+    match key {
+        CustomNode::Scalar { value, .. } => value.to_string(),
+        k => format!("{k:?}"),
+    }
+}
+
+/// Move what a folded-away pair holds onto the key that survives the fold, and register every
+/// anchor it defined as an orphan.
+///
+/// Both directions need this: `as_is`, `error` and `last_wins` keep the incoming pair and drop the
+/// one already in the map, `first_wins` keeps the slot and drops the incoming pair. A lost note is
+/// silent and stable, so only the fuzz tier's note-survival oracle would see it; a lost anchor
+/// definition becomes text this library's own reader refuses.
+fn carry_folded(
+    dropped: &[&CustomNode],
+    survivor: &mut CustomNode,
+    orphaned: &mut Vec<(String, CustomNode)>,
+) {
+    for carried in dropped {
+        for note in carried.leading_comments() {
+            survivor.push_leading_comment(note.clone());
+        }
+        collect_anchored_nodes(carried, orphaned);
+        if let Some(inline) = carried.comment().filter(|c| !c.standalone) {
+            survivor.push_leading_comment(inline.clone());
+        }
+    }
+}
+
+/// Return the pair at `index` to the slot it came from after carrying what the folded-away side
+/// held onto its key.
+///
+/// `IndexMap` will not hand out `&mut K`, so the survivor is lifted, carried onto, and put back at the
+/// index it came from - the mapping's order is the promise that decides the rebuild.
+#[inline(never)]
+fn fold_onto_slot(
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    index: usize,
+    dropped: &[&CustomNode],
+    orphaned: &mut Vec<(String, CustomNode)>,
+) {
+    if let Some((mut survivor, kept)) = pairs.shift_remove_index(index) {
+        carry_folded(dropped, &mut survivor, orphaned);
+        pairs.insert_before(index, survivor, kept);
+    }
+}
+
+/// Fold a repeat of one key onto the pair already in the map, keeping that earlier pair's value.
+///
+/// The body is deliberately outside `push_node`: the default policy never reaches it, and inlined it
+/// every pair of every document paid for the code size.
+#[inline(never)]
+fn fold_keeping_first(
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    key: CustomNode,
+    node: CustomNode,
+    seen_value_keys: &mut SeenValueKeys,
+    orphaned: &mut Vec<(String, CustomNode)>,
+) {
+    // The scalar and emitted-value identities are the same tests the collision path runs, with the
+    // direction reversed: the pair already in the map keeps its value and this one is carried onto it.
+    let mut value_hit = false;
+    if let CustomNode::Scalar { value, meta, .. } = &key
+        && meta.tag().is_none()
+    {
+        value_hit = !note_scalar_key(seen_value_keys, value);
+    }
+    let mut slot = pairs.get_index_of(&key);
+    if slot.is_none() && value_hit {
+        // Same identity the value set tracks: an untagged scalar of one value.
+        if let CustomNode::Scalar { value, .. } = &key {
+            slot = pairs.keys().position(|k| {
+                matches!(k, CustomNode::Scalar { value: seen, meta, .. }
+                    if meta.tag().is_none() && seen == value)
+            });
+        }
+    }
+    match slot {
+        Some(index) => fold_onto_slot(pairs, index, &[&key, &node], orphaned),
+        None => {
+            pairs.insert(key, node);
+        }
+    }
 }
 
 /// Tagged scalar keys already seen in one mapping, keyed by the tag *and* the
@@ -937,7 +1049,7 @@ fn key_position_text(node: &CustomNode, flow: bool) -> Option<String> {
 /// recurse into itself.
 #[inline(never)]
 fn parse_probe(text: &str) -> Result<CustomNode, ParseError> {
-    parse_with_options(text, false, Schema::Core, 1000, true)
+    parse_with_options(text, false, Schema::Core, 1000, DuplicateKeys::LastWins)
 }
 
 /// The key node the reader builds from `key`'s own written key line.
@@ -1025,7 +1137,7 @@ fn container_guard(state: &ParseState) -> Option<(usize, usize)> {
 }
 
 impl<'a> AstReceiver<'a> {
-    fn new(yaml_text: &'a str, max_depth: usize, allow_duplicate_keys: bool) -> Self {
+    fn new(yaml_text: &'a str, max_depth: usize, duplicate_keys: DuplicateKeys) -> Self {
         let is_ascii = yaml_text.is_ascii();
         Self {
             yaml_text,
@@ -1044,7 +1156,7 @@ impl<'a> AstReceiver<'a> {
             document_ended: false,
             max_depth,
             max_depth_exceeded: false,
-            allow_duplicate_keys,
+            duplicate_keys,
             duplicate_key_error: None,
             orphaned_anchors: Vec::new(),
             has_merge_key: false,
@@ -1317,7 +1429,7 @@ impl<'a> AstReceiver<'a> {
                     );
                     **current_key = Some(node);
                 } else if let Some(mut key) = current_key.take() {
-                    if self.max_depth_exceeded || self.allow_duplicate_keys {
+                    if self.max_depth_exceeded || self.duplicate_keys == DuplicateKeys::LastWins {
                         pairs.insert(key, node);
                     } else if is_null_key(&key) || is_merge_key(&key) {
                         // A YAML mapping holds exactly one null key — and exactly one
@@ -1366,7 +1478,19 @@ impl<'a> AstReceiver<'a> {
                                 }
                             }),
                         };
-                        if let Some(index) = prior {
+                        let kept_first = self.duplicate_keys.keeps_first() && prior.is_some();
+                        if kept_first {
+                            // The pair already in the map keeps its slot, so this one is the
+                            // folded-away side.
+                            if let Some(index) = prior {
+                                fold_onto_slot(
+                                    pairs,
+                                    index,
+                                    &[&key, &node],
+                                    &mut self.orphaned_anchors,
+                                );
+                            }
+                        } else if let Some(index) = prior {
                             // The folded entry takes its comments with it unless they
                             // are re-homed: `: &b #*<CR>:` kept its note on the entry
                             // that the fold removed, so the text vanished from the
@@ -1402,10 +1526,34 @@ impl<'a> AstReceiver<'a> {
                         // Only the null case is tracked; a merge key is rare enough that
                         // the scan above is the whole cost, and tracking it would let a
                         // stale slot mislead the next null fold.
-                        pairs.insert(key, node);
-                        if !is_merge {
-                            *null_key = Some(pairs.len() - 1);
+                        let error_name =
+                            if self.duplicate_keys == DuplicateKeys::Error && prior.is_some() {
+                                // A second null or merge key is the duplicate the default exempts
+                                // because YAML holds exactly one of each; `error` was asked to hear
+                                // about it as well, and the fold still happens so the tree stays
+                                // well-formed for whoever catches the error. Read before the insert,
+                                // which consumes the key.
+                                Some(shown_key(&key))
+                            } else {
+                                None
+                            };
+                        if !kept_first {
+                            pairs.insert(key, node);
+                            if !is_merge {
+                                *null_key = Some(pairs.len() - 1);
+                            }
                         }
+                        if let Some(name) = error_name {
+                            self.duplicate_key_error = Some(ParseError::DuplicateKey(name));
+                        }
+                    } else if self.duplicate_keys.keeps_first() {
+                        fold_keeping_first(
+                            pairs,
+                            key,
+                            node,
+                            seen_value_keys,
+                            &mut self.orphaned_anchors,
+                        );
                     } else {
                         // YAML identifies a key by its *value*: two scalar keys
                         // with the same text collide even when their style,
@@ -1443,10 +1591,7 @@ impl<'a> AstReceiver<'a> {
                                 v.insert(node);
                             }
                             Entry::Occupied(mut o) => {
-                                let key_str = match o.key() {
-                                    CustomNode::Scalar { value, .. } => value.to_string(),
-                                    k => format!("{:?}", k),
-                                };
+                                let key_str = shown_key(o.key());
                                 o.insert(node);
                                 self.duplicate_key_error = Some(ParseError::DuplicateKey(key_str));
                             }
@@ -1860,7 +2005,7 @@ impl<'a> AstReceiver<'a> {
             // finished pair list rather than per key: see `duplicate_tagged_key`.
             // A document with no tag pays the `saw_tag` test and nothing else.
             if self.saw_tag
-                && !self.allow_duplicate_keys
+                && self.duplicate_keys.refuses()
                 && self.duplicate_key_error.is_none()
                 && let Some(key) = duplicate_tagged_key(&pairs)
             {
@@ -1874,7 +2019,7 @@ impl<'a> AstReceiver<'a> {
             // the common leaf - from entering the loop at all.
             if self.saw_container_key
                 && pairs.len() >= 2
-                && !self.allow_duplicate_keys
+                && self.duplicate_keys.refuses()
                 && self.duplicate_key_error.is_none()
                 && let Some(key) = duplicate_complex_key(&pairs, flow_style)
             {
@@ -2082,8 +2227,8 @@ mod tests {
             ("%YAML 1.3\n---\na: 1\n", Some("1.3")),
             ("a: 1\n", None),
         ] {
-            let parsed =
-                parse_document(src, true, YamlSchema::Core, 1000, false).expect("input parses");
+            let parsed = parse_document(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
+                .expect("input parses");
             assert_eq!(parsed.version.as_deref(), want, "{src:?}");
             assert_eq!(
                 parsed.node,
@@ -2105,7 +2250,7 @@ mod tests {
                 vec![Some("1.1"), Some("1.2")],
             ),
         ] {
-            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
                 .expect("the pinned stream parses");
             let versions: Vec<Option<&str>> = docs.iter().map(|d| d.version.as_deref()).collect();
             assert_eq!(versions, want, "{src:?}");
@@ -2121,7 +2266,7 @@ mod tests {
             true,
             YamlSchema::Core,
             1000,
-            false,
+            DuplicateKeys::AsIs,
         )
         .expect("a comment-only document parses");
         assert_eq!(parsed.version.as_deref(), Some("1.1"), "{parsed:?}");
@@ -2146,7 +2291,7 @@ mod tests {
             ("a: 1\n---\n---\nb: 2\n", 1, 0),
             ("a: 1\n...\n%YAML 1.1\n---\nb: 2\n", 3, 0),
         ] {
-            let err = parse_with_options(src, true, YamlSchema::Core, 1000, false)
+            let err = parse_with_options(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
                 .err()
                 .unwrap_or_else(|| panic!("{src:?}: the stream route must not answer for one"));
             assert_eq!(
@@ -2178,9 +2323,9 @@ mod tests {
             "1\n---\n2\n",
             "a: 1\n...\n%YAML 1.1\n---\nb: 2\n",
         ] {
-            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| panic!("{src:?}: the stream route refused its own input: {e}"));
-            let single = parse_with_options(src, true, YamlSchema::Core, 1000, false);
+            let single = parse_with_options(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs);
             match docs.len() {
                 0 | 1 => {
                     let node = single
@@ -2216,7 +2361,7 @@ mod tests {
             ("a: 1\n---\n---\nb: 2\n", 3),
             ("a: 1\n...\n%YAML 1.1\n---\nb: 2\n", 2),
         ] {
-            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| {
                     panic!("{src:?} is a stream and the stream route refused: {e}")
                 });
@@ -2809,8 +2954,14 @@ mod tests {
         // duplicate keys still gets no error, and still sees the last value (both
         // null spellings normalize to the same node, so `IndexMap` overwrite is what
         // collapses them there — the fold is for the pair the node keys keep apart).
-        let node = parse_with_options("~: 1\n: 2\n", true, YamlSchema::Core, 1000, true)
-            .expect("duplicates allowed on request");
+        let node = parse_with_options(
+            "~: 1\n: 2\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::LastWins,
+        )
+        .expect("duplicates allowed on request");
         assert_eq!(
             crate::serializer::to_yaml(&node),
             "~: 2\n",
@@ -3102,7 +3253,7 @@ mod tests {
     #[test]
     fn an_alias_valued_merge_key_keeps_its_inline_note() {
         let src = "d: &d {x: 1}\ns:\n  <<: *d  # keep me\n  y: 2\n";
-        let node = parse_with_options(src, false, YamlSchema::Core, 1000, false)
+        let node = parse_with_options(src, false, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
             .expect("the unresolved-merge input parses");
         let CustomNode::Mapping { pairs, .. } = &node else {
             panic!("expected a root mapping, got {node:?}");
@@ -3133,7 +3284,7 @@ mod tests {
             "moved is fine, duplicated is not: {one:?}"
         );
         let two = crate::serializer::to_yaml(
-            &parse_with_options(&one, false, YamlSchema::Core, 1000, false)
+            &parse_with_options(&one, false, YamlSchema::Core, 1000, DuplicateKeys::AsIs)
                 .expect("the emitted document re-parses"),
         );
         assert_eq!(two, one, "one emission has to reach the fixed point");
@@ -3164,16 +3315,28 @@ mod tests {
             ("d: &d 1\ns:\n  k: *d\n  # carry me\n  next: 2\n", false),
             ("d: &d {x: 1}\ns:\n  <<: *d\n  # carry me\n  y: 2\n", true),
         ] {
-            let node = parse_with_options(src, !unresolved, YamlSchema::Core, 1000, false)
-                .expect("input parses");
+            let node = parse_with_options(
+                src,
+                !unresolved,
+                YamlSchema::Core,
+                1000,
+                DuplicateKeys::AsIs,
+            )
+            .expect("input parses");
             let one = crate::serializer::to_yaml(&node);
             assert_eq!(
                 one, src,
                 "the note must stay on the line it was written above"
             );
             let two = crate::serializer::to_yaml(
-                &parse_with_options(&one, !unresolved, YamlSchema::Core, 1000, false)
-                    .expect("the emitted document re-parses"),
+                &parse_with_options(
+                    &one,
+                    !unresolved,
+                    YamlSchema::Core,
+                    1000,
+                    DuplicateKeys::AsIs,
+                )
+                .expect("the emitted document re-parses"),
             );
             assert_eq!(two, one, "one emission has to reach the fixed point");
         }
@@ -3794,6 +3957,168 @@ mod tests {
         );
     }
 
+    /// The mapping's first value and its pair count, read out of a parse under one policy.
+    fn first_value_under(text: &str, policy: DuplicateKeys) -> (String, usize) {
+        let node = parse_with_options(text, true, YamlSchema::Core, 1000, policy)
+            .unwrap_or_else(|err| panic!("{text:?} under {policy:?}: {err}"));
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!("{text:?} is not a mapping");
+        };
+        let count = pairs.len();
+        let (_, value) = pairs.iter().next().expect("one pair");
+        let shown = match value {
+            CustomNode::Scalar { value, .. } => value.to_string(),
+            other => format!("{other:?}"),
+        };
+        (shown, count)
+    }
+
+    /// The table this flag exists because the reader used to answer it three ways at once. Each
+    /// identity class keeps the answer it had, and no other shape is affected.
+    #[test]
+    fn as_is_answers_each_identity_class_as_it_always_did() {
+        let err = parse_with_options(
+            "a: 1\na: 2\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .expect_err("a scalar duplicate is refused");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        let err = parse_with_options(
+            "a: 1\n\"a\": 2\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .expect_err("plain and quoted spell one key");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // two null keys are one key by YAML's model: folded to the last, silently
+        assert_eq!(
+            first_value_under(": 1\n: 2\n", DuplicateKeys::AsIs),
+            ("2".to_string(), 1),
+            "the null class folds to the last pair"
+        );
+        // a tag tells two keys apart, so nothing folds and nothing is refused
+        let node = parse_with_options(
+            "0set: 1\n!base 0set: 2\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .expect("tag-distinct keys are not duplicates");
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!("root is a mapping");
+        };
+        assert_eq!(pairs.len(), 2, "both pairs stay in the tree");
+    }
+
+    /// The exemption the default grants the null and merge classes is exactly what `error` was
+    /// asked to stop granting.
+    #[test]
+    fn error_refuses_the_classes_the_default_exempts() {
+        for (text, why) in [
+            (": 1\n: 2\n", "a second null key"),
+            ("<<: &x {a: 1}\n<<: &y {b: 2}\n", "a second merge key"),
+        ] {
+            let err = parse_with_options(text, true, YamlSchema::Core, 1000, DuplicateKeys::Error)
+                .expect_err(why);
+            assert!(
+                matches!(err, ParseError::DuplicateKey(_)),
+                "{why}: got {err:?}"
+            );
+        }
+    }
+
+    /// `last_wins` is what `allow_duplicate_keys = true` already meant, spelled as a policy.
+    #[test]
+    fn last_wins_folds_every_class_without_refusing() {
+        assert_eq!(
+            first_value_under("a: 1\na: 2\n", DuplicateKeys::LastWins),
+            ("2".to_string(), 1),
+            "the incoming pair takes the slot"
+        );
+        assert_eq!(
+            first_value_under(": 1\n: 2\n", DuplicateKeys::LastWins),
+            ("2".to_string(), 1),
+            "the null class folds the same way it did under the boolean"
+        );
+    }
+
+    /// The direction `error` and `last_wins` cannot express: keep what the document said first.
+    #[test]
+    fn first_wins_keeps_the_earlier_pair_of_the_mapping() {
+        assert_eq!(
+            first_value_under("a: 1\na: 2\n", DuplicateKeys::FirstWins),
+            ("1".to_string(), 1),
+            "a scalar duplicate keeps the first value"
+        );
+        assert_eq!(
+            first_value_under(": 1\n: 2\n", DuplicateKeys::FirstWins),
+            ("1".to_string(), 1),
+            "a null duplicate keeps the first value"
+        );
+        // The identity that folds here is the emitted value, not the node: YAML counts a quoted and
+        // a plain spelling of one text as one key, and the collision path below already refuses it.
+        // `first_wins` has to fold the same pair or the two policies disagree on what collides.
+        assert_eq!(
+            first_value_under("'a': 1\na: 2\n", DuplicateKeys::FirstWins),
+            ("1".to_string(), 1),
+            "one value under two spellings is one key here too"
+        );
+        // and a document with no duplicate is left exactly as it was
+        assert_eq!(
+            first_value_under("a: 1\nb: 2\n", DuplicateKeys::FirstWins),
+            ("1".to_string(), 2),
+            "no collision, no fold"
+        );
+    }
+
+    /// A fold may drop a pair, but the pair's content is not the pair's to take with it. The note
+    /// the reader saw on the folded-away side must still be on the mapping, and an anchor it
+    /// defined must not leave an alias dangling - the two losses this engine has been fuzzed for.
+    #[test]
+    fn first_wins_carries_the_note_and_the_anchor_of_the_folded_pair() {
+        let node = parse_with_options(
+            "a: 1\n# carried\na: 2\nb: 3\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::FirstWins,
+        )
+        .expect("parses");
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!("root is a mapping");
+        };
+        let survivor = pairs.keys().next().expect("one pair");
+        assert!(
+            survivor
+                .leading_comments()
+                .iter()
+                .any(|c| c.text.contains("carried")),
+            "the folded pair's note is re-homed, got {:?}",
+            survivor.leading_comments()
+        );
+
+        let node = parse_with_options(
+            "a: 1\na: &x 2\nuse: *x\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::FirstWins,
+        )
+        .expect("parses");
+        let text = crate::serializer::to_yaml(&node);
+        assert!(
+            !text.contains('*'),
+            "no alias may outlive the definition the fold removed, got {text:?}"
+        );
+        parse(&text, YamlSchema::Core).unwrap_or_else(|err| panic!("re-read fails: {err}"));
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-4bf6ee37): the value-identity check ran
     /// only for keys *without* a tag, so two `!?` keys a style apart - a plain
     /// empty scalar and an empty double-quoted one, one value under that tag -
@@ -4006,7 +4331,14 @@ mod tests {
 
     #[test]
     fn test_scalar_byte_range() {
-        let node = parse_with_options("key: value\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "key: value\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         let CustomNode::Mapping { pairs, .. } = node else {
             panic!()
         };
@@ -4018,7 +4350,14 @@ mod tests {
 
     #[test]
     fn test_mapping_range_spans_children() {
-        let node = parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "a:\n  b: 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         let CustomNode::Mapping { pairs, meta, .. } = node else {
             panic!()
         };
@@ -4036,7 +4375,14 @@ mod tests {
     #[test]
     fn test_non_ascii_byte_range() {
         // '值' is 3 bytes; char index 5 != byte offset 7
-        let node = parse_with_options("key: 值\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "key: 值\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         let CustomNode::Mapping { pairs, .. } = node else {
             panic!()
         };
@@ -4045,7 +4391,14 @@ mod tests {
 
     #[test]
     fn test_flow_mapping_range_includes_closing_token() {
-        let node = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "{a: 1}\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         let CustomNode::Mapping { meta, .. } = node else {
             panic!()
         };
@@ -4054,28 +4407,53 @@ mod tests {
 
     #[test]
     fn test_splice_gate_default_layout_ok() {
-        let node = parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "a:\n  b: 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(check_default_layout(&node, "a:\n  b: 1\n"));
     }
 
     #[test]
     fn test_splice_gate_non_default_indent_rejected() {
-        let node =
-            parse_with_options("a:\n    b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "a:\n    b: 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(!check_default_layout(&node, "a:\n    b: 1\n")); // 4-space indent violates indent_mapping=2
     }
 
     #[test]
     fn test_splice_gate_crlf_rejected() {
-        let node =
-            parse_with_options("a: 1\r\nb: 2\r\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "a: 1\r\nb: 2\r\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(!check_default_layout(&node, "a: 1\r\nb: 2\r\n")); // CRLF -> fallback (P1)
     }
 
     #[test]
     fn test_splice_gate_bom_rejected() {
-        let node =
-            parse_with_options("\u{FEFF}a: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "\u{FEFF}a: 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(!check_default_layout(&node, "\u{FEFF}a: 1\n")); // BOM -> fallback (P1)
     }
 
@@ -4087,7 +4465,7 @@ mod tests {
             true,
             YamlSchema::Core,
             1000,
-            false,
+            DuplicateKeys::AsIs,
         )
         .unwrap();
         assert!(check_default_layout(
@@ -4098,20 +4476,40 @@ mod tests {
 
     #[test]
     fn test_splice_gate_compact_item_layout_ok() {
-        let node =
-            parse_with_options("- a: 1\n  b: 2\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "- a: 1\n  b: 2\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(check_default_layout(&node, "- a: 1\n  b: 2\n"));
     }
 
     #[test]
     fn test_splice_gate_sequence_bad_indent_rejected() {
-        let node = parse_with_options("a:\n   - 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "a:\n   - 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(!check_default_layout(&node, "a:\n   - 1\n")); // dash at col 3 instead of indent_sequence=2
     }
 
     #[test]
     fn test_splice_gate_flow_doc_eligible() {
-        let node = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options(
+            "{a: 1}\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            DuplicateKeys::AsIs,
+        )
+        .unwrap();
         assert!(check_default_layout(&node, "{a: 1}\n")); // flow docs stay eligible (only flow *regions* fall back)
     }
 }

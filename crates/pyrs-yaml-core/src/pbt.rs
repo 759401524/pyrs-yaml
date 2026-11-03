@@ -2,8 +2,8 @@
 #[allow(unused_doc_comments)]
 mod tests {
     use crate::ast::proptest_strategies::*;
-    use crate::parser::parse_with_options;
     use crate::parser::yaml::Schema;
+    use crate::parser::{DuplicateKeys, parse_with_options};
     use crate::serializer::{SerializeOptions, to_yaml, to_yaml_with_options};
     use alloc::string::{String, ToString};
     use alloc::vec::Vec;
@@ -344,8 +344,8 @@ mod tests {
     /// makes rather than a filter it hides behind.
     fn roundtrip(node: &crate::ast::CustomNode) -> (String, crate::ast::CustomNode) {
         let yaml = to_yaml(node);
-        let parsed =
-            parse_with_options(&yaml, true, Schema::Core, 1000, false).expect("output re-parses");
+        let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs)
+            .expect("output re-parses");
         (yaml, parsed)
     }
 
@@ -777,9 +777,10 @@ mod tests {
 
         for (label, node, body) in cases {
             let yaml = to_yaml(&node);
-            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).unwrap_or_else(
-                |error| panic!("({label}) emitted {yaml:?}, which does not re-parse: {error:?}"),
-            );
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs)
+                .unwrap_or_else(|error| {
+                    panic!("({label}) emitted {yaml:?}, which does not re-parse: {error:?}")
+                });
             let lines: Vec<&str> = yaml.lines().collect();
             let marker_at = lines
                 .iter()
@@ -1005,7 +1006,7 @@ mod tests {
 
         for (label, node, placement) in cases {
             let yaml = to_yaml(&node);
-            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false);
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs);
             let parsed = match parsed {
                 Ok(parsed) => parsed,
                 Err(error) => {
@@ -1066,7 +1067,7 @@ mod tests {
         deep_apply_styles(&mut seed, ScalarStyle::Folded, Chomping::Clip, true);
         let seed = as_the_reader_sees(&seed);
         let yaml = to_yaml(&seed);
-        let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false)
+        let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs)
             .unwrap_or_else(|error| panic!("the CI seed emitted {yaml:?}: {error:?}"));
         let (notes, reparsed) = (
             of(&seed, collect_note_texts),
@@ -1206,7 +1207,7 @@ mod tests {
             node in arb_note_stack_overflow(),
         ) {
             let yaml = to_yaml(&node);
-            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).unwrap_or_else(
+            let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs).unwrap_or_else(
                 |error| panic!("the draw emitted {yaml:?}, which does not re-parse: {error:?}"),
             );
             prop_assert!(
@@ -1259,7 +1260,7 @@ mod tests {
         #[test]
         fn prop_output_always_parses(node in arb_custom_node()) {
             let yaml = to_yaml(&node);
-            let reparsed = parse_with_options(&yaml, true, Schema::Core, 1000, false);
+            let reparsed = parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs);
             prop_assert!(
                 reparsed.is_ok(),
                 "serialized output failed to re-parse: {yaml:?} -> {:?}",
@@ -1273,7 +1274,7 @@ mod tests {
         /// invisible — the tree changed shape, so the property never asserted anything about it.
         #[test]
         fn prop_alias_key_survives_the_round_trip(src in arb_alias_key_source()) {
-            let before = parse_with_options(&src, true, Schema::Core, 1000, false)
+            let before = parse_with_options(&src, true, Schema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| panic!("{src:?} should parse: {e}"));
             let emitted = to_yaml(&before);
             prop_assert!(
@@ -1281,7 +1282,7 @@ mod tests {
                 "the alias key was resolved away: {src:?} -> {emitted:?}\n{}",
                 yaml_diff(&src, &emitted)
             );
-            let after = parse_with_options(&emitted, true, Schema::Core, 1000, false)
+            let after = parse_with_options(&emitted, true, Schema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| panic!("{emitted:?} should re-parse: {e}"));
             prop_assert!(
                 nodes_equal_ignore_meta(&before, &after),
@@ -1301,10 +1302,10 @@ mod tests {
         /// rejects most of its samples to stay green is the blind spot PR #412 registered.
         #[test]
         fn prop_flow_member_note_survives_the_round_trip(src in arb_flow_note_source()) {
-            let before = parse_with_options(&src, true, Schema::Core, 1000, false)
+            let before = parse_with_options(&src, true, Schema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| panic!("{:?} should parse: {e}", src));
             let emitted = to_yaml(&before);
-            let after = parse_with_options(&emitted, true, Schema::Core, 1000, false)
+            let after = parse_with_options(&emitted, true, Schema::Core, 1000, DuplicateKeys::AsIs)
                 .unwrap_or_else(|e| panic!("{:?} -> {:?} should re-parse: {e}", src, emitted));
             prop_assert_eq!(
                 note_texts(&before),
@@ -1319,7 +1320,7 @@ mod tests {
         #[test]
         fn prop_no_crash_invalid_utf8(bytes in prop::collection::vec(any::<u8>(), 0..1024)) {
             if let Ok(s) = std::str::from_utf8(&bytes) {
-                let _ = parse_with_options(s, true, Schema::Core, 1000, false);
+                let _ = parse_with_options(s, true, Schema::Core, 1000, DuplicateKeys::AsIs);
             }
         }
 
@@ -1372,7 +1373,7 @@ mod tests {
             prop_assert!(first.is_empty(), "first cycle unexplained: {first:?}");
             {
                 let once = to_yaml(&parsed);
-                let twice_parsed = parse_with_options(&once, true, Schema::Core, 1000, false)
+                let twice_parsed = parse_with_options(&once, true, Schema::Core, 1000, DuplicateKeys::AsIs)
                     .expect("re-parse of normalized output must succeed");
                 let (_, second) = roundtrip_residuals(&parsed, &twice_parsed, &once);
                 prop_assert!(
@@ -1529,10 +1530,10 @@ mod tests {
         /// catch an abort, so a green run here is the regression proof.
         #[test]
         fn prop_merge_alias_never_panics(src in arb_merge_alias_source()) {
-            let parsed = parse_with_options(&src, true, Schema::Core, 1000, false);
+            let parsed = parse_with_options(&src, true, Schema::Core, 1000, DuplicateKeys::AsIs);
             if let Ok(node) = parsed {
                 let out = to_yaml(&node);
-                let _ = parse_with_options(&out, true, Schema::Core, 1000, false);
+                let _ = parse_with_options(&out, true, Schema::Core, 1000, DuplicateKeys::AsIs);
             }
         }
     }
@@ -1869,7 +1870,7 @@ mod tests {
             if folded {
                 continue;
             }
-            match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+            match parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs) {
                 Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => assert_eq!(
                     read.len(),
                     2,
@@ -1905,7 +1906,7 @@ mod tests {
                 continue;
             }
             let yaml = to_yaml(&crate::ast::CustomNode::plain_mapping(pairs));
-            match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+            match parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs) {
                 Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => {
                     assert_eq!(
                         read.len(),
@@ -1950,7 +1951,7 @@ mod tests {
         };
 
         let block = to_yaml(&parent(false));
-        match parse_with_options(&block, true, Schema::Core, 1000, false) {
+        match parse_with_options(&block, true, Schema::Core, 1000, DuplicateKeys::AsIs) {
             Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => {
                 assert_eq!(read.len(), 2, "{block:?} re-read as {read:?}");
             }
@@ -1960,7 +1961,7 @@ mod tests {
         let flow = to_yaml(&parent(true));
         assert_eq!(flow, "{? [null]: A, ? [null]: B}\n");
         assert!(
-            parse_with_options(&flow, true, Schema::Core, 1000, false).is_err(),
+            parse_with_options(&flow, true, Schema::Core, 1000, DuplicateKeys::AsIs).is_err(),
             "{flow:?} was read as one document"
         );
     }
@@ -2002,7 +2003,7 @@ mod tests {
             "the resolution collapsed two keys: {resolved:?}"
         );
         let yaml = to_yaml(&resolved);
-        match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+        match parse_with_options(&yaml, true, Schema::Core, 1000, DuplicateKeys::AsIs) {
             Ok(CustomNode::Mapping { pairs: read, .. }) => {
                 assert_eq!(read.len(), 2, "{yaml:?} re-read as {read:?}");
             }

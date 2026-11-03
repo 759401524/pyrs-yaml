@@ -1,5 +1,7 @@
 //! Module-level Python-facing functions for `pyrs_yaml`.
 
+use crate::py::duplicate_policy;
+use pyrs_yaml_core::parser::DuplicateKeys;
 use std::ops::ControlFlow;
 
 use pyo3::prelude::*;
@@ -20,8 +22,9 @@ use crate::YamlParseError;
 use crate::YamlSerializeError;
 use crate::YamlTypeError;
 
+#[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
+#[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None) -> "YamlDocument")]
 /// Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
 ///
 /// One document, or `YamlParseError` with the reason key `multi-document-input` and the position
@@ -37,8 +40,9 @@ pub(crate) fn parse(
     resolve_merges: bool,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    allow_duplicate_keys: Option<bool>,
     honor_version_directive: bool,
+    duplicate_keys: Option<&str>,
 ) -> PyResult<YamlDocument> {
     parse_document(
         py,
@@ -46,13 +50,13 @@ pub(crate) fn parse(
         resolve_merges,
         schema,
         max_depth,
-        allow_duplicate_keys,
+        duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         honor_version_directive,
     )
 }
 
 #[pyfunction]
-#[pyo3(signature = (path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
+#[pyo3(signature = (path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None) -> "YamlDocument")]
 /// Parse a YAML file and return an editable `YamlDocument`.
 ///
 /// One document: a file carrying a second one is refused with the reason key
@@ -62,8 +66,9 @@ pub(crate) fn parse_file(
     path: &str,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    allow_duplicate_keys: Option<bool>,
     honor_version_directive: bool,
+    duplicate_keys: Option<&str>,
 ) -> PyResult<YamlDocument> {
     let explicit = schema.map(parse_schema).transpose()?;
     let parse_schema_value = explicit
@@ -84,7 +89,7 @@ pub(crate) fn parse_file(
             true,
             parse_schema_value,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         )
         .map_err(|e| parse_error_to_py_err(e, content, max_depth))
     })?;
@@ -104,8 +109,9 @@ pub(crate) fn parse_file(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[YamlDocument]")]
+#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None) -> "list[YamlDocument]")]
 /// Parse a multi-document YAML stream and return all `YamlDocument` objects.
 pub(crate) fn parse_all_docs(
     py: Python,
@@ -113,8 +119,9 @@ pub(crate) fn parse_all_docs(
     resolve_merges: bool,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    allow_duplicate_keys: Option<bool>,
     honor_version_directive: bool,
+    duplicate_keys: Option<&str>,
 ) -> PyResult<Vec<YamlDocument>> {
     let explicit = schema.map(parse_schema).transpose()?;
     let parse_schema_value = explicit
@@ -126,7 +133,7 @@ pub(crate) fn parse_all_docs(
             resolve_merges,
             parse_schema_value,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         )
         .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
@@ -150,7 +157,7 @@ pub(crate) fn parse_all_docs(
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "dict[Any, Any] | list[Any]")]
+#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None) -> "dict[Any, Any] | list[Any]")]
 /// Parse YAML into a Python dict/list, resolving anchors and merges.
 ///
 /// One document: an input carrying a second is refused with the reason key
@@ -163,8 +170,9 @@ pub(crate) fn safe_load(
     yaml: &str,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    allow_duplicate_keys: Option<bool>,
     honor_version_directive: bool,
+    duplicate_keys: Option<&str>,
 ) -> PyResult<Py<PyAny>> {
     let explicit = schema.map(parse_schema).transpose()?;
     let direct_schema = explicit
@@ -180,7 +188,7 @@ pub(crate) fn safe_load(
             yaml,
             &direct_schema,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         ) {
             crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
             crate::py::direct_load::DirectOutcome::Fail(e) => {
@@ -190,8 +198,14 @@ pub(crate) fn safe_load(
         }
     }
     let parsed = py.detach(|| {
-        crate::parser::parse_document(yaml, true, direct_schema, max_depth, allow_duplicate_keys)
-            .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
+        crate::parser::parse_document(
+            yaml,
+            true,
+            direct_schema,
+            max_depth,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
+        )
+        .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     let effective = negotiate_schema(explicit, parsed.version.as_deref(), honor_version_directive);
     let mut ast = parsed.node;
@@ -245,8 +259,9 @@ pub fn bench_to_python_value(
     yaml: &str,
 ) -> Result<pyo3::Py<pyo3::PyAny>, pyo3::PyErr> {
     let schema = parse_schema("core")?;
-    let mut ast = crate::parser::parse_with_options(yaml, true, schema.clone(), 1000, false)
-        .map_err(|e| parse_error_to_py_err(e, yaml, 1000))?;
+    let mut ast =
+        crate::parser::parse_with_options(yaml, true, schema.clone(), 1000, DuplicateKeys::AsIs)
+            .map_err(|e| parse_error_to_py_err(e, yaml, 1000))?;
     resolve_tags(&mut ast, py)?;
     crate::py::convert::node_to_pyobject_resolving_anchors(
         &ast,
@@ -354,7 +369,7 @@ pub fn json_route_is_fast(json: &str) -> bool {
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
+#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None) -> "list[dict[Any, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.
 ///
 /// Each document negotiates its own `%YAML` declaration when
@@ -364,8 +379,9 @@ pub(crate) fn safe_loads(
     yaml: &str,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    allow_duplicate_keys: Option<bool>,
     honor_version_directive: bool,
+    duplicate_keys: Option<&str>,
 ) -> PyResult<Vec<Py<PyAny>>> {
     let explicit = schema.map(parse_schema).transpose()?;
     let direct_schema = explicit
@@ -381,7 +397,7 @@ pub(crate) fn safe_loads(
             yaml,
             &direct_schema,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         ) {
             crate::py::direct_load::DirectOutcome::Done(v) => return Ok(vec![v]),
             crate::py::direct_load::DirectOutcome::Fail(e) => {
@@ -396,7 +412,7 @@ pub(crate) fn safe_loads(
             true,
             direct_schema,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         )
         .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
@@ -782,7 +798,7 @@ pub(crate) fn to_toml(py: Python, yaml: &str, schema: &str) -> PyResult<String> 
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();
     let node = py.detach(|| {
-        crate::parser::parse_with_options(yaml, true, schema_clone, 1000, false)
+        crate::parser::parse_with_options(yaml, true, schema_clone, 1000, DuplicateKeys::AsIs)
             .map_err(|e| parse_error_to_py_err(e, yaml, 1000))
     })?;
     pyrs_toml::to_toml(&node).map_err(|e| {
@@ -875,7 +891,7 @@ pub(crate) fn read_markdown_str(
                     true,
                     schema_enum.clone(),
                     max_depth,
-                    false,
+                    DuplicateKeys::AsIs,
                 )
                 .map_err(|e| parse_error_to_py_err(e, frontmatter, max_depth))?;
                 Ok((

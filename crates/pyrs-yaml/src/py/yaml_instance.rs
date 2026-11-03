@@ -1,6 +1,8 @@
 //! YAML — configured parser instance (rt / safe / full).
 
+use crate::py::duplicate_policy;
 use pyo3::prelude::*;
+use pyrs_yaml_core::parser::DuplicateKeys;
 use std::sync::Arc;
 
 use crate::parser::yaml::registry;
@@ -25,20 +27,21 @@ pub(crate) struct YAML {
     schema: Option<String>,
     honor_version_directive: bool,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 }
 
 #[pymethods]
 impl YAML {
     #[new]
     /// Create a YAML instance; `typ` can be `rt`/`safe`/`full`.
-    #[pyo3(signature = (typ: "str" = "rt", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false))]
+    #[pyo3(signature = (typ: "str" = "rt", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = false, duplicate_keys: "str | None" = None))]
     fn new(
         typ: &str,
         schema: Option<&str>,
         max_depth: usize,
-        allow_duplicate_keys: bool,
+        allow_duplicate_keys: Option<bool>,
         honor_version_directive: bool,
+        duplicate_keys: Option<&str>,
     ) -> PyResult<Self> {
         let valid_types = ["rt", "safe", "full"];
         if !valid_types.contains(&typ) {
@@ -60,7 +63,7 @@ impl YAML {
             schema: schema.map(str::to_string),
             honor_version_directive,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_keys: duplicate_policy(allow_duplicate_keys, duplicate_keys)?,
         })
     }
 
@@ -75,7 +78,7 @@ impl YAML {
             resolve_merges,
             self.schema.as_deref(),
             self.max_depth,
-            self.allow_duplicate_keys,
+            self.duplicate_keys,
             self.honor_version_directive,
         )
     }
@@ -94,7 +97,7 @@ impl YAML {
                 yaml,
                 &direct_schema,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             ) {
                 crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
                 crate::py::direct_load::DirectOutcome::Fail(e) => {
@@ -109,7 +112,7 @@ impl YAML {
                 true,
                 direct_schema,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             )
             .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
@@ -135,7 +138,7 @@ impl YAML {
                 yaml,
                 &direct_schema,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             ) {
                 crate::py::direct_load::DirectOutcome::Done(v) => return Ok(vec![v]),
                 crate::py::direct_load::DirectOutcome::Fail(e) => {
@@ -150,7 +153,7 @@ impl YAML {
                 true,
                 direct_schema,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             )
             .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
@@ -191,7 +194,7 @@ impl YAML {
                 resolve_merges,
                 parse_schema_value,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             )
             .map_err(|e| parse_error_to_py_err(e, content, self.max_depth))
         })?;
@@ -223,7 +226,7 @@ impl YAML {
                 resolve_merges,
                 parse_schema_value,
                 self.max_depth,
-                self.allow_duplicate_keys,
+                self.duplicate_keys,
             )
             .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;

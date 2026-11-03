@@ -34,14 +34,14 @@ def read_text(source: Any) -> str:
         fail(f"cannot read '{source}': {exc.strerror or exc}")
 
 
-def load_document(source: Any) -> Any:
+def load_document(source: Any, duplicate_keys: str = "as_is") -> Any:
     """Parse a YAML file (or stdin) into a round-trip ``YamlDocument``."""
     from pyrs_yaml import YamlParseError, parse, parse_file
 
     try:
         if is_stdio(source):
-            return parse(sys.stdin.read())
-        return parse_file(str(source))
+            return parse(sys.stdin.read(), duplicate_keys=duplicate_keys)
+        return parse_file(str(source), duplicate_keys=duplicate_keys)
     except OSError as exc:
         fail(f"cannot read '{source}': {exc.strerror or exc}")
     except YamlParseError as exc:
@@ -54,15 +54,15 @@ def load_document(source: Any) -> Any:
         fail(message)
 
 
-def load_documents(source: Any) -> list[Any]:
+def load_documents(source: Any, duplicate_keys: str = "as_is") -> list[Any]:
     """Parse every document in a YAML stream (file or stdin)."""
     from pyrs_yaml import YamlParseError, parse_all_docs
 
     try:
         if is_stdio(source):
-            return parse_all_docs(sys.stdin.read())
+            return parse_all_docs(sys.stdin.read(), duplicate_keys=duplicate_keys)
         text = Path(source).read_text(encoding="utf-8")
-        return parse_all_docs(text)
+        return parse_all_docs(text, duplicate_keys=duplicate_keys)
     except OSError as exc:
         fail(f"cannot read '{source}': {exc.strerror or exc}")
     except YamlParseError as exc:

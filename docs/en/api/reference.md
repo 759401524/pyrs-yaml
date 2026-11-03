@@ -21,7 +21,7 @@ Complete API reference for the `pyrs_yaml` module.
 Parse a YAML string or bytes into a `YamlDocument`.
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **Parameters:**
@@ -30,7 +30,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
 - `schema` — Schema name (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"`, or a registered custom name), or an inline schema dict (see [YAML Schema Language](#yaml-schema-language))
 - `max_depth` — Maximum nesting depth (default: `1000`)
-- `allow_duplicate_keys` — Whether to allow duplicate mapping keys (default: `False`)
+- `allow_duplicate_keys` — Whether to allow duplicate mapping keys (default: `None`, which reads as `"as_is"`)
+- `duplicate_keys` — What the reader does when one mapping holds two keys that YAML counts as one (default: `"as_is"`). `"as_is"` answers each identity class as it always has: a scalar collision and a plain/quoted collision are refused, a second null or merge key folds onto the first slot, and a tag tells two keys apart under every value. `"error"` refuses the classes the default exempts too; `"last_wins"` folds silently to the later pair, which is what `allow_duplicate_keys=True` means; `"first_wins"` keeps the earlier pair's value and carries the folded pair's notes and anchor definitions onto the key that survives. Passing both this and `allow_duplicate_keys` is refused, not settled by precedence.
 - `honor_version_directive` — Version negotiation for an explicit `%YAML` directive (default: `False`). With `True`, a document declaring `%YAML 1.1` is resolved under the YAML 1.1 profile and re-emits the directive; an explicit `schema` still wins.
 
 **Returns:** A `YamlDocument` containing the parsed YAML
@@ -57,7 +58,7 @@ doc = pyrs_yaml.parse(
 Parse a YAML file.
 
 ```python
-parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **Parameters:**
@@ -84,7 +85,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 Parse multiple YAML documents from a string.
 
 ```python
-parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[YamlDocument]
 ```
 
 **Parameters:**
@@ -107,7 +108,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 Parse a YAML string into a Python dict or list. Uses PyYAML-compatible API.
 
 ```python
-safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> dict[Any, Any] | list[Any]
 ```
 
 **Parameters:**
@@ -131,7 +132,7 @@ d = pyrs_yaml.safe_load(
 Parse multiple YAML documents from a string into Python dicts/lists.
 
 ```python
-safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **Parameters:**

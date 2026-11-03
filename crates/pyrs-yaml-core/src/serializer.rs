@@ -4020,7 +4020,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap()
     }
@@ -4903,7 +4903,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         );
         assert!(reparsed.is_ok(), "{output:?} -> {reparsed:?}");
     }
@@ -4917,7 +4917,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         );
         assert!(
             reparsed.is_ok(),
@@ -4973,7 +4973,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("re-parse");
         let CustomNode::Mapping { pairs, .. } = &reparsed else {
@@ -5077,7 +5077,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("re-parse");
         let CustomNode::Sequence { items, .. } = &reparsed else {
@@ -5154,7 +5154,7 @@ mod tests {
                 true,
                 crate::parser::yaml::Schema::Core,
                 1000,
-                false,
+                crate::parser::DuplicateKeys::AsIs,
             )
             .expect("re-parse");
             let twice = to_yaml(&again);
@@ -5192,7 +5192,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("re-parse");
         let CustomNode::Mapping { pairs, .. } = &reparsed else {
@@ -5373,7 +5373,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("the first emission re-parses");
         let twice = assert_reparses(&parsed);
@@ -5439,7 +5439,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("the first emission re-parses");
         let twice = assert_reparses(&parsed);
@@ -5524,7 +5524,7 @@ mod tests {
             true,
             crate::parser::yaml::Schema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .expect("re-parse");
         let root = match &reparsed {
@@ -5774,7 +5774,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         assert_yaml_eq!(crate::serializer::to_yaml(&ast), "a: 1\n# c1\nb: 2\n");
@@ -5788,7 +5788,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         assert_yaml_eq!(
@@ -5810,7 +5810,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         let one = crate::serializer::to_yaml(&ast);
@@ -5823,7 +5823,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         assert_eq!(
@@ -5850,7 +5850,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         let one = crate::serializer::to_yaml(&ast);
@@ -5865,7 +5865,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         assert_eq!(
@@ -5892,7 +5892,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         let one = crate::serializer::to_yaml(&ast);
@@ -5902,7 +5902,7 @@ mod tests {
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
-            false,
+            crate::parser::DuplicateKeys::AsIs,
         )
         .unwrap();
         assert_eq!(
@@ -6006,8 +6006,14 @@ mod tests {
             2,
             "the writer folded a line it was ruled not to fold: {text:?}"
         );
-        let err = parse_with_options(&text, true, Schema::Core, 1000, false)
-            .expect_err("two `!E null` keys are the shape the reader refuses");
+        let err = parse_with_options(
+            &text,
+            true,
+            Schema::Core,
+            1000,
+            crate::parser::DuplicateKeys::AsIs,
+        )
+        .expect_err("two `!E null` keys are the shape the reader refuses");
         assert!(
             matches!(err, ParseError::DuplicateKey(_)),
             "expected a duplicate-key refusal, got {err}"
@@ -6021,9 +6027,14 @@ mod tests {
             2,
             "the writer dropped a line: {text:?}"
         );
-        let CustomNode::Mapping { pairs: read, .. } =
-            parse_with_options(&text, true, Schema::Core, 1000, false).expect("re-parses")
-        else {
+        let CustomNode::Mapping { pairs: read, .. } = parse_with_options(
+            &text,
+            true,
+            Schema::Core,
+            1000,
+            crate::parser::DuplicateKeys::AsIs,
+        )
+        .expect("re-parses") else {
             panic!("{text:?} did not re-read as a mapping");
         };
         assert_eq!(read.len(), 1, "the silent shortening, as ruled: {text:?}");

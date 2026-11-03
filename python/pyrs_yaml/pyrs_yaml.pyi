@@ -47,7 +47,7 @@ class YAML:
     """
     Configured YAML parser instance (rt / safe / full).
     """
-    def __new__(cls, /, typ: "str" = "rt", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> YAML:
+    def __new__(cls, /, typ: "str" = "rt", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> YAML:
         """
         Create a YAML instance; `typ` can be `rt`/`safe`/`full`.
         """
@@ -571,7 +571,7 @@ def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str
     Negotiate a language from user locale list and default.
     """
 
-def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "YamlDocument":
+def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> "YamlDocument":
     """
     Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
 
@@ -584,12 +584,12 @@ def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str | Non
     `schema` always wins over the declaration.
     """
 
-def parse_all_docs(yaml: "str", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "list[YamlDocument]":
+def parse_all_docs(yaml: "str", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> "list[YamlDocument]":
     """
     Parse a multi-document YAML stream and return all `YamlDocument` objects.
     """
 
-def parse_file(path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "YamlDocument":
+def parse_file(path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> "YamlDocument":
     """
     Parse a YAML file and return an editable `YamlDocument`.
 
@@ -678,7 +678,7 @@ def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
     key: `safe_dump(safe_load(text))` has to accept what `safe_load` produced.
     """
 
-def safe_load(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "dict[Any, Any] | list[Any]":
+def safe_load(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> "dict[Any, Any] | list[Any]":
     """
     Parse YAML into a Python dict/list, resolving anchors and merges.
 
@@ -689,7 +689,7 @@ def safe_load(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000,
     the resolution profile; an explicit `schema` still wins.
     """
 
-def safe_loads(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "list[dict[Any, Any] | list[Any]]":
+def safe_loads(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool | None" = None, honor_version_directive: "bool" = False, duplicate_keys: "str | None" = None) -> "list[dict[Any, Any] | list[Any]]":
     """
     Parse a multi-document YAML stream into a list of dicts/lists.
 

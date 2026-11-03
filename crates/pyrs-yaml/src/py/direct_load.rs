@@ -20,7 +20,7 @@
 //! - a mapping key is resolved by exactly that rule too, because it is the same
 //!   kind of node as a value (`convert.rs` reuses its value path outright);
 //! - duplicate keys are last-wins and recorded as
-//!   [`ParseError::DuplicateKey`] unless `allow_duplicate_keys` or the key
+//!   [`ParseError::DuplicateKey`] unless the policy permits it or the key
 //!   resolves to null (the `is_null_key` exemption in `push_node`);
 //! - depth is bounded by the same `max_depth` contract.
 //!
@@ -34,6 +34,7 @@
 use granit_parser::Event;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};
+use pyrs_yaml_core::parser::DuplicateKeys;
 use pyrs_yaml_core::parser::yaml::{DirectEvent, Schema, YamlType, replicable_events};
 use pyrs_yaml_core::parser::{DepthError, ParseError};
 
@@ -46,7 +47,7 @@ struct Builder<'py, 'a> {
     duplicate_key: Option<String>,
     error: Option<PyErr>,
     max_depth_hit: bool,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
     max_depth: usize,
 }
 
@@ -56,7 +57,7 @@ impl<'py, 'a> Builder<'py, 'a> {
         schema: &'py Schema,
         events: &'a [DirectEvent<'a>],
         max_depth: usize,
-        allow_duplicate_keys: bool,
+        duplicate_keys: DuplicateKeys,
     ) -> Self {
         Self {
             py,
@@ -66,7 +67,7 @@ impl<'py, 'a> Builder<'py, 'a> {
             duplicate_key: None,
             error: None,
             max_depth_hit: false,
-            allow_duplicate_keys,
+            duplicate_keys,
             max_depth,
         }
     }
@@ -163,17 +164,22 @@ impl<'py, 'a> Builder<'py, 'a> {
                     let key_object = self.scalar_to_py(key_text, plain).ok()?;
                     self.pos += 1;
                     let value = self.build(depth + 1)?;
-                    if !self.allow_duplicate_keys
-                        && !self.is_null_key_text(key_text)
-                        && dict.contains(&key_object).unwrap_or(false)
-                        && self.duplicate_key.is_none()
-                    {
+                    // One lookup serves both questions. The default exempts the null class,
+                    // which is why the scan is skipped for it; `error` refuses every class, and
+                    // `first_wins` needs the same answer to leave the first value alone.
+                    let scanned = self.duplicate_keys == DuplicateKeys::Error
+                        || self.duplicate_keys.keeps_first()
+                        || (self.duplicate_keys.refuses() && !self.is_null_key_text(key_text));
+                    let present = scanned && dict.contains(&key_object).unwrap_or(false);
+                    if present && self.duplicate_keys.refuses() && self.duplicate_key.is_none() {
                         self.duplicate_key = Some(key_text.to_string());
                     }
                     // Last-wins at the original position = IndexMap::insert. An
                     // unhashable conversion bails to the AST pipeline, which keeps
                     // the pair under its source text rather than dropping it.
-                    if dict.set_item(&key_object, &value).is_err() {
+                    if !(present && self.duplicate_keys.keeps_first())
+                        && dict.set_item(&key_object, &value).is_err()
+                    {
                         return None;
                     }
                 }
@@ -219,7 +225,7 @@ pub(crate) fn try_direct_load(
     yaml_src: &str,
     schema: &Schema,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
 ) -> DirectOutcome {
     // The engine decides eligibility - the two cheap byte/line pre-vetoes and the event
     // layer's own answer - and hands back the collected events when the document is
@@ -228,7 +234,7 @@ pub(crate) fn try_direct_load(
     let Some(events) = replicable_events(yaml_src) else {
         return DirectOutcome::Bail;
     };
-    let mut builder = Builder::new(py, schema, &events, max_depth, allow_duplicate_keys);
+    let mut builder = Builder::new(py, schema, &events, max_depth, duplicate_keys);
     // Root: skip stream/document wrappers, build exactly one content node,
     // then require the rest to be document-end/stream-end.
     builder.skip_doc_wrappers();

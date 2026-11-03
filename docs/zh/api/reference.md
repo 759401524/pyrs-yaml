@@ -18,7 +18,7 @@ status: new
 将 YAML 字符串或字节解析为 `YamlDocument`。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **参数:**
@@ -27,7 +27,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `resolve_merges` — 解析后是否解析合并键 (`<<: *alias`)（默认：`True`）
 - `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
-- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`None`，等同 `"as_is"`）
+- `duplicate_keys` — 一个映射里出现两个被 YAML 算作同一个的键时，读取怎么做（默认：`"as_is"`）。`"as_is"` 按身份类别给出它一直给出的答案：标量键冲突、普通写法与引号写法的冲突都被拒绝；第二个空键或合并键折叠进第一个槽位；带 tag 的两个键在任何取值下都算两个键。`"error"` 连默认被豁免的类别也拒绝；`"last_wins"` 静默折叠到后一对，这就是 `allow_duplicate_keys=True` 的意思；`"first_wins"` 保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键。同时传入本项和 `allow_duplicate_keys` 会被拒绝，而不是按优先级决出。
 - `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** 包含解析后 YAML 的 `YamlDocument`
@@ -54,7 +55,7 @@ doc = pyrs_yaml.parse(
 解析 YAML 文件。
 
 ```python
-parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **参数:**
@@ -62,7 +63,8 @@ parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 - `path` — YAML 文件的路径
 - `schema` — Schema 名称或内联 dict（默认：`"core"`）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
-- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`None`，等同 `"as_is"`）
+- `duplicate_keys` — 一个映射里出现两个被 YAML 算作同一个的键时，读取怎么做（默认：`"as_is"`）。`"as_is"` 按身份类别给出它一直给出的答案：标量键冲突、普通写法与引号写法的冲突都被拒绝；第二个空键或合并键折叠进第一个槽位；带 tag 的两个键在任何取值下都算两个键。`"error"` 连默认被豁免的类别也拒绝；`"last_wins"` 静默折叠到后一对，这就是 `allow_duplicate_keys=True` 的意思；`"first_wins"` 保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键。同时传入本项和 `allow_duplicate_keys` 会被拒绝，而不是按优先级决出。
 - `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** `YamlDocument`
@@ -83,7 +85,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 从字符串解析多个 YAML 文档。
 
 ```python
-parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[YamlDocument]
 ```
 
 **参数:**
@@ -92,7 +94,8 @@ parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "cor
 - `resolve_merges` — 解析后是否解析合并键 (`<<: *alias`)（默认：`True`）
 - `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
-- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`None`，等同 `"as_is"`）
+- `duplicate_keys` — 一个映射里出现两个被 YAML 算作同一个的键时，读取怎么做（默认：`"as_is"`）。`"as_is"` 按身份类别给出它一直给出的答案：标量键冲突、普通写法与引号写法的冲突都被拒绝；第二个空键或合并键折叠进第一个槽位；带 tag 的两个键在任何取值下都算两个键。`"error"` 连默认被豁免的类别也拒绝；`"last_wins"` 静默折叠到后一对，这就是 `allow_duplicate_keys=True` 的意思；`"first_wins"` 保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键。同时传入本项和 `allow_duplicate_keys` 会被拒绝，而不是按优先级决出。
 - `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **返回值:** `YamlDocument` 对象列表
@@ -110,7 +113,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 解析 YAML 并返回原生 Python 类型。
 
 ```python
-safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> dict[Any, Any] | list[Any]
 ```
 
 **参数:**
@@ -118,7 +121,8 @@ safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_d
 - `yaml` — `str` 或 `bytes` 的 YAML 内容
 - `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
-- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`None`，等同 `"as_is"`）
+- `duplicate_keys` — 一个映射里出现两个被 YAML 算作同一个的键时，读取怎么做（默认：`"as_is"`）。`"as_is"` 按身份类别给出它一直给出的答案：标量键冲突、普通写法与引号写法的冲突都被拒绝；第二个空键或合并键折叠进第一个槽位；带 tag 的两个键在任何取值下都算两个键。`"error"` 连默认被豁免的类别也拒绝；`"last_wins"` 静默折叠到后一对，这就是 `allow_duplicate_keys=True` 的意思；`"first_wins"` 保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键。同时传入本项和 `allow_duplicate_keys` 会被拒绝，而不是按优先级决出。
 - `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **等价于:** PyYAML 的 `yaml.safe_load()`
@@ -134,7 +138,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 解析多个 YAML 文档。
 
 ```python
-safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **参数:**
@@ -142,7 +146,8 @@ safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 - `yaml` — `str` 或 `bytes` 的 YAML 内容
 - `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
 - `max_depth` — 最大嵌套深度（默认：`1000`）
-- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`None`，等同 `"as_is"`）
+- `duplicate_keys` — 一个映射里出现两个被 YAML 算作同一个的键时，读取怎么做（默认：`"as_is"`）。`"as_is"` 按身份类别给出它一直给出的答案：标量键冲突、普通写法与引号写法的冲突都被拒绝；第二个空键或合并键折叠进第一个槽位；带 tag 的两个键在任何取值下都算两个键。`"error"` 连默认被豁免的类别也拒绝；`"last_wins"` 静默折叠到后一对，这就是 `allow_duplicate_keys=True` 的意思；`"first_wins"` 保留前一对的值，并把被折叠那对的注释与锚点定义交给留下来的那个键。同时传入本项和 `allow_duplicate_keys` 会被拒绝，而不是按优先级决出。
 - `honor_version_directive` — 对显式 `%YAML` 指令做版本协商（默认：`False`）。取 `True` 时，声明 `%YAML 1.1` 的文档按 YAML 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。
 
 **等价于:** PyYAML 的 `yaml.safe_loads()`

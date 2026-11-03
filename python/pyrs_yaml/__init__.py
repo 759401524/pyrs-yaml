@@ -241,8 +241,9 @@ class YAML(metaclass=_YAMLMetaclass):
         typ: Literal["rt", "safe", "full"] = "rt",
         schema: str | _SchemaDict | None = None,
         max_depth: int = 1000,
-        allow_duplicate_keys: bool = False,
+        allow_duplicate_keys: bool | None = None,
         honor_version_directive: bool = False,
+        duplicate_keys: str | None = None,
     ) -> None:
         self._impl = _YAML(
             typ,
@@ -250,6 +251,7 @@ class YAML(metaclass=_YAMLMetaclass):
             max_depth,
             allow_duplicate_keys,
             honor_version_directive,
+            duplicate_keys,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -261,8 +263,9 @@ def safe_load(
     yaml: str,
     schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
     honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> dict[Any, Any] | list[Any]:
     return _safe_load(
         yaml,
@@ -270,6 +273,7 @@ def safe_load(
         max_depth,
         allow_duplicate_keys,
         honor_version_directive,
+        duplicate_keys,
     )
 
 
@@ -277,8 +281,9 @@ def safe_loads(
     yaml: str,
     schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
     honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> list[dict[Any, Any] | list[Any]]:
     return _safe_loads(
         yaml,
@@ -286,6 +291,7 @@ def safe_loads(
         max_depth,
         allow_duplicate_keys,
         honor_version_directive,
+        duplicate_keys,
     )
 
 
@@ -294,8 +300,9 @@ def parse(
     resolve_merges: bool = True,
     schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
     honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> YamlDocument:
     return _parse(
         yaml,
@@ -304,6 +311,7 @@ def parse(
         max_depth,
         allow_duplicate_keys,
         honor_version_directive,
+        duplicate_keys,
     )
 
 
@@ -311,8 +319,9 @@ def parse_file(
     path: str,
     schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
     honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> YamlDocument:
     return _parse_file(
         path,
@@ -320,6 +329,7 @@ def parse_file(
         max_depth,
         allow_duplicate_keys,
         honor_version_directive,
+        duplicate_keys,
     )
 
 
@@ -328,8 +338,9 @@ def parse_all_docs(
     resolve_merges: bool = True,
     schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
     honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> list[YamlDocument]:
     return _parse_all_docs(
         yaml,
@@ -338,6 +349,7 @@ def parse_all_docs(
         max_depth,
         allow_duplicate_keys,
         honor_version_directive,
+        duplicate_keys,
     )
 
 

@@ -163,6 +163,8 @@ doc.get("key")  # "second"
 
 The switch applies to `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, documents with duplicate keys allowed serialize with the last key-value pair emitted.
 
+To name the choice directly, `duplicate_keys` takes `"as_is"` (the default, the per-class answer above), `"error"` (refuse every class, including the null and merge keys the default folds), `"last_wins"` (what `allow_duplicate_keys=True` means), or `"first_wins"` (keep the earlier pair's value and carry the folded pair's notes and anchor definitions onto the survivor). The two spellings are alternatives, not layers: passing both is refused. Every CLI command that reads YAML takes the same choice as `--duplicate-keys`.
+
 ### Serialization Options
 
 `to_yaml_with_options()` controls indentation and line wrapping:

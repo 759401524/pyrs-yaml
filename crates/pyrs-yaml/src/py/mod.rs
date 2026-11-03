@@ -26,6 +26,7 @@ pub mod ndarray;
 pub mod python_types;
 
 use pyo3::prelude::*;
+use pyrs_yaml_core::parser::DuplicateKeys;
 
 use crate::error::ParseError;
 use crate::py::convert::format_i18n_error;
@@ -268,4 +269,36 @@ mod pyrs_yaml {
     pub(crate) use super::functions::to_toml;
     #[pymodule_export]
     pub(crate) use super::functions::validate_custom_types;
+}
+
+/// Resolve the two spellings of one decision into the core's policy.
+///
+/// `allow_duplicate_keys` keeps the meaning it has always had - `None`/`false` is the reader's
+/// per-class answer, `true` is last-wins - and `duplicate_keys` is the named spelling of the same
+/// choice, which also reaches the two answers the boolean could not ask for. Passing both is a
+/// contradiction the caller resolves, not a precedence this layer invents.
+pub(crate) fn duplicate_policy(
+    allow_duplicate_keys: Option<bool>,
+    duplicate_keys: Option<&str>,
+) -> Result<DuplicateKeys, PyErr> {
+    match (allow_duplicate_keys, duplicate_keys) {
+        (Some(_), Some(_)) => Err(crate::YamlParseError::new_err(
+            "allow_duplicate_keys and duplicate_keys are two spellings of one choice; pass one",
+        )),
+        (Some(allowed), None) => Ok(if allowed {
+            DuplicateKeys::LastWins
+        } else {
+            DuplicateKeys::AsIs
+        }),
+        (None, Some(name)) => match name {
+            "as_is" => Ok(DuplicateKeys::AsIs),
+            "error" => Ok(DuplicateKeys::Error),
+            "last_wins" => Ok(DuplicateKeys::LastWins),
+            "first_wins" => Ok(DuplicateKeys::FirstWins),
+            other => Err(crate::YamlParseError::new_err(format!(
+                "unknown duplicate_keys {other:?}; expected as_is, error, last_wins or first_wins"
+            ))),
+        },
+        (None, None) => Ok(DuplicateKeys::AsIs),
+    }
 }
