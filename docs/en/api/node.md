@@ -44,6 +44,13 @@ value -> Any | None
 
 Returns `None` for non-scalar nodes (mappings, sequences).
 
+Reading goes through the document's dict projection, and that is where it can refuse:
+`KeyError` for a path the document does not hold, `YamlTypeError` when two distinct YAML
+keys project to the same Python key. A projection refusal belongs to the document rather
+than to the path — on such a document every `Node` read raises it, whichever path was used.
+Writing does not read the projection: `set_value()` walks the AST, so on a colliding name
+it lands on the first pair the reader folds to that name.
+
 #### `root_type`
 
 Get the type of this node.
@@ -354,11 +361,16 @@ copy() -> Any
 
 #### `is_valid()`
 
-Check if the parent document is still alive and unmodified.
+Check if the parent document is still alive.
 
 ```python
 is_valid() -> bool
 ```
+
+This answers a question about the document, not about the path. A node whose path
+resolves to nothing — an absent key, a name two YAML keys share, or one made stale by a
+later edit — is still valid, so `is_valid()` is not a way to test whether `value` will
+answer. `__repr__` carries that signal instead.
 
 #### `release()`
 
@@ -378,7 +390,10 @@ After calling `release()`, any access to this node will emit a `RuntimeWarning` 
 __repr__() -> str
 ```
 
-Returns `Node(root_type=<type>, path=<path>)` for valid nodes, `Node(released)` for released nodes, or `Node(invalid)` for stale nodes.
+Returns `Node(root_type=<type>, path=<path>)` when the path resolves, `Node(released)`
+once `release()` has run, or `Node(invalid)` when the path does not resolve — because the
+document was modified, because it names nothing the document holds, or because the
+projection refuses (see `value`).
 
 #### `__eq__()`
 

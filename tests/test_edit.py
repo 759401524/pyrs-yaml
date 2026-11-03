@@ -749,3 +749,49 @@ class TestKeyIdentityAcrossSpellings:
         out = doc.to_yaml()
         assert out == "a: 1\nnull: 3\n", out
         assert pyrs_yaml.parse(out).to_dict() == {"a": 1, None: 3}
+
+
+class TestQuerySurfaceOnACollidingName:
+    """`Node` reads the projection, so a colliding key costs every value read in the document.
+
+    Measured, and a boundary rather than a bug to chase: the query layer resolves a path against
+    `to_dict()` while the edit verbs and root `get` walk the AST (the two path parsers stay separate
+    by design). On `0set: 1` beside `!base 0set: 2` the projection refuses - two YAML keys, one
+    Python key - so `find(...).value` raises for *any* path in that document, including one that
+    names nothing at all. Two consequences are pinned here: `is_valid` answers whether the document
+    is still alive, not whether the path resolves, and `Node(invalid)` in the repr is the only signal
+    a caller gets, shared by an ambiguous name and an absent one.
+    """
+
+    SOURCE = "0set: 1\n!base 0set: 2\n"
+
+    def test_root_get_and_the_edit_verbs_take_the_first_pair(self):
+        doc = pyrs_yaml.parse(self.SOURCE)
+        assert doc.get("0set") == 1
+        doc.set("$.0set", 9)
+        assert doc.to_yaml() == "0set: 9\n!base 0set: 2\n"
+
+    def test_is_valid_asks_about_the_document_not_the_path(self):
+        doc = pyrs_yaml.parse(self.SOURCE)
+        assert doc.find("$.0set").is_valid
+        assert doc.find("$.absent").is_valid
+        assert repr(doc.find("$.0set")) == repr(doc.find("$.absent")) == "Node(invalid)"
+        with pytest.raises(pyrs_yaml.YamlTypeError, match="same Python key"):
+            _ = doc.find("$.0set").value
+
+    def test_the_projection_answers_again_once_the_name_is_unique(self):
+        doc = pyrs_yaml.parse(self.SOURCE)
+        doc.rename("$.0set", "only")
+        assert doc.find("$.only").value == 1
+        assert doc.find("$.0set").value == 2
+
+    def test_a_write_lands_on_the_path_a_read_refuses(self):
+        doc = pyrs_yaml.parse(self.SOURCE)
+        doc.find("$.0set").set_value(7)
+        assert doc.to_yaml() == "0set: 7\n!base 0set: 2\n"
+
+    def test_an_unresolvable_path_names_which_layer_refused(self):
+        with pytest.raises(KeyError):
+            _ = pyrs_yaml.parse("a: 1\n").find("$.zzz").value
+        with pytest.raises(pyrs_yaml.YamlTypeError, match="same Python key"):
+            _ = pyrs_yaml.parse(self.SOURCE).find("$.zzz").value

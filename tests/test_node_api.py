@@ -246,3 +246,22 @@ class TestNodeRelease:
         node.release()
         with pytest.warns(RuntimeWarning), contextlib.suppress(pyrs_yaml.YamlDocumentError):
             _ = node.root_type
+
+
+class TestIsValidAnswersLiveness:
+    """`is_valid()` reports the document's liveness, never whether the path resolves.
+
+    Measured on an edit made after the node was found: the node goes stale, its `repr` answers
+    `Node(invalid)` and reading it raises, yet `is_valid()` still answers True because it tests
+    only the document reference. `__repr__` is the resolution signal; a page that said "alive and
+    unmodified" here described a check the method does not make.
+    """
+
+    def test_a_node_made_stale_by_an_edit_is_still_valid(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        node = doc.find("$.a")
+        doc.set("$.b", 2)
+        assert node.is_valid()
+        assert repr(node) == "Node(invalid)"
+        with pytest.warns(RuntimeWarning), pytest.raises(pyrs_yaml.YamlDocumentError):
+            _ = node.value
