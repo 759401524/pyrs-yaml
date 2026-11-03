@@ -564,6 +564,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   units that walk covered, and the input joins the corpus as
   `fuzz/seeds/edit_yaml/former-crash-b7e16929.seed`. No committed test's expectation moved:
   `cargo nextest run --all` 887 passed, `uv run pytest tests/` 4,682 passed / 11 skipped.
+- **The `Node` pages said `is_valid()` also refuses a modified document** — the method tests only
+  the document reference, so a node made stale by an edit still answers `True` after its `repr` has
+  flipped to `Node(invalid)` (measured: find `$.a`, then `set("$.b", 2)` — `is_valid()` is `True`,
+  the repr is `Node(invalid)`, and reading `value` raises `YamlDocumentError`). The same repr names
+  three causes the page conflated: a stale node, a path the document does not hold, and a path whose
+  read the dict projection refuses. That third cause is the boundary this note records. Reads go
+  through `to_dict()`, so on `0set: 1` beside `!base 0set: 2` — two YAML keys, one Python key —
+  every `Node` read raises `YamlTypeError` whichever path was used, including one that names
+  nothing; an absent path on an ordinary document raises `KeyError` instead. Writes do not read the
+  projection: `set_value()` walks the AST, so it lands on the first pair the reader folds to that
+  name, and `rename` makes the name answer again. The English page and its zh/ja/ko twins all
+  carried the false sentence, so all four are corrected; six Python tests pin the liveness answer,
+  the three causes behind one repr, the two exception types split by cause, and a write landing
+  where a read refused. No engine behaviour changed — this is documentation measured against the
+  shipped object.
 - **An alias key folds the plain null key that follows it** — `? &a` / `? *a` / `? &b ~` is an
   anchored empty key, an alias naming it, and the mapping's own anchored null key. The receiver
   folds the two null keys and drops `&a`'s only definition, so `repair_orphaned_anchors` inlines

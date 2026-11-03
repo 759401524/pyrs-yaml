@@ -434,6 +434,17 @@ status: new
   字节输入在 `cargo fuzz run edit_yaml -- -runs=0` 下都退出 0，同轮覆盖的 3,232 条也一并干净，输入以
   `fuzz/seeds/edit_yaml/former-crash-b7e16929.seed` 进语料。没有任何已提交测试的期望需要改动：
   `cargo nextest run --all` 887 通过，`uv run pytest tests/` 4,682 通过 / 11 跳过。
+- **`Node` 页面称 `is_valid()` 还会拒绝已被修改的文档** — 该方法只检查文档引用，因此被一次编辑
+  弄成过期的节点，在其 `repr` 已经翻成 `Node(invalid)` 之后依然回答 `True`（实测：先 find `$.a`，
+  再 `set("$.b", 2)` — `is_valid()` 为 `True`，repr 为 `Node(invalid)`，读 `value` 抛
+  `YamlDocumentError`）。同一个 repr 涵盖页面混为一谈的三种原因：节点过期、文档里不存在该路径，
+  以及该路径的读取被 dict 投影拒绝。第三种原因就是本条记录下来的边界。读取经过 `to_dict()`，所以在
+  `0set: 1` 与 `!base 0set: 2` 并排（两个 YAML 键，一个 Python 键）时，任何 `Node` 读取都会抛
+  `YamlTypeError`，无论用的是哪条路径，包括那条什么都不指的路径；普通文档上不存在的路径抛的是
+  `KeyError`。写入不读投影：`set_value()` 直接走 AST，因此落在读者折叠到该名的第一对上，而 `rename`
+  让这个名字重新可以回答。英文页与中文、日文、韩文对应页都带着那句错误的说法，所以四处一并改正；六条
+  Python 测试钉住存活回答、一个 repr 背后的三种原因、按原因分开的两种异常类型，以及写在读取拒绝之处
+  落地。引擎行为没有变化 — 这是对着已发布对象量过的文档。
 - **别名键会折叠跟在它后面的普通空键** — `? &a` / `? *a` / `? &b ~` 是一个带锚点的空键、
   一个指名它的别名，以及映射自己的带锚点空键。接收者折叠两个空键时丢掉了 `&a` 唯一定义，于是
   `repair_orphaned_anchors` 把这个别名内联回去，键位置也算在内，而重建按迭代顺序重新插入各对。

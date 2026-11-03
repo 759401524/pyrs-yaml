@@ -44,6 +44,11 @@ value -> Any | None
 
 对于非标量节点（映射、序列）返回 `None`。
 
+读取失败会抛出异常：路径不存在时是 `KeyError`，两个不同的 YAML 键落到同一个 Python
+键时是 `YamlTypeError`（`to_dict()` 在同一处拒绝）。后一种拒绝属于文档而不是路径，因此
+这样的文档里任何 `Node` 读取都会抛出它。写入不走这条读取：`set_value()` 直接编辑 AST，
+名字重合时落在折叠到该名的第一对。
+
 #### `root_type`
 
 获取此节点的类型。
@@ -343,11 +348,15 @@ copy() -> Any
 
 #### `is_valid()`
 
-检查父文档是否仍然存活且未被修改。
+检查父文档是否仍然存活。
 
 ```python
 is_valid() -> bool
 ```
+
+这回答的是文档的问题，而不是路径的问题。路径解析不到内容的节点依然有效——键不
+存在、两个 YAML 键落到同一个 Python 名，或者后续编辑让节点过期——所以 `is_valid()`
+不能用来判断 `value` 是否会应答。那个信号由 `__repr__` 给出。
 
 #### `release()`
 
@@ -367,7 +376,9 @@ release() -> None
 __repr__() -> str
 ```
 
-有效节点返回 `Node(root_type=<type>, path=<path>)`，已释放节点返回 `Node(released)`，过期节点返回 `Node(invalid)`。
+路径解析成功时返回 `Node(root_type=<type>, path=<path>)`，调用 `release()` 之后返回
+`Node(released)`，解析不到时返回 `Node(invalid)`——文档被改过、路径没有指向任何内容，
+或者取值被拒绝（见 `value`）。
 
 #### `__eq__()`
 
