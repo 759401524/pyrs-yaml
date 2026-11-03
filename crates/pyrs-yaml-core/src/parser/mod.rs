@@ -77,8 +77,10 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// answer an alias placed before it: the fold that dropped the earlier definition left
 /// `s: *x` above every `&x` (libFuzzer `edit_yaml` crash-b7e16929), and a "no remaining
 /// definition" test called that tree self-consistent while its emission was unreadable.
-/// Ordinary shared aliases keep their reference, and the walk runs solely when a fold actually
-/// dropped an anchored entry — the common path pays nothing.
+/// Ordinary shared aliases keep their reference. Both callers test the collection before entering,
+/// because entering this walk per document cost +0.18% on the `parse_small` instruction floor -
+/// measured against a document (`key: value`) that holds no anchor, no alias and no fold, so the
+/// walk itself never ran and the price sat in the call.
 ///
 /// The merge pass owns the same obligation (`crate::parser::yaml::merge`): consuming a
 /// `<<` entry drops the anchor its value node defined, while the pairs the merge
@@ -1616,8 +1618,12 @@ impl<'a> AstReceiver<'a> {
         for note in notes {
             node.push_leading_comment(note);
         }
-        let orphans = core::mem::take(&mut self.orphaned_anchors);
-        repair_orphaned_anchors(&mut node, orphans);
+        // The guard is priced, not stylistic: entering the repair per document read +0.18% on the
+        // `parse_small` instruction floor, which is a document holding no anchor at all.
+        if !self.orphaned_anchors.is_empty() {
+            let orphans = core::mem::take(&mut self.orphaned_anchors);
+            repair_orphaned_anchors(&mut node, orphans);
+        }
         node
     }
 

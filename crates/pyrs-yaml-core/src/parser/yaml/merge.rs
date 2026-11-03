@@ -36,7 +36,9 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
     // which is upstream of this pass and cannot see it.
     let mut orphaned: Vec<(String, CustomNode)> = Vec::new();
     resolve_merges_recursive(node, &anchors, &mut path, 0, &mut orphaned);
-    repair_orphaned_anchors(node, orphaned);
+    if !orphaned.is_empty() {
+        repair_orphaned_anchors(node, orphaned);
+    }
 }
 
 /// Return true if any mapping in the tree has a `<<` merge key.
