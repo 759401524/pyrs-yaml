@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`to_yaml_with_options(note_placement=...)` decides where a note the line cannot hold goes** —
+  when a pair's trailing slot is already taken and an `&a` / `!tag` header line sits directly above
+  that pair, the note has to take a line of its own. The writer parked it inside the header's gap
+  while a reader files it above the header, so the emission needed a second round to settle -
+  libFuzzer `edit_yaml` crash-547a9705 reported exactly that. `note_first` (the default) writes it
+  above the header, where the read puts it, so the first emission is the fixed point; `header_first`
+  keeps the placement this engine used to pick and is documented as not settling for that shape. An
+  unrecognised value is its own named refusal, never a silent fall back. The default is the
+  placement a re-read already gives, so no existing round-trip or placement expectation moved - the
+  Rust and Python suites pass on it unchanged. Two Rust tests pin the two answers with their exact
+  bytes, three Python ones pin the refusal, the two values agreeing where no header gap exists, and
+  the reader's own lift; the 74-byte input replays clean under `cargo fuzz run edit_yaml -- -runs=0`
+  and joins the corpus as `fuzz/seeds/edit_yaml/former-crash-547a9705.seed`. The last live finding
+  of that run, `b7e16929`, stays open as the anchor-order question it is.
 - **`delete()` now asks the caller what a duplicated key name means** — a document can hold two keys
   that spell one name and are told apart only by a tag or an anchor the reader keeps (`0set: 1`
   beside `!base 0set: 2`), so a delete that takes one leaves the other answering that name as soon

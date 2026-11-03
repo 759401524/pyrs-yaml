@@ -36,9 +36,12 @@
 //! path naming a scalar and changes nothing, which is a question about a refusal the CLI would show,
 //! not about emitted text. A note is followed only onto the line it was written on: asked for on a
 //! block sequence it lands on the last item's line and re-reads as that item's, because there is no
-//! other place in the text it could live, and exploration found a scalar shape doing the same;
-//! keeping it on the node would need a new emission position, so the claim is withheld rather than
-//! written as a permission. Style is the third: the writer refuses a style a text cannot carry (a
+//! other place in the text it could live, and exploration found a scalar shape doing the same. The
+//! position itself is decided now - `note_placement`, default `note_first`, writes a note that
+//! cannot ride its line above the `&a` / `!tag` header line, where a read files it, so the first
+//! emission settles - but the settling position can hand the note to the enclosing node, so the
+//! owner claim is withheld rather than written as a permission. Style is the third: the writer
+//! refuses a style a text cannot carry (a
 //! block scalar cannot hold a trailing space) and that fallback is correct, so for style, flow, tag
 //! and anchor the claim here is only re-parse and settle, while `prop_style_setting_roundtrip` asks
 //! the equality question on trees where the answer is determined.
@@ -518,9 +521,10 @@ fuzz_target!(|data: &[u8]| {
                 // sequence, the note lands on the last item's line - there is nowhere else in the text
                 // for it - and re-reads as that item's; and exploration found the same hand-off on
                 // scalars in one shape, so "the note stays where it was put" is not a claim this tier
-                // can make yet. Both are recorded rather than asserted: keeping a note on the node the
-                // call named would need a decided emission position, which is a question about the
-                // writer's output, not a defect a seed can settle.
+                // can make yet. Both are recorded rather than asserted: the emission position is decided
+                // now (`note_placement`, default `note_first`, writes a note that cannot ride its line
+                // above the `&a` / `!tag` header the reader files it under), and the position that
+                // settles is not always the one that keeps the owner - so the owner claim stays withheld.
                 set_comment_path(
                     &mut node,
                     &path,

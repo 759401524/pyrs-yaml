@@ -80,6 +80,7 @@ to_yaml_with_options(
     explicit_start: bool = False,
     explicit_end: bool = False,
     sort_keys: bool = False,
+    note_placement: str = "note_first",
 ) -> str
 ```
 
@@ -89,6 +90,7 @@ to_yaml_with_options(
 - `explicit_start` — 문서 시작에 `---` 추가 (기본값: False)
 - `explicit_end` — 문서 끝에 `...` 추가 (기본값: False)
 - `sort_keys` — 키를 알파벳순으로 정렬 (기본값: False)
+- `note_placement` — 주석이 자기 줄에 실리지 못하고 바로 위가 `&a` / `!tag` 헤더 줄일 때의 자리: `note_first`(기본)는 헤더 위에 씁니다. 읽기도 거기 두므로 첫 출력에서 수렴합니다. `header_first`는 헤더와 본문 사이에 둡니다. 다른 값은 거부됩니다
 
 **예시:**
 

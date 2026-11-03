@@ -36,6 +36,19 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
+When a note cannot ride its own line and an `&a` / `!tag` header line sits directly above it,
+`note_placement` decides the position:
+
+```python title="note_placement"
+yaml_str = doc.to_yaml_with_options(note_placement="note_first")  # default: above the header
+yaml_str = doc.to_yaml_with_options(note_placement="header_first")  # inside the header's gap
+```
+
+`note_first` is the default because it is the position a re-read already gives, so the first emission
+is the fixed point. `header_first` is the placement the writer picked before the flag existed and it is
+not a fixed point for that shape - reading it back lifts the note. Any other value is refused with
+`YamlSerializeError`, never quietly treated as the default.
+
 #### PyYAML-Compatible Serialization
 
 ```python title="PyYAML-compatible serialization"

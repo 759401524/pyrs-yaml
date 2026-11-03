@@ -12183,3 +12183,45 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 |:--|:-----|:------|:------|
 | D3 | **`set(create_missing=True)`** — create missing intermediate mapping keys along an edit path (`doc.set("$.a.b.c", 2)`) | Rust + Python | ✅ 2026-08-04 |
 | D4 | **`doc.walk()` / `doc.scalars()`** — Rust-backed depth-first traversal yielding `Node` objects, matching `Node.walk()` semantics without per-node `to_dict()` resolution | Rust + Python | ✅ 2026-08-04 |
+
+### (iw) A note inside a header's gap settled only on the second round (2026-11-03)
+
+libFuzzer `edit_yaml` crash-547a9705 (74 bytes, 2026-11-02 batch, issue #732) failed the fixed-point
+assertion with two emissions one line-swap apart:
+
+first: `- \n  - \n    &a0 \n    # fuzz 47 \n    - ~: ! ~  # fuzz 47\n`
+second: `- \n  - \n    # fuzz 47\n    &a0 \n    - ~: ! ~  # fuzz 47\n`
+
+`cargo fuzz tmin` minimized it to 18 bytes - the document `-  - - : !` and three records:
+`set_anchor` on `[0][0]`, then `set_comment` on `[0][0][0]`, then on the value under its `~` key.
+The pair line `- ~: ! ~  # fuzz 47` carries the value's note in the line's one trailing slot, so the
+other note has to take a line of its own and the pair writer put it above the pair's own line start.
+That line is the first line of the anchored sequence's gap: granit spans a node through the break
+that ends its header line, so the re-read files the note as the anchored node's `leading_comments` -
+one line up.
+
+The writer already answered this for a container's *own* inline note. `enclosing_header_start`
+(crash-2d978c7b) and the `wrote_header` branch (crash-b22d0653) both lift to the outer header, and
+the gap travels as an argument through the item writers. What did not consult it was the note
+arriving through the pair writer's fallback. `note_line_above` is the one function every "above this
+line" placement goes through, so the rule lives there: while the line directly above the target
+holds nothing but `&a` / `!tag` tokens at no deeper an indent, that line is the target's header and
+the note belongs above it. `is_header_line` is the predicate, and it is deliberately about the text
+of the line - a `- ` item line and a `key:` line are not headers, and measured, both placements are
+fixed points under them.
+
+Measured on the tree the script builds: `note_first` writes the lifted four lines and re-emits them
+byte-identically; `header_first` writes exactly the pre-fix bytes and needs the reader's lift to
+settle. The default is therefore the placement a re-read already gives - read-then-emit stays
+byte-identical for every caller, and only the emission an edit produces immediately moves. The
+74-byte input replays exit 0 under `cargo fuzz run edit_yaml -- -runs=0` (nightly, Linux-side target
+dir) together with the 3,255 units that run walked, and is archived as
+`fuzz/seeds/edit_yaml/former-crash-547a9705.seed`.
+
+Boundary this closes the question on but does not claim: the *position* is decided, the *owner* is
+not preserved. The settling placement can file the note on the enclosing node, so the tier's
+equality claim for `set_comment` stays withheld - now because of who owns a note that cannot ride
+its line, not because the position was undecided. A trailing note on the header line was measured
+and rejected as the spelling of `header_first`: `&a0  # note` re-reads with the note moved to the
+*enclosing* item, so it changes the owner rather than the position, which the standing ruling on
+container note ownership does not allow.

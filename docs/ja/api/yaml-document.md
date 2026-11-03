@@ -80,6 +80,7 @@ to_yaml_with_options(
     explicit_start: bool = False,
     explicit_end: bool = False,
     sort_keys: bool = False,
+    note_placement: str = "note_first",
 ) -> str
 ```
 
@@ -89,6 +90,7 @@ to_yaml_with_options(
 - `explicit_start` — ドキュメント先頭に `---` を追加 (デフォルト: False)
 - `explicit_end` — ドキュメント末尾に `...` を追加 (デフォルト: False)
 - `sort_keys` — キーをアルファベット順にソート (デフォルト: False)
+- `note_placement` — 備考が自分の行に乗れず、直上が `&a` / `!tag` ヘッダー行になるときの位置: `note_first`（既定）はヘッダーの上に書きます。読み戻しもそこへまとめるので、最初の出力で収束します。`header_first` はヘッダーと本文の間に留めます。それ以外の値は拒否されます
 
 **例:**
 

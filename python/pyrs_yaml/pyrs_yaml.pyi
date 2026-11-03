@@ -343,9 +343,15 @@ class YamlDocument:
         """
         Serialize the document to a YAML string (default 2-space indent).
         """
-    def to_yaml_with_options(self, /, indent_size: "int" = 2, explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str":
+    def to_yaml_with_options(self, /, indent_size: "int" = 2, explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None, note_placement: "str" = "note_first") -> "str":
         """
         Serialize with customizable indent, sorting, and explicit start/end markers.
+
+        `note_placement` decides where a note line goes when it cannot ride its own line and an
+        `&a` / `!tag` header line sits directly above it: `note_first` (the default) writes it above
+        that header, which is where reading the text back files it, so the first emission already
+        settles; `header_first` keeps the header line on top and is not a fixed point for such a
+        shape. Any other value is a named refusal.
         """
     def validate(self, /, schema: "str | dict[str, Any]") -> "None":
         """
