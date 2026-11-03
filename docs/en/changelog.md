@@ -557,6 +557,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A fold that dropped the definition an alias binds left unreadable text** — `: &x`, `!k &x :` and
+  `:` are three null keys, two of which fold by design, and the pair the fold drops is the one that
+  defined `x` while the only surviving `&x` rides a key that lands *after* the alias `s: *x`. YAML
+  binds an alias to the nearest preceding definition, so the emission put `*x` above every `&x` and
+  the text was one this library's own reader refused with `found unknown anchor` (libFuzzer
+  `edit_yaml` crash-b7e16929, 25 bytes after `cargo fuzz tmin`). The orphan repair now asks the
+  positional question — is this name defined before this use? — and writes the dropped node into the
+  uses that cannot reach it (`inline_dropped_uses`), which puts the definition where the alias needs
+  it without reordering a single pair; the inlined copy carries the anchor, so it re-defines the
+  name at that spot and later uses keep their reference. The old predicate asked only whether a
+  definition survived somewhere, which is why the tree looked self-consistent while its text could
+  not be read. Measured: the emission re-parses and settles in one round
+  (`a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts`), the 69-byte and
+  25-byte inputs both replay exit 0 under `cargo fuzz run edit_yaml -- -runs=0` along with the 3,232
+  units that walk covered, and the input joins the corpus as
+  `fuzz/seeds/edit_yaml/former-crash-b7e16929.seed`. No committed test's expectation moved:
+  `cargo nextest run --all` 887 passed, `uv run pytest tests/` 4,682 passed / 11 skipped.
 - **An alias key folds the plain null key that follows it** — `? &a` / `? *a` / `? &b ~` is an
   anchored empty key, an alias naming it, and the mapping's own anchored null key. The receiver
   folds the two null keys and drops `&a`'s only definition, so `repair_orphaned_anchors` inlines

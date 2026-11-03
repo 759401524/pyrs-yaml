@@ -72,9 +72,13 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// it names), so replacing each use with the anchored node preserves the value and puts
 /// the definition before it.
 ///
-/// Only names with **no remaining definition** are inlined, so ordinary shared aliases
-/// are never touched, and the walk runs solely when a fold actually dropped an
-/// anchored entry — the common path pays nothing.
+/// Only a definition that **precedes** the alias saves it, which is what YAML's
+/// nearest-preceding binding means. A name still defined somewhere later in the tree does not
+/// answer an alias placed before it: the fold that dropped the earlier definition left
+/// `s: *x` above every `&x` (libFuzzer `edit_yaml` crash-b7e16929), and a "no remaining
+/// definition" test called that tree self-consistent while its emission was unreadable.
+/// Ordinary shared aliases keep their reference, and the walk runs solely when a fold actually
+/// dropped an anchored entry — the common path pays nothing.
 ///
 /// The merge pass owns the same obligation (`crate::parser::yaml::merge`): consuming a
 /// `<<` entry drops the anchor its value node defined, while the pairs the merge
@@ -82,24 +86,20 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// first use it lands on re-defines the name and a self-referential definition (whose
 /// inlined `*name` would otherwise dangle) emits a valid nested anchor.
 pub(crate) fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNode)>) {
+    let mut dropped: NodeMap<String, CustomNode> = NodeMap::default();
     let mut pending = orphans;
     while !pending.is_empty() {
-        let mut defined = Vec::new();
-        collect_anchor_names(root, &mut defined);
-        let mut replacements = NodeMap::default();
         for (name, node) in pending.drain(..) {
-            if defined.contains(&name) || replacements.contains_key(&name) {
-                continue;
+            if !dropped.contains_key(&name) {
+                dropped.insert(name, node);
             }
-            replacements.insert(name, node);
         }
-        if replacements.is_empty() {
-            return;
-        }
-        // A rewrite can displace a sibling pair (see `fold_rewritten_key`), and the definitions that
-        // pair carried may be the only ones their aliases have left — so the next round inlines
-        // those too. Each round replaces at least one alias, so this terminates.
-        pending = inline_aliases(root, &replacements);
+        // `defined` is rebuilt every round because a rewrite can displace a further pair (see
+        // `fold_rewritten_key`) and take back a definition this walk had already counted. Each
+        // round turns at least one alias into the node it named, so the alias count falls and
+        // this ends.
+        let mut defined = Vec::new();
+        pending = inline_dropped_uses(root, &dropped, &mut defined);
     }
 }
 
@@ -130,66 +130,60 @@ pub(crate) fn collect_anchored_nodes(node: &CustomNode, out: &mut Vec<(String, C
     }
 }
 
-/// Every anchor name defined in `node`'s subtree, including keys' own.
-fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
-    if let Some(name) = node.anchor() {
-        out.push(name.to_string());
-    }
-    match node {
-        CustomNode::Mapping { pairs, .. } => {
-            for (key, value) in pairs.iter() {
-                collect_anchor_names(key, out);
-                collect_anchor_names(value, out);
-            }
-        }
-        CustomNode::Sequence { items, .. } => {
-            for item in items {
-                collect_anchor_names(item, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Replace each `*name` alias in the subtree whose name is in `replacements`.
+/// Replace each `*name` the tree can no longer reach in document order with the node that
+/// defined it before the fold took it away.
 ///
-/// Key position is rewritten too, and it costs a rebuild of every mapping in the
-/// subtree: `IndexMap` hands keys out immutably, so an alias standing where the fold
-/// left it (`? *b`) or one nested inside a container used as a key is unreachable
-/// through `iter_mut`. The rebuild re-inserts in iteration order and folds every key it
-/// inserts against the keys already placed, because a replacement collides both with a key
-/// that came before it and with a plain key that comes after: `? &a` / `? *a` / `? &b ~`
+/// `defined` is the run of anchor names already met in document order - keys before their
+/// values, pairs in insertion order - because an alias binds the nearest *preceding*
+/// definition, not merely any definition. Key position is rewritten too, and it costs a rebuild
+/// of every mapping in the subtree: `IndexMap` hands keys out immutably, so an alias standing
+/// where the fold left it (`? *b`) or one nested inside a container used as a key is
+/// unreachable through `iter_mut`. The rebuild re-inserts in iteration order and folds every
+/// key it inserts against the keys already placed, because a replacement collides both with a
+/// key that came before it and with a plain key that comes after: `? &a` / `? *a` / `? &b ~`
 /// folds `&a` and `&b ~` into one null key on the re-read, so emitting the rewritten pair and
 /// then the plain one wrote `&a ~:` beside `&b ~:` and the entry vanished a round later
-/// (libFuzzer `yaml_roundtrip` crash-fce042d0). That is what keeps this cold: the
-/// walk runs only for a document whose fold dropped an anchor definition, and the
-/// shape that reached it (libFuzzer `yaml_roundtrip` crash-a7b68980) emitted `? *b`
-/// with no `&b` anywhere, which its own reader refused.
-fn inline_aliases(
+/// (libFuzzer `yaml_roundtrip` crash-fce042d0). That is what keeps this cold: the walk runs
+/// only for a document whose fold dropped an anchor definition, and the shape that reached it
+/// (libFuzzer `yaml_roundtrip` crash-a7b68980) emitted `? *b` with no `&b` anywhere, which its
+/// own reader refused.
+fn inline_dropped_uses(
     node: &mut CustomNode,
-    replacements: &NodeMap<String, CustomNode>,
+    dropped: &NodeMap<String, CustomNode>,
+    defined: &mut Vec<String>,
 ) -> Vec<(String, CustomNode)> {
-    if let Some(replacement) = match node {
-        CustomNode::Alias { name } => replacements.get(name).cloned(),
-        _ => None,
-    } {
+    if let CustomNode::Alias { name } = node {
+        let Some(replacement) = dropped.get(name).cloned() else {
+            return Vec::new();
+        };
+        if defined.iter().any(|seen| seen == name) {
+            return Vec::new();
+        }
         *node = replacement;
+        // The inlined copy carries the anchor, so it re-defines the name right here: later uses
+        // of it are reachable again and keep their reference.
+        if let Some(name) = node.anchor() {
+            defined.push(name.to_string());
+        }
         return Vec::new();
+    }
+    if let Some(name) = node.anchor() {
+        defined.push(name.to_string());
     }
     let mut displaced = Vec::new();
     match node {
         CustomNode::Mapping { pairs, .. } => {
             let old = core::mem::take(pairs);
             for (mut key, mut value) in old {
-                displaced.append(&mut inline_aliases(&mut key, replacements));
-                displaced.append(&mut inline_aliases(&mut value, replacements));
+                displaced.append(&mut inline_dropped_uses(&mut key, dropped, defined));
+                displaced.append(&mut inline_dropped_uses(&mut value, dropped, defined));
                 fold_rewritten_key(pairs, &mut key, &mut displaced);
                 pairs.insert(key, value);
             }
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
-                displaced.append(&mut inline_aliases(item, replacements));
+                displaced.append(&mut inline_dropped_uses(item, dropped, defined));
             }
         }
         _ => {}

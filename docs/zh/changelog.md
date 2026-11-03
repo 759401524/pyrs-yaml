@@ -422,6 +422,18 @@ status: new
 
 #### 修复
 
+- **折叠丢掉了别名所绑定的定义，写出自家读者拒绝的文本** — `: &x`、`!k &x :` 与 `:` 是三条空键，按设
+  计折叠掉两条，而被丢那对恰好定义了 `x`，唯一的幸存 `&x` 却骑在落在别名 `s: *x` 之后的键上。YAML 把
+  别名绑到最近的**前序**定义，所以发射把 `*x` 放在所有 `&x` 之上，文本被自家读者以
+  `found unknown anchor` 拒绝（libFuzzer `edit_yaml` 的 crash-b7e16929，经 `cargo fuzz tmin` 缩到 25
+  字节）。孤儿修复如今问的是位置——这个名字在本处使用之前定义过吗——并把被丢的节点写进那些够不着它的使
+  用点（`inline_dropped_uses`），于是定义落在别名需要的位置，而不重排任何一个 pair；内联出的副本带着
+  锚，在此处重新定义该名，其后的使用仍保留引用。旧谓词只问「别处是否还有定义」，所以树看着自洽而文本
+  读不出来。实测：发射可重读且一轮收敛
+  （`a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts`），69 字节与 25
+  字节输入在 `cargo fuzz run edit_yaml -- -runs=0` 下都退出 0，同轮覆盖的 3,232 条也一并干净，输入以
+  `fuzz/seeds/edit_yaml/former-crash-b7e16929.seed` 进语料。没有任何已提交测试的期望需要改动：
+  `cargo nextest run --all` 887 通过，`uv run pytest tests/` 4,682 通过 / 11 跳过。
 - **别名键会折叠跟在它后面的普通空键** — `? &a` / `? *a` / `? &b ~` 是一个带锚点的空键、
   一个指名它的别名，以及映射自己的带锚点空键。接收者折叠两个空键时丢掉了 `&a` 唯一定义，于是
   `repair_orphaned_anchors` 把这个别名内联回去，键位置也算在内，而重建按迭代顺序重新插入各对。

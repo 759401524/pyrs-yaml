@@ -12225,3 +12225,41 @@ its line, not because the position was undecided. A trailing note on the header 
 and rejected as the spelling of `header_first`: `&a0  # note` re-reads with the note moved to the
 *enclosing* item, so it changes the owner rather than the position, which the standing ruling on
 container note ownership does not allow.
+
+### (ix) The orphan repair asked "does a definition survive", not "can this alias reach it" (2026-11-03)
+
+libFuzzer `edit_yaml` crash-b7e16929, minimized to 25 bytes (`: &x` / `s: *x` / `!k &x :` / `:` and
+one style record), failed the tier's first claim - an accepted edit emitted text its own reader
+refused - with `found unknown anchor at char 3 line 1 column 4`. The edit turned out not to matter:
+the pure read-then-emit path fails on the same document, which is why the fix is in the reader's
+repair pass and not in a writer placement rule.
+
+Three null keys fold to two by design (`key_identity`'s null class), and the pair the fold drops is
+the one that defined `x`. The surviving `&x` rides the key of the `!k` pair, which the fold leaves
+*after* `s: *x`. YAML binds an alias to the nearest preceding definition, so the emission `s: *x`
+before `&x !k "": ~` cannot be read back by this library.
+
+`repair_orphaned_anchors` was the pass meant to catch this, and it did collect the dropped pair's
+definitions. What it asked, though, was whether the name still had a definition *somewhere in the
+tree*
+
+- `collect_anchor_names` walked the whole subtree - and `x` did, so the alias was left alone and the
+  unreachable-by-order case walked straight through. The question an alias actually answers is
+  positional, so the walk now carries the names met so far in document order (keys before their
+  values, pairs in insertion order) and inlines the dropped node only where the alias cannot reach a
+  definition (`inline_dropped_uses`). The inlined copy keeps its anchor, so it re-defines the name
+  at the spot it lands on and later uses of the same name keep their reference - the shared-alias
+  case the old predicate was protecting stays untouched, and no mapping pair moves, which
+  the "mapping order is always preserved" promise requires.
+
+Measured: the emission of that document now re-parses and settles in one round
+(`a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts`); the 69-byte and
+the 25-byte inputs both replay exit 0 under `cargo fuzz run edit_yaml -- -runs=0` (nightly,
+Linux-side target dir) with the 3,232 units that walk covered, and the input is archived as
+`fuzz/seeds/edit_yaml/former-crash-b7e16929.seed`. Nothing else moved: `cargo nextest run --all` 887
+passed, `uv run pytest tests/` 4,682 passed / 11 skipped. The repair walk stays cold - it runs only
+when a fold actually reported a dropped definition.
+
+This was the last live finding of the 2026-11-02 `edit_yaml` batch: `46d35d71` closed by the
+`on_duplicate` flag (ledger `(iv)`), `547a9705` by the decided note placement (`(iw)`), `b7e16929`
+here.
