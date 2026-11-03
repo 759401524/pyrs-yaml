@@ -11954,6 +11954,41 @@ Python test functions, written by `quality_matrix.py --write-rows`. What it cann
 layout is reproduced from the run's evidence, not from a second live run - the download's shape is
 GitHub's to choose, so both shapes are pinned rather than one being assumed.
 
+### (it) An anchor name's own quote opened a quoted node on the re-read (2026-11-03)
+
+libFuzzer `yaml_roundtrip` reported three inputs in one batch (issue #733). Two of them,
+`crash-abc541ff` and `crash-c06e8a8f`, 26 bytes each, are one defect seen twice: the same anchor
+name, read back under a different name. The third, `crash-fce042d0` (247 bytes), fails for another
+reason and is not closed here.
+
+The name recovery harvests a maximal run of `is_valid_anchor_char`, which mirrors granit's
+`is_anchor_char` and therefore carries `"`, so `&*..f!ny&!#\"` is one name and the writer emits the
+recovered name verbatim. The pass that decides whether a `#` opens a comment carried no matching
+rule: `opens_quoted_node` accepted a quote flush against an anchor or tag token as the quoted node
+that token introduces. Re-reading the emission, that quote opened a region the line never closed, so
+the `#` of the trailing comment counted as quoted content and the `&` written inside the comment was
+taken as the node's anchor. The first round wrote `<>: &*..f!ny&!#\"  # &!`; the second wrote
+`<>: &!  # &!`.
+
+The property branch now asks what the value-indicator branch above it already asks - whether the
+token and the quote are separated at all - because a flush token is that token's own text. Only a
+blank separates a property from the quoted node it introduces, so `&a "b"` still opens a node and
+`&a"b` does not: there the quote is the last character of the name.
+
+The pinned test is load-bearing by mutation: dropping the blank requirement,
+`an_anchor_name_ending_in_a_quote_settles_in_one_round` fails with the two-round move verbatim. It
+pins both inputs as the fuzz target left them, not hand-reduced forms, and asserts the emission and
+its re-emission rather than the recovered name itself.
+
+The two inputs join the corpus as `fuzz/seeds/yaml_roundtrip/former-crash-abc541ff.seed` and
+`former-crash-c06e8a8f.seed` (26 bytes each). The matrix counts move by the one Rust test and the
+two seeds, 892 -> 893 `#[test]` and 231 -> 233 seeds (139 -> 141 `former-crash-*`,
+`yaml_roundtrip`'s directory 108 -> 110), written by `quality_matrix.py --write-rows`. What it still
+cannot see: nothing measures that the name run and the quote-tracking pass agree in general - the
+fix aligns them for `"` and leaves two rules that a future name character could part again - and
+`crash-fce042d0`'s second round, which drops an anchor entry outright, is a separate defect in the
+same scanner and stays open.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

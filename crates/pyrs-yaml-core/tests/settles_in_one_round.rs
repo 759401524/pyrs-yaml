@@ -804,3 +804,31 @@ fn an_inlined_alias_key_folds_into_the_null_key_it_lands_on() {
         );
     }
 }
+
+/// libFuzzer `yaml_roundtrip` crash-abc541ff and crash-c06e8a8f (2026-11-02 batch, issue #733): an
+/// anchor whose name ends in `"` comes back under a different name.
+///
+/// The writer emits the recovered name verbatim (`&*..f!ny&!#\"`), and the key line's trailing
+/// comment (`# &!`) sits behind it. On the next read the recovery scanner treated the name's closing
+/// `"` as opening a quoted node, because `opens_quoted_node` accepted a quote flush against an anchor
+/// token. The `#` behind it therefore no longer looked like a comment opener, the `&` inside that
+/// comment was taken as the anchor, and the document re-emitted as `&!` one round after the first
+/// emission.
+#[test]
+fn an_anchor_name_ending_in_a_quote_settles_in_one_round() {
+    for src in [
+        "<>: #&!\n &*..f!ny&!#\\\"\n\n :",
+        "<&: #&!\n &*..f!ny&!#\\\"\n\n :",
+    ] {
+        let one = emit(src);
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+        assert!(
+            one.contains("&*..f!ny&!#\\\""),
+            "the anchor name must survive the round: {one:?}"
+        );
+    }
+}

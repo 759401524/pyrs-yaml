@@ -397,6 +397,18 @@ status: new
 
 #### 修复
 
+- **名字以引号结尾的锚点保住自己的名字** — 这个扫描器采集的锚点名带着 `"`
+  （`is_valid_anchor_char` 对齐 granit 的规则，只排除空白与流式指示符），所以 `&a"b` 是一个名字，
+  而写器把恢复出来的名字原样写回。判断 `#` 是否开启注释的那一趟却带着另一条规则：
+  `opens_quoted_node` 允许紧贴锚点或标签记号的引号开启一个被引号包裹的节点，于是重读这次输出时，
+  它自己行尾注释里的 `#` 被当作引号内的内容，注释里写的 `&` 反倒成了该节点的锚点。libFuzzer
+  `yaml_roundtrip` 的 crash-abc541ff 与 crash-c06e8a8f，各 26 字节，第一轮写出
+  `<>: &*..f!ny&!#\"  # &!`，第二轮写成 `<>: &!  # &!` — 节点在中间被改名成了 `!`。现在属性与它所
+  引入的引号节点之间必须有一个空白，所以 `&a "b"` 仍开启一个节点，而 `&a"b` 不再开启。
+  `an_anchor_name_ending_in_a_quote_settles_in_one_round` 钉住这两条输入；删掉那一条空白判定，它就
+  以这两轮之间的原样移动变红，两条输入也一并进语料，成为 `former-crash-abc541ff.seed` 与
+  `former-crash-c06e8a8f.seed`。同一轮 run 的第三条 `yaml_roundtrip` 输入 `crash-fce042d0`
+  （247 字节）仍然不收敛 — 第二轮丢了一个锚点条目，机制与这里不同 — 保持未关。
 - **模糊测试 issue 归档器读的是 target，不是下载目录的形状** — 每个归档同时含有
   `artifacts/<target>/` 与 `collected/<target>/`，而 run 41541555317 的下载把这两个根目录直接解到
   `--crashes`，没有为每个归档保留一层目录。把路径第一段当作 target，于是凭空得到 `artifacts` 和
