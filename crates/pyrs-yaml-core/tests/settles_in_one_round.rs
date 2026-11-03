@@ -949,3 +949,27 @@ fn gap_tree_emitted(placement: NotePlacement) -> String {
     )
     .expect("the tree serializes")
 }
+
+/// libFuzzer `edit_yaml` crash-b7e16929, minimized to 25 bytes with `cargo fuzz tmin`.
+///
+/// Three null keys, two of which fold by design, and the pair the fold drops is the one that
+/// defined the anchor `*x` binds. The name still has a definition somewhere in the tree - it rides
+/// the key of the `!k` pair, which lands *after* the alias - so the repair pass's "no remaining
+/// definition" test left the alias alone, and the emission put `s: *x` above every `&x`. YAML binds
+/// an alias to the nearest preceding definition, so that text is one this library's own reader
+/// refuses.
+#[test]
+fn a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts() {
+    let src = ": &x\ns: *x\n!k &x :\n:\n";
+    let emitted = emit(src);
+    let back = parse(&emitted, Schema::Core);
+    assert!(
+        back.is_ok(),
+        "the emission of {src:?} is text its own reader refuses: {emitted:?}"
+    );
+    let again = to_yaml(&back.expect("asserted above"));
+    assert_eq!(
+        again, emitted,
+        "the accepted emission did not settle in one round\nfirst:\n{emitted}\nsecond:\n{again}"
+    );
+}
