@@ -226,7 +226,7 @@ insert(index: int, value: Any) -> None
 이 노드와 그 주석을 제거합니다. 이후 노드는 만료됩니다.
 
 ```python
-delete() -> None
+delete(on_duplicate: str = "one") -> None
 ```
 
 #### `rename()`

@@ -155,7 +155,7 @@ node.insert(1, "x")
 ### `delete()` — 경로로 제거
 
 ```python title="delete() 시그니처"
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ```python title="delete() 예제"

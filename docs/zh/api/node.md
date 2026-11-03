@@ -226,7 +226,7 @@ insert(index: int, value: Any) -> None
 移除该节点及其注释。之后节点变为过期。
 
 ```python
-delete() -> None
+delete(on_duplicate: str = "one") -> None
 ```
 
 #### `rename()`

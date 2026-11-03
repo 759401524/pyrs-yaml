@@ -230,7 +230,7 @@ insert(index: int, value: Any) -> None
 Remove this node and its comments. The node becomes stale afterwards.
 
 ```python
-delete() -> None
+delete(on_duplicate: str = "one") -> None
 ```
 
 #### `rename()`

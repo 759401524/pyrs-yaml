@@ -153,9 +153,15 @@ class Node:
         """Insert into a sequence node at index."""
         self._with_path(lambda doc, segs: doc._insert_path(segs, index, value))
 
-    def delete(self) -> None:
-        """Remove this node and its comments. Node becomes stale afterwards."""
-        self._with_path(lambda doc, segs: doc._delete_path(segs))
+    def delete(self, on_duplicate: str = "one") -> None:
+        """Remove this node and its comments. Node becomes stale afterwards.
+
+        ``on_duplicate`` decides what a delete means when the document holds more than one
+        pair spelling this key, told apart only by the tag or anchor the reader keeps:
+        ``"one"`` (the default) removes the pair the path resolves to, ``"all"`` removes
+        every pair that key could answer with, and ``"error"`` refuses while both remain.
+        """
+        self._with_path(lambda doc, segs: doc._delete_path(segs, on_duplicate))
 
     def rename(self, new_key: str) -> None:
         """Rename this node's mapping key. Node must be a mapping value."""

@@ -282,7 +282,7 @@ append(path: str, value: Any) -> None
 按路径删除节点。映射顺序保留。
 
 ```python
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ### `rename()`

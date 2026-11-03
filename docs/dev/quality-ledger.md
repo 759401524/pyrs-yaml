@@ -12024,6 +12024,51 @@ cannot see: the fold is per-insert, so two rewrites landing inside one rebuild s
 order that rebuild visits its pairs rather than on a final pass over the mapping; and the same
 batch's three `edit_yaml` findings stay open.
 
+### (iv) A delete of a name the document spells twice left the name answering (2026-11-03)
+
+libFuzzer `edit_yaml` crash-46d35d71 (81 bytes, 2026-11-02 batch, issue #732) reported
+`a deleted key is still in the document` with the detail `[Key("0set")] still reads
+Some("-e))))))$) 1")`. It is a third shape of the duplicate-key question, and the first one the
+engine had no answer for: the pair set is legal, the emission is legal, and the delete is exactly
+what the API has always done.
+
+Two sibling keys can spell one name while `key_identity` keeps them apart, because one of them
+carries a tag: `0set: 1` beside `!base 0set: 2`. The engine accepts both, the writer emits both
+lines, and the reader folds them on the re-read - the same asymmetry `key_identity`'s own note calls
+"a ruling, not a gap", and the same one `to_dict()` refuses to paper over with `YamlTypeError`. A
+delete resolves the addressed name through `key_position`'s two passes and removes the one entry it
+found, so the surviving sibling answers that name again as soon as the text is re-read: measured on
+that fixture, the default delete emits `!base 0set: 2` and the re-read projects `{'0set': 2}`.
+
+The engine no longer picks for the caller. `delete_path_with_policy` takes the choice - `one` (the
+default, and byte-for-byte the removal `delete_path` performed before, which now wraps it), `all`
+(every pair the addressed name can answer with, one change unit per removal), and `error`
+(`duplicate-key-target`, refused before the tree changes) - and the public surface carries it as
+`delete(path, on_duplicate=...)`, with the CLI's `--on-duplicate` and an unrecognised value refused
+by name rather than falling back. `All` re-runs the existing anchor guard per removal, so a
+definition an alias still names is refused rather than emitted dangling: the flag widens what a
+caller may ask, not what the engine may write.
+
+Load-bearing by measurement rather than argument: the first version of the sibling counter asked
+`key_eq`, which keeps the tag, and it counted one pair - `all` deleted a single unit and `error`
+never refused. Comparing the emitted text, the way `key_position`'s fallback pass does, is what made
+the fixture behave as the fuzz input did.
+`delete_all_takes_every_pair_the_addressed_path_can_answer_with`,
+`delete_one_leaves_the_sibling_that_still_answers_the_path` and
+`delete_error_refuses_a_key_the_document_holds_twice` pin the three answers; five Python tests pin
+the public surface including both refusals; and the fuzz tier drives the delete verb with `all`,
+which is why crash-46d35d71 now exits 0 on that harness and joins the corpus as
+`fuzz/seeds/edit_yaml/former-crash-46d35d71.seed` (81 bytes). The matrix counts move by the three
+Rust tests, the five Python functions and the one seed - 894 -> 897 `#[test]`, 2,133 -> 2,138 Python
+test functions, 234 -> 235 seeds (142 -> 143 `former-crash-*`) - written by
+`quality_matrix.py --write-rows`. What it still cannot see: the choice is per call, so a document
+read twice under two policies yields two different trees, and nothing in the tier checks that the
+default stays `one` for callers that never mention the flag beyond
+`test_delete_default_takes_one_pair`; and the same run's other two inputs stay open as different
+ambiguities, `(iv)`-adjacent but not this one - `547a9705` needs a decided emission position for a
+note beside an anchor header, and `b7e16929` needs the surviving anchor definition emitted before
+the alias that uses it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

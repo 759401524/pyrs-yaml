@@ -410,6 +410,38 @@ class TestYamlDocumentPathAPI:
         doc.delete("$.a")
         assert doc.to_yaml() == "b: 2\n"
 
+    # A document can hold two keys that spell one name and are told apart only by a tag the reader
+    # keeps. Deleting one leaves the other answering that name on the re-read, which is the answer a
+    # delete has always given; `on_duplicate` lets the caller choose instead of the engine guessing.
+
+    def test_delete_default_takes_one_pair(self):
+        doc = pyrs_yaml.parse("0set: 1\n!base 0set: 2\n")
+        doc.delete("$.0set")
+        assert doc.to_yaml() == "!base 0set: 2\n"
+
+    def test_delete_on_duplicate_all_clears_every_pair(self):
+        doc = pyrs_yaml.parse("0set: 1\n!base 0set: 2\n")
+        doc.delete("$.0set", on_duplicate="all")
+        assert "0set" not in doc.to_yaml()
+        assert pyrs_yaml.parse(doc.to_yaml()).to_dict() == {}
+
+    def test_delete_on_duplicate_error_refuses_and_changes_nothing(self):
+        doc = pyrs_yaml.parse("0set: 1\n!base 0set: 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError, match="duplicate-key-target"):
+            doc.delete("$.0set", on_duplicate="error")
+        assert doc.to_yaml() == "0set: 1\n!base 0set: 2\n"
+
+    def test_delete_on_duplicate_single_pair_is_not_a_conflict(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        doc.delete("$.a", on_duplicate="error")
+        assert doc.to_yaml() == "b: 2\n"
+
+    def test_delete_unknown_on_duplicate_is_a_named_refusal(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError, match="unknown on_duplicate"):
+            doc.delete("$.a", on_duplicate="whatever")
+        assert doc.to_yaml() == "a: 1\nb: 2\n"
+
     def test_doc_rename(self):
         doc = pyrs_yaml.parse("old: 1  # c\n")
         doc.rename("$.old", "new")

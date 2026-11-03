@@ -147,7 +147,7 @@ node.insert(1, "x")
 ### `delete()` — パスによる削除
 
 ```python title="delete() シグネチャ"
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ```python title="delete() 例"

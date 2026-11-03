@@ -17,6 +17,24 @@ status: new
 
 #### 追加
 
+- **`delete()` は重複したキー名をどう扱うか呼び出し側に尋ねる** — ひとつの名前をつづる二つのキーが、
+  リーダーが保持する tag かアンカーでのみ区別されたまま文書に並ぶことがある（`0set: 1` と
+  `!base 0set: 2`）。だから一方を消すと、出力を読み直すともう一方がその名前に答えてしまう。libFuzzer
+  `edit_yaml` の crash-46d35d71 はまさにこれを「消したキーがまだ文書にある」と報告した。エンジンに選
+  ばせるのではなく、`delete(path, on_duplicate=...)` へ `one`（既定。既存の呼び出し側が見てきた答
+  え）、`all`（そのキーが答えうる組をすべて消し、名前を出力からも消す）、`error`（二つ以上残るなら
+  `duplicate-key-target` で拒否し、木は変えない）のどれかを渡す。知らない値は既定への暗黙的な退行で
+  はなく、それ自体が名前付きの拒否になる。エンジン側の入口は `delete_path_with_policy` で、除去のた
+  びに変更単位をひとつ返し、それぞれへアンカー検査を再び通す。だから別名がまだ指す定義は、宙づりで出
+  力される代わりに拒否される。`delete_path` は `one` のラッパーになり、以前とまったく同じものだけを
+  除く。`del doc[key]` と `Node.delete()` は既定のまま。Rust テスト三本
+  （`delete_all_takes_every_pair_the_addressed_path_can_answer_with`、
+  `delete_one_leaves_the_sibling_that_still_answers_the_path`、
+  `delete_error_refuses_a_key_the_document_holds_twice`）と Python の五本が、三つの答えと二つの拒否
+  を固定する。fuzz 層は動詞 1 を `all` で走らせるので、crash-46d35d71 は現在クリーンに再生され、
+  `fuzz/seeds/edit_yaml/former-crash-46d35d71.seed` としてコーパスに加わる。同じ run の残り二件は別
+  の論点なので未解決のまま（`547a9705` は note の出力位置を決めることを、`b7e16929` はアンカーをそれ
+  を使うエイリアスより前に出力することを要求する）。
 - **種も記録もない古い fuzz 成果物 3 件がコーパスに入る** — `fuzz/artifacts/` には
   `yaml_roundtrip` の crash-3528db38（2026-10-07）と crash-d461a3f2（2026-10-16）、そして
   `parse_json` の crash-331b36ec（2026-10-17）が、隣に `former-crash-*` の seed もなく、どの

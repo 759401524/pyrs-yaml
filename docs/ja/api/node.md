@@ -226,7 +226,7 @@ insert(index: int, value: Any) -> None
 このノードとそのコメントを削除します。その後、ノードは期限切れになります。
 
 ```python
-delete() -> None
+delete(on_duplicate: str = "one") -> None
 ```
 
 #### `rename()`
