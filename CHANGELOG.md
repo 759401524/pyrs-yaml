@@ -513,6 +513,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An anchor whose name ends in a quote keeps that name** — the name run this scanner harvests
+  carries `"` (`is_valid_anchor_char` mirrors granit's, which excludes only the blanks and the flow
+  indicators), so `&a"b` is one name, and the writer emits what it recovered verbatim. The pass that
+  decides whether a `#` opens a comment did not carry the same rule: `opens_quoted_node` let a quote
+  flush against an anchor or tag token open a quoted node, so re-reading that emission treated the
+  `#` of its own trailing comment as quoted content and took the `&` written inside the comment as
+  the node's anchor. libFuzzer `yaml_roundtrip` crash-abc541ff and crash-c06e8a8f, 26 bytes each,
+  emitted `<>: &*..f!ny&!#\"  # &!` and re-emitted `<>: &!  # &!` — the node renamed to `!` in
+  between. A blank now has to separate a property from the quoted node it introduces, so `&a "b"`
+  still opens a node and `&a"b` does not.
+  `an_anchor_name_ending_in_a_quote_settles_in_one_round` pins both inputs; deleting the blank test
+  reddens it with the two-round move verbatim, and both inputs join the corpus as
+  `former-crash-abc541ff.seed` and `former-crash-c06e8a8f.seed`. The run's third `yaml_roundtrip`
+  input, `crash-fce042d0` (247 bytes), still does not settle — an anchor entry the second round
+  drops, which is not this mechanism — and stays open.
 - **The fuzz issue filer reads the target, not the download's directory shape** — every archive
   holds `artifacts/<target>/` and `collected/<target>/`, and on run 41541555317 the download
   extracted those roots straight into `--crashes` instead of keeping one directory per archive.

@@ -238,7 +238,12 @@ fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
     {
         start -= 1;
     }
-    matches!(bytes[start], b'&' | b'!')
+    // A quote flush against the token is that token's own text, not a node after it: granit's
+    // anchor name run carries `"` (`&a"b` is one name), so only a blank separates a property from
+    // the quoted node it introduces (`&a "b"`). Reading the flush quote as an opener hid the `#` of
+    // a trailing comment, and the `&` written inside that comment became the node's anchor
+    // (libFuzzer `yaml_roundtrip` crash-abc541ff and crash-c06e8a8f).
+    before != at && matches!(bytes[start], b'&' | b'!')
 }
 
 /// True when a comment starts on `byte`'s line before `byte` itself, which makes
