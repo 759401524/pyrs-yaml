@@ -11959,7 +11959,7 @@ GitHub's to choose, so both shapes are pinned rather than one being assumed.
 libFuzzer `yaml_roundtrip` reported three inputs in one batch (issue #733). Two of them,
 `crash-abc541ff` and `crash-c06e8a8f`, 26 bytes each, are one defect seen twice: the same anchor
 name, read back under a different name. The third, `crash-fce042d0` (247 bytes), fails for another
-reason and is not closed here.
+reason, which `(iu)` closes.
 
 The name recovery harvests a maximal run of `is_valid_anchor_char`, which mirrors granit's
 `is_anchor_char` and therefore carries `"`, so `&*..f!ny&!#\"` is one name and the writer emits the
@@ -11987,7 +11987,42 @@ two seeds, 892 -> 893 `#[test]` and 231 -> 233 seeds (139 -> 141 `former-crash-*
 cannot see: nothing measures that the name run and the quote-tracking pass agree in general - the
 fix aligns them for `"` and leaves two rules that a future name character could part again - and
 `crash-fce042d0`'s second round, which drops an anchor entry outright, is a separate defect in the
-same scanner and stays open.
+same reader; `(iu)` closes it.
+
+### (iu) An alias key folded only against the keys placed before it (2026-11-03)
+
+libFuzzer `yaml_roundtrip` crash-fce042d0 (247 bytes, 2026-11-02 batch, issue #733) does not settle,
+and it is not the mechanism `(it)` records. Deleting whole lines reduces it to 22 bytes -
+` ? &.?-` / ` ? *.?-` / ` ?  &.` - and the same shape hand-derived to 18 bytes reads
+`? &a` / `? *a` / `? &b ~`. Both reductions are mine, not `cargo fuzz tmin` output.
+
+Three explicit-key markers, three pairs: an anchored empty key, an alias naming it, and the
+mapping's own anchored null key. The receiver folds null keys as it inserts, so the anchored empty
+key and the anchored `~` fold to the last pair and `&a`'s only definition leaves the tree;
+`repair_orphaned_anchors` then inlines that definition into `*a`, key position included, and
+`inline_aliases` rebuilds the mapping by re-inserting the pairs in iteration order. The rebuild ran
+`fold_rewritten_key` only for the pair whose own key had just been rewritten, so it never asked
+whether a later plain pair would collide with what it had just placed. Both keys are null, the
+writer spells both `~:`, and the emission put `&a ~: ~` beside `&b ~: ~` - which the next read
+folds to one. `(ir)` recorded the other half of the same omission: there the duplicate stood
+*before* the rewritten pair, here it follows it.
+
+The rebuild now folds every key it inserts against the keys already placed. The fold returns
+immediately for a key that is neither null nor merge, and the walk still runs only for a document
+whose fold dropped an anchor definition, so an ordinary mapping pays one predicate per pair inside a
+path it never enters.
+
+Load-bearing by mutation: restoring the `matches!(key, CustomNode::Alias { .. })` guard reddens
+`an_inlined_alias_key_folds_the_plain_null_key_that_follows_it`, and `(ir)`'s test stays green on
+the widened call - the two halves of the fold are now one rule. The pinned forms are the 18-byte
+hand triple and the 22-byte reduction, each asserted to be its own fixed point with exactly one
+`~: ~` line; the 247-byte input joins the corpus as
+`fuzz/seeds/yaml_roundtrip/former-crash-fce042d0.seed`. The matrix counts move by the one Rust test
+and the one seed, 893 -> 894 `#[test]` and 233 -> 234 seeds (141 -> 142 `former-crash-*`,
+`yaml_roundtrip`'s directory 110 -> 111), written by `quality_matrix.py --write-rows`. What it still
+cannot see: the fold is per-insert, so two rewrites landing inside one rebuild still depend on the
+order that rebuild visits its pairs rather than on a final pass over the mapping; and the same
+batch's three `edit_yaml` findings stay open.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
