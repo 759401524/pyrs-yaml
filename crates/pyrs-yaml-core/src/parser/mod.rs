@@ -156,9 +156,12 @@ fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
 /// Key position is rewritten too, and it costs a rebuild of every mapping in the
 /// subtree: `IndexMap` hands keys out immutably, so an alias standing where the fold
 /// left it (`? *b`) or one nested inside a container used as a key is unreachable
-/// through `iter_mut`. The rebuild preserves the order the fold already fixed —
-/// re-inserting in iteration order, and a replacement can only collide with a key the
-/// re-read would have folded the same way. That guarantee is what keeps this cold: the
+/// through `iter_mut`. The rebuild re-inserts in iteration order and folds every key it
+/// inserts against the keys already placed, because a replacement collides both with a key
+/// that came before it and with a plain key that comes after: `? &a` / `? *a` / `? &b ~`
+/// folds `&a` and `&b ~` into one null key on the re-read, so emitting the rewritten pair and
+/// then the plain one wrote `&a ~:` beside `&b ~:` and the entry vanished a round later
+/// (libFuzzer `yaml_roundtrip` crash-fce042d0). That is what keeps this cold: the
 /// walk runs only for a document whose fold dropped an anchor definition, and the
 /// shape that reached it (libFuzzer `yaml_roundtrip` crash-a7b68980) emitted `? *b`
 /// with no `&b` anywhere, which its own reader refused.
@@ -178,12 +181,9 @@ fn inline_aliases(
         CustomNode::Mapping { pairs, .. } => {
             let old = core::mem::take(pairs);
             for (mut key, mut value) in old {
-                let rewritten = matches!(key, CustomNode::Alias { .. });
                 displaced.append(&mut inline_aliases(&mut key, replacements));
                 displaced.append(&mut inline_aliases(&mut value, replacements));
-                if rewritten {
-                    fold_rewritten_key(pairs, &mut key, &mut displaced);
-                }
+                fold_rewritten_key(pairs, &mut key, &mut displaced);
                 pairs.insert(key, value);
             }
         }

@@ -513,6 +513,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An alias key folds the plain null key that follows it** — `? &a` / `? *a` / `? &b ~` is an
+  anchored empty key, an alias naming it, and the mapping's own anchored null key. The receiver
+  folds the two null keys and drops `&a`'s only definition, so `repair_orphaned_anchors` inlines
+  that alias — key position included — and the rebuild re-inserts the pairs in iteration order. The
+  rebuild folded only the pair whose key had just been rewritten, so the rewritten pair and the
+  plain pair landed side by side as two null keys, both spelled `~:`. libFuzzer `yaml_roundtrip`
+  crash-fce042d0 (247 bytes; its 22-byte line reduction ` ? &.?- / ? *.?- / ?  &.`) wrote
+  `&a ~: ~` beside `&b ~: ~` on the first round and only `&b ~: ~` on the second. The rebuild now
+  folds every key it inserts against the keys already placed, with the same last-wins rule and note
+  re-homing that `crash-49f44d18` established.
+  `an_inlined_alias_key_folds_the_plain_null_key_that_follows_it` pins the 18-byte hand-derived form
+  and the 22-byte reduction; restoring the old `rewritten` guard reddens it, and
+  `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` stays green. The input joins the corpus
+  as `former-crash-fce042d0.seed`. The same run's three `edit_yaml` findings are not touched here.
 - **An anchor whose name ends in a quote keeps that name** — the name run this scanner harvests
   carries `"` (`is_valid_anchor_char` mirrors granit's, which excludes only the blanks and the flow
   indicators), so `&a"b` is one name, and the writer emits what it recovered verbatim. The pass that
@@ -526,8 +540,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `an_anchor_name_ending_in_a_quote_settles_in_one_round` pins both inputs; deleting the blank test
   reddens it with the two-round move verbatim, and both inputs join the corpus as
   `former-crash-abc541ff.seed` and `former-crash-c06e8a8f.seed`. The run's third `yaml_roundtrip`
-  input, `crash-fce042d0` (247 bytes), still does not settle — an anchor entry the second round
-  drops, which is not this mechanism — and stays open.
+  input, `crash-fce042d0` (247 bytes), is another mechanism and is closed by
+  `An alias key folds the plain null key that follows it`.
 - **The fuzz issue filer reads the target, not the download's directory shape** — every archive
   holds `artifacts/<target>/` and `collected/<target>/`, and on run 41541555317 the download
   extracted those roots straight into `--crashes` instead of keeping one directory per archive.

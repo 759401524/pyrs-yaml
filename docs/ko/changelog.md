@@ -481,6 +481,21 @@ status: new
 
 #### 수정
 
+- **별칭 키는 자기 뒤에 오는 plain null 키와 접힌다** — `? &a` / `? *a` / `? &b ~` 는
+  앵커가 붙은 빈 키, 그것을 부르는 별칭, 그리고 mapping 스스로의 앵커 붙은 null 키다. 읽는 쪽이
+  null 키 둘을 접으므로 `&a` 의 유일한 정의가 사라지고, `repair_orphaned_anchors` 가 그 별칭을
+  키 자리까지 되돌려 심으며, 다시 만들기는 pair 를 반복 순서대로 넣는다. 다시 만들기는 「키를 방금
+  다시 쓴 pair」만 접었기 때문에, 되돌려 심은 pair 와 뒤따르는 plain pair 가 나란히 두 개의
+  `~:` 로 쓰였다. libFuzzer `yaml_roundtrip` 의 crash-fce042d0 (247 바이트, 줄 축소본은 22
+  바이트 ` ? &.?- / ? *.?- / ?  &.`) 는 첫 왕복에서 `&a ~: ~` 를 `&b ~: ~` 옆에 쓰고 두 번째
+  왕복에서는 `&b ~: ~` 만 남겼다. 이제 다시 만들기는 넣는 모든 키를 이미 자리 잡은 키와 접는다 —
+  `crash-49f44d18` 이 세운 규칙 그대로, 마지막 pair 가 이기고 밀려난 pair 의 주석은 남은 키로
+  옮긴다.
+  `an_inlined_alias_key_folds_the_plain_null_key_that_follows_it` 은 18 바이트 손으로 만든 형태와
+  22 바이트 축소형을 고정한다. 오래된 `rewritten` 보호를 되돌리면 빨개지고,
+  `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` 은 초록으로 남는다. 입력은
+  `former-crash-fce042d0.seed` 로 어휘에 들어간다. 같은 run 의 `edit_yaml` 세 건은 여기서 다루지
+  않는다.
 - **이름이 큰따옴표로 끝나는 앵커는 자기 이름을 지킨다** — 이 스캐너가 거두는 앵커 이름은
   `"` 를 담는다 (`is_valid_anchor_char` 는 granit 의 규칙을 그대로 따라, 빈 칸과 flow
   지시자만 뺀다). 그래서 `&a"b` 는 하나의 이름이고, 기록기는 되찾은 이름을 그대로 쓴다.
@@ -495,8 +510,8 @@ status: new
   `an_anchor_name_ending_in_a_quote_settles_in_one_round` 는 이 두 입력을 고정한다.
   빈 칸 판정을 빼면 두 왕복 사이의 움직임 그대로 빨개지고, 두 입력도 덩달아 어휘에 들어가
   `former-crash-abc541ff.seed` 와 `former-crash-c06e8a8f.seed` 가 된다. 같은 run 의
-  세 번째 `yaml_roundtrip` 입력 `crash-fce042d0` (247 바이트) 는 여전히 수렴하지 않는다 —
-  두 번째 왕복이 앵커 항목을 떨어뜨리는데, 이것은 다른 이유이므로 열린 채로 남는다.
+  세 번째 `yaml_roundtrip` 입력 `crash-fce042d0` (247 바이트) 는 다른 기관이며, 위의
+  「별칭 키는 자기 뒤에 오는 plain null 키와 접힌다」에서 닫았다.
 - **fuzz issue 작성기는 target을 읽지, 다운로드 디렉터리 모양을 읽지 않는다** — 모든 아카이브에는
   `artifacts/<target>/` 와 `collected/<target>/` 가 함께 들어 있고, run 41541555317 의 다운로드는
   아카이브마다 디렉터리를 유지하지 않고 이 두 루트를 `--crashes` 에 바로 풀었다. 경로의 첫

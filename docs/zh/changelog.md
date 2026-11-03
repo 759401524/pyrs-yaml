@@ -397,6 +397,18 @@ status: new
 
 #### 修复
 
+- **别名键会折叠跟在它后面的普通空键** — `? &a` / `? *a` / `? &b ~` 是一个带锚点的空键、
+  一个指名它的别名，以及映射自己的带锚点空键。接收者折叠两个空键时丢掉了 `&a` 唯一定义，于是
+  `repair_orphaned_anchors` 把这个别名内联回去，键位置也算在内，而重建按迭代顺序重新插入各对。
+  重建只对「键刚被改写」的那一对折叠，所以改写来的那一对与后面那一对普通空键并列写成两个
+  `~:`。libFuzzer `yaml_roundtrip` 的 crash-fce042d0（247 字节；按行归约到 22 字节
+  ` ? &.?- / ? *.?- / ?  &.`）第一轮把 `&a ~: ~` 写在 `&b ~: ~` 旁边，第二轮只剩
+  `&b ~: ~`。重建如今对每一个插入的键，都与已经就位的键折叠，用的是 `crash-49f44d18` 已经确立
+  的同一条规则：最后一个赢，被丢那一对的注释归位到幸存者。
+  `an_inlined_alias_key_folds_the_plain_null_key_that_follows_it` 钉住 18 字节的手工形态与 22
+  字节的归约形态；把旧的 `rewritten` 门恢复回去它就变红，而
+  `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` 保持绿。该输入以
+  `former-crash-fce042d0.seed` 进语料。同一轮 run 的三条 `edit_yaml` 发现不在这里处理。
 - **名字以引号结尾的锚点保住自己的名字** — 这个扫描器采集的锚点名带着 `"`
   （`is_valid_anchor_char` 对齐 granit 的规则，只排除空白与流式指示符），所以 `&a"b` 是一个名字，
   而写器把恢复出来的名字原样写回。判断 `#` 是否开启注释的那一趟却带着另一条规则：
@@ -408,7 +420,7 @@ status: new
   `an_anchor_name_ending_in_a_quote_settles_in_one_round` 钉住这两条输入；删掉那一条空白判定，它就
   以这两轮之间的原样移动变红，两条输入也一并进语料，成为 `former-crash-abc541ff.seed` 与
   `former-crash-c06e8a8f.seed`。同一轮 run 的第三条 `yaml_roundtrip` 输入 `crash-fce042d0`
-  （247 字节）仍然不收敛 — 第二轮丢了一个锚点条目，机制与这里不同 — 保持未关。
+  （247 字节）是另一种机制，已由本节的「别名键会折叠跟在它后面的普通空键」关闭。
 - **模糊测试 issue 归档器读的是 target，不是下载目录的形状** — 每个归档同时含有
   `artifacts/<target>/` 与 `collected/<target>/`，而 run 41541555317 的下载把这两个根目录直接解到
   `--crashes`，没有为每个归档保留一层目录。把路径第一段当作 target，于是凭空得到 `artifacts` 和

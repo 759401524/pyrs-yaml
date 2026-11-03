@@ -832,3 +832,37 @@ fn an_anchor_name_ending_in_a_quote_settles_in_one_round() {
         );
     }
 }
+/// libFuzzer `yaml_roundtrip` crash-fce042d0 (2026-11-02 batch, issue #733) and its 22-byte line
+/// reduction: an alias key that resolves to a null the fold already displaced lands beside the
+/// mapping's own null key, because the rebuild folded only keys it had rewritten.
+///
+/// `? &a` / `? *a` / `? &b ~` holds one anchored empty key, an alias to it, and an anchored null
+/// key. The receiver folds the two anchored null keys and drops `&a`'s only definition, so
+/// `repair_orphaned_anchors` inlines the alias key - and the rebuild then inserted that pair and
+/// the plain pair without folding them against each other. Both are null keys, the writer spells
+/// them `~:`, and the re-read kept only the last, so the first emission was not its own fixed
+/// point: `&a ~: ~` / `&b ~: ~` came back as `&b ~: ~`.
+#[test]
+fn an_inlined_alias_key_folds_the_plain_null_key_that_follows_it() {
+    for src in [
+        "? &a
+? *a
+? &b ~
+",
+        " ? &.?-
+ ? *.?-
+ ?  &.",
+    ] {
+        let one = emit(src);
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+        assert_eq!(
+            one.matches("~: ~").count(),
+            1,
+            "one mapping holds one null key: {one:?}"
+        );
+    }
+}
