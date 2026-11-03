@@ -25,7 +25,7 @@
 - **异步 I/O** — `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` 通过 `asyncio.run_in_executor`
 - **增量重新解析** — `doc.source()` + `doc.reparse()` 用于以不同选项（如 `schema="yaml1.1"`）就地重新解析存储的 YAML
 - **JSON 序列化** — `doc.to_json()` 将文档导出为标准 JSON
-- **重复键** — `allow_duplicate_keys=True` 选择最后值优先；否则抛出 `YamlDuplicateKeyError`
+- **重复键** — `allow_duplicate_keys=True` 选择最后值优先；否则抛出 `YamlDuplicateKeyError`；`duplicate_keys="as_is"|"error"|"last_wins"|"first_wins"` 直接命名该策略
 - **自定义标签处理器** — `register_tag` 支持基于优先级的链式调用，`YamlTagSkip`，`remove_tag`/`clear_tag_handlers`
 - **Pydantic 模型** — `parse_as(Model, yaml)` 将已解析 YAML 对 Pydantic v2 模型校验
 - **自定义 AST** — 可扩展 AST 用于高级 YAML 操作
@@ -206,6 +206,8 @@ doc.get("key")  # "second"
 ```
 
 该标志适用于 `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs` 和 `YAML(allow_duplicate_keys=True)`。在往返模式下，允许重复键的文档序列化时输出最后一个出现的键值对。
+
+`duplicate_keys` 是同一决定的具名写法：`as_is`（默认，按键的身份类别给出今天各自的答案）、`error`（连空键与合并键一并拒绝）、`last_wins`（即 `allow_duplicate_keys=True` 的含义）与 `first_wins`（保留文档里先出现的一对）。同时传入两种写法会被拒绝。命令行上，每个读取 YAML 的子命令都接受 `--duplicate-keys`。
 
 ### 序列化选项
 

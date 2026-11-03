@@ -19,6 +19,26 @@ status: new
 
 #### 新增
 
+- **`duplicate_keys=` 给读者的重复键策略命名，而 `as_is` 保留四种答案** — `allow_duplicate_keys` 只
+  能问出两种行为，读者却答出四种，在 `main` 上实测：`a: 1` 与 `a: 2` 相邻抛
+  `YamlDuplicateKeyError`，`: 1` 与 `: 2` 相邻折叠成后一对，`0set: 1` 与 `!base 0set: 2` 相邻两对都
+  保留、只有 `to_dict()` 拒绝，`'a': 1` 与 `a: 2` 相邻抛错。把新参数的默认值定成其中任何一个都保不住
+  这张表，所以 `as_is`（默认）就是按键的身份各给今天的答案；`error` 连默认豁免的空键与合并键一并拒
+  绝，`last_wins` 正是 `allow_duplicate_keys=True` 一直以来的含义，`first_wins` 保留文档里先出现的那
+  一对，并把被折叠那对的注释与锚点定义移到幸存者身上——正是本引擎被模糊测试盯住的两处丢失。同时传入两
+  种写法是自成一类的拒绝（`pass one`），无法识别的取值会说出它想要的四个值；两条 YAML 读路径——AST 接
+  收器，以及把这个决定另存一份的 P3 直读加载器——在四种策略下答案一致。每个入口都收它：`parse`、
+  `parse_file`、`parse_all_docs`、`safe_load`、`safe_loads`、`Yaml(...)`，以及读取 YAML 的十二个 CLI
+  子命令（`--duplicate-keys`）。五条 Rust 测试钉住按身份的四种答案与折叠时的搬运，两条 Hypothesis 性
+  质在两条读路径上用生成的键钉住 `first_wins` 就是倒过来读的 `last_wins`，十一项 Python 测试钉住实测
+  表与它的两种拒绝，五项钉住 CLI 表面。把值同一性扫描从 `first_wins` 折叠里拿走，
+  `first_wins_keeps_the_earlier_pair_of_the_mapping` 就会变红，所以这条分支是被钉住的，不是假设的。
+  涨幅点名写进地板而不是被吸收：在本树上重测的刷新产物抬升九条地板——`parse_medium` 322,863,958 →
+  325,633,529（+0.86%）、`to_python_medium` +0.73%、`parse_block` +0.73%、`parse_anchors` +0.68%、
+  `parse_small` +0.67%、`parse_inline_merge` +0.65%、`to_python_small` +0.64%、`to_python_anchors`
+  +0.59%、`parse_notes` +0.53%——其余四十六条仍在 ±0.07% 以内，发射端与另外四种格式的读数不变。
+  边界：fuzz 目标按默认策略解析，三个具名替代值因此还没进 fuzz 层；默认拒绝的重复键在 CLI 上仍以未捕
+  获的 `YamlDuplicateKeyError` 出现，与本参数之前一样。
 - **`to_yaml_with_options(note_placement=...)` 把「行放不下时注释写在哪」交给调用方** — 一对键值的行
   尾槽位已被占掉，而它正上方又是一行 `&a` / `!tag` 头时，注释只能另起一行。写器把它停在头与正文的间
   隙里，读者却把它归到头的上方，于是发射要第二轮才收敛—— libFuzzer `edit_yaml` 的 crash-547a9705 报

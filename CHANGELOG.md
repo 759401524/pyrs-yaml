@@ -9,6 +9,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`duplicate_keys=` names the reader's duplicate-key policy, and `as_is` keeps four answers** —
+  `allow_duplicate_keys` could ask for one of two behaviours while the reader answered four,
+  measured on `main`: `a: 1` beside `a: 2` raises `YamlDuplicateKeyError`, `: 1` beside `: 2` folds
+  to the last pair, `0set: 1` beside `!base 0set: 2` keeps both pairs and refuses only `to_dict()`,
+  `'a': 1` beside `a: 2` raises. No single default value of a new flag could preserve that, so
+  `as_is` (the default) *is* the per-identity answer; `error` also refuses the null and merge keys
+  the default exempts, `last_wins` is what `allow_duplicate_keys=True` has always meant, and
+  `first_wins` keeps the pair the document said first and moves the folded pair's notes and anchor
+  definitions onto the survivor — the two losses this engine has been fuzzed for. Passing both
+  spellings is its own refusal (`pass one`), an unknown value names the four it means, and the two
+  YAML readers — the AST receiver and the P3 direct loader, which holds its own copy of this
+  decision — agree on all four policies. Every entry point takes it: `parse`, `parse_file`,
+  `parse_all_docs`, `safe_load`, `safe_loads`, `Yaml(...)`, and the twelve CLI commands that read
+  YAML, as `--duplicate-keys`. Five Rust tests pin the four answers per identity class and the
+  fold's carriage, two Hypothesis properties pin `first_wins` as `last_wins` read from the other end
+  over generated keys on both readers, eleven Python tests pin the measured table with its two
+  refusals, and five pin the CLI surface. Taking the value-identity scan out of the `first_wins`
+  fold reddens `first_wins_keeps_the_earlier_pair_of_the_mapping`, so the branch is pinned rather
+  than assumed. The movement is named, not absorbed: the refresh artifact measured on this tree
+  raises nine floors - `parse_medium` 322,863,958 → 325,633,529 (+0.86%), `to_python_medium`
+  +0.73%, `parse_block` +0.73%, `parse_anchors` +0.68%, `parse_small` +0.67%, `parse_inline_merge`
+  +0.65%, `to_python_small` +0.64%, `to_python_anchors` +0.59%, `parse_notes` +0.53% - and leaves
+  the other forty-six within ±0.07%, so every writer scenario and the four other formats read as
+  they did. Boundary: the fuzz targets parse with the default policy, so the three named
+  alternatives are not yet in the fuzz tier, and a duplicate the default refuses still surfaces at
+  the CLI as an uncaught `YamlDuplicateKeyError`, as it did before this flag existed.
 - **`to_yaml_with_options(note_placement=...)` decides where a note the line cannot hold goes** —
   when a pair's trailing slot is already taken and an `&a` / `!tag` header line sits directly above
   that pair, the note has to take a line of its own. The writer parked it inside the header's gap

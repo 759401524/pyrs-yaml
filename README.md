@@ -26,7 +26,7 @@ A high-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with per
 - **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
 - **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options (e.g. `schema="yaml1.1"`)
 - **JSON serialization** - `doc.to_json()` exports documents to standard JSON
-- **Duplicate keys** - `allow_duplicate_keys=True` opts into last-value-wins; `YamlDuplicateKeyError` otherwise
+- **Duplicate keys** - `allow_duplicate_keys=True` opts into last-value-wins; `YamlDuplicateKeyError` otherwise; `duplicate_keys="as_is"|"error"|"last_wins"|"first_wins"` names the choice
 - **Custom tag handlers** - `register_tag` with priority-based chaining, `YamlTagSkip`, `remove_tag`/`clear_tag_handlers`
 - **Pydantic models** - `parse_as(Model, yaml)` validates parsed YAML against Pydantic v2 models
 - **Custom AST** - Extensible AST for advanced YAML manipulation
@@ -206,7 +206,7 @@ doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
 
-The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, serializing a document with allowed duplicate keys emits the last occurrence.
+The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, serializing a document with allowed duplicate keys emits the last occurrence. `duplicate_keys` is the named spelling of the same decision - `as_is` (the default, which answers per identity class), `error`, `last_wins` (what `allow_duplicate_keys=True` means) and `first_wins` - and passing both spellings at once is refused.
 
 ### Serialization options
 

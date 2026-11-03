@@ -532,7 +532,7 @@ mod tests {
                 true,
                 crate::parser::yaml::Schema::Core,
                 1000,
-                false,
+                crate::parser::DuplicateKeys::AsIs,
             )
             .expect("the emitted form re-parses"),
         );

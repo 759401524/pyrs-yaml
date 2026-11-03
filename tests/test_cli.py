@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import builtins
+import inspect
 import io
 import json
 import sys
+import types
 
 import pytest
 
 pytest.importorskip("cyclopts")
 
+import pyrs_yaml
+import pyrs_yaml.cli.app as app_module
 from pyrs_yaml.cli import main as cli_main
 from pyrs_yaml.cli.app import app
 
@@ -564,3 +568,53 @@ def test_compliance_json_report():
     with pytest.raises(SystemExit) as exc:
         app(["compliance", "--json"])
     assert exc.value.code == 0
+
+
+# ── --duplicate-keys: the reader's policy named on the command line ─────────
+
+
+def test_fmt_hands_the_policy_to_the_reader(tmp_path, capsys):
+    source = tmp_path / "dup.yaml"
+    source.write_text("a: 1\na: 2\n", encoding="utf-8")
+    run("fmt", str(source), "--duplicate-keys", "last_wins")
+    assert capsys.readouterr().out == "a: 2\n"
+    run("fmt", str(source), "--duplicate-keys", "first_wins")
+    assert capsys.readouterr().out == "a: 1\n"
+
+
+def test_no_flag_is_the_same_choice_as_as_is(tmp_path):
+    source = tmp_path / "dup.yaml"
+    source.write_text("a: 1\na: 2\n", encoding="utf-8")
+    with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
+        run("fmt", str(source))
+    with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
+        run("fmt", str(source), "--duplicate-keys", "as_is")
+
+
+def test_the_stream_loader_carries_the_policy_too(tmp_path, capsys):
+    source = tmp_path / "stream.yaml"
+    source.write_text("---\na: 1\na: 2\n", encoding="utf-8")
+    run("to-json", str(source), "--all-docs", "--duplicate-keys", "first_wins")
+    assert json.loads(capsys.readouterr().out) == [{"a": 1}]
+
+
+def test_an_unknown_value_exits_1_and_names_the_values_it_means(tmp_path, capsys):
+    source = tmp_path / "dup.yaml"
+    source.write_text("a: 1\na: 2\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as stop:
+        run("fmt", str(source), "--duplicate-keys", "keep_everything")
+    assert stop.value.code == 1
+    assert "unknown duplicate_keys" in capsys.readouterr().err
+
+
+def test_every_command_that_reads_yaml_exposes_the_flag():
+    # The flag is worth nothing on one command; the loaders it reaches are shared, so the
+    # surface is defined by the call sites rather than by a hand-written list that can rot.
+    readers = [
+        value
+        for value in vars(app_module).values()
+        if isinstance(value, types.FunctionType) and "load_document(file" in inspect.getsource(value)
+    ]
+    assert readers, "no YAML-reading command found"
+    for command in readers:
+        assert "duplicate_keys" in inspect.signature(command).parameters, command.__name__

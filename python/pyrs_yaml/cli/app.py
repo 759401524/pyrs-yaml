@@ -69,6 +69,7 @@ def fmt(
     inplace: INPLACE = False,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Reformat YAML with round-trip fidelity (comments/anchors/order preserved).
 
@@ -78,8 +79,11 @@ def fmt(
         YAML file to format; ``-`` or omitted reads stdin.
     all_docs:
         Treat the input as a stream of documents separated by ``---``.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     texts = [_serialize(doc, indent) for doc in docs]
     text = texts[0] if len(texts) == 1 else join_documents(texts)
     if inplace:
@@ -120,6 +124,7 @@ def get(
     *,
     format: Annotated[str, Parameter(name=["--format", "-f"])] = "yaml",
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Query values by JSONPath (e.g. ``$.servers[0].host``, ``$..name``).
 
@@ -131,11 +136,14 @@ def get(
         JSONPath expression starting with ``$``.
     all_docs:
         Query every document in the input stream; matches print in order.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     if format not in ("yaml", "json", "text"):
         fail(f"invalid --format {format!r}; expected yaml, json or text")
 
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     chunks: list[str] = []
     for doc in docs:
         chunks.extend(_query_chunks(doc, path, format))
@@ -165,6 +173,7 @@ def set_value(
     string: Annotated[bool, Parameter(name=["--string", "-s"])] = False,
     create_missing: Annotated[bool, Parameter(name=["--create-missing"])] = False,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Set the value at a JSONPath.
 
@@ -181,11 +190,14 @@ def set_value(
     all_docs:
         Apply to every document where the path resolves; fails only when no
         document matches.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlEditError, YamlPathError
 
     parsed = _parse_value(value, string)
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     applied = 0
     for doc in docs:
         try:
@@ -207,6 +219,7 @@ def delete_value(
     inplace: INPLACE = False,
     all_docs: ALL_DOCS = False,
     on_duplicate: str = "one",
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Delete the node at a JSONPath.
 
@@ -224,10 +237,13 @@ def delete_value(
         told apart only by a tag or anchor the reader keeps: ``one`` (the default)
         deletes the pair the path resolves to, ``all`` deletes every pair the key
         could answer with, and ``error`` refuses while more than one remains.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlEditError, YamlPathError
 
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     applied = 0
     for doc in docs:
         try:
@@ -256,6 +272,7 @@ def rename_value(
     *,
     inplace: INPLACE = False,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Rename a mapping key.
 
@@ -270,10 +287,13 @@ def rename_value(
     all_docs:
         Rename in every document where the path resolves; fails only when no
         document matches.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlEditError, YamlPathError
 
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     applied = 0
     for doc in docs:
         try:
@@ -294,6 +314,7 @@ def sort_keys(
     *,
     inplace: INPLACE = False,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Sort mapping keys (alphabetically) at a JSONPath.
 
@@ -306,10 +327,13 @@ def sort_keys(
     all_docs:
         Sort in every document where the path resolves; fails only when no
         document matches.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlEditError, YamlPathError
 
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     applied = 0
     for doc in docs:
         try:
@@ -331,6 +355,7 @@ def move_value(
     *,
     inplace: INPLACE = False,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Move a subtree to another path within the same document.
 
@@ -346,13 +371,16 @@ def move_value(
     all_docs:
         Move in every document where both paths resolve; fails only when no
         document matches.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import Node, YamlEditError, YamlPathError
 
     for label, p in (("source", source), ("destination", destination)):
         if "*" in p or ".." in p:
             fail(f"{label} path must not contain wildcards or deep scans")
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     applied = 0
     for doc in docs:
         try:
@@ -403,6 +431,7 @@ def validate(
     *,
     schema: Annotated[str | None, Parameter(name=["--schema", "--schema-file"])] = None,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Check that YAML parses; with a schema, validate against JSON Schema.
 
@@ -415,10 +444,13 @@ def validate(
         and ``--schema-file`` name this parameter.
     all_docs:
         Validate every document in the input stream.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlValidateError
 
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     if schema is None:
         return
     schema_src = read_text(schema)
@@ -437,6 +469,7 @@ def to_json_cmd(
     output: OUTPUT = None,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
     all_docs: ALL_DOCS = False,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Convert YAML to JSON.
 
@@ -446,8 +479,11 @@ def to_json_cmd(
         YAML file to convert; ``-`` or omitted reads stdin.
     all_docs:
         Convert the whole stream into a JSON array of documents.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
-    docs = load_documents(file) if all_docs else [load_document(file)]
+    docs = load_documents(file, duplicate_keys) if all_docs else [load_document(file, duplicate_keys)]
     text = _json.dumps([doc.to_dict() for doc in docs], indent=indent) if all_docs else docs[0].to_json(indent=indent)
     emit(text if text.endswith("\n") else text + "\n", output)
 
@@ -481,19 +517,22 @@ def from_json_cmd(
 
 
 @app.command(name="to-toml")
-def to_toml_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None) -> None:
+def to_toml_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None, duplicate_keys: str = "as_is") -> None:
     """Convert YAML to TOML.
 
     Parameters
     ----------
     file:
         YAML file to convert; ``-`` or omitted reads stdin.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
 
     The document root must be a mapping; TOML has no top-level scalar/array form.
     """
     from pyrs_yaml import YamlSerializeError
 
-    doc = load_document(file)
+    doc = load_document(file, duplicate_keys)
     try:
         emit(doc.to_toml(), output)
     except YamlSerializeError as exc:
@@ -524,6 +563,7 @@ def to_jsonc_cmd(
     *,
     output: OUTPUT = None,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Convert YAML to JSONC, preserving comments as ``//``.
 
@@ -531,10 +571,13 @@ def to_jsonc_cmd(
     ----------
     file:
         YAML file to convert; ``-`` or omitted reads stdin.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlSerializeError
 
-    doc = load_document(file)
+    doc = load_document(file, duplicate_keys)
     try:
         emit(doc.to_jsonc(indent=indent), output)
     except YamlSerializeError as exc:
@@ -565,6 +608,7 @@ def to_json5_cmd(
     *,
     output: OUTPUT = None,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
+    duplicate_keys: str = "as_is",
 ) -> None:
     """Convert YAML to JSON5, preserving comments and exotic number styles.
 
@@ -572,10 +616,13 @@ def to_json5_cmd(
     ----------
     file:
         YAML file to convert; ``-`` or omitted reads stdin.
+    duplicate_keys:
+        The reader's policy for two keys YAML counts as one: ``as_is`` (the
+        default), ``error``, ``last_wins`` or ``first_wins``.
     """
     from pyrs_yaml import YamlSerializeError
 
-    doc = load_document(file)
+    doc = load_document(file, duplicate_keys)
     try:
         emit(doc.to_json5(indent=indent), output)
     except YamlSerializeError as exc:

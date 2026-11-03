@@ -111,6 +111,8 @@ doc.get("key")  # "second"
 
 이 스위치는 `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, `YAML(allow_duplicate_keys=True)`에 적용됩니다. 순환 모드에서 중복 키가 허용된 문서는 마지막 키-값 쌍을 출력하여 직렬화됩니다.
 
+이 선택을 이름으로 밝히는 것이 `duplicate_keys`입니다. `"as_is"`(기본값, 위 등급별 답), `"error"`(기본이 접는 null 키와 병합 키까지 모두 거부), `"last_wins"`(`allow_duplicate_keys=True`의 뜻), `"first_wins"`(앞선 쌍의 값을 지키고 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮김) 중 하나를 고릅니다. 두 표기는 겹치는 층이 아니라 나란한 대체이므로 함께 넘기면 거부됩니다.YAML을 읽는 모든 CLI 하위 명령도 같은 선택을 받습니다(`--duplicate-keys`).
+
 ## 직렬화 옵션
 
 `to_yaml_with_options()`는 들여쓰기과 줄 바꿈을 제어합니다:

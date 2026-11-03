@@ -12263,3 +12263,78 @@ when a fold actually reported a dropped definition.
 This was the last live finding of the 2026-11-02 `edit_yaml` batch: `46d35d71` closed by the
 `on_duplicate` flag (ledger `(iv)`), `547a9705` by the decided note placement (`(iw)`), `b7e16929`
 here.
+
+### (iy) One boolean stood over a reader that answers four ways (2026-11-03)
+
+`allow_duplicate_keys` promises a choice between two behaviours, and the reader never had only two.
+Measured on `main` before this change, through `parse(text)` and then `to_yaml()` / `to_dict()`:
+
+| shape | default | `allow_duplicate_keys=True` |
+| --- | --- | --- |
+| `a: 1` / `a: 2` | `YamlDuplicateKeyError: duplicate key: a` | one pair, `a: 2` |
+| `: 1` / `: 2` | no refusal, one pair `~: 2` | the same |
+| `0set: 1` / `!base 0set: 2` | both pairs kept, `to_dict()` raises `YamlTypeError` | the same |
+| `'a': 1` / `a: 2` | `YamlDuplicateKeyError` | two lines emitted, the dict folds to `{'a': 2}` |
+
+**Why the default is the table rather than a value.** `error` would overturn the standing ruling
+that the null-key fold is by design (`2JQS`, recorded at `(ir)`), and `first_wins` is a semantics no
+shape gives today, so one new default had to break one of the two decisions. The ruling was that the
+ambiguous behaviour becomes a parameter and the default keeps the measured answers per identity
+class: `as_is` is not an alias of `error` or of `last_wins`, it is the four rows above, and the flag
+adds the three alternatives without moving any of them.
+
+**How the choice reaches both readers.** The decision is duplicated on purpose. The AST receiver
+folds at the mapping's insert site in `parser/mod.rs`, and the P3 direct loader holds its own copy
+of the same question in `py/direct_load.rs` because it builds the dict without an AST. The two
+predicates the policy exposes - `refuses()` and `keeps_first()` - are what both sites ask, and
+`test_both_readers_answer_alike_for_every_policy` reddens if they ever disagree. The identity folded
+on is the emitted value for an untagged scalar, so `'a'` and `a` are one key because the writer
+cannot spell them apart, while a tag keeps two keys distinct under every policy.
+
+**What `first_wins` reuses.** Keeping the earlier pair means dropping the later one, which is the
+same event the null-key fold already performs, so it travels through the same carriage
+(`carry_folded`): the dropped pair's leading and inline notes move onto the survivor, and any anchor
+it defined is held for inlining at `finish_document`. Writing the branch as "simply do not insert"
+would have recreated `(ix)`'s loss in the other direction - a note or a definition leaving the tree
+with the pair that carried it.
+
+**Refusal contract.** Both spellings at once is its own error naming itself (`pass one`) rather than
+a precedence this layer invents, and an unrecognised value names the four it means.
+`allow_duplicate_keys` keeps the meaning it has always had; the Python wrappers now send `None` when
+the caller did not choose, which is what keeps the two spellings distinguishable at the resolver.
+
+Measured: `cargo nextest run --all` 892 passed (five new), `uv run pytest tests/` 4,706 passed / 11
+skipped (eighteen new - eleven policy, two Hypothesis properties over generated keys, five CLI), and
+no committed expectation moved. The `first_wins` value-identity scan is pinned by a forced flip:
+taking the scan out reddens `first_wins_keeps_the_earlier_pair_of_the_mapping`, and nothing else in
+the Rust tier noticed, so the assertion was added rather than the branch left covered only from
+Python. Boundary: the fuzz targets read through `pyrs_yaml_core::parser::parse`, which passes
+`DuplicateKeys::default()`, so the three named alternatives have no fuzz tier yet - giving one means
+threading a policy byte through a target and re-pricing the seed corpus, which is its own change.
+
+**What the flag costs, and what was tried before the floors moved.** Measured on the enforcing image
+by the refresh artifact for this tree, nine floors move: `parse_medium` 322,863,958 → 325,633,529
+(+0.86%), `to_python_medium` +0.73%, `parse_block` +0.73%, `parse_anchors` +0.68%, `parse_small`
++0.67%, `parse_inline_merge` +0.65%, `to_python_small` +0.64%, `to_python_anchors` +0.59%,
+`parse_notes` +0.53%. The other forty-six stay within ±0.07%, so every writer scenario and the four
+other formats read as they did. The split is measured rather than inferred: with the `first_wins`
+arm taken out, the same scenario reads +0.56% over the floor this change replaces - +0.33% over the
+refreshed one - so `as_is` / `error` / `last_wins` cost a third of a point and the `first_wins`
+decision about half a point. Five ways of moving that decision off the pair loop were tried. Three
+were neutral in the number and are documented as measurements, not as ideas: both folds lifted into
+`#[inline(never)]` helpers (+1.07%), the two policy compares replaced by 1-bit fields derived once
+per document (+1.06%), the same compare nested behind the probe the collision path already runs
+(+1.09%). Two were refuted by tests rather than by readings. Folding at the mapping's close answers
+`("2", 1)` for `a: 1` / `a: 2`: two plain keys of one text are a single node to `IndexMap`'s
+equality, so the insert overwrites the earlier value before any later pass could recover it. Gating
+the fold on the collision inside `pairs.entry(key)` loses the carriage - the note test reports
+`got []` - because `entry()` takes the incoming key with it. Those two together are the positive
+statement: a correct `first_wins` needs the earlier slot and the incoming key in the same instant,
+which is the insert site. The ruling on the price was to move the floors and name every scenario
+that moved, in the refresh dispatch's `accept_drift`, rather than widen `tolerance_hint` or drop a
+value from the contract; the artifact lands with the engine change so the numbers and the tree they
+describe arrive together. The dispatch is worth recording too: the same `ubuntu-24.04` label served
+two image builds twenty minutes apart, so the first two refresh runs measured on `20261026.354.1`
+and wrote no new row while the enforcing leg on the head landed on `20261101.360.1` and exited 2 - a
+refusal to guess, not a measurement that failed. The third dispatch drew a `360.1` runner, and its
+artifact is the committed one, so the file now carries three image rows.

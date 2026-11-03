@@ -2,6 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyrs_yaml_core::parser::DuplicateKeys;
 use std::sync::Arc;
 
 use crate::ast::CustomNode;
@@ -1015,8 +1016,14 @@ impl YamlDocument {
         let explicit = schema.map(parse_schema).transpose()?;
         let parse_schema_value = explicit.clone().unwrap_or(Schema::Core);
         let reparsed = py.detach(|| {
-            crate::parser::parse_document(source, resolve_merges, parse_schema_value, 1000, false)
-                .map_err(|e| parse_error_to_py_err(e, source, 1000))
+            crate::parser::parse_document(
+                source,
+                resolve_merges,
+                parse_schema_value,
+                1000,
+                DuplicateKeys::AsIs,
+            )
+            .map_err(|e| parse_error_to_py_err(e, source, 1000))
         })?;
         let declared = reparsed.version.as_deref();
         self.schema = negotiate_schema(explicit, declared, honor);
@@ -1329,7 +1336,7 @@ pub(crate) fn parse_document(
     resolve_merges: bool,
     schema: Option<&str>,
     max_depth: usize,
-    allow_duplicate_keys: bool,
+    duplicate_keys: DuplicateKeys,
     honor_version_directive: bool,
 ) -> PyResult<YamlDocument> {
     let yaml_str: String = coerce_str_or_bytes(yaml)?;
@@ -1342,7 +1349,7 @@ pub(crate) fn parse_document(
             resolve_merges,
             parse_schema_value,
             max_depth,
-            allow_duplicate_keys,
+            duplicate_keys,
         )
         .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
     })?;

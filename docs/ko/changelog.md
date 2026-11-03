@@ -17,6 +17,29 @@ status: new
 
 #### 추가
 
+- **`duplicate_keys=`는 읽는 쪽의 겹치기 키 방침을 이름으로 받고, `as_is`는 네 대답을 남긴다** —
+  `allow_duplicate_keys`는 둘 중 하나만 시킬 수 있는데 읽는 쪽은 넷을 대답했다. `main`에서 재면
+  `a: 1`과 `a: 2`는 `YamlDuplicateKeyError`, `: 1`과 `: 2`는 뒤 짝으로 접음, `0set: 1`과
+  `!base 0set: 2`는 두 짝을 다 남기고 `to_dict()`만 거부, `'a': 1`과 `a: 2`는 거부한다. 새 인수의
+  기본값을 하나로 정하면 이 표를 지킬 수 없으므로, `as_is`(기본)가 키의 동일성별로 오늘의 대답을
+  각각 주고, `error`는 기본이 넘어가는 빈 키와 병합 키까지 거부하며, `last_wins`는
+  `allow_duplicate_keys=True`가 늘 뜻하던 것이고, `first_wins`는 문서에서 먼저 나온 짝을 남기고 접혀
+  나간 짝의 주석과 앵커 정의를 남은 쪽으로 옮긴다 — 이 엔진이 퍼징으로 추적해 온 바로 그 두 가지
+  손실이다. 두 철자를 함께 넘기면 따로 거부하고(`pass one`), 알아듣지 못하는 값은 의도한 네 가지를
+  이름으로 말한다. 두 갈래 YAML 읽기 경로 — AST 수신기와, 이 판단을 자기 쪽에 사본으로 지니는 P3
+  직접 적재기 — 는 네 방침 모두에서 같은 대답을 준다. 모든 진입점이 이를 받는다: `parse`,
+  `parse_file`, `parse_all_docs`, `safe_load`, `safe_loads`, `Yaml(...)`, 그리고 YAML을 읽는 열두
+  CLI 하위 명령(`--duplicate-keys`). Rust 테스트 다섯이 동일성별 네 대답과 접을 때의 옮기기를,
+  Hypothesis 성질 둘이 만든 키로 두 읽기 경로에서 `first_wins`＝거꾸로 읽은 `last_wins`를, Python
+  테스트 열하나가 재면한 표와 두 거부를, 다섯이 CLI 표면을 고정한다. 값 동일성 조사를 `first_wins`
+  접음에서 빼면 `first_wins_keeps_the_earlier_pair_of_the_mapping`이 빨개지므로, 이 갈래는 가정이지
+  고정이 아니다. 이동은 흡수하지 않고 이름으로 남긴다: 이 트리에서 재측정한 갱신 산출물이 아홉
+  바닥을 올린다 — `parse_medium` 322,863,958 → 325,633,529(+0.86%), `to_python_medium` +0.73%,
+  `parse_block` +0.73%, `parse_anchors` +0.68%, `parse_small` +0.67%, `parse_inline_merge` +0.65%,
+  `to_python_small` +0.64%, `to_python_anchors` +0.59%, `parse_notes` +0.53%. 나머지 마흔여섯은
+  ±0.07% 안에 머물러, 쓰는 쪽과 나머지 네 형식의 읽기값은 그대로다. 경계: 퍼징 대상은 기본 방침으로
+  해석하므로 이름 붙은 세 대체는 아직 퍼징 층에 들어가지 않았고, 기본이 거부하는 겹치기는 전처럼
+  CLI에서 잡히지 않는 `YamlDuplicateKeyError`로 나타난다.
 - **`to_yaml_with_options(note_placement=...)`는 줄이 감당하지 못하는 주석의 자리를 호출자에게
   넘긴다** — 짝의 줄 끝 칸이 이미 쓰였고 바로 위가 `&a` / `!tag` 헤더 줄이면, 주석은 다른 줄을 쓸
   수밖에 없다. 쓰기가 헤더와 본문 사이에 둔 것을 읽기는 헤더 위로 정리하므로, 발출은 두 번째

@@ -18,7 +18,7 @@ status: new
 YAML 文字列またはバイト列をパースして `YamlDocument` に変換します。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **パラメータ:**
@@ -27,7 +27,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 - `resolve_merges` — パース後にマージキー (`<<: *alias`) を解決するかどうか (デフォルト: `True`)
 - `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
 - `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
-- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `None`、`"as_is"` と同じ)
+- `duplicate_keys` — 一つのマッピングに YAML が同じと数えるキーが二つあるとき、読み手がどう動くか (デフォルト: `"as_is"`)。`"as_is"` は身分のクラスごとにこれまでの答を返す: スカラーの衝突と普通/引用表記の衝突は拒否、二つ目の null キーとマージキーは最初の枠に畳み込み、タグはどの値でも二つのキーを区別する。`"error"` は既定が免除するクラスも拒否する。`"last_wins"` は後のペアへ黙って畳み込み、これは `allow_duplicate_keys=True` の意味にあたる。`"first_wins"` は先のペアの値を保ち、畳み込まれる側のコメントとアンカー定義は生き残りのキーへ引き継ぐ。本項目と `allow_duplicate_keys` を同時に渡すと、優先順では決めず拒否する。
 - `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **戻り値:** パースされた YAML を含む `YamlDocument`
@@ -54,7 +55,7 @@ doc = pyrs_yaml.parse(
 YAML ファイルをパースします。
 
 ```python
-parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> YamlDocument
 ```
 
 **パラメータ:**
@@ -79,7 +80,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 文字列から複数の YAML ドキュメントをパースします。
 
 ```python
-parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[YamlDocument]
 ```
 
 **パラメータ:**
@@ -88,7 +89,8 @@ parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "cor
 - `resolve_merges` — パース後にマージキー (`<<: *alias`) を解決するかどうか (デフォルト: `True`)
 - `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
 - `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
-- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `None`、`"as_is"` と同じ)
+- `duplicate_keys` — 一つのマッピングに YAML が同じと数えるキーが二つあるとき、読み手がどう動くか (デフォルト: `"as_is"`)。`"as_is"` は身分のクラスごとにこれまでの答を返す: スカラーの衝突と普通/引用表記の衝突は拒否、二つ目の null キーとマージキーは最初の枠に畳み込み、タグはどの値でも二つのキーを区別する。`"error"` は既定が免除するクラスも拒否する。`"last_wins"` は後のペアへ黙って畳み込み、これは `allow_duplicate_keys=True` の意味にあたる。`"first_wins"` は先のペアの値を保ち、畳み込まれる側のコメントとアンカー定義は生き残りのキーへ引き継ぐ。本項目と `allow_duplicate_keys` を同時に渡すと、優先順では決めず拒否する。
 - `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **戻り値:** `YamlDocument` オブジェクトのリスト
@@ -106,7 +108,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML をパースしてネイティブ Python 型を返します。
 
 ```python
-safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> dict[Any, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> dict[Any, Any] | list[Any]
 ```
 
 **パラメータ:**
@@ -114,7 +116,8 @@ safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_d
 - `yaml` — `str` または `bytes` の YAML コンテンツ
 - `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
 - `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
-- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `None`、`"as_is"` と同じ)
+- `duplicate_keys` — 一つのマッピングに YAML が同じと数えるキーが二つあるとき、読み手がどう動くか (デフォルト: `"as_is"`)。`"as_is"` は身分のクラスごとにこれまでの答を返す: スカラーの衝突と普通/引用表記の衝突は拒否、二つ目の null キーとマージキーは最初の枠に畳み込み、タグはどの値でも二つのキーを区別する。`"error"` は既定が免除するクラスも拒否する。`"last_wins"` は後のペアへ黙って畳み込み、これは `allow_duplicate_keys=True` の意味にあたる。`"first_wins"` は先のペアの値を保ち、畳み込まれる側のコメントとアンカー定義は生き残りのキーへ引き継ぐ。本項目と `allow_duplicate_keys` を同時に渡すと、優先順では決めず拒否する。
 - `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **以下と同等:** PyYAML の `yaml.safe_load()`
@@ -130,7 +133,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 複数の YAML ドキュメントをパースします。
 
 ```python
-safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False, honor_version_directive: bool = False) -> list[dict[Any, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool | None = None, honor_version_directive: bool = False, duplicate_keys: str | None = None) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **パラメータ:**
@@ -138,7 +141,8 @@ safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 - `yaml` — `str` または `bytes` の YAML コンテンツ
 - `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
 - `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
-- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `None`、`"as_is"` と同じ)
+- `duplicate_keys` — 一つのマッピングに YAML が同じと数えるキーが二つあるとき、読み手がどう動くか (デフォルト: `"as_is"`)。`"as_is"` は身分のクラスごとにこれまでの答を返す: スカラーの衝突と普通/引用表記の衝突は拒否、二つ目の null キーとマージキーは最初の枠に畳み込み、タグはどの値でも二つのキーを区別する。`"error"` は既定が免除するクラスも拒否する。`"last_wins"` は後のペアへ黙って畳み込み、これは `allow_duplicate_keys=True` の意味にあたる。`"first_wins"` は先のペアの値を保ち、畳み込まれる側のコメントとアンカー定義は生き残りのキーへ引き継ぐ。本項目と `allow_duplicate_keys` を同時に渡すと、優先順では決めず拒否する。
 - `honor_version_directive` — 明示された `%YAML` ディレクティブのバージョン交渉 (デフォルト: `False`)。`True` なら `%YAML 1.1` を宣言する文書は YAML 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が引き続き優先します。
 
 **以下と同等:** PyYAML の `yaml.safe_loads()`
