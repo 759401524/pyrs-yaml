@@ -20,6 +20,23 @@ struct BlockScalarHeader<'a> {
     comment: Option<&'a str>,
 }
 
+/// Where a note line goes when it cannot ride the line it belongs to.
+///
+/// Two lines can hold one note's line: above the line the note's node starts on, or above the
+/// `&a` / `!tag` header line that prefixes it. A reader spans a node from its header, so a note
+/// left between a header and its body re-reads as the *header's* leading note and the next
+/// emission lifts it - which is why `NoteFirst` is the default and the spelling that settles in one
+/// round. `HeaderFirst` keeps the note inside the gap; it is asked for by a caller that wants the
+/// anchor line to lead, and it is not a fixed point for a header written on its own line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NotePlacement {
+    /// Write the note above the enclosing `&a` / `!tag` header line. The default.
+    #[default]
+    NoteFirst,
+    /// Write the note directly above the note's own line, inside a header's gap.
+    HeaderFirst,
+}
+
 /// Serialization options
 #[derive(Debug, Clone, PartialEq)]
 pub struct SerializeOptions {
@@ -32,6 +49,7 @@ pub struct SerializeOptions {
     pub indent_mapping: usize,
     pub indent_sequence: usize,
     pub indent_offset: usize,
+    pub note_placement: NotePlacement,
 }
 
 impl Default for SerializeOptions {
@@ -46,6 +64,7 @@ impl Default for SerializeOptions {
             indent_mapping: 2,
             indent_sequence: 2,
             indent_offset: 0,
+            note_placement: NotePlacement::default(),
         }
     }
 }
@@ -186,6 +205,9 @@ struct Serializer {
     /// travels as an argument through the item writers and this slot is only the hand-off into
     /// the recursion, so it is written on a headed chain and taken by the container it starts.
     enclosing_header_start: Option<usize>,
+    /// `NotePlacement::NoteFirst`, taken from the options: whether a note line that would land
+    /// inside a header's gap is lifted above that header.
+    note_first: bool,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -404,6 +426,7 @@ impl Serializer {
             pair_line_start: 0,
             block_header_break: None,
             enclosing_header_start: None,
+            note_first: matches!(options.note_placement, NotePlacement::NoteFirst),
         }
     }
 
@@ -733,6 +756,15 @@ impl Serializer {
                 .find('\n')
                 .map_or(self.output.len(), |at_line| at + at_line + 1)
         };
+        // A note left between an `&a` / `!tag` header line and the body it heads re-reads as the
+        // header's own leading note, because granit spans a node from its header. `NoteFirst`
+        // writes it where that read files it, above the header, instead of paying for the round the
+        // gap placement costs (libFuzzer `edit_yaml` crash-547a9705); `HeaderFirst` keeps it here.
+        let at = if self.note_first {
+            self.header_gap_start(at)
+        } else {
+            at
+        };
         let indent: String = self.output[at..]
             .chars()
             .take_while(|c| *c == ' ')
@@ -741,6 +773,31 @@ impl Serializer {
         // an untracked insert would leave that offset pointing into the new note line, and
         // the next closure would then measure from the wrong place (crash-5561902a's defect).
         self.insert_note_at(at, &format!("{}\n", note_line(&indent, text)));
+    }
+
+    /// The line start that owns `at`, walking up over the header lines that prefix it.
+    ///
+    /// A body line whose immediately preceding line holds nothing but anchors and tags (`&a0`,
+    /// `!s:`, `&a !tag`) at no deeper an indent is that header's body, and a note written between
+    /// them is read as the header's. Nested chains are crossed because each header prefixes the
+    /// line below it, and the lift stops at the first line a reader would not hoist over.
+    fn header_gap_start(&self, at: usize) -> usize {
+        let body_indent = self.output[at..].find(|c: char| c != ' ').unwrap_or(0);
+        let mut start = at;
+        while start > 0 {
+            let before = &self.output[..start];
+            let Some(break_before) = before[..before.len() - 1].rfind('\n') else {
+                break;
+            };
+            let previous = break_before + 1;
+            let line = self.output[previous..start].trim_end_matches([' ', '\n']);
+            let indent = line.len() - line.trim_start_matches(' ').len();
+            if indent > body_indent || !is_header_line(line) {
+                break;
+            }
+            start = previous;
+        }
+        start
     }
 
     /// Write a note as a line of its own. This is the single place that knows a note line
@@ -2720,6 +2777,21 @@ fn empty_slot_notes(meta: &NodeMeta) -> (Option<&Comment>, &[Comment]) {
 /// has the parent pre-emit the header, so neither is affected.
 fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool) -> bool {
     !flow_style && !in_value_context && (meta.anchor().is_some() || meta.tag().is_some())
+}
+
+/// Does this trimmed line hold nothing but the header tokens of the line below it?
+///
+/// `&a0`, `!s:` and `&a !tag` head a block; a `- ` item, a `key:` line or a note line do not, and
+/// only a header swallows a note written between it and its body.
+fn is_header_line(line: &str) -> bool {
+    let mut saw_token = false;
+    for token in line.split_ascii_whitespace() {
+        if !(token.starts_with('&') || token.starts_with('!')) {
+            return false;
+        }
+        saw_token = true;
+    }
+    saw_token
 }
 
 /// What a note's text looks like on the line: the reader hands a comment back without its

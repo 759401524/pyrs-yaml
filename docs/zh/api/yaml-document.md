@@ -44,6 +44,7 @@ to_yaml_with_options(
     explicit_start: bool = False,
     explicit_end: bool = False,
     sort_keys: bool = False,
+    note_placement: str = "note_first",
 ) -> str
 ```
 
@@ -53,6 +54,7 @@ to_yaml_with_options(
 - `explicit_start` — 在文档开头添加 `---`（默认：False）
 - `explicit_end` — 在文档末尾添加 `...`（默认：False）
 - `sort_keys` — 按字母顺序对键排序（默认：False）
+- `note_placement` — 注释无法与其行同处一行、且其上方是 `&a` / `!tag` 头行时的落点：`note_first`（默认）把它写在头行之上，即读取所归档处，于是首次发射即收敛；`header_first` 把它留在间隙里。其他取值一律拒绝
 
 **示例:**
 

@@ -145,6 +145,24 @@ class TestToYamlWithOptions:
         keys = [line.split(":")[0] for line in lines]
         assert keys == ["z", "a", "m"]
 
+    def test_note_placement_refuses_an_unknown_value(self):
+        doc = pyrs_yaml.parse("key: value")
+        with pytest.raises(pyrs_yaml.YamlSerializeError, match="note_first or header_first"):
+            doc.to_yaml_with_options(note_placement="sideways")
+
+    def test_note_placement_values_agree_when_no_header_gap_exists(self):
+        doc = pyrs_yaml.parse("# head\nkey: &a\n  - 1\n")
+        lifted = doc.to_yaml_with_options(note_placement="note_first")
+        inside = doc.to_yaml_with_options(note_placement="header_first")
+        assert lifted == inside == doc.to_yaml()
+
+    def test_a_note_inside_a_header_gap_settles_on_the_next_read(self):
+        gap = "- \n  - \n    &a0 \n    # fuzz 47\n    - ~: ! ~  # fuzz 47\n"
+        lifted = "- \n  - \n    # fuzz 47\n    &a0 \n    - ~: ! ~  # fuzz 47\n"
+        once = pyrs_yaml.parse(gap).to_yaml()
+        assert once == lifted, "the reader files the note above the header, so the writer does too"
+        assert pyrs_yaml.parse(once).to_yaml() == once
+
 
 class TestToDict:
     """Test YamlDocument.to_dict method"""

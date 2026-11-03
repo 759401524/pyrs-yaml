@@ -46,6 +46,7 @@ to_yaml_with_options(
     explicit_start: bool = False,
     explicit_end: bool = False,
     sort_keys: bool = False,
+    note_placement: str = "note_first",
 ) -> str
 ```
 
@@ -55,6 +56,7 @@ to_yaml_with_options(
 - `explicit_start` — Add `---` at document start (default: False)
 - `explicit_end` — Add `...` at document end (default: False)
 - `sort_keys` — Sort keys alphabetically (default: False)
+- `note_placement` — Where a note goes when it cannot ride its line and an `&a` / `!tag` header line sits above it: `note_first` (default) writes it above the header, where a read files it, so the first emission settles; `header_first` keeps it inside the gap. Any other value is refused
 
 **Example:**
 

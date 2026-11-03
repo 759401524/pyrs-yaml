@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::ast::CustomNode;
 use crate::parser::yaml::Schema;
-use crate::serializer::{SerializeOptions, to_yaml_with_options};
+use crate::serializer::{NotePlacement, SerializeOptions, to_yaml_with_options};
 use crate::splice::SpliceState;
 
 use crate::py::convert::{
@@ -333,13 +333,31 @@ impl YamlDocument {
     #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
     fn to_yaml(&mut self, py: Python) -> PyResult<String> {
         self.flush_source(py)?;
-        self.to_yaml_with_options(py, 2, false, false, false, 1000, 80, None, None, None)
+        self.to_yaml_with_options(
+            py,
+            2,
+            false,
+            false,
+            false,
+            1000,
+            80,
+            None,
+            None,
+            None,
+            "note_first",
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::wrong_self_convention)]
-    #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
+    #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None, note_placement: "str" = "note_first") -> "str")]
     /// Serialize with customizable indent, sorting, and explicit start/end markers.
+    ///
+    /// `note_placement` decides where a note line goes when it cannot ride its own line and an
+    /// `&a` / `!tag` header line sits directly above it: `note_first` (the default) writes it above
+    /// that header, which is where reading the text back files it, so the first emission already
+    /// settles; `header_first` keeps the header line on top and is not a fixed point for such a
+    /// shape. Any other value is a named refusal.
     fn to_yaml_with_options(
         &mut self,
         py: Python,
@@ -352,8 +370,18 @@ impl YamlDocument {
         indent_mapping: Option<usize>,
         indent_sequence: Option<usize>,
         indent_offset: Option<usize>,
+        note_placement: &str,
     ) -> PyResult<String> {
         self.flush_source(py)?;
+        let placement = match note_placement {
+            "note_first" => NotePlacement::NoteFirst,
+            "header_first" => NotePlacement::HeaderFirst,
+            other => {
+                return Err(YamlSerializeError::new_err(format!(
+                    "unknown note_placement {other:?}; expected note_first or header_first"
+                )));
+            }
+        };
         let options = SerializeOptions {
             indent_size,
             explicit_start,
@@ -364,6 +392,7 @@ impl YamlDocument {
             indent_mapping: indent_mapping.unwrap_or(indent_size),
             indent_sequence: indent_sequence.unwrap_or(indent_size),
             indent_offset: indent_offset.unwrap_or(0),
+            note_placement: placement,
         };
         let text = to_yaml_with_options(&self.ast, &options).map_err(|e| {
             if e.to_string().contains("max depth exceeded") {

@@ -95,6 +95,7 @@ pub(crate) fn dump_options(sort_keys: bool) -> SerializeOptions {
         indent_mapping: 2,
         indent_sequence: 2,
         indent_offset: 0,
+        note_placement: pyrs_yaml_core::serializer::NotePlacement::default(),
     }
 }
 

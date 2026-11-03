@@ -9,7 +9,7 @@
 
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
-use pyrs_yaml_core::serializer::to_yaml;
+use pyrs_yaml_core::serializer::{NotePlacement, SerializeOptions, to_yaml, to_yaml_with_options};
 
 fn emit(src: &str) -> String {
     to_yaml(&parse(src, Schema::Core).expect("the pinned input parses"))
@@ -865,4 +865,87 @@ fn an_inlined_alias_key_folds_the_plain_null_key_that_follows_it() {
             "one mapping holds one null key: {one:?}"
         );
     }
+}
+
+/// libFuzzer `edit_yaml` crash-547a9705, minimized to 18 bytes with `cargo fuzz tmin`.
+///
+/// The pair writer has one trailing slot per line and the value took it, so the key's note went
+/// above the pair's own line - which is the first line of the `&a0` header's gap. granit spans a
+/// node from its header, so that note re-reads as the *anchored sequence's* leading note and the
+/// next emission lifts it above the header. `note_first` (the default) writes it where that read
+/// already files it, so the edit settles in one round.
+#[test]
+fn a_note_above_a_pair_inside_a_header_gap_settles_in_one_round() {
+    let emitted = gap_tree_emitted(NotePlacement::NoteFirst);
+    assert_eq!(
+        emitted, "- \n  - \n    # fuzz 47\n    &a0 \n    - ~: ! ~  # fuzz 47\n",
+        "the lifted line is where the reader files the note"
+    );
+    let again = to_yaml(&parse(&emitted, Schema::Core).expect("the emission parses"));
+    assert_eq!(
+        emitted, again,
+        "an edit's emission did not settle in one round\nfirst:\n{emitted}\nsecond:\n{again}"
+    );
+}
+
+/// The two values answer differently, and only one of them is a fixed point. That is the whole
+/// content of the choice handed back to the caller: `header_first` is the placement this writer used
+/// to pick, kept reachable rather than quietly deleted, with its non-idempotence stated.
+#[test]
+fn note_placement_answers_differently_and_only_note_first_settles() {
+    let lifted = gap_tree_emitted(NotePlacement::NoteFirst);
+    let inside = gap_tree_emitted(NotePlacement::HeaderFirst);
+    assert_ne!(lifted, inside, "two values, two answers");
+    assert_eq!(
+        inside, "- \n  - \n    &a0 \n    # fuzz 47\n    - ~: ! ~  # fuzz 47\n",
+        "header_first keeps the note inside the gap"
+    );
+    let again = to_yaml(&parse(&inside, Schema::Core).expect("the emission parses"));
+    assert_ne!(
+        inside, again,
+        "the gap placement is documented as not settling: {inside:?} -> {again:?}"
+    );
+}
+
+/// The minimized crash script: anchor a block sequence, note its item, then note the item's value,
+/// re-reading after each accepted edit exactly as the fuzz tier does, and emit under `placement`.
+fn gap_tree_emitted(placement: NotePlacement) -> String {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+    use std::borrow::Cow;
+    use std::sync::Arc;
+
+    let note = || Comment {
+        text: Arc::from("fuzz 47"),
+        standalone: false,
+    };
+    let source = "-  - - : !\n";
+    let mut node = parse(source, Schema::Core).expect("the pinned input parses");
+    let anchored = vec![Segment::Index(0), Segment::Index(0)];
+    set_anchor_path(&mut node, &anchored, "a0", source, None).expect("the anchor is accepted");
+
+    let text = to_yaml(&node);
+    let mut node = parse(&text, Schema::Core).expect("the emission parses");
+    let inner = vec![Segment::Index(0), Segment::Index(0), Segment::Index(0)];
+    set_comment_path(&mut node, &inner, note(), &text, None).expect("the note is accepted");
+
+    let text = to_yaml(&node);
+    let mut node = parse(&text, Schema::Core).expect("the emission parses");
+    let keyed = vec![
+        Segment::Index(0),
+        Segment::Index(0),
+        Segment::Index(0),
+        Segment::Key(Cow::Owned("~".to_string())),
+    ];
+    set_comment_path(&mut node, &keyed, note(), &text, None).expect("the note is accepted");
+
+    to_yaml_with_options(
+        &node,
+        &SerializeOptions {
+            note_placement: placement,
+            ..Default::default()
+        },
+    )
+    .expect("the tree serializes")
 }
