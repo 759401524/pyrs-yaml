@@ -206,6 +206,7 @@ def delete_value(
     *,
     inplace: INPLACE = False,
     all_docs: ALL_DOCS = False,
+    on_duplicate: str = "one",
 ) -> None:
     """Delete the node at a JSONPath.
 
@@ -218,6 +219,11 @@ def delete_value(
     all_docs:
         Delete from every document where the path resolves; fails only when
         no document matches.
+    on_duplicate:
+        What to do when the document holds more than one pair spelling this key,
+        told apart only by a tag or anchor the reader keeps: ``one`` (the default)
+        deletes the pair the path resolves to, ``all`` deletes every pair the key
+        could answer with, and ``error`` refuses while more than one remains.
     """
     from pyrs_yaml import YamlEditError, YamlPathError
 
@@ -225,9 +231,16 @@ def delete_value(
     applied = 0
     for doc in docs:
         try:
-            doc.delete(path)
+            doc.delete(path, on_duplicate=on_duplicate)
             applied += 1
-        except (YamlEditError, YamlPathError, KeyError, IndexError):
+        except YamlEditError as exc:
+            # The duplicate-target refusal is not a path that failed to resolve, and reporting it as
+            # one would hide the choice the caller was asked to make.
+            if "duplicate-key-target" in str(exc) or "unknown on_duplicate" in str(exc):
+                fail(f"cannot delete {path!r}: {exc}")
+            if not all_docs:
+                fail(f"cannot delete {path!r}: path does not resolve")
+        except (YamlPathError, KeyError, IndexError):
             if not all_docs:
                 fail(f"cannot delete {path!r}: path does not resolve")
     if applied == 0:

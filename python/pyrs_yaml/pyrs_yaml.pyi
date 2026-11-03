@@ -142,9 +142,14 @@ class YamlDocument:
         """
         Copy the subtree at `segments` as a standalone Python object (internal).
         """
-    def _delete_path(self, /, segments: "list") -> "None":
+    def _delete_path(self, /, segments: "list", on_duplicate: "str" = "one") -> "None":
         """
-        Delete a node by path (internal, called by `__delitem__`).
+        Delete a node by path (internal, called by `__delitem__` and by `delete`).
+
+        `on_duplicate` is the caller's answer for a document that holds more than one pair spelling
+        the addressed key, told apart only by the tag or anchor the reader keeps: removing one can
+        leave a sibling the next read hands back under the deleted name (libFuzzer `edit_yaml`
+        crash-46d35d71). `one` is what a delete has always done and stays the default.
         """
     def _get_anchor(self, /, segments: "list") -> "str | None":
         """
@@ -354,7 +359,7 @@ class YamlDocument:
 
     def append(self, path: "str", value: "Any") -> "None": ...
 
-    def delete(self, path: "str") -> "None": ...
+    def delete(self, path: "str", on_duplicate: "str" = "one") -> "None": ...
 
     def find(self, path: "str") -> "Node | list[Node]": ...
 

@@ -323,7 +323,7 @@ append(path: str, value: Any) -> None
 パスでノードを削除します。マッピングの順序は保持されます。
 
 ```python
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ### `rename()`

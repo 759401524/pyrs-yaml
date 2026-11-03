@@ -591,12 +591,33 @@ impl YamlDocument {
         })
     }
 
-    /// Delete a node by path (internal, called by `__delitem__`).
-    #[pyo3(signature = (segments: "list") -> "None")]
-    fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+    /// Delete a node by path (internal, called by `__delitem__` and by `delete`).
+    ///
+    /// `on_duplicate` is the caller's answer for a document that holds more than one pair spelling
+    /// the addressed key, told apart only by the tag or anchor the reader keeps: removing one can
+    /// leave a sibling the next read hands back under the deleted name (libFuzzer `edit_yaml`
+    /// crash-46d35d71). `one` is what a delete has always done and stays the default.
+    #[pyo3(signature = (segments: "list", on_duplicate: "str" = "one") -> "None")]
+    fn _delete_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        on_duplicate: &str,
+    ) -> PyResult<()> {
         let segs = parse_segments(py, &segments)?;
-        self.apply_metadata_edit(py, move |ast, src, offs| {
-            editing::delete_path(ast, &segs, src, offs)
+        let on_duplicate = on_duplicate.to_owned();
+        self.apply_batch_edit(py, move |ast, src, offs| {
+            let policy = match on_duplicate.as_str() {
+                "one" => editing::OnDuplicate::One,
+                "all" => editing::OnDuplicate::All,
+                "error" => editing::OnDuplicate::Error,
+                other => {
+                    return Err(format!(
+                        "unknown on_duplicate {other:?}; expected one, all or error"
+                    ));
+                }
+            };
+            editing::delete_path_with_policy(ast, &segs, src, offs, policy)
         })
     }
 
@@ -931,7 +952,7 @@ impl YamlDocument {
 
     /// Delete a mapping key, `del doc['key']`.
     fn __delitem__(&mut self, py: Python, key: String) -> PyResult<()> {
-        self._delete_path(py, vec![key.into_pyobject(py)?.into_any().unbind()])
+        self._delete_path(py, vec![key.into_pyobject(py)?.into_any().unbind()], "one")
     }
 
     /// Return the current revision number (incremented on each edit).

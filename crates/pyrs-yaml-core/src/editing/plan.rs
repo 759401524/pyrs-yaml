@@ -651,6 +651,87 @@ pub fn delete_path(
     }
 }
 
+/// How a delete answers a mapping key that the receiver folds more than once.
+///
+/// A document read with `allow_duplicate_keys` keeps every pair, yet the writer spells two
+/// `0set:` keys alike and the next read folds them back into one - so removing "the" entry can
+/// leave a pair that still answers the deleted path (libFuzzer `edit_yaml` crash-46d35d71:
+/// `[Key("0set")] still reads Some("-e))))))$) 1")` after the delete). Which answer is right
+/// depends on what the caller means, so the choice belongs to the caller rather than to the
+/// engine.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum OnDuplicate {
+    /// Remove only the entry the path resolves to. This is what a delete has always done, and it
+    /// stays the default so every existing caller keeps its observable behaviour.
+    One,
+    /// Remove every pair in that mapping whose key folds to the addressed key.
+    All,
+    /// Refuse, before touching the tree, when more than one pair folds to the addressed key.
+    Error,
+}
+
+/// How many pairs in the mapping the path addresses the re-read could answer that path with.
+///
+/// Both passes the lookup itself uses, in the same order: the identity the receiver folds on, and
+/// the spelling it falls back to when the fold found nothing. Asking only the identity would miss
+/// the pair that carries a tag or an anchor of its own, which the writer still spells with the same
+/// key text - and that is exactly the sibling a re-read hands back to the deleted path.
+fn duplicate_fold_count(node: &CustomNode, segments: &[Segment<'_>]) -> usize {
+    let Some(Segment::Key(k)) = segments.last() else {
+        return 0;
+    };
+    if segments.is_empty() {
+        return 0;
+    }
+    let Ok(CustomNode::Mapping { pairs, .. }) =
+        crate::editing::navigate(node, &segments[..segments.len() - 1])
+    else {
+        return 0;
+    };
+    let key_node = CustomNode::plain_scalar(k.as_ref());
+    let identity = key_node.key_identity();
+    // The text comparison mirrors the lookup's own fallback pass: the tag or anchor that keeps two
+    // siblings apart in the tree is not in the name the caller wrote, and it is not in the key text
+    // the writer emits, so a tagged `!base 0set` is still a pair the deleted path answers with.
+    let spells_the_addressed_name = |key: &CustomNode| match key {
+        CustomNode::Scalar { value, .. } => value.as_ref() == k.as_ref(),
+        _ => false,
+    };
+    pairs
+        .iter()
+        .filter(|(key, _)| key.key_identity() == identity || spells_the_addressed_name(key))
+        .count()
+}
+
+/// Delete with the duplicate-fold answer the caller chose.
+///
+/// `One` returns the single unit `delete_path` produces. `All` repeats that removal while the
+/// addressed mapping still holds another pair folding to the same key, so each removal is its own
+/// change unit and `delete_path`'s anchor guard runs again for each - a definition some alias
+/// still names is refused rather than emitted dangling. `Error` refuses with `duplicate-key-target`
+/// before the tree changes.
+pub fn delete_path_with_policy(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+    on_duplicate: OnDuplicate,
+) -> Result<Vec<DirtyUnit>, String> {
+    if on_duplicate == OnDuplicate::Error && duplicate_fold_count(node, segments) > 1 {
+        return Err("duplicate-key-target".to_string());
+    }
+    let mut units = vec![delete_path(node, segments, source, line_offsets)?];
+    if on_duplicate == OnDuplicate::All {
+        // Down to none, not down to one: the sibling left behind is exactly the pair that still
+        // answers the deleted path once the reader folds the emission (crash-46d35d71). Each round
+        // re-runs `delete_path`, so its anchor guard applies to every removal.
+        while duplicate_fold_count(node, segments) > 0 {
+            units.push(delete_path(node, segments, source, line_offsets)?);
+        }
+    }
+    Ok(units)
+}
+
 pub fn rename_path(
     node: &mut CustomNode,
     segments: &[Segment<'_>],
@@ -1346,6 +1427,73 @@ mod tests {
         let emitted = to_yaml(&node);
         assert_eq!(emitted, "&x !base: k7: *x\n");
         parse(&emitted, Schema::Core).expect("the alias still names the anchor on the key");
+    }
+
+    /// The document holds two keys that spell `0set` and differ only by the tag or anchor the
+    /// reader keeps them apart by, so a delete that takes one still leaves a pair answering that
+    /// name (libFuzzer `edit_yaml` crash-46d35d71: `[Key("0set")] still reads
+    /// Some("-e))))))$) 1")`). `All` is the caller's answer: take every pair the path can reach.
+    #[test]
+    fn delete_all_takes_every_pair_the_addressed_path_can_answer_with() {
+        let source = "0set: 1\n!base 0set: 2\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let units =
+            delete_path_with_policy(&mut node, &segments("0set"), source, None, OnDuplicate::All)
+                .expect("all is the caller's to ask for");
+        assert_eq!(
+            units.len(),
+            2,
+            "one change unit per pair that spells the key"
+        );
+        let emitted = to_yaml(&node);
+        assert!(
+            !emitted.contains("0set"),
+            "no pair the path could answer with survives: {emitted:?}"
+        );
+        let again = parse(&emitted, Schema::Core).expect("the emission parses");
+        assert!(
+            crate::editing::navigate(&again, &segments("0set")).is_err(),
+            "the deleted name answers nothing once re-read: {emitted:?}"
+        );
+    }
+
+    /// The default is today's answer, kept visible: one pair goes, the sibling stays, and that is
+    /// precisely the ambiguity the caller now chooses instead of the engine guessing.
+    #[test]
+    fn delete_one_leaves_the_sibling_that_still_answers_the_path() {
+        let source = "0set: 1\n!base 0set: 2\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        delete_path_with_policy(&mut node, &segments("0set"), source, None, OnDuplicate::One)
+            .expect("one is what a delete has always done");
+        let emitted = to_yaml(&node);
+        assert_eq!(
+            emitted, "!base 0set: 2\n",
+            "the tagged sibling is left in place"
+        );
+        let again = parse(&emitted, Schema::Core).expect("the emission parses");
+        assert!(
+            crate::editing::navigate(&again, &segments("0set")).is_ok(),
+            "the deleted name still resolves after a re-read, which is the ambiguity the flag answers"
+        );
+    }
+
+    /// A caller that will not guess gets a named refusal and an untouched tree - the same shape as
+    /// the projection refusal `to_dict` raises when two YAML keys collapse into one Python key.
+    #[test]
+    fn delete_error_refuses_a_key_the_document_holds_twice() {
+        let source = "0set: 1\n!base 0set: 2\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let before = to_yaml(&node);
+        let error = delete_path_with_policy(
+            &mut node,
+            &segments("0set"),
+            source,
+            None,
+            OnDuplicate::Error,
+        )
+        .expect_err("two pairs answer the path, so the target is ambiguous");
+        assert_eq!(error, "duplicate-key-target");
+        assert_eq!(to_yaml(&node), before, "refusing changes nothing");
     }
 
     /// The hole `preserve_metadata` cannot cover: the anchor is not on the node being replaced, it is

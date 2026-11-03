@@ -345,7 +345,7 @@ doc.append("$.items", "c")
 Delete the node at a path, preserving mapping/sequence order.
 
 ```python
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ```python

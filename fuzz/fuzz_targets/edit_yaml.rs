@@ -54,9 +54,9 @@ use pyrs_schema::types::Schema;
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::{Comment, CustomNode, ScalarStyle, Tag};
 use pyrs_yaml_core::editing::plan::{
-    append_path, delete_path, insert_path, move_path, rename_path, set_anchor_path,
-    set_comment_path, set_flow_style_path, set_path, set_scalar_style_path, set_tag_path,
-    sort_keys_path,
+    OnDuplicate, append_path, delete_path_with_policy, insert_path, move_path, rename_path,
+    set_anchor_path, set_comment_path, set_flow_style_path, set_path, set_scalar_style_path,
+    set_tag_path, sort_keys_path,
 };
 use pyrs_yaml_core::editing::{Segment, navigate};
 use pyrs_yaml_core::parser::parse;
@@ -403,7 +403,13 @@ fuzz_target!(|data: &[u8]| {
                 false,
             )
             .map(|_| Effect::Carries(path.clone(), written)),
-            1 => delete_path(&mut node, &path, &text, None).map(|_| removal_effect(&before, &path)),
+            1 => delete_path_with_policy(&mut node, &path, &text, None, OnDuplicate::All)
+                // The tier asks the delete to mean what the reader will still see: a path naming a
+                // key the document spells twice, the siblings told apart only by a tag or anchor,
+                // leaves that key answering again on the re-read if only one pair goes (crash-
+                // 46d35d71). `All` is the policy the effect check is paired with here - not a claim
+                // about what the default does.
+                .map(|_| removal_effect(&before, &path)),
             2 => {
                 let new_key = format!("k{}", verb >> 4);
                 let mut renamed = path.clone();

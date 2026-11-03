@@ -37,8 +37,8 @@ def _yaml_document_append(self, path: str, value: Any) -> None:
     return _path_node(self, path).append(value)
 
 
-def _yaml_document_delete(self, path: str) -> None:
-    return _path_node(self, path).delete()
+def _yaml_document_delete(self, path: str, on_duplicate: str = "one") -> None:
+    return _path_node(self, path).delete(on_duplicate=on_duplicate)
 
 
 def _yaml_document_rename(self, path: str, new_key: str) -> None:

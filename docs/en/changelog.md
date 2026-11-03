@@ -19,6 +19,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **`delete()` now asks the caller what a duplicated key name means** — a document can hold two keys
+  that spell one name and are told apart only by a tag or an anchor the reader keeps (`0set: 1`
+  beside `!base 0set: 2`), so a delete that takes one leaves the other answering that name as soon
+  as the emission is read back: libFuzzer `edit_yaml` crash-46d35d71 reported exactly that as
+  `a deleted key is still in the document`. Rather than have the engine pick,
+  `delete(path, on_duplicate=...)` offers `one` (the default, and what every existing caller
+  already saw), `all` (every pair the addressed key can answer with goes, so the name leaves the
+  document), and `error` (refuse with `duplicate-key-target` while more than one remains, leaving
+  the tree untouched); an unrecognised value is its own named refusal, never a silent fall back. The
+  engine entry point is `delete_path_with_policy`, which returns one change unit per removal and
+  re-runs the anchor guard for each, so a definition an alias still names is refused rather than
+  emitted dangling, while `delete_path` is now the `one` wrapper and removes exactly what it removed
+  before. `del doc[key]` and `Node.delete()` keep the default. Three Rust tests
+  (`delete_all_takes_every_pair_the_addressed_path_can_answer_with`,
+  `delete_one_leaves_the_sibling_that_still_answers_the_path`,
+  `delete_error_refuses_a_key_the_document_holds_twice`) and five Python ones pin the three answers
+  and both refusals; the fuzz tier drives verb 1 with `all`, which is why `crash-46d35d71` now
+  replays clean and joins the corpus as `fuzz/seeds/edit_yaml/former-crash-46d35d71.seed`, while
+  that run's other two inputs stay open as different ambiguities (`547a9705` wants a decided note
+  position, `b7e16929` an anchor emitted before the alias that uses it).
 - **Three old fuzz artifacts with no seed and no record enter the corpus** — `fuzz/artifacts/` held
   `yaml_roundtrip` crash-3528db38 (2026-10-07) and crash-d461a3f2 (2026-10-16) plus `parse_json`
   crash-331b36ec (2026-10-17) with no `former-crash-*` seed beside them and no mention in any

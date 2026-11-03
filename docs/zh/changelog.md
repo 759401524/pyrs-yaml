@@ -19,6 +19,21 @@ status: new
 
 #### 新增
 
+- **`delete()` 把「重复键名怎么办」交给调用方决定** — 文档可以同时持有两条拼写相同的键，只靠读者
+  保留的 tag 或锚点区分（`0set: 1` 与 `!base 0set: 2` 并列），所以取走一条之后，发射一旦重读，
+  另一条仍会应答这个名字：libFuzzer `edit_yaml` 的 crash-46d35d71 正是以「被删的键仍在文档里」
+  报出来的。引擎不再替调用方选：`delete(path, on_duplicate=...)` 给出 `one`（默认，也是所有既有
+  调用方今天看到的行为）、`all`（凡该键可能应答的每一对都删除，于是名字从文档里消失）与
+  `error`（只要还剩多条就以 `duplicate-key-target` 拒绝，且不改树）；无法识别的取值本身是命名
+  拒绝，不会悄悄退回默认。引擎入口 `delete_path_with_policy` 每次删除产出一个变更单元，并对每次
+  重跑锚点守卫，因此仍被别名指称的定义会被拒绝而不是发出去悬空；`delete_path` 现在是 `one` 的
+  包装，删掉的与从前完全一致。`del doc[key]` 与 `Node.delete()` 保持默认。三条 Rust 测试
+  （`delete_all_takes_every_pair_the_addressed_path_can_answer_with`、
+  `delete_one_leaves_the_sibling_that_still_answers_the_path`、
+  `delete_error_refuses_a_key_the_document_holds_twice`）与五条 Python 测试钉住三种答案与两种拒绝；
+  fuzz 档位以 `all` 驱动第 1 号动词，所以 crash-46d35d71 如今回放干净并以
+  `fuzz/seeds/edit_yaml/former-crash-46d35d71.seed` 进语料。该轮另外两条输入是另外的歧义，仍开放：
+  `547a9705` 要定下发 note 的位置，`b7e16929` 要锚点发在引用它的别名之前。
 - **三条既无种子也无记录的老 fuzz 产物进入语料** — `fuzz/artifacts/` 里躺着 `yaml_roundtrip` 的
   crash-3528db38（2026-10-07）与 crash-d461a3f2（2026-10-16），以及 `parse_json` 的
   crash-331b36ec（2026-10-17），旁边没有 `former-crash-*` 种子，任何账本、changelog 或提交信息

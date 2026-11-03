@@ -17,6 +17,24 @@ status: new
 
 #### 추가
 
+- **`delete()`는 중복된 키 이름을 어떻게 다룰지 호출자에게 묻는다** — 같은 이름을 철자하는 두 키가
+  읽는 쪽이 보존하는 tag나 앵커로만 구분된 채 문서에 함께 있을 수 있다(`0set: 1`과 `!base 0set: 2`가
+  나란히 놓인다). 그래서 하나를 지우면 출력을 다시 읽는 순간 나머지 하나가 그 이름에 답한다.
+  libFuzzer `edit_yaml`의 crash-46d35d71은 바로 이것을「지운 키가 아직 문서에 있다」로 보고했다.
+  엔진이 대신 고르지 않도록 `delete(path, on_duplicate=...)`에 `one`(기본값. 기존 호출자가 봐 온
+  답), `all`(그 키가 답할 수 있는 짝을 모두 지워 이름 자체를 출력에서 없앤다), `error`(둘 이상
+  남으면 `duplicate-key-target`으로 거부하되 트리는 바꾸지 않는다) 중 하나를 넘긴다. 알 수 없는 값은
+  기본값으로 몰래 되돌아가는 것이 아니라 그 자체가 이름 붙은 거부다. 엔진 쪽 입구는
+  `delete_path_with_policy`이고, 제거마다 변경 단위를 하나 돌려주며 각각에 대해 앵커 검사를 다시
+  돌린다. 그래서 별명이 아직 가리키는 정의는 뜬 채로 출력되는 대신 거부된다. `delete_path`는 `one`을
+  감싼 형태가 되며 지우는 대상은 이전과 완전히 같다. `del doc[key]`와 `Node.delete()`는 기본값을
+  유지한다. Rust 테스트 세 개 (`delete_all_takes_every_pair_the_addressed_path_can_answer_with`,
+  `delete_one_leaves_the_sibling_that_still_answers_the_path`,
+  `delete_error_refuses_a_key_the_document_holds_twice`)와 Python 테스트 다섯 개가 세 답과 두 거부를
+  고정한다. fuzz 층은 동사 1을 `all`로 구동하므로 crash-46d35d71은 이제 깨끗하게 재생되고
+  `fuzz/seeds/edit_yaml/former-crash-46d35d71.seed`로 코퍼스에 들어간다. 같은 run의 나머지 두 입력은
+  다른 논점이므로 열린 채로 남는다(`547a9705`는 note의 출력 위치를 정하는 것을, `b7e16929`는 앵커를
+  그것을 쓰는 별명보다 앞에 출력하는 것을 요구한다).
 - **시드도 기록도 없던 오래된 fuzz 산출물 세 건이 코퍼스에 들어간다** — `fuzz/artifacts/`에는
   `yaml_roundtrip`의 crash-3528db38(2026-10-07)과 crash-d461a3f2(2026-10-16), 그리고
   `parse_json`의 crash-331b36ec(2026-10-17)가 옆에 `former-crash-*` 시드도 없이, 어떤 장부나

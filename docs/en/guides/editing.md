@@ -156,7 +156,7 @@ node.insert(1, "x")
 #### `delete()` — remove by path
 
 ```python title="delete() signature"
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ```python title="delete() example"
@@ -166,6 +166,18 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ```
 
 Mapping order is always preserved; sequence deletion closes the gap.
+
+A document can hold two keys that spell one name and are told apart only by a tag or an anchor the
+reader keeps, so removing one leaves the other answering that name once the emission is read back.
+`delete()` asks the caller which answer it wants through `on_duplicate`:
+
+- `one` (the default) deletes the pair the path resolves to — the behaviour every existing caller has.
+- `all` deletes every pair that key could answer with, so the name is gone from the emission too.
+- `error` refuses with `duplicate-key-target` while more than one pair remains, and leaves the
+  document untouched.
+
+An unrecognised value is itself a named refusal rather than a silent fall back to the default.
+`del doc[key]` and `Node.delete()` keep the default.
 
 #### `__delitem__` — root sugar
 

@@ -271,7 +271,7 @@ append(path: str, value: Any) -> None
 경로로 노드를 제거합니다. 매핑 순서가 유지됩니다.
 
 ```python
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ### `rename()`

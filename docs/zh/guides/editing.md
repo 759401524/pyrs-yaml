@@ -147,7 +147,7 @@ node.insert(1, "x")
 ### `delete()` — 按路径删除
 
 ```python title="delete() 签名"
-delete(path: str) -> None
+delete(path: str, on_duplicate: str = "one") -> None
 ```
 
 ```python title="delete() 示例"
