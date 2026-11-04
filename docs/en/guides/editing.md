@@ -55,12 +55,12 @@ Paths start with `$` followed by dot-separated keys (mapping) or `[N]` indices (
 | `$.items[0]` | First element of sequence `items` |
 | `$` | The root node itself |
 
-- **Negative indices** (`[-1]`, `[-2]`, ...) are **supported** — they count from the end of a sequence (Python semantics: `-1` is the last element). An out-of-range negative index raises `YamlEditError`
+- **Negative indices** (`[-1]`, `[-2]`, ...) are **supported** — they count from the end of a sequence (Python semantics: `-1` is the last element). An out-of-range negative index raises `YamlEditError`, naming the index it could not place: `parse("items: [1, 2, 3]\n").set("$.items[-99]", 99)` answers `edit failed: index-out-of-range-edit:-99`
 - Keys are matched **by value** (metadata-insensitive), so a quoted key `"host"` matches the plain key `host`
 
 Editing paths must target exactly one node — **wildcards** (`[*]`) and **deep-scan** (`..`) raise `YamlPathError`. (Query-only `find()` does support them; see [Querying with `find()`](#querying-with-find).)
 
-**Raises** `YamlPathError` for malformed paths, and `YamlEditError` when a path step cannot be applied (e.g. navigating into a scalar, or editing through an alias).
+**Raises** `YamlPathError` for malformed paths, and `YamlEditError` when a path step cannot be applied — measured as `edit failed: cannot-edit-alias` for a step through an alias and `edit failed: create-needs-mapping` for a step into a scalar. The reason token is the stable part; see [Edit reason tokens](../api/exceptions.md#edit-reason-tokens).
 
 ### Setting Values
 
@@ -94,6 +94,9 @@ Value conversion rules:
 | :material-language-python: `dict` | New mapping (plain style) |
 | :material-format-list-numbered: `list` | New sequence (plain style) |
 | :material-format-list-numbered: `tuple` | New sequence (plain style) — the same node a `list` makes |
+| :material-format-list-numbered: `bytes` | New scalar tagged `!!binary` — `doc.set("$.a", b"hi")` emits `a: !!binary aGk=` |
+
+A Python type outside that table is refused by the writer, not by the edit path: measured on `set("$.a", {1, 2})` and `set("$.a", object())`, both answer `YamlTypeError: Unsupported Python type for YAML conversion`.
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 
@@ -120,7 +123,7 @@ Both operate on **sequences** only; the path must resolve to a sequence node.
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError`. Negative indexes are supported and count from the end (`-1` inserts before the last element, `-len` inserts at the front).
+`index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError: edit failed: index-out-of-range-edit`, as does an index below `-len` — `parse("items:\n  - a\n").insert("$.items", -99, "z")`. Negative indexes are supported and count from the end (`-1` inserts before the last element, `-len` inserts at the front).
 
 ```python title="insert() examples"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -210,7 +213,9 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 - **Position is preserved** — the renamed key stays in place
 - **Metadata is preserved** — the key's inline comment, style, and anchor travel with the rename
-- Renaming the root, a complex (non-scalar) key, or onto an **existing key** raises `YamlEditError` (renaming a key to itself is a no-op)
+- Renaming the root, a complex (non-scalar) key, or onto an **existing key** raises `YamlEditError` with `edit failed: cannot-rename-root`, `cannot-rename-complex-key` or `rename-key-exists` (renaming a key to itself is a no-op)
+- A **sequence element** is not a mapping key either way: `parse("- a\n- b\n").rename("$[0]", "x")` and `Node.children[1].rename("x")` both answer `edit failed: cannot-rename-complex-key`
+- On a document whose key is a complex node, addressing it through a `Node` is refused one layer earlier — `parse("? [1, 2]\n: value\n").node().children[0].rename("b")` answers `YamlEditError: ValueError: segment must be str or int`, because the complex key cannot become a path segment
 
 #### `Node.rename()`
 
@@ -263,7 +268,9 @@ node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim tag
 node.remove_tag()
 ```
 
-- Editing metadata on an **alias** node (`*ref`) or a **missing path** raises `YamlEditError`
+- Editing metadata on an **alias** node (`*ref`) raises `YamlEditError: edit failed: cannot-edit-alias` — measured for `set_comment()`, `set_tag()` and `set_anchor()`, and for `remove_anchor()` on the referenced source node
+- Editing metadata on a **missing path** raises `YamlEditError: edit failed: missing-path` — including on the `Node(invalid)` object that `find()` returns for a path the document does not hold
+- Setting or removing an **anchor that an alias still references** is refused: `set_anchor()`/`remove_anchor()` on the anchored node answer `YamlEditError: edit failed: anchor-is-referenced`. With no alias left, the same call succeeds — `parse("base: &x 1\n")` then `set_anchor("renamed")` emits `base: &renamed 1`
 - After an edit the node is **stale** — re-find it with `doc.node().find(path)` before the next access
 
 ### Working with Nodes
@@ -336,8 +343,8 @@ print(doc.to_yaml())
 Rules:
 
 - Missing **mapping keys** are created as nested mappings
-- Missing **index segments** still raise (can't auto-create a sequence element)
-- A **scalar** intermediate along the path still raises (can't descend into a scalar)
+- Missing **index segments** still raise (can't auto-create a sequence element) — measured: `parse("items: []\n").set("$.items[2]", 1, create_missing=True)` answers `edit failed: index-out-of-range-edit:2`
+- A **scalar** intermediate along the path still raises (can't descend into a scalar) — measured: `parse("a: 1\n").set("$.a.b.c", 2, create_missing=True)` answers `edit failed: cannot-descend-into-scalar:b`, naming the segment it refused to walk through. Without `create_missing` the same shape answers `edit failed: create-needs-mapping` instead
 - The created chain is eligible for in-place splice editing
 
 #### Querying with `find()`
@@ -390,6 +397,14 @@ doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
+Measured edges of that contract:
+
+- The destination **need not exist** as long as its parent does: `parse("src:\n  x: 1\n").node().find("$.src").move("$.nope")` leaves `nope:\n  x: 1`. A destination with a missing **intermediate** is refused — `move("$.deep.leaves")` answers `edit failed: missing-path:deep`
+- Replacing an existing destination's value works whatever that value is, including a scalar: `dst: 2` becomes `dst:\n  x: 1`
+- Moving a subtree **onto its own path** is not refused and empties the document — `find("$.src").move("$.src")` on `src:\n  x: 1` emits the empty mapping `{}`
+- Moving the **root** is refused: `pyrs_yaml.parse("src:\n  x: 1\n").node().move("$.src")` answers `edit failed: edit-error`
+- Moving onto a path whose value still has a referencing alias answers `edit failed: anchor-is-referenced`
+
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node introspection"
@@ -403,21 +418,33 @@ node.value_eq(other_node)  # compare resolved values (not reference identity)
 
 !!! warning "Editing through an alias"
     Navigating through an alias node (e.g. setting a key inside `*defaults`)
-    raises `YamlEditError` — the referenced node lives elsewhere and cannot
-    be edited through the alias reference.
+    raises `YamlEditError: edit failed: cannot-edit-alias` — the referenced node lives
+    elsewhere and cannot be edited through the alias reference. Measured on every edit
+    route: `set()`, `insert()`, `append()`, `delete()`, `rename()` and the metadata
+    setters all answer the same token when a path step lands on an alias, and so do
+    `Node.set_value()` and `Node.delete()` on a node that `find()` resolved through one.
 
-An alias node (`*name`) is replaced **in place** when its own path is set:
+An alias node (`*name`) is replaced **in place** when its own path is set — this is not an
+error, and the anchor survives on the node that defined it:
 
 ```python title="Alias replacement"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
-doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
+doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # parse() keeps the alias node; safe_load() resolves it
 
 doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 99
 ```
 
+The same holds for a scalar alias: `pyrs_yaml.parse("base: &x 1\nuse: *x\n").set("$.use", 2)`
+succeeds and re-emits `base: &x 1\nuse: 2\n`, leaving `&x` with no alias left to reference it. The
+other verbs on that pair are just as quiet — measured on the same document, `delete("$.use")` leaves
+`base: &x 1\n` and `rename("$.use", "used")` leaves `base: &x 1\nused: *x\n`.
+`resolve_merges` is a keyword of `parse()` and `reparse()`, not of the `YAML()` constructor —
+measured: `YAML(resolve_merges=False)` raises `TypeError`.
+
 - Setting **through** an alias (navigating through `*defaults` to reach a merged key) raises `YamlEditError` — the referenced node lives elsewhere
-- With merge keys resolved (default), merge-expanded keys are clones; editing them edits only the clone
-- Deleting an anchored node is tolerated (the anchor simply stops being referenced)
+- With merge keys resolved (default), merge-expanded keys are clones; editing them edits only the clone. Measured on `defaults: &d\n  timeout: 30\n  retries: 3\nprod:\n  <<: *d\n  name: p\n`: `set("$.prod.timeout", 99)` re-emits `prod` with `timeout: 99` and leaves `defaults.timeout` at `30`
+- Deleting a node whose anchor is **still referenced by an alias** is refused: `pyrs_yaml.parse("base: &x 1\nuse: *x\n").delete("$.base")` answers `YamlEditError: edit failed: anchor-is-referenced`, and the same token answers `set_anchor()`/`remove_anchor()` on that node and `move()` onto that path. An anchored node nothing points at deletes normally — `parse("keep: &k 1\nother: 2\n").delete("$.keep")` leaves `other: 2` — and once the last alias is gone the source deletes too
+- An alias cannot be addressed as a **key** by the bare spelling `*a: value` — the reader refuses it before any edit runs (`YamlParseError: YAML parse error: simple key expected ':' at char 15 line 2 column 1`). The explicit-key form `anchor: &a key\n? *a\n: value\n` parses, and there the protection is the anchor rule above: `delete("$.anchor")` answers `anchor-is-referenced` while `set("$.anchor", "other")` succeeds
 
 ### View vs. AST
 
@@ -446,12 +473,24 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 
 ### Error Handling
 
-| Error | When |
-|-------|------|
-| :material-alert: `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| :material-alert: `YamlEditError` | Edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
-| :material-alert: `YamlTypeError` | Value of a Python type the writer does not know (`set("$.a", object())`) — a `tuple` is **not** one of them |
-| :material-alert: `YamlDocumentError` | Stale `Node` used after a document edit |
+| Error | When | Measured reason in the message |
+|-------|------|------------------------------|
+| :material-alert: `YamlPathError` | Malformed path, wildcard/`..` used in an edit path | *(no prefix)* `Path must start with $`, `wildcard/deep-scan paths are not editable`, `invalid index in path: <path>` |
+| :material-alert: `YamlEditError` | Edit **through** an alias | `edit failed: cannot-edit-alias` |
+| :material-alert: `YamlEditError` | Anchor still referenced by an alias — delete, re-anchor, or move onto it | `edit failed: anchor-is-referenced` |
+| :material-alert: `YamlEditError` | Navigation into a scalar, or a container-shaped segment on the wrong container | `edit failed: create-needs-mapping` |
+| :material-alert: `YamlEditError` | A path step that does not resolve | `edit failed: missing-path`, or `missing-path:<key>` when an intermediate key is the one that missed |
+| :material-alert: `YamlEditError` | Index out of bounds (positive or negative), `insert()` past `len` | `edit failed: index-out-of-range-edit`, or `…:<index>` from `set()` |
+| :material-alert: `YamlEditError` | `insert()`/`append()` on something that is not a sequence | `edit failed: not-a-sequence` |
+| :material-alert: `YamlEditError` | Rename of root/complex/existing key | `edit failed: cannot-rename-root`, `cannot-rename-complex-key`, `rename-key-exists` |
+| :material-alert: `YamlEditError` | An `on_duplicate` argument that is not one of the three | `edit failed: unknown on_duplicate "<value>"; expected one, all or error` |
+| :material-alert: `YamlTypeError` | Value of a Python type the writer does not know (`set("$.a", object())`, `set("$.a", {1, 2})`) — a `tuple` and `bytes` are **not** among them | `Unsupported Python type for YAML conversion` |
+| :material-alert: `YamlDocumentError` | Stale `Node` used after a document edit | `document has been modified; re-find the node` |
+
+Every refusal above was run against the current build; the full vocabulary — including the
+root-shaped deletes that answer the generic `edit failed: edit-error` and the tokens no call reaches —
+is tabulated in [Edit reason tokens](../api/exceptions.md#edit-reason-tokens). `str(exc)` is the only
+place the reason appears: these classes have no `.reason` attribute.
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.
 

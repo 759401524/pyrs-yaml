@@ -24,27 +24,27 @@ pyrs-yaml 的性能基准测试。CodSpeed 的模拟数据用于追踪相对趋�
 <!-- bench: layout=sizes format=yaml operation=parse sizes=small,medium,large baseline=PyYAML -->
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | 相比 PyYAML 加速 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------ |
-| 小 (~100 B) | 4.4 µs | 151 µs | 347 µs | 1.9 µs | 5.7 µs | **35×** |
-| 中 (~690 B) | 27 µs | 976 µs | 2.3 ms | 10 µs | 33 µs | **37×** |
-| 大 (~2 KB) | 72 µs | 2.3 ms | 5.4 ms | 27 µs | 86 µs | **32×** |
+| 小 (~100 B) | 5.3 µs | 144 µs | 338 µs | 1.9 µs | 5.4 µs | **27×** |
+| 中 (~690 B) | 25 µs | 994 µs | 2.2 ms | 10 µs | 31 µs | **40×** |
+| 大 (~2 KB) | 69 µs | 2.3 ms | 5.5 ms | 26 µs | 74 µs | **34×** |
 
 ### 序列化性能
 
 <!-- bench: layout=sizes format=yaml operation=serialize sizes=small,medium,large baseline=PyYAML -->
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | 相比 PyYAML 加速 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------ |
-| 小 (~100 B) | 0.42 µs | 86 µs | 227 µs | 0.97 µs | 3.1 µs | **204×** |
-| 中 (~690 B) | 1.6 µs | 568 µs | 1.4 ms | 6.1 µs | 17 µs | **347×** |
-| 大 (~2 KB) | 5.4 µs | 1.4 ms | 3.3 ms | 17 µs | 42 µs | **261×** |
+| 小 (~100 B) | 0.28 µs | 88 µs | 220 µs | 0.91 µs | 3.6 µs | **311×** |
+| 中 (~690 B) | 1.4 µs | 450 µs | 1.3 ms | 5.9 µs | 15 µs | **316×** |
+| 大 (~2 KB) | 4.8 µs | 1.3 ms | 3.0 ms | 16 µs | 42 µs | **276×** |
 
 ### 往返性能
 
 <!-- bench: layout=sizes format=yaml operation=roundtrip sizes=small,medium,large baseline=PyYAML -->
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | 相比 PyYAML 加速 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------ |
-| 小 (~100 B) | 5.7 µs | 265 µs | 619 µs | 3.1 µs | 9.7 µs | **47×** |
-| 中 (~690 B) | 30 µs | 1.7 ms | 3.6 ms | 17 µs | 51 µs | **55×** |
-| 大 (~2 KB) | 82 µs | 3.9 ms | 9.1 ms | 48 µs | 135 µs | **48×** |
+| 小 (~100 B) | 5.6 µs | 252 µs | 567 µs | 2.8 µs | 10 µs | **45×** |
+| 中 (~690 B) | 26 µs | 1.3 ms | 3.6 ms | 17 µs | 48 µs | **50×** |
+| 大 (~2 KB) | 77 µs | 3.9 ms | 8.2 ms | 47 µs | 118 µs | **51×** |
 
 ### JSON
 
@@ -53,8 +53,8 @@ pyrs-yaml 的性能基准测试。CodSpeed 的模拟数据用于追踪相对趋�
 <!-- bench: layout=sizes format=json operation=parse sizes=config,large baseline=json -->
 | 文档 | pyrs-yaml | json | orjson | 相比 json 加速 |
 | --- | ---: | ---: | ---: | ---: |
-| 配置 (~123 B) | 0.56 µs | 1.3 µs | 0.45 µs | **2.3×** |
-| 大 (~1.9 KB) | 7.8 µs | 9.8 µs | 4.5 µs | **1.3×** |
+| 配置 (~123 B) | 0.56 µs | 1.3 µs | 0.43 µs | **2.3×** |
+| 大 (~1.9 KB) | 6.7 µs | 9.4 µs | 4.7 µs | **1.4×** |
 
 ### TOML
 
@@ -63,8 +63,8 @@ TOML 文本分别交给 `pyrs_yaml.load_toml`、标准库的 `tomllib` 与 `toml
 <!-- bench: layout=sizes format=toml operation=parse sizes=hot,config baseline=rtoml -->
 | 文档 | pyrs-yaml | tomllib | rtoml | 相比 rtoml 加速 |
 | --- | ---: | ---: | ---: | ---: |
-| 热点 (~1.8 KB) | 29 µs | 212 µs | 20 µs | **0.7×** |
-| 配置 (~2.1 KB) | 45 µs | 358 µs | 31 µs | **0.7×** |
+| 热点 (~1.8 KB) | 26 µs | 204 µs | 18 µs | **0.7×** |
+| 配置 (~2.1 KB) | 41 µs | 361 µs | 30 µs | **0.7×** |
 
 ### JSON5
 
@@ -73,7 +73,7 @@ TOML 文本分别交给 `pyrs_yaml.load_toml`、标准库的 `tomllib` 与 `toml
 <!-- bench: layout=sizes format=json5 operation=parse sizes=config baseline=pyjson5 -->
 | 文档 | pyrs-yaml | pyjson5 | 相比 pyjson5 加速 |
 | --- | ---: | ---: | ---: |
-| 配置 (~83 B) | 2.0 µs | 0.82 µs | **0.4×** |
+| 配置 (~83 B) | 1.9 µs | 0.65 µs | **0.3×** |
 
 ### Rust 侧基准测试（divan）
 
@@ -98,17 +98,17 @@ TOML 文本分别交给 `pyrs_yaml.load_toml`、标准库的 `tomllib` 与 `toml
 
 ### 要点总结
 
-1. :material-trending-up: **pyrs-yaml 解析比 PyYAML 快 32–37 倍、序列化快 204–347 倍**
-2. :material-trending-up: **pyrs-yaml 解析比 ruamel.yaml 快 75–85 倍、序列化快 540–832 倍**，同时提供相同的往返特性
-3. :material-trending-up: **往返比 PyYAML 快 47–55 倍、比 ruamel.yaml 快 109–119 倍**
-4. :material-scale-balance: **Rust 后端的对手把结果一分为二**——`yaml-rs` 只产出普通对象而非可往返的文档树，解析快 2.3–2.7 倍、往返快 1.7–1.8 倍；作为交换，pyrs-yaml 的序列化快 2.3–3.7 倍
+1. :material-trending-up: **pyrs-yaml 解析比 PyYAML 快 27–40 倍、序列化快 276–316 倍**
+2. :material-trending-up: **pyrs-yaml 解析比 ruamel.yaml 快 64–89 倍、序列化快 634–888 倍**，同时提供相同的往返特性
+3. :material-trending-up: **往返比 PyYAML 快 45–51 倍、比 ruamel.yaml 快 101–135 倍**
+4. :material-scale-balance: **Rust 后端的对手把结果一分为二**——`yaml-rs` 只产出普通对象而非可往返的文档树，解析快 2.5–2.8 倍、往返快 1.6–2.0 倍；作为交换，pyrs-yaml 的序列化快 3.2–4.1 倍
 5. :material-bolt: **Rust 侧解析**没有 Python 调用开销；模拟链路按操作拆解解析成本
 6. :material-bolt: **序列化**在同一模拟链路中始终低于解析成本
 7. :material-chart-line: **速度优势在所有文档尺寸下均保持**
 
 ### 说明
 
-- Python 表格：2026-10-25 由 `scripts/bench_snapshot.py` 记录的分批计时墙钟读数；快照（`.ci/perf-snapshot.json`）记录了环境、库版本与夹具大小
+- Python 表格：2026-11-04 由 `scripts/bench_snapshot.py` 记录的分批计时墙钟读数；快照（`.ci/perf-snapshot.json`）记录了环境、库版本与夹具大小
 - CodSpeed CI 以模拟模式运行并报告指令数，用于追踪相对趋势
 - 加速比仅供参考，会随解释器、硬件与文档大小而变化
 - PyYAML 基准测试使用 `safe_load`/`safe_dump`（相同安全保证）

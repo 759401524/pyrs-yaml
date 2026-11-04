@@ -102,6 +102,27 @@ doc.validate(schema)  # None을 반환하며, 실패하면 YamlValidateError 발
 `jsonschema.validate()`에 넘겨도 같은 판정입니다. 파일 검증은 [CLI 가이드](cli.md)를
 참조하세요.
 
+그 위임에는 두 경계가 따라오는데, 이번 릴리스는 둘 다 그대로 둡니다: 둘 다 프로젝트가
+등록한 알려진 경계이지 결함이 아니며, 프로젝트 자신의 평가 엔진을 만드는 것은 별개의
+설계 문제입니다.
+
+**여기의 어떤 설치 경로도 평가 엔진을 들여오지 않습니다.** pyrs-yaml은
+`typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`이므로,
+라이브러리만 가진 환경에서 `doc.validate(schema)`는
+`ModuleNotFoundError: No module named 'jsonschema'`를 발생시킵니다 — 스키마가
+통과시켰을 문서에서도 `Yaml*` 계열은 아무것도 답하지 않습니다. `pip install jsonschema`가
+그 경로입니다.
+
+**스키마 텍스트는 JSON이지 YAML이 아닙니다.** 이 페이지에서 `register_schema()`와
+`load_schema()`가 읽는 정의들과 달리, `validate()`에 넘기는 `str`은 평가 엔진을
+참조하기 전에 `json.loads`를 거치므로
+`doc.validate("type: object\nrequired: [port]\n")`는
+`json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`를
+발생시킵니다 — `jsonschema`가 설치되어 있든 없든 같습니다. CLI도 같은 파일을 같은
+방식으로 거부합니다: `pyrs-yaml validate doc.yaml --schema-file schema.yaml`은 그
+traceback을 stderr에 출력하고 종료 코드 1로 끝나며, 그 `except YamlValidateError`
+절은 그 실패를 보지 못합니다.
+
 ### 인라인 Dict 스키마
 
 ```python title="인라인 dict 스키마"

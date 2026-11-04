@@ -7,6 +7,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three sentences about editing through an alias were false, and the reason vocabulary the
+  messages print is now listed** — the pages said a write through an alias raises
+  `cannot-edit-alias` and that `set()` answers `anchor-is-referenced` when a write would orphan a
+  live definition. Measured on the shipped build: `set("$.use", 2)` on `base: &x 1\nuse: *x`
+  succeeds and leaves `base: &x 1\nuse: 2`; `delete("$.use")` leaves `base: &x 1`;
+  `rename("$.use", "used")` leaves `used: *x`; and `set("$.base", 2)` on the same pair leaves
+  `base: &x 2\nuse: *x` — no `set` route reaches that token, which lives on the delete, rename, move
+  and metadata paths. The alias *parent* is still refused (`set("$.prod.timeout", 99)` →
+  `edit failed: cannot-edit-alias`), as are the twelve metadata verbs on an alias node.
+  `api/exceptions.md` gains an Edit reason tokens table naming the fifteen reachable tokens with the
+  call that answers each and the full measured message —
+  `edit failed: cannot-descend-into-scalar:b`, `duplicate-key-target`,
+  `unknown on_duplicate "both"; expected one, all or error` — and says which declared variants have
+  no construction site (`wildcard-or-deep-scan`, `invalid-index`, `invalid-path`). `validate()`'s
+  delegation is now stated where users meet it: nothing this project ships installs `jsonschema`
+  (base dependency `typing-extensions`, extras `cli`/`pydantic`/`settings`), so a base install
+  answers a bare `ModuleNotFoundError`, and a schema passed as text is read by `json.loads` first,
+  so a YAML-spelled schema raises `json.decoder.JSONDecodeError`; both are registered
+  in .ci/known-residuals.json as `api:validate-evaluator-is-not-installed-by-anything-we-ship` and
+  `api:validate-schema-text-is-json-only`, and neither is fixed here.
+  The wall-clock tables were re-measured on 2026-11-04 against this release's build, so every cell,
+  prose range and provenance date comes from one snapshot; two Japanese pages also dropped a
+  private error-message block and a `dict`-only `validate()` signature that English never carried.
+  English and its zh/ja/ko twins.
+
 ## [v0.19.0] — 2026-11-04
 
 <details markdown="1">

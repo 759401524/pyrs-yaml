@@ -237,6 +237,11 @@ bad.validate(schema)
 # YamlValidateError: 'port' is a required property
 ```
 
+!!! info "求值器需要另行安装"
+    本包发布的任何东西都不会带进 `jsonschema`：pyrs-yaml 只依赖 `typing-extensions`，而它的三个 extras 是 `cli`、`pydantic` 与 `settings`。在只有本库、没有求值器的环境里，这一步骤中每一次 `validate()` 调用都抛出 `Yaml*` 家族之外的裸错误：`ModuleNotFoundError: No module named 'jsonschema'` — 即便文档满足该 schema。途径是 `pip install jsonschema`，而这条缺口是已知边界，不是本版本的缺陷。
+
+以文本给出的 schema 按 JSON 读取，从不按 YAML 读取，所以 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")` 抛 `json.decoder.JSONDecodeError` — 同样在家族之外。请传 `dict`，或者 JSON 文本。
+
 ### 13. 深度编辑（批量设置、排序、移动、复制）
 
 ```python title="批量、排序、移动、复制"

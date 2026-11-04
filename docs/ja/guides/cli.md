@@ -169,7 +169,14 @@ pyrs-yaml validate app.yaml --schema schema.json        # 同じパラメータ�
 }
 ```
 
-成功時は無音で終了コード `0`、失敗時はリファレンスエンジンのメッセージを stderr に出力して終了コード `1` で終わります——CI での利用に最適です。
+成功時は無音で終了コード `0`、失敗時はリファレンスエンジンのメッセージを stderr に出力して終了コード `1` で終わります——CI での利用に最適です。実測では、通る文書はどちらのストリームにも何も書かず `0` で終わり、スキーマが拒否する文書は `error: 'port' is a required property` を stderr に出して `1` で終わり、解析できない文書は同じ終了コードで `error: YAML parse error: mapping values are not allowed in this context at char 4 line 1 column 5` を印字します。
+
+その文の外に答えるスキーマ入力が二つあります。評価は Python の `jsonschema` に委譲され、本プロジェクトが公開するどれにもそれはインストールされないためです——基底の依存は `typing-extensions` だけで、extra は `cli`、`pydantic`、`settings` です：
+
+- JSON ではないスキーマのファイル——読み手が手を伸ばす YAML の綴り——は、評価器を参照する前に `json.loads` に止められます。だからコマンドは、最後の行が `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` である traceback を印字して `1` で終わります（コンソールスクリプト経由で実測：traceback は stderr、stdout は空のまま）。
+- `jsonschema` のないインストールで評価器までに届いた JSON のスキーマも、同じ終わり方になります。`ModuleNotFoundError` の traceback です。こちらは評価器がこの開発 venv に入っているので、プロセス内で `sys.modules["jsonschema"] = None` を使って実測しました——テストスイートが使う再現です——コマンドの `except YamlValidateError` 節はどちらのクラスも受け取らないため、行は `error: …` ではなく traceback になります。
+
+両方とも `.ci/known-residuals.json` に登記済みの境界（`api:validate-schema-text-is-json-only` と `api:validate-evaluator-is-not-installed-by-anything-we-ship`）で、CLI が直す欠陥ではありません。[例外 — YamlValidateError](../api/exceptions.md#yamlvalidateerror) を参照してください。
 
 スカラー解決用スキーマと `Document.validate()` API は[カスタムスキーマ](custom-schema.md)を参照してください。
 

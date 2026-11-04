@@ -60,6 +60,11 @@ root_type -> str
 
 `"scalar"`、`"mapping"`、`"sequence"`、`"null"` のいずれかを返します。
 
+エイリアスノードは**参照先**の型を報告し、自分専用の型名を決して返しません：
+`defaults: &d\n  timeout: 30\nprod: *d\n` と `src: &s\n  - a\nref: *s\n` で実測すると、
+`$.prod` と `$.ref` のノードは `"mapping"` と `"sequence"` と答え、`base: &x 1\nuse: *x\n` の
+`$.use` にあるスカラーのエイリアスは `"scalar"` と答えます。
+
 #### `_path`
 
 このノードをドキュメントの AST 内に位置付けるパス タプルです。
@@ -211,6 +216,20 @@ set_value(value: Any, create_missing: bool = False) -> None
 
 `create_missing=True` の場合、パスに沿った欠落している中間マッピングキーがネストされたマッピングとして作成されます。インデックスセグメントが欠落している場合は引き続きエラーになります。
 
+実測した境界：
+
+- `find()` が解決できなかったノード——`Node(invalid)` のオブジェクト——も引き続き書き込みます：
+  `doc.node().find("$.zz").set_value(3)` は `zz: 3` を追加します。拒否されるのは書き込みではなく、
+  その `value` を読むことです（`KeyError`）
+- **エイリアス**ノードでもこの呼び出しは拒否ではなく、エイリアスをその場で書き換えます：
+  `parse("base: &x 1\nuse: *x\n").node().find("$.use").set_value(42)` は
+  `base: &x 1\nuse: 42\n` を出力します
+- エイリアス**経由**の書き込みは拒否されます：`edit failed: cannot-edit-alias`
+- 期限切れノードでは `RuntimeWarning` を発行し、
+  `YamlDocumentError: document has been modified; re-find the node` を発生させます
+- 書き手が知らない Python の値は編集エラーではなく `YamlTypeError`
+  （`Unsupported Python type for YAML conversion`）です
+
 #### `append()`
 
 シーケンスノードに値を追加します。
@@ -235,6 +254,14 @@ insert(index: int, value: Any) -> None
 delete(on_duplicate: str = "one") -> None
 ```
 
+実測した拒否：ルートノードは `YamlEditError: edit failed: edit-error`、そのアンカーを
+エイリアスがいまだ参照しているノードは `edit failed: anchor-is-referenced`、二つの組が
+同じキーをつづる文書での `on_duplicate="error"` は `edit failed: duplicate-key-target` と
+答えます。**エイリアス**の組の削除は拒否ではありません——
+`defaults: &d\n  timeout: 30\nprod: *d\n` で `find("$.prod").delete()` は
+`defaults: &d\n  timeout: 30\n` を残します。期限切れのノードは次のアクセスで
+`YamlDocumentError` と答えますが、`is_valid()` は依然として `True` と答えます。
+
 #### `rename()`
 
 このノードのマッピングキーの名前を変更します。ノードはマッピングの値である必要があります。
@@ -242,6 +269,15 @@ delete(on_duplicate: str = "one") -> None
 ```python
 rename(new_key: str) -> None
 ```
+
+実測した拒否：ルートは `YamlEditError: edit failed: cannot-rename-root`、キーを持たない
+シーケンス要素は `edit failed: cannot-rename-complex-key`、マッピングがすでに持つ `new_key` は
+`edit failed: rename-key-exists` と答えます。キーが複合ノードであるノードはエンジンにすら
+届きません：`parse("? [1, 2]\n: value\n").node().children[0].rename("b")` は
+`YamlEditError: ValueError: segment must be str or int` と答えます。同じキーへのリネームは
+no-op で、エイリアスの組ではこの呼び出しは拒否せずキーをリネームします——
+`defaults: &d\n  timeout: 30\nprod: *d\n` で `find("$.prod").rename("prod2")` は
+`defaults: &d\n  timeout: 30\nprod2: *d\n` を残します。
 
 #### `set_comment()`
 
@@ -267,6 +303,12 @@ remove_comment() -> None
 set_anchor(name: str) -> None
 ```
 
+現在のアンカーをエイリアスがいまだ指しているあいだは
+`YamlEditError: edit failed: anchor-is-referenced` で拒否されます——`base: &x 1\nuse: *x\n` で
+実測すると `find("$.base").set_anchor("renamed")` は失敗し、エイリアスを無くせば同じ呼び出しは
+`base: &x 1\n` に対して `base: &renamed 1` を出力します。エイリアスノード自身では
+`edit failed: cannot-edit-alias` と答えます。
+
 #### `remove_anchor()`
 
 このノードのアンカーを削除します。
@@ -274,6 +316,9 @@ set_anchor(name: str) -> None
 ```python
 remove_anchor() -> None
 ```
+
+`set_anchor()` と同じガードです：`base: &x 1\nuse: *x\n` で実測すると、
+`find("$.base").remove_anchor()` は `YamlEditError: edit failed: anchor-is-referenced` と答えます。
 
 #### `set_tag()`
 
@@ -330,6 +375,14 @@ Move this subtree to a new path in the same document (copies the subtree to `new
 ```python
 move(new_path: str) -> None
 ```
+
+実測した境界：行き先そのものは存在しなくても、その親が存在していればよい——
+`src:\n  x: 1\n` で `find("$.src").move("$.nope")` は `nope:\n  x: 1\n` を残します——一方で、
+中間キーが欠けた行き先は `YamlEditError: edit failed: missing-path:deep` と答えます。スカラーの
+行き先を置き換えるのは動きます：`dst: 2` は `dst:\n  x: 1\n` になります。ルートの移動は
+`edit failed: edit-error`、部分木を自分のパスへ移すのは文書を空にし（
+`find("$.src").move("$.src")` は `{}\n` を残します）、参照中のエイリアスをまだ値に持つ行き先は
+`edit failed: anchor-is-referenced` と答えます。
 
 #### `to_yaml()`
 

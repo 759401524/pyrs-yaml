@@ -169,7 +169,14 @@ pyrs-yaml validate app.yaml --schema schema.json        # 동일한 매개변수
 }
 ```
 
-성공 시 조용히 종료 코드 `0`으로 끝나고, 실패 시 참조 엔진의 메시지를 stderr에 출력하고 종료 코드 `1`로 끝납니다——CI에서 활용하기 좋습니다.
+성공 시 조용히 종료 코드 `0`으로 끝나고, 실패 시 참조 엔진의 메시지를 stderr에 출력하고 종료 코드 `1`로 끝납니다——CI에서 활용하기 좋습니다. 측정 결과: 통과하는 문서는 두 스트림 어느 쪽에도 아무것도 쓰지 않고 `0`으로 끝나고, 스키마가 거부하는 문서는 stderr에 `error: 'port' is a required property`를 출력하고 `1`로 끝나며, 파싱되지 않는 문서는 같은 종료 코드로 `error: YAML parse error: mapping values are not allowed in this context at char 4 line 1 column 5`를 출력합니다.
+
+두 스키마 입력은 그 문장 밖에서 답합니다 — 평가가 Python의 `jsonschema`에 위임되는데 이 프로젝트가 배포하는 무엇도 그 패키지를 설치하지 않기 때문입니다; 기본 의존성은 `typing-extensions` 하나이고 extras는 `cli`, `pydantic`, `settings`입니다:
+
+- JSON이 아닌 스키마 파일 — 읽는 사람이 집어드는 YAML 철자 — 은 평가 엔진을 참조하기 전에 `json.loads`에서 멈추므로, 이 명령은 마지막 줄이 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`인 traceback을 출력하고 `1`로 끝납니다(콘솔 스크립트로 측정: traceback은 stderr에 있고 stdout은 빈 채로 남습니다).
+- `jsonschema` 없는 설치에서 실제로 평가 엔진까지 닿는 JSON 스키마도 같은 방식으로 끝납니다 — `ModuleNotFoundError` traceback입니다. 그 쪽은 이 개발 venv에 평가 엔진이 설치되어 있어서, 테스트 스위트가 쓰는 재현인 `sys.modules["jsonschema"] = None`로 프로세스 안에서 측정했습니다; 이 명령의 `except YamlValidateError` 절은 두 클래스 어느 것도 잡지 못하므로 그 줄이 `error: …`가 아니라 traceback입니다.
+
+둘 다 `.ci/known-residuals.json`에 등록된 경계입니다(`api:validate-schema-text-is-json-only`와 `api:validate-evaluator-is-not-installed-by-anything-we-ship`) — CLI가 고치는 결함이 아닙니다; [예외 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)를 참고하세요.
 
 스칼라 해석용 스키마와 `Document.validate()` API는 [사용자 정의 스키마](custom-schema.md)를 참고하세요.
 

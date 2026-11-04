@@ -105,7 +105,9 @@ get(key: str, default: Any = None) -> Any
 root_type() -> str
 ```
 
-**返回值:** 类型名（`"scalar"`、`"mapping"`、`"sequence"`、`"null"`、`"alias"`）。
+**返回值:** `"scalar"`、`"mapping"`、`"sequence"`、`"null"` 之一。
+
+`"alias"` 是绑定为一个别名根保留的拼法，但没有任何文档读取能到达它：别名需要同一个文档里更早出现的锚点，所以根上的别名会被解析器拒绝。`pyrs_yaml.parse("*x\n")` 回 `YamlParseError: YAML parse error: while parsing node, found unknown anchor at char 0 line 1 column 1`，而跨文档的写法 `"--- &a 1\n--- *a\n"` 在第 2 行遭到同样的拒绝。
 
 ### `to_json()`
 
@@ -133,7 +135,16 @@ validate(schema: str | dict[str, Any]) -> None
 
 - `schema` — JSON Schema，可以是 JSON 字符串或 Python dict
 
-**引发:** `YamlValidateError` — 文档不符合 schema
+**引发:**
+
+- `YamlValidateError` — 文档不符合 schema。既不是 `str` 也不是映射的 schema 同样落到这里，带着引擎自己那句话作为它的文本：`doc.validate(3)` 回 `TypeError: argument of type 'int' is not iterable`
+
+有两道拒绝来自这个类之外，因为求值委托给 Python 的 `jsonschema` 包，而本项目发布的任何 extra 都不安装它：
+
+- `jsonschema` 无法导入时，`doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError: No module named 'jsonschema'`
+- `str` 形式的 schema 在问求值器之前会先跑 `json.loads`，所以 YAML 拼法的 schema 文本回 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — 装不装 `jsonschema` 都是同一句
+
+两条都连同各自的复现记录在 [异常 — YamlValidateError](exceptions.md#yamlvalidateerror)。
 
 ### `flush_source()`
 
@@ -215,8 +226,10 @@ doc.set("$.b.c.d", 2, create_missing=True)
 #### 引发：
 
 - `YamlPathError` — 格式错误的路径（通配符/`..` 被拒绝）
-- `YamlEditError` — 导航失败、缺失中间键（当 `create_missing=False` 时）等
-- `YamlTypeError` — 写入器不认识的 Python 类型的值；`tuple` 会被接受，并按序列写出
+- `YamlEditError` — 无法应用的路径步骤，消息里会点名它：穿过别名的步骤回 `edit failed: cannot-edit-alias`，进入标量或落到形状不对的容器上的步骤回 `create-needs-mapping`，`create_missing=True` 撞上标量时回 `cannot-descend-into-scalar:<segment>`，在被写入的键**之前**就已缺失的键回 `missing-path:<key>`，越过序列尽头的索引回 `index-out-of-range-edit:<index>`。缺失的**末级**键不是拒绝 — `parse("a: 1\n").set("$.zz", 3)` 发射 `a: 1\nzz: 3\n` — 写入一个存活锚点的源同样不是拒绝：在 `base: &x 1\nuse: *x\n` 上 `set("$.base", 2)` 重新发射 `base: &x 2\nuse: *x\n`，把 `&x` 留在它的别名仍然找得到的地方
+- `YamlTypeError` — 写入器不认识的 Python 类型的值；`tuple` 会被接受，并按序列写出，而 `bytes` 会被接受成 `!!binary`
+
+完整的实测词汇表按调用逐条列在 [编辑原因令牌](exceptions.md#edit-reason-tokens)。
 
 ### `walk()`
 
@@ -272,6 +285,10 @@ insert(path: str, index: int, value: Any) -> None
 
 `index` 最大可为序列当前长度（在 `len` 处插入等同于追加）。负索引从末尾计数（`-1` 在最后一个元素之前插入）。路径必须解析为序列节点。
 
+**引发:**
+
+- `YamlEditError` — 路径解析为映射或标量时回 `edit failed: not-a-sequence`，索引高于 `len` 或低于 `-len` 时回 `edit failed: index-out-of-range-edit`，路径解析不到时回 `edit failed: missing-path:<key>`，路径穿过别名时回 `edit failed: cannot-edit-alias`，路径位于标量值之下时回 `edit failed: cannot-descend-into-scalar:<segment>`
+
 ### `append()`
 
 在序列末尾追加值。
@@ -280,6 +297,8 @@ insert(path: str, index: int, value: Any) -> None
 append(path: str, value: Any) -> None
 ```
 
+**引发:** 与 `insert()` 相同的那些 `YamlEditError` 理由，实测下来非序列目标是 `edit failed: not-a-sequence`，别名父节点是 `edit failed: cannot-edit-alias`。
+
 ### `delete()`
 
 按路径删除节点。映射顺序保留。
@@ -287,6 +306,10 @@ append(path: str, value: Any) -> None
 ```python
 delete(path: str, on_duplicate: str = "one") -> None
 ```
+
+**引发:**
+
+- `YamlEditError` — 文档里没有这个键时回 `edit failed: missing-path`（`del doc["zz"]` 也是这个答案），索引落在序列之外时回 `edit failed: index-out-of-range-edit`，节点的锚点仍被引用时回 `edit failed: anchor-is-referenced`，`on_duplicate="error"` 且多于一对键拼出这个名字时回 `edit failed: duplicate-key-target`，其他任何 `on_duplicate` 取值回 `edit failed: unknown on_duplicate "<value>"; expected one, all or error`，路径穿过别名时回 `edit failed: cannot-edit-alias`，而 `delete("$")` 回 `edit failed: edit-error` — 根节点已没有可移除的段
 
 ### `rename()`
 
@@ -297,6 +320,12 @@ rename(path: str, new_key: str) -> None
 ```
 
 重命名根节点或复杂（非标量）键会引发 `YamlEditError`。
+
+**引发:**
+
+- `YamlEditError` — `$` 回 `edit failed: cannot-rename-root`，复杂键或序列元素回 `edit failed: cannot-rename-complex-key`，映射已经持有的 `new_key` 回 `edit failed: rename-key-exists`，路径解析不到时回 `edit failed: missing-path`，路径穿过别名时回 `edit failed: cannot-edit-alias`
+
+把键重命名为它自己不是拒绝：在 `a: 1` 上实测，`rename("$.a", "a")` 让文档仍是 `a: 1`。
 
 ### `node()`
 
@@ -343,6 +372,14 @@ del doc["list"]  # 等价于 doc.delete("$.list")
 doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
+
+**引发:**
+
+- `KeyError` — 映射里没有这个键。实测文本是 `Key 'zz' not found`，而因为这就是内建的 `KeyError`，`str(exc)` 会连引号一起显示：`"Key 'zz' not found"`
+- `IndexError` — 序列的索引超出范围。在 `pyrs_yaml.parse("- a\n- b\n")[99]` 上实测：`Index 99 out of range (len=2)`
+- `TypeError` — 键的种类不对，或根节点根本不可下标，这两种都由 `YamlTypeError` 分支应答，各自实测：`parse("- a\n")["k"]` → `Index must be an integer`，`parse("a: 1\n")[99]` → `Key must be a string`，`parse("just a scalar")[0]` → `YamlDocument is not subscriptable`
+
+上面每一句文本都跟随 `pyrs_yaml.set_language()` — 在 `zh-CN` 下实测，四个分支分别答 `索引必须是整数`、`键必须是字符串`、`YamlDocument 不支持下标操作` 与 `索引 99 超出范围（长度=2）`。参见 [i18n 支持](exceptions.md#i18n-support)。
 
 ### `__setitem__()`
 

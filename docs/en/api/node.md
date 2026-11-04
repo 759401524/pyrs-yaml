@@ -61,6 +61,11 @@ root_type -> str
 
 Returns one of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`.
 
+An alias node reports its **target's** type, never a spelling of its own: measured on
+`defaults: &d\n  timeout: 30\nprod: *d\n` and `src: &s\n  - a\nref: *s\n`, the nodes at `$.prod`
+and `$.ref` answer `"mapping"` and `"sequence"`, and the scalar alias at `$.use` in
+`base: &x 1\nuse: *x\n` answers `"scalar"`.
+
 #### `_path`
 
 The path tuple that navigates to this node within the document's AST.
@@ -216,6 +221,14 @@ set_value(value: Any, create_missing: bool = False) -> None
 
 With `create_missing=True`, missing intermediate mapping keys along the path are created as nested mappings. Index segments that miss are still an error.
 
+Measured edges:
+
+- A node `find()` could not resolve — the `Node(invalid)` object — still writes: `doc.node().find("$.zz").set_value(3)` adds `zz: 3`. Reading its `value` is the refusal (`KeyError`), not the write
+- On an **alias** node the call is not a refusal either — it rewrites the alias in place: `parse("base: &x 1\nuse: *x\n").node().find("$.use").set_value(42)` emits `base: &x 1\nuse: 42\n`
+- Writing **through** an alias is refused: `edit failed: cannot-edit-alias`
+- On a stale node it emits a `RuntimeWarning` and raises `YamlDocumentError: document has been modified; re-find the node`
+- A Python value the writer does not know is a `YamlTypeError` (`Unsupported Python type for YAML conversion`), not an edit error
+
 #### `append()`
 
 Append a value to a sequence node.
@@ -240,6 +253,14 @@ Remove this node and its comments. The node becomes stale afterwards.
 delete(on_duplicate: str = "one") -> None
 ```
 
+Measured refusals: the root node answers `YamlEditError: edit failed: edit-error`, a node whose
+anchor an alias still references answers `edit failed: anchor-is-referenced`, and
+`on_duplicate="error"` on a document where two pairs spell the key answers
+`edit failed: duplicate-key-target`. Deleting an **alias** pair is not a refusal —
+`find("$.prod").delete()` on `defaults: &d\n  timeout: 30\nprod: *d\n` leaves
+`defaults: &d\n  timeout: 30\n`. The stale node answers `YamlDocumentError` on the next access but
+`is_valid()` still answers `True`.
+
 #### `rename()`
 
 Rename this node's mapping key. The node must be a mapping value.
@@ -247,6 +268,14 @@ Rename this node's mapping key. The node must be a mapping value.
 ```python
 rename(new_key: str) -> None
 ```
+
+Measured refusals: the root answers `YamlEditError: edit failed: cannot-rename-root`, a sequence
+element — which has no key — answers `edit failed: cannot-rename-complex-key`, a `new_key` the
+mapping already holds answers `edit failed: rename-key-exists`, and a node whose key is a complex
+node never reaches the engine: `parse("? [1, 2]\n: value\n").node().children[0].rename("b")` answers
+`YamlEditError: ValueError: segment must be str or int`. Renaming to the same key is a no-op, and on
+an alias pair the call renames the key rather than refusing — `find("$.prod").rename("prod2")` on
+`defaults: &d\n  timeout: 30\nprod: *d\n` leaves `defaults: &d\n  timeout: 30\nprod2: *d\n`.
 
 #### `set_comment()`
 
@@ -274,6 +303,11 @@ Set (or replace) this node's anchor.
 set_anchor(name: str) -> None
 ```
 
+Refused with `YamlEditError: edit failed: anchor-is-referenced` while an alias still points at the
+current anchor — measured on `base: &x 1\nuse: *x\n`, where `find("$.base").set_anchor("renamed")`
+fails and, with the alias gone, the same call on `base: &x 1\n` emits `base: &renamed 1`. On an
+alias node itself it answers `edit failed: cannot-edit-alias`.
+
 #### `remove_anchor()`
 
 Remove this node's anchor.
@@ -281,6 +315,9 @@ Remove this node's anchor.
 ```python
 remove_anchor() -> None
 ```
+
+Same guard as `set_anchor()`: measured on `base: &x 1\nuse: *x\n`, `find("$.base").remove_anchor()`
+answers `YamlEditError: edit failed: anchor-is-referenced`.
 
 #### `set_tag()`
 
@@ -340,6 +377,13 @@ Move this subtree to a new path in the same document (copies the subtree to
 ```python
 move(new_path: str) -> None
 ```
+
+Measured edges: a destination whose parent exists need not exist itself — `find("$.src").move("$.nope")`
+on `src:\n  x: 1\n` leaves `nope:\n  x: 1\n` — while a destination with a missing intermediate answers
+`YamlEditError: edit failed: missing-path:deep`. Replacing a scalar destination works: `dst: 2` becomes
+`dst:\n  x: 1\n`. Moving the root answers `edit failed: edit-error`, moving a subtree onto its own path
+empties the document (`find("$.src").move("$.src")` leaves `{}\n`), and a destination whose value still
+carries a referencing alias answers `edit failed: anchor-is-referenced`.
 
 #### `to_yaml()`
 

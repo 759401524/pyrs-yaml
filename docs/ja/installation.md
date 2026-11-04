@@ -13,6 +13,7 @@ status: new
 | **Python** | ≥ 3.8 (CPython)、free-threaded 3.14t と 3.15t（ビルド済みホイール）を含む |
 | :material-monitor: **プラットフォーム** | Linux、macOS、Windows |
 | :material-hammer-wrench: **ビルド** | Rust ツールチェーン（ソースビルドのみ） |
+| :material-check-decagram: **JSON Schema** | `Document.validate()` は `jsonschema` が必要ですが、ここのどのインストール経路もそれは提供しません——パッケージは `typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings` の三つです。`pip install jsonschema` を追加してください |
 
 ## PyPI からインストール
 

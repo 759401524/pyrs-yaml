@@ -269,6 +269,20 @@ bad.validate(schema)
 # YamlValidateError: 'port' is a required property
 ```
 
+!!! info "The evaluator is a separate install"
+    Nothing this package ships brings `jsonschema` in: pyrs-yaml depends on
+    `typing-extensions` alone, and its three extras are `cli`, `pydantic` and
+    `settings`. In an environment holding the library and no evaluator, every
+    `validate()` call in this step raises a bare error outside the `Yaml*` family:
+    `ModuleNotFoundError: No module named 'jsonschema'` — even for a document that
+    satisfies the schema. `pip install jsonschema` is the route, and the gap is a
+    known boundary, not a defect of this release.
+
+A schema given as text is read as JSON, never as YAML, so
+`pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")`
+raises `json.decoder.JSONDecodeError` — outside the family as well. Pass a
+`dict`, or JSON text.
+
 ### 13. Deep Editing (batch, sort, move, copy)
 
 Edit multiple paths at once, sort keys, relocate subtrees, and deep-copy

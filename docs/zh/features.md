@@ -24,18 +24,18 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 - **流式/块式格式** — 保留 `[]`/`{}` 与块式风格
 
 !!! note "基准测试环境"
-    CodSpeed CI 以模拟模式运行（统计指令数而非墙钟时间）。下表的数字由 `scripts/bench_snapshot.py` 于 2026-10-25 分批计时记录；相对加速比仅供参考，会随解释器、硬件和文档变化。
+    CodSpeed CI 以模拟模式运行（统计指令数而非墙钟时间）。下表的数字由 `scripts/bench_snapshot.py` 于 2026-11-04 分批计时记录；相对加速比仅供参考，会随解释器、硬件和文档变化。
 
 ## 性能
 
-Rust 后端比 PyYAML 解析快 **32–37 倍**、序列化快 **204–347 倍**：
+Rust 后端比 PyYAML 解析快 **27–40 倍**、序列化快 **276–316 倍**：
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 72 µs | 2.3 ms |
-| Serialize (large) | 5.4 µs | 1.4 ms |
-| Round-trip | 82 µs | 3.9 ms |
+| Parse (large) | 69 µs | 2.3 ms |
+| Serialize (large) | 4.8 µs | 1.3 ms |
+| Round-trip | 77 µs | 3.9 ms |
 
 ## 自定义 AST
 
@@ -106,6 +106,8 @@ doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
 验证失败时抛出 `YamlValidateError`。
+
+求值器需要另行安装。`jsonschema` 不是 pyrs-yaml 的依赖 — 基础安装只依赖 `typing-extensions`，而 extras 是 `cli`、`pydantic` 与 `settings` — 所以环境里没有求值器时，`validate()` 回的是一个点名 `jsonschema` 的裸 `ModuleNotFoundError`，而不是 `YamlValidateError`。请自行用 `pip install jsonschema` 安装它。上面示例中的 schema 文本是 JSON：YAML 拼法的 schema 会在任何规则被读到之前就被 `json.loads` 拒绝，报 `json.decoder.JSONDecodeError`。两条都是这一表面的已知边界，不是本版本的缺陷，而自研求值器是另一个设计问题。
 
 ## 重复键
 

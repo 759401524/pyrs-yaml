@@ -653,6 +653,8 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — 标签处理器错误（继承自 `ValueError`）
 - `YamlTagSkip` — 将节点交给下一个处理器的控制流哨兵（继承自 `YamlTagError`）
 
+`Document.validate()` 有两种答案落在这个家族之外，而本版本把它们都留着。它把规则委托给 `jsonschema`，这里没有任何东西会安装它 — 该包只依赖 `typing-extensions`，其 extras 是 `cli`、`pydantic` 与 `settings` — 所以没有求值器时这次调用抛出裸的 `ModuleNotFoundError: No module named 'jsonschema'`，哪怕文档本会通过那份 schema。而以文本给出的 `schema` 在求值之前由 `json.loads` 读取，所以 YAML 拼法会抛出 `json.decoder.JSONDecodeError`，无论求值器在不在都是如此。两条都是已知边界，面向用户的说明写在[快速开始](../quick-start.md)与[自定义 Schema](../guides/custom-schema.md)。
+
 参见 [异常](exceptions.md) 页面了解完整详情。
 
 ## :material-information: 版本

@@ -141,7 +141,13 @@ get(key: str, default: Any = None) -> Any
 root_type() -> str
 ```
 
-**戻り値:** `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"` のいずれか。
+**戻り値:** `"scalar"`、`"mapping"`、`"sequence"`、`"null"` のいずれか。
+
+`"alias"` はバインディングがエイリアスルート用に携えている綴りですが、どの文書の読み取りでも
+そこには届きません：エイリアスには同じ文書内のより前にそのアンカーが必要なので、ルートの
+エイリアスはパーサーに拒否されます。`pyrs_yaml.parse("*x\n")` は
+`YamlParseError: YAML parse error: while parsing node, found unknown anchor at char 0 line 1 column 1`
+と答え、文書をまたぐ形 `"--- &a 1\n--- *a\n"` は 2 行目で同じように拒否されます。
 
 **例:**
 
@@ -164,10 +170,25 @@ to_json(indent: int = 2) -> str
 JSON Schema に基づいてドキュメントの内容を検証します。
 
 ```python
-validate(schema: dict[str, Any]) -> None
+validate(schema: str | dict[str, Any]) -> None
 ```
 
-**スロー:** `YamlValidateError` — 検証エラー
+**スロー:**
+
+- `YamlValidateError` — ドキュメントがスキーマに適合しません。`str` でもマッピングでもない
+  スキーマも同じくここに届き、エンジンの文をそのテキストにします：`doc.validate(3)` は
+  `TypeError: argument of type 'int' is not iterable` と答えます
+
+このクラスの外から来る二つの拒否があります。評価は Python の `jsonschema` パッケージへ
+委譲され、本プロジェクトが公開するどの extra もそれをインストールしないためです：
+
+- `jsonschema` が import できないと、`doc.validate({"type": "object"})` は裸の
+  `ModuleNotFoundError: No module named 'jsonschema'` で答えます
+- `str` のスキーマは評価器の前に `json.loads` を通るので、YAML の綴りのスキーマのテキストは
+  `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` と答えます——
+  `jsonschema` のインストールの有無にかかわらず同じです
+
+両方とも再現とともに[例外 — YamlValidateError](exceptions.md#yamlvalidateerror)に記録しています。
 
 ### `flush_source()`
 
@@ -249,8 +270,19 @@ set(path: str, value: Any, create_missing: bool = False) -> None
 **スロー:**
 
 - `YamlPathError` — 不正なパス（ワイルドカード/`..` は拒否されます）
-- `YamlEditError` — ナビゲーションの失敗、中間キーの欠落（`create_missing=False` のとき）など
-- `YamlTypeError` — 書き手が知らない Python 型の値。`tuple` は受け入れられ、シーケンスとして書き出されます
+- `YamlEditError` — 適用できないパスのステップで、メッセージがそれを名乗ります：エイリアスを
+  経由するステップは `edit failed: cannot-edit-alias`、スカラーや形の違うコンテナに入る
+  ステップは `create-needs-mapping`、`create_missing=True` がスカラーと出会う場合は
+  `cannot-descend-into-scalar:<segment>`、書き込むキーより**前に**欠けているキーなら
+  `missing-path:<key>`、シーケンスの向こうのインデックスなら `index-out-of-range-edit:<index>`。
+  **最後の**キーの欠落は拒否ではなく——`parse("a: 1\n").set("$.zz", 3)` は `a: 1\nzz: 3\n` を
+  出力します——生きているアンカーの書き込みも拒否ではありません：`base: &x 1\nuse: *x\n` での
+  `set("$.base", 2)` は `base: &x 2\nuse: *x\n` を再出力し、`&x` をそのエイリアスがいまだ
+  見つける位置に保ちます
+- `YamlTypeError` — 書き手が知らない Python 型の値。`tuple` は受け入れられ、シーケンスとして
+  書き出され、`bytes` は `!!binary` として受け入れられます
+
+呼び出しごとに実測した完全な語彙は[編集理由トークン](exceptions.md#edit-reason-tokens)にあります。
 
 **例:**
 
@@ -318,6 +350,14 @@ insert(path: str, index: int, value: Any) -> None
 
 `index` はシーケンスの現在の長さまで指定できます（`len` への挿入は追加と同等）。負のインデックスは末尾から数えます（`-1` は最後の要素の前に挿入）。パスはシーケンスノードに解決される必要があります。
 
+**スロー:**
+
+- `YamlEditError` — パスがマッピングまたはスカラーに解決されるなら `edit failed: not-a-sequence`、
+  `len` より上か `-len` より下のインデックスなら `edit failed: index-out-of-range-edit`、解決しない
+  パスなら `edit failed: missing-path:<key>`、エイリアスを経由するパスなら
+  `edit failed: cannot-edit-alias`、スカラー値の下にあるパスなら
+  `edit failed: cannot-descend-into-scalar:<segment>`
+
 ### `append()`
 
 シーケンスの末尾に値を追加します。
@@ -325,6 +365,9 @@ insert(path: str, index: int, value: Any) -> None
 ```python
 append(path: str, value: Any) -> None
 ```
+
+**スロー:** `insert()` と同じ `YamlEditError` の理由で、シーケンスでない対象は
+`edit failed: not-a-sequence`、エイリアスの親は `edit failed: cannot-edit-alias` と実測しました。
 
 ### `delete()`
 
@@ -334,6 +377,17 @@ append(path: str, value: Any) -> None
 delete(path: str, on_duplicate: str = "one") -> None
 ```
 
+**スロー:**
+
+- `YamlEditError` — 文書が持たないキーなら `edit failed: missing-path`（`del doc["zz"]` もこれに
+  答えます）、シーケンスの外側のインデックスなら `edit failed: index-out-of-range-edit`、ノードの
+  アンカーがまだ参照されているなら `edit failed: anchor-is-referenced`、`on_duplicate="error"` で
+  そのキーをつづる組が二つ以上あるなら `edit failed: duplicate-key-target`、それ以外の
+  `on_duplicate` なら
+  `edit failed: unknown on_duplicate "<value>"; expected one, all or error`、エイリアスを経由する
+  パスなら `edit failed: cannot-edit-alias`、`delete("$")` なら `edit failed: edit-error`——
+  ルートには取り除くセグメントが残っていません
+
 ### `rename()`
 
 マッピングキーをその場でリネームします（位置とメタデータを保持）。
@@ -342,7 +396,14 @@ delete(path: str, on_duplicate: str = "one") -> None
 rename(path: str, new_key: str) -> None
 ```
 
-ルートまたは複合（非スカラー）キーのリネームは `YamlEditError` をスローします。
+**スロー:**
+
+- `YamlEditError` — `$` なら `edit failed: cannot-rename-root`、複合キーまたはシーケンス要素なら
+  `edit failed: cannot-rename-complex-key`、マッピングがすでに持つ `new_key` なら
+  `edit failed: rename-key-exists`、解決しないパスなら `edit failed: missing-path`、エイリアスを
+  経由するパスなら `edit failed: cannot-edit-alias`
+
+キーをそれ自身へリネームするのは拒否ではありません：`a: 1` で実測すると、`rename("$.a", "a")` は文書を `a: 1` のまま残します。
 
 ### `node()`
 
@@ -390,6 +451,23 @@ del doc["list"]  # doc.delete("$.list") と同等
 doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
+
+**スロー:**
+
+- `KeyError` — マッピングにキーが見つかりません。実測したテキストは `Key 'zz' not found` で、
+  これは組み込みの `KeyError` なので `str(exc)` は外側の引用符付きの
+  `"Key 'zz' not found"` を見せます
+- `IndexError` — シーケンスのインデックスが範囲外。
+  `pyrs_yaml.parse("- a\n- b\n")[99]` で実測すると `Index 99 out of range (len=2)`
+- `TypeError` — キーの種類が違う場合、またはそもそも添字にできないルートの
+  `YamlTypeError` 節で、それぞれ実測しました：`parse("- a\n")["k"]` →
+  `Index must be an integer`、`parse("a: 1\n")[99]` → `Key must be a string`、
+  `parse("just a scalar")[0]` → `YamlDocument is not subscriptable`
+
+上のテキストはすべて `pyrs_yaml.set_language()` に追従します——`zh-CN` の下で実測すると、
+四つの節は `索引必须是整数`、`键必须是字符串`、`YamlDocument 不支持下标操作`、
+`索引 99 超出范围（长度=2）` と答えます。[i18n サポート](exceptions.md#i18n-support) を
+参照してください。
 
 ### `__setitem__()`
 

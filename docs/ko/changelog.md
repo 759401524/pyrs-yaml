@@ -15,6 +15,33 @@ status: new
 
 ### [Unreleased]
 
+#### 수정
+
+- **별칭을 통한 편집에 대한 문장 셋이 거짓이었고, 메시지가 출력하는 이유 어휘가 이제 목록으로
+  실립니다** — 페이지들은 별칭을 통한 쓰기가 `cannot-edit-alias`를 발생시키고 살아 있는 정의를 뜬
+  상태로 만드는 쓰기에 `set()`이 `anchor-is-referenced`로 답한다고 적었습니다. 배포된 빌드에서
+  측정하면: `base: &x 1\nuse: *x`에서의 `set("$.use", 2)`는 성공해서 `base: &x 1\nuse: 2`를 남기고,
+  `delete("$.use")`는 `base: &x 1`를 남기며, `rename("$.use", "used")`는 `used: *x`를 남기고, 같은
+  짝에서의 `set("$.base", 2)`는 `base: &x 2\nuse: *x`를 남깁니다 — 그 토큰에 닿는 `set` 경로는
+  없습니다. 그 토큰은 삭제, 이름 변경, 이동, 메타데이터 경로에 살아 있습니다. 별칭 *부모*는 여전히
+  거부되고(`set("$.prod.timeout", 99)` → `edit failed: cannot-edit-alias`), 별칭 노드에 대한 열두
+  메타데이터 동사도 마찬가집니다. `api/exceptions.md`에는 편집 이유 토큰 표가 새로 생겨, 닿을 수
+  있는 열다섯 토큰을 각각 답하는 호출과 완전한 측정 메시지와 함께 이름 지었습니다 —
+  `edit failed: cannot-descend-into-scalar:b`, `duplicate-key-target`,
+  `unknown on_duplicate "both"; expected one, all or error` — 그리고 생성 지점이 없는 선언
+  변형(`wildcard-or-deep-scan`, `invalid-index`, `invalid-path`)이 무엇인지도 적었습니다.
+  `validate()`의 위임은 사용자가 만나는 자리에 이제 적혔습니다: 이 프로젝트가 배포하는 무엇도
+  `jsonschema`를 설치하지 않습니다(기본 의존성은 `typing-extensions`, extras는
+  `cli`/`pydantic`/`settings`). 그래서 기본 설치에서는 맨 `ModuleNotFoundError`로 답하고, 텍스트로
+  넘긴 스키마는 `json.loads`가 먼저 읽으므로 YAML로 철자한 스키마는 `json.decoder.JSONDecodeError`를
+  발생시킵니다. 둘 다 .ci/known-residuals.json에
+  `api:validate-evaluator-is-not-installed-by-anything-we-ship`과
+  `api:validate-schema-text-is-json-only`로 등록됐고, 여기서 어느 쪽도 고치지 않습니다. 실제 시간
+  표도 이 릴리스의 빌드로 2026-11-04에 다시 측정해, 모든 셀과 본문의 범위, 출처 날짜가 같은 스냅샷을
+  가리킵니다. 일본어 두 페이지에서는 영어판에 없고 현재 메시지 형식과도 모순되는 오류 메시지 예시
+  블록을 지우고, `dict`만 적혀 있던 `validate()` 서명을 `str | dict`로 고쳤습니다. 영어와 그
+  zh/ja/ko 쌍입니다.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

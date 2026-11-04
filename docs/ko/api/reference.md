@@ -650,6 +650,15 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — 태그 핸들러 오류 (`ValueError` 상속)
 - `YamlTagSkip` — 노드를 다음 핸들러로 넘기는 제어 흐름 센티널 (`YamlTagError` 상속)
 
+`Document.validate()`는 이 계열 밖에서 두 가지 방식으로 답하며, 이번 릴리스는 둘 다 그대로
+둡니다. 규칙 평가는 `jsonschema`에 위임되는데 여기의 무엇도 그 패키지를 설치하지 않습니다 — 패키지는
+`typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`입니다 — 따라서 평가
+엔진이 없으면 호출은 맨 `ModuleNotFoundError: No module named 'jsonschema'`를 발생시킵니다.
+스키마가 통과시켰을 문서에서도 마찬가집니다. 그리고 텍스트로 주어진 `schema`는 평가 전에
+`json.loads`로 읽히므로, YAML로 철자한 스키마는 평가 엔진이 있든 없든
+`json.decoder.JSONDecodeError`를 발생시킵니다. 둘 다 알려진 경계이며 사용자 문서로는
+[빠른 시작](../quick-start.md)과 [사용자 정의 스키마](../guides/custom-schema.md)에 적었습니다.
+
 자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 
 ## :material-information: 버전
