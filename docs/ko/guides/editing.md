@@ -53,12 +53,12 @@ graph LR
 | `$.items[0]` | 시퀀스 `items`의 첫 번째 요소 |
 | `$` | 루트 노드 자체 |
 
-- **음수 인덱스** (`[-1]`, `[-2]`, ...)는 **지원됩니다** — 시퀀스 끝에서부터 셉니다 (Python과 동일한 의미: `-1`은 마지막 요소). 범위를 벗어난 음수 인덱스는 `YamlEditError`를 발생시킵니다
+- **음수 인덱스** (`[-1]`, `[-2]`, ...)는 **지원됩니다** — 시퀀스 끝에서부터 셉니다 (Python과 동일한 의미: `-1`은 마지막 요소). 범위를 벗어난 음수 인덱스는 `YamlEditError`를 발생시키면서 배치하지 못한 인덱스를 이름으로 밝힙니다: `parse("items: [1, 2, 3]\n").set("$.items[-99]", 99)`는 `edit failed: index-out-of-range-edit:-99`로 답합니다
 - 키는 **값 기준**으로 일치하므로(메타데이터 무관), 따옴표 키 `"host"`는 일반 키 `host`와 일치합니다
 
 편집 경로는 정확히 하나의 노드를 대상으로 해야 합니다 — **와일드카드** (`[*]`)와 **딥 스캔** (`..`)은 `YamlPathError`를 발생시킵니다. (쿼리 전용 `find()`는 이를 지원합니다. [find()로 쿼리하기](#find) 참조)
 
-**발생:** 잘못된 경로에 대해 `YamlPathError`, 경로 단계를 적용할 수 없을 때(예: 스칼라로의 탐색, 별칭을 통한 편집) `YamlEditError`.
+**발생:** 잘못된 경로에 대해 `YamlPathError`, 경로 단계를 적용할 수 없을 때 `YamlEditError` — 측정 결과 별칭을 통한 단계는 `edit failed: cannot-edit-alias`, 스칼라로의 단계는 `edit failed: create-needs-mapping`으로 답합니다. 이유 토큰이 변하지 않는 부분입니다; [편집 이유 토큰](../api/exceptions.md#edit-reason-tokens)을 참고하세요.
 
 ## 값 설정
 
@@ -85,6 +85,9 @@ doc.set("$", {"x": 1})  # replace the entire root
 | :material-language-python: `dict` | 새 매핑 (일반 스타일) |
 | :material-format-list-numbered: `list` | 새 시퀀스 (일반 스타일) |
 | :material-format-list-numbered: `tuple` | 새 시퀀스 (일반 스타일) — `list`가 만드는 것과 같은 노드 |
+| :material-format-list-numbered: `bytes` | `!!binary` 태그가 달린 새 스칼라 — `doc.set("$.a", b"hi")`는 `a: !!binary aGk=`를 발출합니다 |
+
+그 표 밖의 Python 타입은 편집 경로가 아니라 작성자가 거부합니다: `set("$.a", {1, 2})`와 `set("$.a", object())`에서 측정하면 둘 다 `YamlTypeError: Unsupported Python type for YAML conversion`으로 답합니다.
 
 기존 스칼라를 교체할 때 대상의 메타데이터(인라인 주석, 앵커, 태그, 따옴표 스타일)는 **보존**됩니다 — 새 값이 매핑/시퀀스인 경우는 예외로, 새 노드 자체의 서식을 따릅니다.
 
@@ -119,7 +122,7 @@ doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index`는 현재 길이까지 허용됩니다 (`len`에 삽입하면 추가됨); 그보다 크면 `YamlEditError`가 발생합니다. 음수 인덱스는 끝에서부터 셉니다 (`-1`은 마지막 요소 앞에 삽입, `-len`은 맨 앞에 삽입).
+`index`는 현재 길이까지 허용됩니다 (`len`에 삽입하면 추가됨); 그보다 크면 `YamlEditError: edit failed: index-out-of-range-edit`가 발생하고, `-len`보다 작은 인덱스도 마찬가지입니다 — `parse("items:\n  - a\n").insert("$.items", -99, "z")`. 음수 인덱스는 끝에서부터 셉니다 (`-1`은 마지막 요소 앞에 삽입, `-len`은 맨 앞에 삽입).
 
 ```python title="insert() 예제"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -205,7 +208,9 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 - **위치가 보존됩니다** — 이름이 변경된 키는 제자리에 유지됩니다
 - **메타데이터가 보존됩니다** — 키의 인라인 주석, 스타일, 앵커가 이름 변경과 함께 이동합니다
-- 루트 또는 복합(비스칼라) 키의 이름 변경, 그리고 **기존 키로의** 이름 변경은 `YamlEditError`를 발생시킵니다 (자기 자신으로의 이름 변경은 no-op)
+- 루트 또는 복합(비스칼라) 키의 이름 변경, 그리고 **기존 키로의** 이름 변경은 `YamlEditError`를 `edit failed: cannot-rename-root`, `cannot-rename-complex-key`, `rename-key-exists`와 함께 발생시킵니다 (자기 자신으로의 이름 변경은 no-op)
+- **시퀀스 요소**도 어느 쪽이든 매핑 키가 아닙니다: `parse("- a\n- b\n").rename("$[0]", "x")`와 `Node.children[1].rename("x")`는 둘 다 `edit failed: cannot-rename-complex-key`로 답합니다
+- 키가 복합 노드인 문서에서 `Node`로 그 키에 접근하는 것은 한 층 앞에서 거부됩니다 — `parse("? [1, 2]\n: value\n").node().children[0].rename("b")`는 `YamlEditError: ValueError: segment must be str or int`로 답합니다. 복합 키는 경로 세그먼트가 될 수 없기 때문입니다
 
 #### `Node.rename()`
 
@@ -258,7 +263,9 @@ node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim 태그
 node.remove_tag()
 ```
 
-- **별칭** 노드(`*ref`) 또는 **존재하지 않는 경로**에 대한 메타데이터 편집은 `YamlEditError`를 발생시킵니다
+- **별칭** 노드(`*ref`)에 대한 메타데이터 편집은 `YamlEditError: edit failed: cannot-edit-alias`를 발생시킵니다 — `set_comment()`, `set_tag()`, `set_anchor()`에 대해 측정됐고, 참조된 원천 노드에 대한 `remove_anchor()`도 그렇습니다
+- **존재하지 않는 경로**에 대한 메타데이터 편집은 `YamlEditError: edit failed: missing-path`를 발생시킵니다 — 문서가 그 경로를 갖고 있지 않을 때 `find()`가 돌려주는 `Node(invalid)` 객체에 대한 편집도 포함됩니다
+- **별칭이 아직 참조하는 앵커**를 설정하거나 제거하는 것은 거부됩니다: 앵커가 달린 노드에 대해 `set_anchor()`/`remove_anchor()`는 `YamlEditError: edit failed: anchor-is-referenced`로 답합니다. 별칭이 하나도 남아 있지 않으면 같은 호출이 성공합니다 — `parse("base: &x 1\n")`에서 `set_anchor("renamed")`는 `base: &renamed 1`을 발출합니다
 - 편집 후 노드는 **stale** 상태가 됩니다 — 다음 접근 전에 `doc.node().find(path)`로 다시 찾으세요
 
 ## Node 작업
@@ -321,8 +328,8 @@ print(doc.to_yaml())
 규칙:
 
 - 누락된 **매핑 키**는 중첩 매핑으로 생성됩니다
-- 누락된 **인덱스 세그먼트**는 여전히 오류를 발생시킵니다 (시퀀스 요소를 자동 생성할 수 없음)
-- 경로 중간에 **스칼라**가 있으면 여전히 오류를 발생시킵니다 (스칼라로 내려갈 수 없음)
+- 누락된 **인덱스 세그먼트**는 여전히 오류를 발생시킵니다 (시퀀스 요소를 자동 생성할 수 없음) — 측정 결과: `parse("items: []\n").set("$.items[2]", 1, create_missing=True)`는 `edit failed: index-out-of-range-edit:2`로 답합니다
+- 경로 중간에 **스칼라**가 있으면 여전히 오류를 발생시킵니다 (스칼라로 내려갈 수 없음) — 측정 결과: `parse("a: 1\n").set("$.a.b.c", 2, create_missing=True)`는 통과하기를 거부한 세그먼트를 이름으로 밝히며 `edit failed: cannot-descend-into-scalar:b`로 답합니다. `create_missing` 없이 같은 모양은 `edit failed: create-needs-mapping`으로 답합니다
 - 생성된 체인은 제자리 스플라이스 편집에 적합합니다
 
 #### `find()`로 쿼리하기
@@ -372,6 +379,14 @@ doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
+그 계약에 대해 측정된 모서리들:
+
+- 부모가 존재하는 목적지는 자기 자신이 없어도 됩니다: `parse("src:\n  x: 1\n").node().find("$.src").move("$.nope")`는 `nope:\n  x: 1`를 남깁니다. **중간** 키가 없는 목적지는 거부됩니다 — `move("$.deep.leaves")`는 `edit failed: missing-path:deep`으로 답합니다
+- 이미 있는 목적지의 값을 교체하는 것은 그 값이 무엇이든 상관없이 동작합니다, 스칼라도 포함해서: `dst: 2`가 `dst:\n  x: 1`가 됩니다
+- 하위 트리를 **자기 경로로** 옮기는 것은 거부되지 않고 문서를 비워 버립니다 — `src:\n  x: 1`에서 `find("$.src").move("$.src")`은 빈 매핑 `{}`를 발출합니다
+- **루트를** 옮기는 것은 거부됩니다: `pyrs_yaml.parse("src:\n  x: 1\n").node().move("$.src")`는 `edit failed: edit-error`로 답합니다
+- 값을 참조하는 별칭이 아직 남아 있는 경로 위로 옮기는 것은 `edit failed: anchor-is-referenced`로 답합니다
+
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node 내부 조사"
@@ -384,20 +399,34 @@ node.value_eq(other_node)  # 해석된 값 비교(참조 동일성 아님)
 ## 별칭과 병합 키
 
 !!! warning "별칭을 통한 편집"
-    별칭(`*name`)을 통해 병합된 키에 도달하기 위해 탐색하는 편집은 `YamlEditError`를 발생시킵니다.
+    별칭 노드를 통해(예: `*defaults` 안에서 키에 설정하기) 탐색하는 편집은
+    `YamlEditError: edit failed: cannot-edit-alias`를 발생시킵니다 — 참조된 노드는 다른
+    곳에 존재하므로 별칭 참조를 통해 편집할 수 없습니다. 모든 편집 경로에서 측정했습니다:
+    경로 단계가 별칭에 내려앉으면 `set()`, `insert()`, `append()`, `delete()`, `rename()`과
+    메타데이터 설정자가 모두 같은 토큰으로 답하고, `find()`가 별칭을 통해 해석한 노드에 대한
+    `Node.set_value()`와 `Node.delete()`도 그렇습니다.
 
-별칭 노드 (`*name`)는 자체 경로가 설정될 때 **제자리에서 교체**됩니다:
+별칭 노드 (`*name`)는 자체 경로가 설정될 때 **제자리에서 교체**됩니다 — 이것은 오류가
+아니고, 앵커는 그것을 정의한 노드에 그대로 살아남습니다:
 
 ```python title="별칭 교체"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
-doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
+doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # parse() keeps the alias node; safe_load() resolves it
 
 doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 99
 ```
 
+스칼라 별칭도 마찬가지입니다: `pyrs_yaml.parse("base: &x 1\nuse: *x\n").set("$.use", 2)`는
+성공하고 `base: &x 1\nuse: 2\n`를 다시 발출하며, `&x`는 그것을 참조할 별칭이 남지
+않습니다. 그 짝에 대한 다른 동사들도 똑같이 조용합니다 — 같은 문서에서 측정하면
+`delete("$.use")`는 `base: &x 1\n`를, `rename("$.use", "used")`는 `base: &x 1\nused: *x\n`를
+남깁니다. `resolve_merges`는 `parse()`과 `reparse()`의 키워드이지 `YAML()` 생성자의 키워드가
+아닙니다 — 측정 결과 `YAML(resolve_merges=False)`는 `TypeError`를 발생시킵니다.
+
 - 별칭 **을 통한** 설정 (병합된 키에 도달하기 위해 `*defaults`를 탐색)은 `YamlEditError`를 발생시킵니다 — 참조된 노드는 다른 곳에 존재합니다
-- 병합 키가 해석된 경우(기본값), 병합 확장 키는 클론입니다; 편집 시 클론만 편집됩니다
-- 앵커된 노드 삭제는 허용됩니다 (앵커가 더 이상 참조되지 않을 뿐)
+- 병합 키가 해석된 경우(기본값), 병합 확장 키는 클론입니다; 편집 시 클론만 편집됩니다. `defaults: &d\n  timeout: 30\n  retries: 3\nprod:\n  <<: *d\n  name: p\n`에서 측정하면 `set("$.prod.timeout", 99)`는 `timeout: 99`를 담은 `prod`를 다시 발출하고 `defaults.timeout`은 `30`에 그대로 둡니다
+- 별칭이 **아직 참조하는** 앵커를 가진 노드를 삭제하는 것은 거부됩니다: `pyrs_yaml.parse("base: &x 1\nuse: *x\n").delete("$.base")`는 `YamlEditError: edit failed: anchor-is-referenced`로 답하고, 같은 토큰이 그 노드에 대한 `set_anchor()`/`remove_anchor()`와 그 경로 위로 하는 `move()`에서도 답합니다. 아무것도 가리키지 않는 앵커가 달린 노드는 정상적으로 삭제됩니다 — `parse("keep: &k 1\nother: 2\n").delete("$.keep")`은 `other: 2`를 남깁니다 — 마지막 별칭이 사라지면 원천도 삭제됩니다
+- 별칭을 `*a: value`라는 맨 철자로 **키**로 지정할 수는 없습니다 — 읽는 쪽이 편집이 실행되기 전에 거부합니다(`YamlParseError: YAML parse error: simple key expected ':' at char 15 line 2 column 1`). 명시적 키 형태인 `anchor: &a key\n? *a\n: value\n`는 파싱되고, 거기서 방어막은 위의 앵커 규칙입니다: `delete("$.anchor")`는 `anchor-is-referenced`로 답하지만 `set("$.anchor", "other")`는 성공합니다
 
 ## 뷰 vs AST
 
@@ -426,12 +455,24 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 ## 오류 처리
 
-| 오류 | 시점 |
-|------|------|
-| :material-alert: `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 |
-| :material-alert: `YamlEditError` | 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
-| :material-alert: `YamlTypeError` | 작성자가 모르는 Python 타입의 값 (`set("$.a", object())`) — `tuple`은 그중 **아닙니다** |
-| :material-alert: `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 |
+| 오류 | 시점 | 메시지에서 측정된 이유 |
+|-------|------|------------------------------|
+| :material-alert: `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 | *(접두사 없음)* `Path must start with $`, `wildcard/deep-scan paths are not editable`, `invalid index in path: <path>` |
+| :material-alert: `YamlEditError` | 별칭 **을 통한** 편집 | `edit failed: cannot-edit-alias` |
+| :material-alert: `YamlEditError` | 별칭이 아직 참조하는 앵커 — 삭제, 앵커 다시 설정, 그 위로 이동 | `edit failed: anchor-is-referenced` |
+| :material-alert: `YamlEditError` | 스칼라로의 탐색, 또는 컨테이너 모양 세그먼트가 모양 다른 컨테이너에 올라간 경우 | `edit failed: create-needs-mapping` |
+| :material-alert: `YamlEditError` | 해석되지 않는 경로 단계 | `edit failed: missing-path`, 중간 키가 놓친 것이라면 `missing-path:<key>` |
+| :material-alert: `YamlEditError` | 인덱스 범위 초과(양수든 음수든), `len`을 넘긴 `insert()` | `edit failed: index-out-of-range-edit`, `set()`에서는 `…:<index>` |
+| :material-alert: `YamlEditError` | 시퀀스가 아닌 것에 대한 `insert()`/`append()` | `edit failed: not-a-sequence` |
+| :material-alert: `YamlEditError` | 루트/복합/기존 키의 이름 변경 | `edit failed: cannot-rename-root`, `cannot-rename-complex-key`, `rename-key-exists` |
+| :material-alert: `YamlEditError` | 셋 중 하나가 아닌 `on_duplicate` 인자 | `edit failed: unknown on_duplicate "<value>"; expected one, all or error` |
+| :material-alert: `YamlTypeError` | 작성자가 모르는 Python 타입의 값 (`set("$.a", object())`, `set("$.a", {1, 2})`) — `tuple`과 `bytes`는 그중 **아닙니다** | `Unsupported Python type for YAML conversion` |
+| :material-alert: `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 | `document has been modified; re-find the node` |
+
+위 거부는 모두 현재 빌드에 대해 실행했습니다 — 루트 모양 삭제들이 일반적인
+`edit failed: edit-error`로 답하는 경우와 어떤 호출도 닿지 않는 토큰까지, 어휘 전체는
+[편집 이유 토큰](../api/exceptions.md#edit-reason-tokens)에 표로 정리되어 있습니다. 이유가
+나타나는 자리는 `str(exc)` 하나뿐입니다: 이 클래스들에는 `.reason` 속성이 없습니다.
 
 모든 편집은 원자적입니다 — 실패한 편집은 문서(및 리비전)를 변경하지 않습니다.
 

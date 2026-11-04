@@ -24,18 +24,18 @@ PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデ�
 - **フロー/ブロックフォーマット** — `[]`/`{}` とブロックスタイルを保持
 
 !!! note "ベンチマーク環境"
-    CodSpeed CI はシミュレーションモード（実時間ではなく命令数）で実行されます。以下の数値は `scripts/bench_snapshot.py` が 2026-10-25 にバッチ計時で記録したものです。相対的な高速化率は目安であり、インタープリタ、ハードウェア、文書によって変動します。
+    CodSpeed CI はシミュレーションモード（実時間ではなく命令数）で実行されます。以下の数値は `scripts/bench_snapshot.py` が 2026-11-04 にバッチ計時で記録したものです。相対的な高速化率は目安であり、インタープリタ、ハードウェア、文書によって変動します。
 
 ## パフォーマンス
 
-Rust バックエンドは PyYAML より解析で **32–37 倍**、シリアライズで **204–347 倍高速**：
+Rust バックエンドは PyYAML より解析で **27–40 倍**、シリアライズで **276–316 倍高速**：
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 72 µs | 2.3 ms |
-| Serialize (large) | 5.4 µs | 1.4 ms |
-| Round-trip | 82 µs | 3.9 ms |
+| Parse (large) | 69 µs | 2.3 ms |
+| Serialize (large) | 4.8 µs | 1.3 ms |
+| Round-trip | 77 µs | 3.9 ms |
 
 ## カスタム AST
 
@@ -106,6 +106,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
 検証に失敗した場合、`YamlValidateError` をスローします。
+
+評価器は別のインストールです。`jsonschema` は pyrs-yaml の依存ではありません——基底の
+インストールは `typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings`
+です——だから環境に評価器がないと、`validate()` は `YamlValidateError` ではなく `jsonschema` を
+名乗る裸の `ModuleNotFoundError` を投げます。自分で `pip install jsonschema` を入れてください。
+上の例のスキーマのテキストは JSON です：YAML の綴りのスキーマは、規則を読む前に `json.loads`
+によって `json.decoder.JSONDecodeError` で拒否されます。どちらもこの面の既知の境界で本リリースの
+欠陥ではなく、プロジェクト自前の評価器は別個の設計問題です。
 
 ## 重複キー
 

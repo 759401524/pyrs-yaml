@@ -53,12 +53,12 @@ graph LR
 | `$.items[0]` | 序列 `items` 的第一个元素 |
 | `$` | 根节点本身 |
 
-- **负索引**（`[-1]`、`[-2]`、...）**受支持** — 从序列末尾倒数（与 Python 语义一致：`-1` 是最后一个元素）。超出范围的负索引会抛出 `YamlEditError`
+- **负索引**（`[-1]`、`[-2]`、...）**受支持** — 从序列末尾倒数（与 Python 语义一致：`-1` 是最后一个元素）。超出范围的负索引会抛出 `YamlEditError`，并在消息里点名它放不下的那个索引：`parse("items: [1, 2, 3]\n").set("$.items[-99]", 99)` 回 `edit failed: index-out-of-range-edit:-99`
 - 键**按值匹配**（与元数据无关），因此带引号的键 `"host"` 可以匹配普通键 `host`
 
 编辑路径必须精确指向一个节点 — **通配符**（`[*]`）和**深度扫描**（`..`）会抛出 `YamlPathError`。（仅用于查询的 `find()` 支持它们；请参阅 [使用 `find()` 查询](#find)。）
 
-对于格式错误的路径会**抛出** `YamlPathError`；当路径步骤无法应用时（例如导航进入标量，或通过别名编辑）抛出 `YamlEditError`。
+对于格式错误的路径会**抛出** `YamlPathError`；当路径步骤无法应用时抛出 `YamlEditError` — 实测下来，穿过别名的步骤是 `edit failed: cannot-edit-alias`，进入标量的步骤是 `edit failed: create-needs-mapping`。原因令牌才是稳定的那部分；参见 [编辑原因令牌](../api/exceptions.md#edit-reason-tokens)。
 
 ## 设置值
 
@@ -85,6 +85,9 @@ doc.set("$", {"x": 1})  # replace the entire root
 | :material-language-python: `dict` | 新映射（普通样式） |
 | :material-format-list-numbered: `list` | 新序列（普通样式） |
 | :material-format-list-numbered: `tuple` | 新序列（普通样式）— 与 `list` 生成的是同一个节点 |
+| :material-format-list-numbered: `bytes` | 新标量，带 `!!binary` 标签 — `doc.set("$.a", b"hi")` 发射 `a: !!binary aGk=` |
+
+那张表之外的 Python 类型是由写入器拒绝的，不是由编辑路径拒绝的：在 `set("$.a", {1, 2})` 与 `set("$.a", object())` 上实测，两者都回 `YamlTypeError: Unsupported Python type for YAML conversion`。
 
 替换现有标量时，目标的元数据（行内注释、锚点、标签、引号样式）会被**保留** — 除非新值是映射/序列，此时采用新节点自身的格式。
 
@@ -111,7 +114,7 @@ node.set_value(42)
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` 最大可为当前长度（在 `len` 处插入等同于追加）；更大的值会抛出 `YamlEditError`。负索引从末尾计数（`-1` 在最后一个元素之前插入，`-len` 在开头插入）。
+`index` 最大可为当前长度（在 `len` 处插入等同于追加）；更大的值会抛出 `YamlEditError: edit failed: index-out-of-range-edit`，低于 `-len` 的索引同样如此 — `parse("items:\n  - a\n").insert("$.items", -99, "z")`。负索引从末尾计数（`-1` 在最后一个元素之前插入，`-len` 在开头插入）。
 
 ```python title="insert() 示例"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -197,7 +200,9 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 - **位置保留** — 重命名后的键保持在原位
 - **元数据保留** — 键的行内注释、样式和锚点随重命名一起保留
-- 重命名根节点、复杂（非标量）键，或重命名为**已存在的键**会抛出 `YamlEditError`（重命名为自身是无操作）
+- 重命名根节点、复杂（非标量）键，或重命名为**已存在的键**会抛出 `YamlEditError`，消息里的理由分别是 `edit failed: cannot-rename-root`、`cannot-rename-complex-key` 或 `rename-key-exists`（重命名为自身是无操作）
+- **序列元素**从哪个方向看都不是映射键：`parse("- a\n- b\n").rename("$[0]", "x")` 与 `Node.children[1].rename("x")` 都回 `edit failed: cannot-rename-complex-key`
+- 在一个键本身就是复杂节点的文档上，通过 `Node` 去指它会更早一层被拒绝 — `parse("? [1, 2]\n: value\n").node().children[0].rename("b")` 回 `YamlEditError: ValueError: segment must be str or int`，因为复杂键无法变成一个路径段
 
 #### `Node.rename()`
 
@@ -250,7 +255,9 @@ node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim 标签
 node.remove_tag()
 ```
 
-- 对**别名**节点（`*ref`）或**不存在的路径**编辑元数据会抛出 `YamlEditError`
+- 对**别名**节点（`*ref`）编辑元数据会抛出 `YamlEditError: edit failed: cannot-edit-alias` — 在 `set_comment()`、`set_tag()` 与 `set_anchor()` 上实测过，被引用的源节点上的 `remove_anchor()` 也实测过
+- 对**不存在的路径**编辑元数据会抛出 `YamlEditError: edit failed: missing-path` — 包括对文档并不持有那条路径时 `find()` 返回的那个 `Node(invalid)` 对象操作
+- 设置或移除**仍被某个别名引用的锚点**会被拒绝：在被锚定的节点上 `set_anchor()`/`remove_anchor()` 回 `YamlEditError: edit failed: anchor-is-referenced`。别名不再存在时，同一个调用就成功了 — 对 `parse("base: &x 1\n")` 再 `set_anchor("renamed")` 发射 `base: &renamed 1`
 - 编辑后节点变为 **stale**——下次访问前请用 `doc.node().find(path)` 重新查找
 
 ## 使用 Node
@@ -328,8 +335,8 @@ print(doc.to_yaml())
 规则：
 
 - 缺失的**映射键**会被创建为嵌套映射
-- 缺失的**索引段**仍然会抛出异常（无法自动创建序列元素）
-- 路径上的**标量**中间节点仍然会抛出异常（无法进入标量）
+- 缺失的**索引段**仍然会抛出异常（无法自动创建序列元素）— 实测：`parse("items: []\n").set("$.items[2]", 1, create_missing=True)` 回 `edit failed: index-out-of-range-edit:2`
+- 路径上的**标量**中间节点仍然会抛出异常（无法进入标量）— 实测：`parse("a: 1\n").set("$.a.b.c", 2, create_missing=True)` 回 `edit failed: cannot-descend-into-scalar:b`，点名它拒绝穿过的那个段。不带 `create_missing` 时，同样的形状改回 `edit failed: create-needs-mapping`
 - 创建的链可以进行就地分片拼接编辑
 
 #### 使用 `find()` 查询
@@ -379,6 +386,14 @@ doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
+该契约的实测边界：
+
+- 只要父级存在，目标**不必已经存在**：`parse("src:\n  x: 1\n").node().find("$.src").move("$.nope")` 留下 `nope:\n  x: 1`。中间键缺失的目标会被拒绝 — `move("$.deep.leaves")` 回 `edit failed: missing-path:deep`
+- 替换已存在目标上的值总是管用，无论那个值是什么，标量也一样：`dst: 2` 变成 `dst:\n  x: 1`
+- 把子树移到**它自己所在的路径**上不会被拒绝，而且会清空文档 — 对 `src:\n  x: 1` 执行 `find("$.src").move("$.src")` 发射空映射 `{}`
+- 移动**根节点**会被拒绝：`pyrs_yaml.parse("src:\n  x: 1\n").node().move("$.src")` 回 `edit failed: edit-error`
+- 移到某个值仍带着引用别名的路径上，回 `edit failed: anchor-is-referenced`
+
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node 内省"
@@ -391,20 +406,23 @@ node.value_eq(other_node)  # 比较解析后的值（非引用同一性）
 ## 别名与合并键
 
 !!! warning "穿透别名编辑"
-    穿过别名导航到合并后的键进行编辑会抛出 `YamlEditError`，因为被引用的节点位于其他位置。请直接设置别名自身的路径以原地替换。
+    穿过别名节点导航（例如设置 `*defaults` 内部的某个键）会抛出 `YamlEditError: edit failed: cannot-edit-alias` — 被引用的节点位于其他位置，无法借由这个别名引用来编辑它。在每一条编辑路径上都实测过：`set()`、`insert()`、`append()`、`delete()`、`rename()` 以及各元数据设置方法在路径步骤落到别名上时都回同一个令牌，`Node.set_value()` 与 `Node.delete()` 作用在 `find()` 穿过别名解析到的节点上也一样。
 
-当设置别名节点（`*name`）自身的路径时，它会被**原地**替换：
+当设置别名节点（`*name`）自身的路径时，它会被**原地**替换 — 这不是错误，而锚点继续留在定义它的那个节点上：
 
 ```python title="别名替换"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
-doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
+doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # parse() keeps the alias node; safe_load() resolves it
 
 doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 99
 ```
 
-- **通过**别名设置（穿过 `*defaults` 导航到合并后的键）会抛出 `YamlEditError` — 被引用的节点位于其他位置
-- 合并键已解析时（默认），合并展开的键是克隆；编辑它们只会修改克隆
-- 允许删除带锚点的节点（锚点只是不再被引用）
+标量别名也是如此：`pyrs_yaml.parse("base: &x 1\nuse: *x\n").set("$.use", 2)` 成功并重新发射 `base: &x 1\nuse: 2\n`，让 `&x` 再也没有引用它的别名留下。这一对键上的其他动词也一样安静 — 在同一份文档上实测，`delete("$.use")` 留下 `base: &x 1\n`，而 `rename("$.use", "used")` 留下 `base: &x 1\nused: *x\n`。`resolve_merges` 是 `parse()` 与 `reparse()` 的关键字，不是 `YAML()` 构造器的关键字 — 实测：`YAML(resolve_merges=False)` 抛 `TypeError`。
+
+- **通过**别名设置（穿过 `*defaults` 导航到一个合并后的键）会抛出 `YamlEditError` — 被引用的节点位于其他位置
+- 合并键已解析时（默认），合并展开的键是克隆；编辑它们只会修改克隆。在 `defaults: &d\n  timeout: 30\n  retries: 3\nprod:\n  <<: *d\n  name: p\n` 上实测：`set("$.prod.timeout", 99)` 重新发射带 `timeout: 99` 的 `prod`，而 `defaults.timeout` 仍是 `30`
+- 删除一个锚点**仍被某个别名引用**的节点会被拒绝：`pyrs_yaml.parse("base: &x 1\nuse: *x\n").delete("$.base")` 回 `YamlEditError: edit failed: anchor-is-referenced`，而同一个令牌也应答那个节点上的 `set_anchor()`/`remove_anchor()` 以及移到那条路径上的 `move()`。没有任何指向的带锚点节点删除正常 — `parse("keep: &k 1\nother: 2\n").delete("$.keep")` 留下 `other: 2` — 而最后一个别名消失之后，源节点也照样删得掉
+- 用裸拼法 `*a: value` 把别名当作**键**来寻址是不可能的 — 读取器在任何编辑发生之前就拒绝它（`YamlParseError: YAML parse error: simple key expected ':' at char 15 line 2 column 1`）。显式键写法 `anchor: &a key\n? *a\n: value\n` 能解析，而那里的保护就是上面那条锚点规则：`delete("$.anchor")` 回 `anchor-is-referenced`，而 `set("$.anchor", "other")` 成功
 
 ## 视图与 AST
 
@@ -433,12 +451,21 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 ## 错误处理
 
-| 错误 | 何时引发 |
-|------|---------|
-| :material-alert: `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
-| :material-alert: `YamlEditError` | 通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
-| :material-alert: `YamlTypeError` | 写入器不认识的 Python 类型的值（`set("$.a", object())`）— `tuple` **不**在其中 |
-| :material-alert: `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
+| 错误 | 何时引发 | 消息里的实测理由 |
+|------|---------|------------------|
+| :material-alert: `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` | *（无前缀）* `Path must start with $`、`wildcard/deep-scan paths are not editable`、`invalid index in path: <path>` |
+| :material-alert: `YamlEditError` | **穿透**别名编辑 | `edit failed: cannot-edit-alias` |
+| :material-alert: `YamlEditError` | 锚点仍被某个别名引用 — 删除它、给它换锚点，或移到它上面 | `edit failed: anchor-is-referenced` |
+| :material-alert: `YamlEditError` | 导航进入标量，或把容器形状的段用在不对的容器上 | `edit failed: create-needs-mapping` |
+| :material-alert: `YamlEditError` | 解析不到的路径步骤 | `edit failed: missing-path`，当缺失的是中间键时是 `missing-path:<key>` |
+| :material-alert: `YamlEditError` | 索引越界（正负都可能），`insert()` 越过 `len` | `edit failed: index-out-of-range-edit`，来自 `set()` 的是 `…:<index>` |
+| :material-alert: `YamlEditError` | 对不是序列的东西调用 `insert()`/`append()` | `edit failed: not-a-sequence` |
+| :material-alert: `YamlEditError` | 重命名根节点/复杂键/已存在的键 | `edit failed: cannot-rename-root`、`cannot-rename-complex-key`、`rename-key-exists` |
+| :material-alert: `YamlEditError` | `on_duplicate` 的参数不是那三个取值之一 | `edit failed: unknown on_duplicate "<value>"; expected one, all or error` |
+| :material-alert: `YamlTypeError` | 写入器不认识的 Python 类型的值（`set("$.a", object())`、`set("$.a", {1, 2})`）— `tuple` 与 `bytes` **不**在其中 | `Unsupported Python type for YAML conversion` |
+| :material-alert: `YamlDocumentError` | 文档编辑后使用过期的 `Node` | `document has been modified; re-find the node` |
+
+上面每一道拒绝都是针对当前构建跑出来的；完整的词汇表 — 包括那些回通用 `edit failed: edit-error` 的根形状删除，以及没有任何调用能到达的令牌 — 逐条列在 [编辑原因令牌](../api/exceptions.md#edit-reason-tokens)。`str(exc)` 是理由唯一出现的地方：这些类都没有 `.reason` 属性。
 
 所有编辑都是原子的 — 失败的编辑不会改动文档（及其修订号）。
 

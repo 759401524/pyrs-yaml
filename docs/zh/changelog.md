@@ -17,6 +17,29 @@ status: new
 
 ### [Unreleased]
 
+#### 修复
+
+- **三条关于穿过别名编辑的说法是假的，而消息打印的那套原因词汇表现已列出** — 那些页面写道穿过别名的
+  一次写入会抛 `cannot-edit-alias`，又写道 `set()` 在一次写入会让还活着的定义失去引用时回
+  `anchor-is-referenced`。在发布的构建上实测：`base: &x 1\nuse: *x` 上的 `set("$.use", 2)` 成功并留
+  下 `base: &x 1\nuse: 2`；`delete("$.use")` 留下 `base: &x 1`；`rename("$.use", "used")` 留下
+  `used: *x`；而同一对上的 `set("$.base", 2)` 留下 `base: &x 2\nuse: *x` — 没有任何 `set` 路由能到达
+  那个令牌，它住在 delete、rename、move 与元数据这几条路径上。别名的*父节点*仍然被拒绝
+  （`set("$.prod.timeout", 99)` → `edit failed: cannot-edit-alias`），别名节点上的那十二个元数据动词
+  也一样。`api/exceptions.md` 得到一张编辑原因令牌表，列出十五个可达令牌、应答每个令牌的那次调用与完
+  整的实测消息 — `edit failed: cannot-descend-into-scalar:b`、`duplicate-key-target`、
+  `unknown on_duplicate "both"; expected one, all or error` — 并说明哪些已声明的变体没有构造点
+  （`wildcard-or-deep-scan`、`invalid-index`、`invalid-path`）。`validate()` 的委托现在写在使用者会
+  碰到它的位置：本项目发布的任何东西都不安装 `jsonschema`（基础依赖是 `typing-extensions`，extras 是
+  `cli`/`pydantic`/`settings`），所以全新安装回一个裸的 `ModuleNotFoundError`，而作为文本传入的
+  schema 先由 `json.loads` 读取，因此 YAML 拼法的 schema 抛 `json.decoder.JSONDecodeError`；两条都登
+  记在 .ci/known-residuals.json 里，名为
+  `api:validate-evaluator-is-not-installed-by-anything-we-ship` 与
+  `api:validate-schema-text-is-json-only`，而这里都不修。墙钟表也在 2026-11-04 按本版本的构建重测过
+  一次，因此每一格、正文区间与出处日期都出自同一份快照；日文的两页还删掉了一个英文版从未有过、且与现
+  行消息格式相矛盾的错误消息示例块，并把只写 `dict` 的 `validate()` 签名补成 `str | dict`。英文版与
+  它的 zh/ja/ko 镜像。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

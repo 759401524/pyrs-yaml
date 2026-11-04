@@ -22,27 +22,27 @@ pyrs-yaml のパフォーマンスベンチマーク。CodSpeed のシミュレ�
 <!-- bench: layout=sizes format=yaml operation=parse sizes=small,medium,large baseline=PyYAML -->
 | YAMLサイズ | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | PyYAML比の高速化 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| 小（約100 B） | 4.4 µs | 151 µs | 347 µs | 1.9 µs | 5.7 µs | **35×** |
-| 中（約690 B） | 27 µs | 976 µs | 2.3 ms | 10 µs | 33 µs | **37×** |
-| 大（約2 KB） | 72 µs | 2.3 ms | 5.4 ms | 27 µs | 86 µs | **32×** |
+| 小（約100 B） | 5.3 µs | 144 µs | 338 µs | 1.9 µs | 5.4 µs | **27×** |
+| 中（約690 B） | 25 µs | 994 µs | 2.2 ms | 10 µs | 31 µs | **40×** |
+| 大（約2 KB） | 69 µs | 2.3 ms | 5.5 ms | 26 µs | 74 µs | **34×** |
 
 ## シリアライズパフォーマンス
 
 <!-- bench: layout=sizes format=yaml operation=serialize sizes=small,medium,large baseline=PyYAML -->
 | YAMLサイズ | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | PyYAML比の高速化 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| 小（約100 B） | 0.42 µs | 86 µs | 227 µs | 0.97 µs | 3.1 µs | **204×** |
-| 中（約690 B） | 1.6 µs | 568 µs | 1.4 ms | 6.1 µs | 17 µs | **347×** |
-| 大（約2 KB） | 5.4 µs | 1.4 ms | 3.3 ms | 17 µs | 42 µs | **261×** |
+| 小（約100 B） | 0.28 µs | 88 µs | 220 µs | 0.91 µs | 3.6 µs | **311×** |
+| 中（約690 B） | 1.4 µs | 450 µs | 1.3 ms | 5.9 µs | 15 µs | **316×** |
+| 大（約2 KB） | 4.8 µs | 1.3 ms | 3.0 ms | 16 µs | 42 µs | **276×** |
 
 ## ラウンドトリップパフォーマンス
 
 <!-- bench: layout=sizes format=yaml operation=roundtrip sizes=small,medium,large baseline=PyYAML -->
 | YAMLサイズ | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | PyYAML比の高速化 |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| 小（約100 B） | 5.7 µs | 265 µs | 619 µs | 3.1 µs | 9.7 µs | **47×** |
-| 中（約690 B） | 30 µs | 1.7 ms | 3.6 ms | 17 µs | 51 µs | **55×** |
-| 大（約2 KB） | 82 µs | 3.9 ms | 9.1 ms | 48 µs | 135 µs | **48×** |
+| 小（約100 B） | 5.6 µs | 252 µs | 567 µs | 2.8 µs | 10 µs | **45×** |
+| 中（約690 B） | 26 µs | 1.3 ms | 3.6 ms | 17 µs | 48 µs | **50×** |
+| 大（約2 KB） | 77 µs | 3.9 ms | 8.2 ms | 47 µs | 118 µs | **51×** |
 
 ### JSON
 
@@ -51,8 +51,8 @@ pyrs-yaml のパフォーマンスベンチマーク。CodSpeed のシミュレ�
 <!-- bench: layout=sizes format=json operation=parse sizes=config,large baseline=json -->
 | 文書 | pyrs-yaml | json | orjson | json比の高速化 |
 | --- | ---: | ---: | ---: | ---: |
-| 設定 (~123 B) | 0.56 µs | 1.3 µs | 0.45 µs | **2.3×** |
-| 大 (~1.9 KB) | 7.8 µs | 9.8 µs | 4.5 µs | **1.3×** |
+| 設定 (~123 B) | 0.56 µs | 1.3 µs | 0.43 µs | **2.3×** |
+| 大 (~1.9 KB) | 6.7 µs | 9.4 µs | 4.7 µs | **1.4×** |
 
 ### TOML
 
@@ -61,8 +61,8 @@ TOML テキストを `pyrs_yaml.load_toml`、標準ライブラリの `tomllib`�
 <!-- bench: layout=sizes format=toml operation=parse sizes=hot,config baseline=rtoml -->
 | 文書 | pyrs-yaml | tomllib | rtoml | rtoml比の高速化 |
 | --- | ---: | ---: | ---: | ---: |
-| ホット (~1.8 KB) | 29 µs | 212 µs | 20 µs | **0.7×** |
-| 設定 (~2.1 KB) | 45 µs | 358 µs | 31 µs | **0.7×** |
+| ホット (~1.8 KB) | 26 µs | 204 µs | 18 µs | **0.7×** |
+| 設定 (~2.1 KB) | 41 µs | 361 µs | 30 µs | **0.7×** |
 
 ### JSON5
 
@@ -71,7 +71,7 @@ TOML テキストを `pyrs_yaml.load_toml`、標準ライブラリの `tomllib`�
 <!-- bench: layout=sizes format=json5 operation=parse sizes=config baseline=pyjson5 -->
 | 文書 | pyrs-yaml | pyjson5 | pyjson5比の高速化 |
 | --- | ---: | ---: | ---: |
-| 設定 (~83 B) | 2.0 µs | 0.82 µs | **0.4×** |
+| 設定 (~83 B) | 1.9 µs | 0.65 µs | **0.3×** |
 
 ## Rust側ベンチマーク（divan）
 
@@ -96,17 +96,17 @@ Rust の CodSpeed レグ（`cargo codspeed`、シミュレーションモード�
 
 ## 主な知見
 
-1. :material-trending-up: **pyrs-yamlはPyYAMLより解析で32〜37倍、シリアライズで204〜347倍高速**
-2. :material-trending-up: **pyrs-yamlはラウンドトリップ機能を維持しながらruamel.yamlより解析で75〜85倍、シリアライズで540〜832倍高速**
-3. :material-trending-up: **ラウンドトリップはPyYAMLより47〜55倍、ruamel.yamlより109〜119倍高速**
-4. :material-scale-balance: **Rust バックエンドの相手が結果を分けます** — `yaml-rs` はラウンドトリップツリーではなく素のオブジェクトを返すため、解析で2.3〜2.7倍、ラウンドトリップで1.7〜1.8倍速い。代わりに pyrs-yaml のシリアライズは2.3〜3.7倍速くなります
+1. :material-trending-up: **pyrs-yamlはPyYAMLより解析で27〜40倍、シリアライズで276〜316倍高速**
+2. :material-trending-up: **pyrs-yamlはラウンドトリップ機能を維持しながらruamel.yamlより解析で64〜89倍、シリアライズで634〜888倍高速**
+3. :material-trending-up: **ラウンドトリップはPyYAMLより45〜51倍、ruamel.yamlより101〜135倍高速**
+4. :material-scale-balance: **Rust バックエンドの相手が結果を分けます** — `yaml-rs` はラウンドトリップツリーではなく素のオブジェクトを返すため、解析で2.5〜2.8倍、ラウンドトリップで1.6〜2.0倍速い。代わりに pyrs-yaml のシリアライズは3.2〜4.1倍速くなります
 5. :material-bolt: **Rust側パース**は Python 呼び出しのオーバーヘッドがなく、シミュレーションレグが操作ごとにコストを分解します
 6. :material-bolt: **シリアライズ**は同じシミュレーションレグで常にパースコストを下回ります
 7. :material-chart-line: **高速化の優位性は、あらゆるドキュメントサイズで一貫している**
 
 ## 注記
 
-- Python 表：2026-10-25 に `scripts/bench_snapshot.py` が記録したバッチ計時のウォールクロック値。スナップショット（`.ci/perf-snapshot.json`）に環境、ライブラリのバージョン、フィクスチャのサイズを記録
+- Python 表：2026-11-04 に `scripts/bench_snapshot.py` が記録したバッチ計時のウォールクロック値。スナップショット（`.ci/perf-snapshot.json`）に環境、ライブラリのバージョン、フィクスチャのサイズを記録
 - CodSpeed CI はシミュレーションモードで命令数を報告し、相対トレンドの追跡に使います
 - 倍率は目安であり、インタープリタ、ハードウェア、文書サイズによって変動します
 - PyYAMLのベンチマークは `safe_load` / `safe_dump` を使用（同等の安全保証）

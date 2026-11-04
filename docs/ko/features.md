@@ -26,16 +26,16 @@ PyYAML과 달리, pyrs-yaml는 **모든 서식과 메타데이터를 유지**합
 ## 성능
 
 !!! note "벤치마크 환경"
-    CodSpeed CI는 시뮬레이션 모드(실제 시간이 아닌 명령 수)로 실행됩니다. 아래 수치는 2026-10-25에 `scripts/bench_snapshot.py`가 배치 측정으로 기록한 값입니다. 상대 속도는 참고용이며 인터프리터, 하드웨어, 문서에 따라 달라집니다.
+    CodSpeed CI는 시뮬레이션 모드(실제 시간이 아닌 명령 수)로 실행됩니다. 아래 수치는 2026-11-04에 `scripts/bench_snapshot.py`가 배치 측정으로 기록한 값입니다. 상대 속도는 참고용이며 인터프리터, 하드웨어, 문서에 따라 달라집니다.
 
-Rust 백엔드는 PyYAML보다 파싱 **32–37배**, 직렬화 **204–347배 빠릅니다**:
+Rust 백엔드는 PyYAML보다 파싱 **27–40배**, 직렬화 **276–316배 빠릅니다**:
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 72 µs | 2.3 ms |
-| Serialize (large) | 5.4 µs | 1.4 ms |
-| Round-trip | 82 µs | 3.9 ms |
+| Parse (large) | 69 µs | 2.3 ms |
+| Serialize (large) | 4.8 µs | 1.3 ms |
+| Round-trip | 77 µs | 3.9 ms |
 
 ## 커스텀 AST
 
@@ -106,6 +106,8 @@ doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
 검증 실패 시 `YamlValidateError`를 발생시킵니다.
+
+평가 엔진은 별도 설치입니다. `jsonschema`는 pyrs-yaml의 의존성이 아닙니다 — 기본 설치는 `typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`입니다 — 그래서 환경에 평가 엔진이 없으면 `validate()`는 `YamlValidateError`가 아니라 `jsonschema` 이름을 밝히는 맨 `ModuleNotFoundError`를 발생시킵니다. `pip install jsonschema`로 직접 설치하세요. 위 예시의 스키마 텍스트는 JSON입니다: YAML로 철자한 스키마는 어떤 규칙도 읽기 전에 `json.loads`에서 `json.decoder.JSONDecodeError`로 거부됩니다. 둘 다 이 표면의 알려진 경계이지 이번 릴리스의 결함이 아니며, 프로젝트 자신의 평가 엔진을 만드는 것은 별개의 설계 문제입니다.
 
 ## 중복 키
 

@@ -15,6 +15,32 @@ status: new
 
 ### [Unreleased]
 
+#### 修正
+
+- **エイリアス越しの編集についての三つの文は偽りもので、メッセージが印字する理由の語彙は一覧になりま
+  した** — 各ページは、エイリアスを経由する書き込みが `cannot-edit-alias` を投げ、生きている定義を孤
+  立させる書き込みのときに `set()` が `anchor-is-referenced` と答えると述べていました。出荷済みのビ
+  ルドで実測すると、`base: &x 1\nuse: *x` に対する `set("$.use", 2)` は成功して `base: &x 1\nuse: 2`
+  を残し、`delete("$.use")` は `base: &x 1` を残し、`rename("$.use", "used")` は `used: *x` を残し、
+  同じ組での `set("$.base", 2)` は `base: &x 2\nuse: *x` を残します — そのトークンに届く `set` の経
+  路は存在せず、そのトークンは削除・リネーム・移動・メタデータの各経路に住んでいます。エイリアスの*
+  親*は依然として拒否されます（`set("$.prod.timeout", 99)` → `edit failed: cannot-edit-alias`）し、
+  エイリアスノード上の十二個のメタデータの動詞も同じです。`api/exceptions.md` は編集理由トークンの表
+  を得て、到達可能な十五個のトークンを、それぞれに答える呼び出しと完全な実測メッセージとともに名乗り
+  — `edit failed: cannot-descend-into-scalar:b`、`duplicate-key-target`、
+  `unknown on_duplicate "both"; expected one, all or error` — 構成箇所を持たない宣言済みの変種
+  （`wildcard-or-deep-scan`、`invalid-index`、`invalid-path`）も述べています。`validate()` の委譲
+  は、ユーザーがそれと出会う場所に今は書かれています — 本プロジェクトが出荷するどれにも `jsonschema`
+  はインストールされず（基底の依存は `typing-extensions`、extra は `cli`/`pydantic`/`settings`）、だ
+  から基底のインストールでは裸の `ModuleNotFoundError` が答え、テキストで渡したスキーマはまず
+  `json.loads` で読まれるので、YAML の綴りのスキーマは `json.decoder.JSONDecodeError` を投げます。両
+  方とも .ci/known-residuals.json に `api:validate-evaluator-is-not-installed-by-anything-we-ship`
+  と `api:validate-schema-text-is-json-only` として登記済みで、どちらもここでは直しません。ウォール
+  クロック表も本リリースのビルドで 2026-11-04 に再測定したので、各セル・本文の範囲・出典日付はすべて
+  同じスナップショットを指します。日本語の二ページからは、英語版が持たず現行のメッセージ形式とも矛盾
+  するエラーメッセージ例のブロックを削除し、`dict` だけで書かれていた `validate()` のシグネチャを
+  `str | dict` に直しました。英語とその zh/ja/ko の双子。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

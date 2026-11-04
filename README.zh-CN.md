@@ -22,7 +22,7 @@
 - **高性能** — Rust 后端，`safe_dump`/`from_dict` 比 v0.10 快 7 倍（直接写入器，无中间 AST）；`safe_load`/`safe_loads` 快速路径在无锚点时跳过锚点追踪
 - **深度限制解析** — `max_depth`（默认 1000）作用于 `parse`、`parse_file`、`parse_all_docs`、`parse_stream`、`safe_load`、`safe_loads`、`read_markdown`、`read_markdown_str`，防止深度嵌套攻击
 - **NumPy ndarray 支持** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` 将任意维度（0 维到 N 维）的 `numpy.ndarray` 零拷贝 Rust 调度序列化
-- **JSON Schema 校验** — `YamlDocument.validate(schema)` 对 JSON Schema 校验已解析文档；失败时抛出 `YamlValidateError`
+- **JSON Schema 校验** — `YamlDocument.validate(schema)` 对 JSON Schema 校验已解析文档；失败时抛出 `YamlValidateError`；`jsonschema` 求值器需要另行安装（参见[安装](#安装)）
 - **异步 I/O** — `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` 通过 `asyncio.run_in_executor`
 - **增量重新解析** — `doc.source()` + `doc.reparse()` 用于以不同选项（如 `schema="yaml1.1"`）就地重新解析存储的 YAML
 - **JSON 序列化** — `doc.to_json()` 将文档导出为标准 JSON
@@ -42,6 +42,12 @@ pip install pyrs-yaml
 
 ```bash
 uv pip install pyrs-yaml
+```
+
+JSON Schema 校验不在上述两种安装的覆盖范围内：`Document.validate()` 把求值委托给 [`jsonschema`](https://pypi.org/project/jsonschema/)，而基础包（只依赖 `typing-extensions`）和它的 `cli`、`pydantic`、`settings` 三个 extras 都不会带上它。没有求值器时，这次调用抛 `ModuleNotFoundError: No module named 'jsonschema'`。
+
+```bash
+pip install jsonschema
 ```
 
 ### CLI

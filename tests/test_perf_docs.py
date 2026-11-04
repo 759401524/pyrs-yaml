@@ -138,9 +138,11 @@ def assert_speedup(cell: str, expected: float, message: str) -> None:
             f"{message}: shows {cell}, snapshot implies {expected:.1f}x"
         )
     else:
-        assert abs(shown_value - expected) <= 0.06 * expected, (
-            f"{message}: shows {cell}, snapshot implies {expected:.2f}x"
-        )
+        # Below ten the cell carries one decimal, so the only value a correct cell can hold is
+        # the writer's own rounding of the reading. A relative band was the wrong shape here: 6%
+        # of 0.34 is 0.02, which rejected the correctly rounded `0.3` for a 0.34 loss while
+        # accepting twice as much slack at 9.9.
+        assert shown_value == float(shown(expected)), f"{message}: shows {cell}, snapshot implies {expected:.2f}x"
 
 
 def assert_relative(cell: str, ratio: float, message: str) -> None:

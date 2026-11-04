@@ -81,7 +81,7 @@ doc.to_yaml()
 | PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
 | ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
-**pyrs-yaml は PyYAML より 47–55 倍速く、ruamel.yaml より 109–119 倍速く**、すべてを保持します。
+**pyrs-yaml は PyYAML より 45–51 倍速く、ruamel.yaml より 101–135 倍速く**、すべてを保持します。
 
 ---
 

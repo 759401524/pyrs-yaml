@@ -649,6 +649,15 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — タグハンドラエラー (`ValueError` を継承)
 - `YamlTagSkip` — ノードを次のハンドラへ渡す制御フローセンチネル (`YamlTagError` を継承)
 
+`Document.validate()` はこの一族の外に、本リリースが保つ二つの形で答えます。規則は
+`jsonschema` へ委譲しますが、ここにあるどれそれもそれをインストールしません——パッケージは
+`typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings` です——だから評価器が
+なければ、この呼び出しは裸の `ModuleNotFoundError: No module named 'jsonschema'` を投げます。
+スキーマなら通す文書でも同じです。そしてテキストで与えた `schema` は評価の前に `json.loads` で
+読まれるため、YAML の綴りは `json.decoder.JSONDecodeError` を投げます——評価器の有無に
+かかわらず。どちらも既知の境界で、利用者向けの説明は [クイックスタート](../quick-start.md) と
+[カスタムスキーマ](../guides/custom-schema.md) に置いています。
+
 詳細は [例外](exceptions.md) ページを参照してください。
 
 ## :material-information: バージョン

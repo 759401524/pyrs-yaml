@@ -23,7 +23,7 @@ A high-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with per
 - **High Performance** - Rust backend, 7× faster `safe_dump`/`from_dict` vs v0.10 (direct writer, no intermediate AST); fast-path `safe_load`/`safe_loads` skips anchor tracking when none present
 - **Depth-limited parsing** - `max_depth` (default 1000) on `parse`, `parse_file`, `parse_all_docs`, `parse_stream`, `safe_load`, `safe_loads`, `read_markdown`, `read_markdown_str` to prevent deep nesting attacks
 - **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
-- **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures
+- **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures; the `jsonschema` evaluator is a separate install (see [Installation](#installation))
 - **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
 - **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options (e.g. `schema="yaml1.1"`)
 - **JSON serialization** - `doc.to_json()` exports documents to standard JSON
@@ -43,6 +43,16 @@ Or with uv:
 
 ```bash
 uv pip install pyrs-yaml
+```
+
+JSON Schema validation is not covered by either install: `Document.validate()` delegates
+to [`jsonschema`](https://pypi.org/project/jsonschema/), and neither the base package
+(which depends on `typing-extensions` alone) nor its `cli`, `pydantic` and `settings`
+extras bring it in. Without an evaluator the call raises
+`ModuleNotFoundError: No module named 'jsonschema'`.
+
+```bash
+pip install jsonschema
 ```
 
 ### CLI

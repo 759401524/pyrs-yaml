@@ -59,6 +59,8 @@ root_type -> str
 
 返回 `"scalar"`、`"mapping"`、`"sequence"`、`"null"` 之一。
 
+别名节点报告的是它*目标*的类型，从不用自己的拼法：在 `defaults: &d\n  timeout: 30\nprod: *d\n` 与 `src: &s\n  - a\nref: *s\n` 上实测，`$.prod` 与 `$.ref` 处的节点分别回 `"mapping"` 与 `"sequence"`，而 `base: &x 1\nuse: *x\n` 里 `$.use` 处的标量别名回 `"scalar"`。
+
 #### `_path`
 
 定位到文档 AST 中此节点的路径元组。
@@ -210,6 +212,14 @@ set_value(value: Any, create_missing: bool = False) -> None
 
 当 `create_missing=True` 时，路径上缺失的中间映射键会被创建为嵌套映射。索引段缺失仍然会报错。
 
+实测到的边界：
+
+- `find()` 解析不到的节点 — 那个 `Node(invalid)` 对象 — 依然能写：`doc.node().find("$.zz").set_value(3)` 会加上 `zz: 3`。被拒绝的是读取它的 `value`（`KeyError`），不是这次写入
+- 在**别名**节点上这次调用同样不是拒绝 — 它就地重写那个别名：`parse("base: &x 1\nuse: *x\n").node().find("$.use").set_value(42)` 发射 `base: &x 1\nuse: 42\n`
+- **穿透**别名写入会被拒绝：`edit failed: cannot-edit-alias`
+- 在过期节点上它发出 `RuntimeWarning` 并抛出 `YamlDocumentError: document has been modified; re-find the node`
+- 写入器不认识的 Python 值是一条 `YamlTypeError`（`Unsupported Python type for YAML conversion`），不是编辑错误
+
 #### `append()`
 
 向序列节点追加值。
@@ -234,6 +244,8 @@ insert(index: int, value: Any) -> None
 delete(on_duplicate: str = "one") -> None
 ```
 
+实测到的拒绝：根节点回 `YamlEditError: edit failed: edit-error`，锚点仍被某个别名引用的节点回 `edit failed: anchor-is-referenced`，而在两对键拼出同一个名字的文档上 `on_duplicate="error"` 回 `edit failed: duplicate-key-target`。删除一个**别名**那一对并不是拒绝 — 在 `defaults: &d\n  timeout: 30\nprod: *d\n` 上 `find("$.prod").delete()` 留下 `defaults: &d\n  timeout: 30\n`。过期的节点在下次访问时回 `YamlDocumentError`，但 `is_valid()` 依然回 `True`。
+
 #### `rename()`
 
 重命名此节点的映射键。该节点必须是映射值。
@@ -241,6 +253,8 @@ delete(on_duplicate: str = "one") -> None
 ```python
 rename(new_key: str) -> None
 ```
+
+实测到的拒绝：根节点回 `YamlEditError: edit failed: cannot-rename-root`，序列元素 — 它没有键 — 回 `edit failed: cannot-rename-complex-key`，映射里已经持有的 `new_key` 回 `edit failed: rename-key-exists`，而键本身是复杂节点的那个节点根本到不了引擎：`parse("? [1, 2]\n: value\n").node().children[0].rename("b")` 回 `YamlEditError: ValueError: segment must be str or int`。重命名为同一个键是空操作，而在别名那一对上，这次调用重命名的是键而不是给出拒绝 — 在 `defaults: &d\n  timeout: 30\nprod: *d\n` 上 `find("$.prod").rename("prod2")` 留下 `defaults: &d\n  timeout: 30\nprod2: *d\n`。
 
 #### `set_comment()`
 
@@ -266,6 +280,8 @@ remove_comment() -> None
 set_anchor(name: str) -> None
 ```
 
+只要还有别名指向当前锚点，这次调用就以 `YamlEditError: edit failed: anchor-is-referenced` 被拒绝 — 在 `base: &x 1\nuse: *x\n` 上实测，`find("$.base").set_anchor("renamed")` 会失败；而别名不在了之后，同一个调用在 `base: &x 1\n` 上发射 `base: &renamed 1`。在别名节点本身上，它回 `edit failed: cannot-edit-alias`。
+
 #### `remove_anchor()`
 
 删除此节点的锚点。
@@ -273,6 +289,8 @@ set_anchor(name: str) -> None
 ```python
 remove_anchor() -> None
 ```
+
+与 `set_anchor()` 是同一道守卫：在 `base: &x 1\nuse: *x\n` 上实测，`find("$.base").remove_anchor()` 回 `YamlEditError: edit failed: anchor-is-referenced`。
 
 #### `set_tag()`
 
@@ -329,6 +347,8 @@ Move this subtree to a new path in the same document (copies the subtree to `new
 ```python
 move(new_path: str) -> None
 ```
+
+实测到的边界：父节点存在的目标不必自己就存在 — 在 `src:\n  x: 1\n` 上 `find("$.src").move("$.nope")` 留下 `nope:\n  x: 1\n` — 而中间键缺失的目标回 `YamlEditError: edit failed: missing-path:deep`。替换一个标量目标同样可行：`dst: 2` 变成 `dst:\n  x: 1\n`。移动根节点回 `edit failed: edit-error`，把子树移到它自己所在的路径上会把文档清空（`find("$.src").move("$.src")` 留下 `{}\n`），而目标位置上的值仍被某个别名引用时回 `edit failed: anchor-is-referenced`。
 
 #### `to_yaml()`
 

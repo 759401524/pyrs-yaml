@@ -124,7 +124,13 @@ Get the root node type as a string.
 root_type() -> str
 ```
 
-**Returns:** One of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"`.
+**Returns:** One of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`.
+
+`"alias"` is a spelling the binding carries for an alias root, but no document read reaches it: an
+alias needs its anchor earlier in the same document, so a root alias is refused by the parser.
+`pyrs_yaml.parse("*x\n")` answers `YamlParseError: YAML parse error: while parsing node, found
+unknown anchor at char 0 line 1 column 1`, and the cross-document form `"--- &a 1\n--- *a\n"` is
+refused the same way at line 2.
 
 **Example:**
 
@@ -169,7 +175,15 @@ validate(schema: str | dict[str, Any]) -> None
 
 **Raises:**
 
-- `YamlValidateError` — Document does not conform to the schema
+- `YamlValidateError` — Document does not conform to the schema. A schema that is neither `str` nor a mapping arrives here too, with the engine's sentence as its text: `doc.validate(3)` answers `TypeError: argument of type 'int' is not iterable`
+
+Two refusals come from outside this class, because evaluation is delegated to the Python
+`jsonschema` package and no extra this project publishes installs it:
+
+- With `jsonschema` unimportable, `doc.validate({"type": "object"})` answers a bare `ModuleNotFoundError: No module named 'jsonschema'`
+- A `str` schema runs `json.loads` before the evaluator, so a YAML-spelled schema text answers `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — the same whether or not `jsonschema` is installed
+
+Both are recorded with their reproduction in [Exceptions — YamlValidateError](exceptions.md#yamlvalidateerror).
 
 **Example:**
 
@@ -269,8 +283,10 @@ empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
 **Raises:**
 
 - `YamlPathError` — Malformed path (wildcards/`..` are rejected)
-- `YamlEditError` — Navigation failure, missing intermediate key (when `create_missing=False`), etc.
-- `YamlTypeError` — Value of a Python type the writer does not know; a `tuple` is accepted and written as a sequence
+- `YamlEditError` — A path step that cannot be applied, named in the message: `edit failed: cannot-edit-alias` for a step through an alias, `create-needs-mapping` for a step into a scalar or onto the wrong container shape, `cannot-descend-into-scalar:<segment>` when `create_missing=True` meets a scalar, `missing-path:<key>` for a key that is missing **before** the one being written, `index-out-of-range-edit:<index>` for an index past the sequence. A missing **final** key is not a refusal — `parse("a: 1\n").set("$.zz", 3)` emits `a: 1\nzz: 3\n` — and neither is writing the source of a live anchor: `set("$.base", 2)` on `base: &x 1\nuse: *x\n` re-emits `base: &x 2\nuse: *x\n`, keeping `&x` where its alias still finds it
+- `YamlTypeError` — Value of a Python type the writer does not know; a `tuple` is accepted and written as a sequence, and `bytes` is accepted as `!!binary`
+
+The full measured vocabulary, call by call, is [Edit reason tokens](exceptions.md#edit-reason-tokens).
 
 #### `walk()`
 
@@ -330,6 +346,10 @@ doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", -1, "x")  # items: [a, b, x, c]
 ```
 
+**Raises:**
+
+- `YamlEditError` — `edit failed: not-a-sequence` when the path resolves to a mapping or a scalar, `edit failed: index-out-of-range-edit` for an index above `len` or below `-len`, `edit failed: missing-path:<key>` for a path that does not resolve, `edit failed: cannot-edit-alias` for a path through an alias, `edit failed: cannot-descend-into-scalar:<segment>` for a path under a scalar value
+
 #### `append()`
 
 Append a value to a sequence. The path must resolve to a sequence.
@@ -342,6 +362,8 @@ append(path: str, value: Any) -> None
 doc = pyrs_yaml.parse("items: [a, b]")
 doc.append("$.items", "c")
 ```
+
+**Raises:** the same `YamlEditError` reasons as `insert()`, measured for a non-sequence target as `edit failed: not-a-sequence` and for an alias parent as `edit failed: cannot-edit-alias`.
 
 #### `delete()`
 
@@ -358,6 +380,10 @@ doc.delete("$.b")
 # c: 3
 ```
 
+**Raises:**
+
+- `YamlEditError` — `edit failed: missing-path` for a key the document does not hold (this is what `del doc["zz"]` answers too), `edit failed: index-out-of-range-edit` for an index outside the sequence, `edit failed: anchor-is-referenced` when the node's anchor is still referenced, `edit failed: duplicate-key-target` when `on_duplicate="error"` and more than one pair spells the key, `edit failed: unknown on_duplicate "<value>"; expected one, all or error` for any other `on_duplicate`, `edit failed: cannot-edit-alias` for a path through an alias, and `edit failed: edit-error` for `delete("$")` — the root has no segment left to remove
+
 #### `rename()`
 
 Rename a mapping key in place, preserving position and key metadata.
@@ -371,6 +397,13 @@ doc = pyrs_yaml.parse("old: 1  # comment")
 doc.rename("$.old", "new")
 # new: 1  # comment
 ```
+
+**Raises:**
+
+- `YamlEditError` — `edit failed: cannot-rename-root` for `$`, `edit failed: cannot-rename-complex-key` for a complex key or a sequence element, `edit failed: rename-key-exists` for a `new_key` the mapping already holds, `edit failed: missing-path` for a path that does not resolve, `edit failed: cannot-edit-alias` for a path through an alias
+
+Renaming a key to itself is not a refusal: measured on `a: 1`, `rename("$.a", "a")` leaves the
+document as `a: 1`.
 
 #### `node()`
 
@@ -413,9 +446,13 @@ doc[0]  # For sequences
 
 **Raises:**
 
-- `KeyError` — Key not found in mapping
-- `IndexError` — Index out of range for sequence
-- `TypeError` — Document not subscriptable
+- `KeyError` — Key not found in mapping. Measured text is `Key 'zz' not found`, and because this is the builtin `KeyError`, `str(exc)` shows it quoted: `"Key 'zz' not found"`
+- `IndexError` — Index out of range for sequence. Measured on `pyrs_yaml.parse("- a\n- b\n")[99]`: `Index 99 out of range (len=2)`
+- `TypeError` — the `YamlTypeError` arm for the wrong key kind or a root that cannot be subscripted at all, each measured: `parse("- a\n")["k"]` → `Index must be an integer`, `parse("a: 1\n")[99]` → `Key must be a string`, `parse("just a scalar")[0]` → `YamlDocument is not subscriptable`
+
+Every text above follows `pyrs_yaml.set_language()` — measured under `zh-CN`, which answers
+`索引必须是整数`, `键必须是字符串`, `YamlDocument 不支持下标操作` and
+`索引 99 超出范围（长度=2）` for the four arms. See [i18n Support](exceptions.md#i18n-support).
 
 #### `__contains__()`
 

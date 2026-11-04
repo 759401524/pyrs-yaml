@@ -117,6 +117,22 @@ doc.validate(schema)  # None を返し、不合格なら YamlValidateError を�
 インスタンスを `jsonschema.validate()` に渡しても同じ判定になります。ファイルの検証は
 [CLI ガイド](cli.md)を参照してください。
 
+その委譲には二つの境界が付いてきますが、本リリースはどちらも保ちます — どちらもプロジェクトが
+登記した既知の境界で欠陥ではなく、自前の評価器を作るのは別個の設計問題です。
+
+**どのインストール経路も評価器は連れてきません。** pyrs-yaml は `typing-extensions` のみに依存し、
+extra は `cli`、`pydantic`、`settings` なので、ライブラリだけの環境では `doc.validate(schema)` は
+`ModuleNotFoundError: No module named 'jsonschema'` を投げます — スキーマなら通す文書でも
+`Yaml*` のクラスは答えません。経路は `pip install jsonschema` です。
+
+**スキーマのテキストは JSON であり YAML ではありません。** このページの `register_schema()` や
+`load_schema()` が読む定義と違い、`validate()` に渡した `str` は評価器を参照する前に `json.loads` を
+通るので、`doc.validate("type: object\nrequired: [port]\n")` は
+`json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` を投げます — `jsonschema`
+のインストールの有無にかかわらず。CLI も同じファイルを同じふうに拒否します：
+`pyrs-yaml validate doc.yaml --schema-file schema.yaml` はその traceback を stderr に出し、1 で
+終わり、その `except YamlValidateError` 節は失敗を一度も見ません。
+
 ### インラインディクスキーマ
 
 個別に登録せず、ディクショナリを直接渡せます：

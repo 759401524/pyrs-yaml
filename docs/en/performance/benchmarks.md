@@ -32,27 +32,27 @@ wall-clock tables below are batch-timed readings from one machine, reproducible 
 <!-- bench: layout=sizes format=yaml operation=parse sizes=small,medium,large baseline=PyYAML -->
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | Speedup vs PyYAML |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| Small (~100 B) | 4.4 µs | 151 µs | 347 µs | 1.9 µs | 5.7 µs | **35×** |
-| Medium (~690 B) | 27 µs | 976 µs | 2.3 ms | 10 µs | 33 µs | **37×** |
-| Large (~2 KB) | 72 µs | 2.3 ms | 5.4 ms | 27 µs | 86 µs | **32×** |
+| Small (~100 B) | 5.3 µs | 144 µs | 338 µs | 1.9 µs | 5.4 µs | **27×** |
+| Medium (~690 B) | 25 µs | 994 µs | 2.2 ms | 10 µs | 31 µs | **40×** |
+| Large (~2 KB) | 69 µs | 2.3 ms | 5.5 ms | 26 µs | 74 µs | **34×** |
 
 ### Serialize Performance
 
 <!-- bench: layout=sizes format=yaml operation=serialize sizes=small,medium,large baseline=PyYAML -->
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | Speedup vs PyYAML |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| Small (~100 B) | 0.42 µs | 86 µs | 227 µs | 0.97 µs | 3.1 µs | **204×** |
-| Medium (~690 B) | 1.6 µs | 568 µs | 1.4 ms | 6.1 µs | 17 µs | **347×** |
-| Large (~2 KB) | 5.4 µs | 1.4 ms | 3.3 ms | 17 µs | 42 µs | **261×** |
+| Small (~100 B) | 0.28 µs | 88 µs | 220 µs | 0.91 µs | 3.6 µs | **311×** |
+| Medium (~690 B) | 1.4 µs | 450 µs | 1.3 ms | 5.9 µs | 15 µs | **316×** |
+| Large (~2 KB) | 4.8 µs | 1.3 ms | 3.0 ms | 16 µs | 42 µs | **276×** |
 
 ### Round-Trip Performance
 
 <!-- bench: layout=sizes format=yaml operation=roundtrip sizes=small,medium,large baseline=PyYAML -->
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | yaml-rs | ryaml | Speedup vs PyYAML |
 | ----------- | ----------- | -------- | ------------- | ---: | ---: | ------------------- |
-| Small (~100 B) | 5.7 µs | 265 µs | 619 µs | 3.1 µs | 9.7 µs | **47×** |
-| Medium (~690 B) | 30 µs | 1.7 ms | 3.6 ms | 17 µs | 51 µs | **55×** |
-| Large (~2 KB) | 82 µs | 3.9 ms | 9.1 ms | 48 µs | 135 µs | **48×** |
+| Small (~100 B) | 5.6 µs | 252 µs | 567 µs | 2.8 µs | 10 µs | **45×** |
+| Medium (~690 B) | 26 µs | 1.3 ms | 3.6 ms | 17 µs | 48 µs | **50×** |
+| Large (~2 KB) | 77 µs | 3.9 ms | 8.2 ms | 47 µs | 118 µs | **51×** |
 
 ### JSON
 
@@ -61,8 +61,8 @@ The same JSON text through three readers. `orjson` is the faster one on the larg
 <!-- bench: layout=sizes format=json operation=parse sizes=config,large baseline=json -->
 | Document | pyrs-yaml | json | orjson | Speedup vs json |
 | --- | ---: | ---: | ---: | ---: |
-| Config (~123 B) | 0.56 µs | 1.3 µs | 0.45 µs | **2.3×** |
-| Large (~1.9 KB) | 7.8 µs | 9.8 µs | 4.5 µs | **1.3×** |
+| Config (~123 B) | 0.56 µs | 1.3 µs | 0.43 µs | **2.3×** |
+| Large (~1.9 KB) | 6.7 µs | 9.4 µs | 4.7 µs | **1.4×** |
 
 ### TOML
 
@@ -71,8 +71,8 @@ TOML text through `pyrs_yaml.load_toml`, the standard library's `tomllib` and `r
 <!-- bench: layout=sizes format=toml operation=parse sizes=hot,config baseline=rtoml -->
 | Document | pyrs-yaml | tomllib | rtoml | Speedup vs rtoml |
 | --- | ---: | ---: | ---: | ---: |
-| Hot (~1.8 KB) | 29 µs | 212 µs | 20 µs | **0.7×** |
-| Config (~2.1 KB) | 45 µs | 358 µs | 31 µs | **0.7×** |
+| Hot (~1.8 KB) | 26 µs | 204 µs | 18 µs | **0.7×** |
+| Config (~2.1 KB) | 41 µs | 361 µs | 30 µs | **0.7×** |
 
 ### JSON5
 
@@ -81,7 +81,7 @@ One small JSON5 document against `pyjson5`, which is the only independent JSON5 
 <!-- bench: layout=sizes format=json5 operation=parse sizes=config baseline=pyjson5 -->
 | Document | pyrs-yaml | pyjson5 | Speedup vs pyjson5 |
 | --- | ---: | ---: | ---: |
-| Config (~83 B) | 2.0 µs | 0.82 µs | **0.4×** |
+| Config (~83 B) | 1.9 µs | 0.65 µs | **0.3×** |
 
 ### Rust-Side Benchmarks (divan)
 
@@ -109,17 +109,17 @@ not comparable.
 
 ### Key Takeaways
 
-1. :material-trending-up: **pyrs-yaml parses 32–37× faster and serializes 204–347× faster than PyYAML**
-2. :material-trending-up: **pyrs-yaml is 75–85× faster at parsing and 540–832× faster at serializing than ruamel.yaml** while matching its round-trip features
-3. :material-trending-up: **Round-trip is 47–55× faster than PyYAML and 109–119× faster than ruamel.yaml**
-4. :material-scale-balance: **The Rust-backed readers split the result** — `yaml-rs` decodes plain objects rather than a round-trip tree, and parses 2.3–2.7× faster and round-trips 1.7–1.8× faster; pyrs-yaml serializes 2.3–3.7× faster in return
+1. :material-trending-up: **pyrs-yaml parses 27–40× faster and serializes 276–316× faster than PyYAML**
+2. :material-trending-up: **pyrs-yaml is 64–89× faster at parsing and 634–888× faster at serializing than ruamel.yaml** while matching its round-trip features
+3. :material-trending-up: **Round-trip is 45–51× faster than PyYAML and 101–135× faster than ruamel.yaml**
+4. :material-scale-balance: **The Rust-backed readers split the result** — `yaml-rs` decodes plain objects rather than a round-trip tree, and parses 2.5–2.8× faster and round-trips 1.6–2.0× faster; pyrs-yaml serializes 3.2–4.1× faster in return
 5. :material-bolt: **Rust-side parsing** avoids the Python call overhead; the simulation leg decomposes parse cost by operation
 6. :material-bolt: **Serialization** stays well below parsing cost in the same simulation leg
 7. :material-chart-line: **The speed advantage holds across all document sizes**
 
 ### Notes
 
-- Python tables: batch-timed wall-clock readings recorded 2026-10-25 by `scripts/bench_snapshot.py`; the snapshot (`.ci/perf-snapshot.json`) records the environment, library versions and fixture sizes
+- Python tables: batch-timed wall-clock readings recorded 2026-11-04 by `scripts/bench_snapshot.py`; the snapshot (`.ci/perf-snapshot.json`) records the environment, library versions and fixture sizes
 - CodSpeed CI runs in simulation mode and reports instruction counts; use it for relative trends
 - Ratios are indicative and vary with interpreter, hardware, and document size
 - PyYAML benchmarks use `safe_load`/`safe_dump` (same safety guarantees)

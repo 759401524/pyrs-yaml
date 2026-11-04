@@ -15,6 +15,7 @@ status: new
 | **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t and 3.15t (prebuilt wheels) |
 | :material-monitor: **Platform** | Linux, macOS, Windows |
 | :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
+| :material-check-decagram: **JSON Schema** | `Document.validate()` needs `jsonschema`, which no install route here provides — the package depends on `typing-extensions` alone and its extras are `cli`, `pydantic` and `settings`; add `pip install jsonschema` |
 
 ### Install from PyPI
 

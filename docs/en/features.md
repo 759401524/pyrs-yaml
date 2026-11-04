@@ -29,18 +29,18 @@ Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 
 !!! note "Benchmark environment"
     CodSpeed CI runs in simulation mode (instruction counts, not wall-clock time). The figures
-    below are batch-timed wall-clock readings recorded on 2026-10-25 by
+    below are batch-timed wall-clock readings recorded on 2026-11-04 by
     `scripts/bench_snapshot.py`; relative speedups are indicative and vary with interpreter,
     hardware, and document.
 
-Rust backend delivers **32–37× faster parsing and 204–347× faster serialization** over PyYAML:
+Rust backend delivers **27–40× faster parsing and 276–316× faster serialization** over PyYAML:
 
 <!-- bench: layout=operations format=yaml operation=parse,serialize,roundtrip size=large -->
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 72 µs | 2.3 ms |
-| Serialize (large) | 5.4 µs | 1.4 ms |
-| Round-trip | 82 µs | 3.9 ms |
+| Parse (large) | 69 µs | 2.3 ms |
+| Serialize (large) | 4.8 µs | 1.3 ms |
+| Round-trip | 77 µs | 3.9 ms |
 
 ### Custom AST
 
@@ -111,6 +111,16 @@ doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
 Raises `YamlValidateError` on validation failure.
+
+The evaluator is a separate install. `jsonschema` is not a dependency of pyrs-yaml —
+the base install depends on `typing-extensions` alone, and the extras are `cli`,
+`pydantic` and `settings` — so with no evaluator in the environment `validate()`
+raises a bare `ModuleNotFoundError` naming `jsonschema` instead of `YamlValidateError`.
+Install it yourself with `pip install jsonschema`. The schema text in the example above
+is JSON: a YAML-spelled schema is refused by `json.loads` as
+`json.decoder.JSONDecodeError`, before any rule is read. Both are known boundaries
+of this surface, not defects of this release, and an evaluator of the project's own is
+a separate design question.
 
 ### YAML Schema Language
 

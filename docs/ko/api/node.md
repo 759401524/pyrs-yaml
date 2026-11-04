@@ -60,6 +60,11 @@ root_type -> str
 
 `"scalar"`, `"mapping"`, `"sequence"`, `"null"` 중 하나를 반환합니다.
 
+별칭 노드는 자기 **대상**의 타입을 알릴 뿐 자기만의 철자는 갖지 않습니다:
+`defaults: &d\n  timeout: 30\nprod: *d\n`와 `src: &s\n  - a\nref: *s\n`에서 측정하면
+`$.prod`와 `$.ref` 노드는 `"mapping"`과 `"sequence"`로 답하고, `base: &x 1\nuse: *x\n`의
+`$.use`에 있는 스칼라 별칭은 `"scalar"`로 답합니다.
+
 #### `_path`
 
 문서의 AST 내에서 이 노드로 이동하는 경로 튜플입니다.
@@ -211,6 +216,14 @@ set_value(value: Any, create_missing: bool = False) -> None
 
 `create_missing=True`를 사용하면 경로상의 누락된 중간 매핑 키가 중첩 매핑으로 생성됩니다. 인덱스 세그먼트가 누락된 경우는 여전히 오류입니다.
 
+측정된 모서리들:
+
+- `find()`가 해석하지 못한 노드 — `Node(invalid)` 객체 — 도 여전히 씁니다: `doc.node().find("$.zz").set_value(3)`은 `zz: 3`을 추가합니다. 거부되는 쪽은 쓰기가 아니라 그 `value` 읽기(`KeyError`)입니다
+- **별칭** 노드에서도 이 호출은 거부가 아니라 별칭을 제자리에서 다시 씁니다: `parse("base: &x 1\nuse: *x\n").node().find("$.use").set_value(42)`는 `base: &x 1\nuse: 42\n`를 발출합니다
+- 별칭 **을 통한** 쓰기는 거부됩니다: `edit failed: cannot-edit-alias`
+- 만료된 노드에서는 `RuntimeWarning`을 낸 뒤 `YamlDocumentError: document has been modified; re-find the node`를 발생시킵니다
+- 작성자가 알지 못하는 Python 값은 편집 오류가 아니라 `YamlTypeError`(`Unsupported Python type for YAML conversion`)입니다
+
 #### `append()`
 
 시퀀스 노드에 값을 추가합니다.
@@ -235,6 +248,14 @@ insert(index: int, value: Any) -> None
 delete(on_duplicate: str = "one") -> None
 ```
 
+측정된 거부들: 루트 노드는 `YamlEditError: edit failed: edit-error`로 답하고, 별칭이 아직
+참조하는 앵커를 가진 노드는 `edit failed: anchor-is-referenced`로 답하며, 같은 키를 두 짝이
+철자하는 문서에서 `on_duplicate="error"`는 `edit failed: duplicate-key-target`으로 답합니다.
+**별칭** 짝을 지우는 것은 거부가 아닙니다 —
+`defaults: &d\n  timeout: 30\nprod: *d\n`에서 `find("$.prod").delete()`는
+`defaults: &d\n  timeout: 30\n`만 남깁니다. 만료된 노드는 다음 접근에서 `YamlDocumentError`로
+답하지만 `is_valid()`는 여전히 `True`로 답합니다.
+
 #### `rename()`
 
 이 노드의 매핑 키를 변경합니다. 노드는 매핑 값이어야 합니다.
@@ -242,6 +263,15 @@ delete(on_duplicate: str = "one") -> None
 ```python
 rename(new_key: str) -> None
 ```
+
+측정된 거부들: 루트는 `YamlEditError: edit failed: cannot-rename-root`로 답하고, 키가 없는
+시퀀스 요소는 `edit failed: cannot-rename-complex-key`로 답하며, 매핑이 이미 갖고 있는
+`new_key`는 `edit failed: rename-key-exists`로 답하고, 키 자체가 복합 노드인 노드는 엔진까지
+닿지 않습니다: `parse("? [1, 2]\n: value\n").node().children[0].rename("b")`는
+`YamlEditError: ValueError: segment must be str or int`로 답합니다. 같은 키로 이름 변경하는
+것은 no-op이고, 별칭 짝에서는 이 호출이 거부되지 않고 키의 이름을 바꿉니다 —
+`defaults: &d\n  timeout: 30\nprod: *d\n`에서 `find("$.prod").rename("prod2")`는
+`defaults: &d\n  timeout: 30\nprod2: *d\n`를 남깁니다.
 
 #### `set_comment()`
 
@@ -267,6 +297,11 @@ remove_comment() -> None
 set_anchor(name: str) -> None
 ```
 
+별칭이 아직 현재 앵커를 가리키는 동안은 `YamlEditError: edit failed: anchor-is-referenced`로
+거부됩니다 — `base: &x 1\nuse: *x\n`에서 측정하면 `find("$.base").set_anchor("renamed")`는
+실패하고, 별칭을 지운 뒤 같은 호출을 `base: &x 1\n`에 넘기면 `base: &renamed 1`을 발출합니다.
+별칭 노드 자신에 대해서는 `edit failed: cannot-edit-alias`로 답합니다.
+
 #### `remove_anchor()`
 
 이 노드의 앵커를 제거합니다.
@@ -274,6 +309,10 @@ set_anchor(name: str) -> None
 ```python
 remove_anchor() -> None
 ```
+
+`set_anchor()`와 같은 방어막입니다: `base: &x 1\nuse: *x\n`에서 측정하면
+`find("$.base").remove_anchor()`는 `YamlEditError: edit failed: anchor-is-referenced`로
+답합니다.
 
 #### `set_tag()`
 
@@ -330,6 +369,14 @@ Move this subtree to a new path in the same document (copies the subtree to `new
 ```python
 move(new_path: str) -> None
 ```
+
+측정된 모서리들: 부모가 존재하는 목적지는 자기 자신이 없어도 됩니다 —
+`src:\n  x: 1\n`에서 `find("$.src").move("$.nope")`는 `nope:\n  x: 1\n`를 남깁니다 — 반면
+중간 키가 없는 목적지는 `YamlEditError: edit failed: missing-path:deep`으로 답합니다. 스칼라
+목적지를 교체하는 것은 동작합니다: `dst: 2`가 `dst:\n  x: 1\n`가 됩니다. 루트를 이동하면
+`edit failed: edit-error`가 답하고, 하위 트리를 자기 경로로 옮기면 문서가 비워집니다
+(`find("$.src").move("$.src")`은 `{}\n`를 남깁니다), 그리고 값을 참조하는 별칭이 아직
+남아 있는 목적지는 `edit failed: anchor-is-referenced`로 답합니다.
 
 #### `to_yaml()`
 

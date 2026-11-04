@@ -234,6 +234,20 @@ bad.validate(schema)
 # YamlValidateError: 'port' is a required property
 ```
 
+!!! info "評価器は別のインストールです"
+    このパッケージが出荷するどれにも `jsonschema` は入っていません：pyrs-yaml は
+    `typing-extensions` のみに依存し、三つの extra は `cli`、`pydantic`、`settings` です。
+    ライブラリだけで評価器のない環境では、このステップのあらゆる `validate()` 呼び出しが
+    `Yaml*` の一族の外にある裸のエラーを投げます：
+    `ModuleNotFoundError: No module named 'jsonschema'`——スキーマなら通す文書でも同じです。
+    経路は `pip install jsonschema` であり、この欠落は既知の境界で、本リリースの欠陥では
+    ありません。
+
+テキストで与えたスキーマは YAML ではなく必ず JSON として読まれるため、
+`pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")` は
+`json.decoder.JSONDecodeError` を投げます——これも一族の外です。`dict` か JSON テキストを
+渡してください。
+
 ### 13. 高度な編集
 
 ```python title="バッチ、ソート、移動、コピー"

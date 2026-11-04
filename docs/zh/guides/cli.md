@@ -169,7 +169,14 @@ pyrs-yaml validate app.yaml --schema schema.json        # 同一个参数
 }
 ```
 
-成功时静默退出 `0`；失败时参考引擎的消息打印到 stderr 且退出码为 `1`——非常适合 CI。
+成功时静默退出 `0`；失败时参考引擎的消息打印到 stderr 且退出码为 `1`——非常适合 CI。实测：通过的文档两个流都不写任何东西并退出 `0`，被 schema 拒绝的文档在 stderr 打出 `error: 'port' is a required property` 并退出 `1`，而无法解析的文档打出 `error: YAML parse error: mapping values are not allowed in this context at char 4 line 1 column 5`，退出码同样是 `1`。
+
+两种 schema 输入的答案落在这句话之外，因为求值委托给 Python 的 `jsonschema`，而本项目发布的任何东西都不安装它 — 基础依赖只有 `typing-extensions`，extras 是 `cli`、`pydantic` 与 `settings`：
+
+- 不是 JSON 的 schema 文件 — 正是读者会伸手去拿的那种 YAML 拼法 — 在求值器被询问之前就被 `json.loads` 拦下，于是命令打出一段 traceback，其最后一行是 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`，并退出 `1`（通过 console script 实测：stderr 装着这段 traceback，stdout 保持为空）。
+- 在没有 `jsonschema` 的安装上确实抵达求值器的那份 JSON schema 也以同样的方式收场，一段 `ModuleNotFoundError` traceback。那一条是在进程内用 `sys.modules["jsonschema"] = None` 实测的 — 测试套件用的就是这段复现 — 因为本开发 venv 里装着求值器；命令的 `except YamlValidateError` 分支两种类都接不住，这正是那一行是 traceback 而不是 `error: …` 的原因。
+
+两条都登记在 `.ci/known-residuals.json` 里（`api:validate-schema-text-is-json-only` 与 `api:validate-evaluator-is-not-installed-by-anything-we-ship`），不是 CLI 会修掉的缺陷；参见 [异常 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)。
 
 标量解析用的 Schema 与 `Document.validate()` API 参见[自定义 Schema](custom-schema.md)。
 

@@ -169,7 +169,14 @@ Evaluation is delegated to Python's `jsonschema`, so the file is a standard JSON
 }
 ```
 
-The command is silent on success and exits `0`; on failure the reference engine's message is printed to stderr and the exit code is `1` — handy in CI.
+The command is silent on success and exits `0`; on failure the reference engine's message is printed to stderr and the exit code is `1` — handy in CI. Measured: a passing document writes nothing to either stream and exits `0`, a document the schema refuses prints `error: 'port' is a required property` on stderr and exits `1`, and a document that does not parse prints `error: YAML parse error: mapping values are not allowed in this context at char 4 line 1 column 5` for the same exit code.
+
+Two schema inputs answer outside that sentence, because evaluation is delegated to Python's `jsonschema` and nothing this project publishes installs it — the base dependency is `typing-extensions` alone and the extras are `cli`, `pydantic` and `settings`:
+
+- a schema file that is not JSON — the YAML spelling a reader reaches for — is stopped by `json.loads` before the evaluator is consulted, so the command prints a traceback whose last line is `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` and exits `1` (measured through the console script: stderr holds the traceback, stdout stays empty).
+- a JSON schema that does reach the evaluator on an install without `jsonschema` ends the same way, as a `ModuleNotFoundError` traceback. That one was measured in-process with `sys.modules["jsonschema"] = None` — the reproduction the test suite uses — because the evaluator is installed in this development venv; the command's `except YamlValidateError` arm catches neither class, which is why the line is a traceback rather than `error: …`.
+
+Both are registered boundaries in `.ci/known-residuals.json` (`api:validate-schema-text-is-json-only` and `api:validate-evaluator-is-not-installed-by-anything-we-ship`), not defects the CLI fixes; see [Exceptions — YamlValidateError](../api/exceptions.md#yamlvalidateerror).
 
 See [Custom Schemas](custom-schema.md) for scalar-resolution schemas and the `Document.validate()` API.
 

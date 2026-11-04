@@ -646,6 +646,15 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — Invalid tag handler registration (inherits from `ValueError`)
 - `YamlTagSkip` — Sentinel raised by a tag handler to pass a node down the handler chain (inherits from `YamlTagError`)
 
+`Document.validate()` answers outside this family in two ways this release keeps. It
+delegates the rules to `jsonschema`, which nothing here installs — the package depends
+on `typing-extensions` alone and its extras are `cli`, `pydantic` and `settings` — so
+with no evaluator the call raises a bare `ModuleNotFoundError: No module named 'jsonschema'`,
+even for a document the schema would pass. And a `schema` given as text is read with
+`json.loads` before evaluation, so a YAML spelling raises `json.decoder.JSONDecodeError`
+whether or not the evaluator is present. Both are known boundaries, documented for
+users in [Quick Start](../quick-start.md) and [Custom Schemas](../guides/custom-schema.md).
+
 See [Exceptions](exceptions.md) for full details.
 
 ### :material-information: Version

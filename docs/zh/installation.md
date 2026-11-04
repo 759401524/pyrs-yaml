@@ -13,6 +13,7 @@ status: new
 | **Python** | ≥ 3.8 (CPython)，包括 free-threaded 3.14t 与 3.15t（提供预编译 wheel） |
 | :material-monitor: **平台** | Linux、macOS、Windows |
 | :material-hammer-wrench: **构建** | Rust 工具链（仅源码构建需要） |
+| :material-check-decagram: **JSON Schema** | `Document.validate()` 需要 `jsonschema`，而这里的任何安装途径都不提供它 — 该包只依赖 `typing-extensions`，其 extras 是 `cli`、`pydantic` 与 `settings`；请自行 `pip install jsonschema` |
 
 ### 从 PyPI 安装
 

@@ -120,6 +120,25 @@ The error carries the reference engine's message (`'port' is a required property
 and `jsonschema.validate()` on the same schema and instance reaches the same
 verdict. The [CLI guide](cli.md#cmd-validate) validates files against a schema file.
 
+Two boundaries come with that delegation, and this release keeps both: they are known
+boundaries the project has registered, not defects, and building an evaluator of the
+project's own is a separate design question.
+
+**No install route here brings in an evaluator.** pyrs-yaml depends on
+`typing-extensions` alone and its extras are `cli`, `pydantic` and `settings`, so in
+an environment holding only the library `doc.validate(schema)` raises
+`ModuleNotFoundError: No module named 'jsonschema'` — no `Yaml*` class answers, even
+for a document the schema would pass. `pip install jsonschema` is the route.
+
+**Schema text is JSON, never YAML.** Unlike the definitions `register_schema()` and
+`load_schema()` read on this page, a `str` handed to `validate()` goes through
+`json.loads` before any evaluator is consulted, so
+`doc.validate("type: object\nrequired: [port]\n")` raises
+`json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — with or
+without `jsonschema` installed. The CLI refuses the same file the same way:
+`pyrs-yaml validate doc.yaml --schema-file schema.yaml` prints that traceback on
+stderr, exits 1, and its `except YamlValidateError` arm never sees the failure.
+
 ### Inline Dict Schema
 
 Instead of registering separately, pass a dict directly:
