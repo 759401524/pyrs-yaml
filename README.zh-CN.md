@@ -16,6 +16,7 @@
 
 - **YAML 1.2 合规** — 使用 granit-parser 实现完整 YAML 1.2 支持，原生保留注释
 - **五种格式，同一文档树** — 原生 TOML、JSON、JSONC、JSON5 读取器（`load_*`、`from_*`）与写入器（`to_toml`、`doc.to_json` / `to_jsonc` / `to_json5`）共享 YAML 文档树；只要目标方言能承载，注释与源码写法都会保留
+- **行分隔 JSON** — `load_json_lines(text)` 返回一个 `JsonLines` 迭代器，每行解析为一个文档，因此读取 `.jsonl` / NDJSON 分片时同一时刻只有一条记录是活的
 - **完美往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
 - **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
 - **高性能** — Rust 后端，`safe_dump`/`from_dict` 比 v0.10 快 7 倍（直接写入器，无中间 AST）；`safe_load`/`safe_loads` 快速路径在无锚点时跳过锚点追踪
@@ -207,7 +208,9 @@ doc.get("key")  # "second"
 
 该标志适用于 `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs` 和 `YAML(allow_duplicate_keys=True)`。在往返模式下，允许重复键的文档序列化时输出最后一个出现的键值对。
 
-`duplicate_keys` 是同一决定的具名写法：`as_is`（默认，按键的身份类别给出今天各自的答案）、`error`（连空键与合并键一并拒绝）、`last_wins`（即 `allow_duplicate_keys=True` 的含义）与 `first_wins`（保留文档里先出现的一对）。同时传入两种写法会被拒绝。命令行上，每个读取 YAML 的子命令都接受 `--duplicate-keys`。
+`duplicate_keys` 是同一决定的具名写法：`as_is`（默认，按键的身份类别给出今天各自的答案）、`error`（连空键与合并键一并拒绝）、`last_wins`（即 `allow_duplicate_keys=True` 的含义）与 `first_wins`（保留文档里先出现的一对）。同时传入两种写法会被拒绝（"pass one"），不在这四种之内的取值同样会被拒绝。命令行上，每个读取 YAML 的子命令都接受 `--duplicate-keys`。
+
+两个键只差在读取器保留的标签或锚点上时，它们在 AST 里仍是两个键，于是删掉其中一个后，另一个还会顶着被删掉的那个名字作答。`doc.delete(path, on_duplicate=...)` 决定的就是这一点：`one`（默认）删掉路径解析到的那一对，`all` 删掉该键可能应答的每一对，`error` 则在还剩多于一对时拒绝。命令行 `delete` 接受同样三个取值，写作 `--on-duplicate`。
 
 ### 序列化选项
 
@@ -220,10 +223,13 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # 块映射每级缩进
     indent_sequence=2,  # 块序列每级缩进
     indent_offset=0,  # 整个文档的基础偏移
+    note_placement="note_first",  # 或 "header_first"
 )
 ```
 
 省略时 `indent_mapping` / `indent_sequence` / `indent_offset` 分别默认为 `indent_size` / 0，因此 `indent_size=4` 仍然让所有层级缩进 4。
+
+`note_placement` 决定注释行无法与自己那一行同处、而其正上方就是 `&a` / `!tag` 头行时的落点：`note_first`（默认）把它写在头行之上，也就是读回文本时注释所归档的位置，因此第一次发射就已经收敛；`header_first` 让头行留在上面，对该形状不收敛。其他任何取值都抛出 `YamlSerializeError`。
 
 ### 标签处理器
 
@@ -291,7 +297,8 @@ cfg.name  # "Alice"
 | **异步 I/O** | **完整** |
 | **增量重新解析** | **完整** |
 | **JSON 导出** | **完整** |
-| **重复键** | **可配置（`YamlDuplicateKeyError` / 最后值优先）** |
+| **重复键** | **经 `duplicate_keys` 命名的四种策略：`as_is` / `error` / `last_wins` / `first_wins`（默认的 `as_is` 按键的身份类别作答，普通碰撞时抛出 `YamlDuplicateKeyError`）** |
+| **删除重复的键** | **`doc.delete(path, on_duplicate="one" \| "all" \| "error")`** |
 | **自定义标签处理器** | **基于优先级链式 `register_tag`** |
 | **Pydantic 模型** | **`parse_as()` 校验** |
 
@@ -304,8 +311,9 @@ cfg.name  # "Alice"
 doc = pyrs_yaml.parse(yaml_str)
 doc = pyrs_yaml.parse(yaml_bytes)
 
-# 带选项解析（max_depth、schema、allow_duplicate_keys）
+# 带选项解析（max_depth、schema、allow_duplicate_keys、duplicate_keys）
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False, max_depth=500, schema="yaml1.1")
+doc = pyrs_yaml.parse("key: first\nkey: second", duplicate_keys="first_wins")
 
 # 解析 YAML 文件
 doc = pyrs_yaml.parse_file("config.yaml")
@@ -382,6 +390,7 @@ yaml_str = pyrs_yaml.from_json5(json5_str)
 
 # 将其他方言解析为 Python 值
 data = pyrs_yaml.load_toml(toml_str)
+records = pyrs_yaml.load_json_lines(jsonl_str)  # JsonLines 迭代器，每行一个文档
 
 # 将文档导出为其他方言
 json_str = doc.to_json()

@@ -241,10 +241,16 @@ print(doc.source())  # "key: value"
 set(path: str, value: Any, create_missing: bool = False) -> None
 ```
 
-- スカラー、`dict`、`list` をサポート；`tuple` はサポートされません（`YamlEditError` をスロー）
+- スカラー、`dict`、`list`、`tuple` をサポート — `tuple` は受け入れられ、`list` と同じくシーケンスとして書き出されます
 - 既存のスカラーを置換する場合、対象のメタデータが保持されます；パスが存在しない場合はマッピングの末尾に新しいキーを追加
 - 空のドキュメント（`""` からパース）にパスを設定すると、マッピングルートが自動的に作成されます
 - `create_missing=True` を指定すると、不足している中間マッピングキーが自動的に作成されます
+
+**スロー:**
+
+- `YamlPathError` — 不正なパス（ワイルドカード/`..` は拒否されます）
+- `YamlEditError` — ナビゲーションの失敗、中間キーの欠落（`create_missing=False` のとき）など
+- `YamlTypeError` — 書き手が知らない Python 型の値。`tuple` は受け入れられ、シーケンスとして書き出されます
 
 **例:**
 
@@ -357,7 +363,8 @@ find(path: str) -> Node | list[Node]
 **スロー:**
 
 - `YamlPathError` — パスが不正、または編集パスでワイルドカード/`..` を使用
-- `YamlEditError` — 編集を適用できない（`tuple`、エイリアス経由の編集、ルート/複合キーのリネーム、スカラーへのナビゲーション、インデックス範囲外）
+- `YamlEditError` — 編集を適用できない（エイリアス経由の編集、ルート/複合キーのリネーム、スカラーへのナビゲーション、インデックス範囲外）
+- `YamlTypeError` — 書き手が知らない Python 型の値 — `tuple` は**これに当たりません**（シーケンスとして書き出されます）
 - `YamlDocumentError` — ドキュメント編集後に陳腐化した `Node` を使用
 
 **参照:** [インプレース編集ガイド](../guides/editing.md)

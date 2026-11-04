@@ -510,7 +510,7 @@ parse_stream(
 
 返回一个 `StreamIterator`，每步产出一个事件字典。与 `YAML().load_stream()`（解析为 Python 值）不同，这暴露了原始令牌流。
 
-`format` 决定由哪个生产者来读：`yaml`（默认）、`json`、`jsonc`、`json5` 或 `toml`。所有生产者报告的都是同一套词汇表，因此字典始终是那七个键（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`）。某个格式无话可说的字段保持 `None`：`anchor` 是 YAML 自己的，`alias` 在其余格式里从不出现；TOML 的字面量 `'…'` 与基础串 `"…"` 读起来一样，因为用的是哪种引号并不留在中间表示里。JSON 或 TOML 的流只承载一个文档，而接受还是拒绝由同一个扫描器判定，与走树那条路给出的答复一致。
+`format` 决定由哪个生产者来读：`yaml`（默认）、`json`、`jsonc`、`json5` 或 `toml`，而每个生产者报告的都是同一套词汇表，因此字典始终是那九个键（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`、`offset`、`end`）。`offset` 与 `end` 是该事件自身令牌在源码中的字节区间——`source.encode()[event["offset"]:event["end"]]` 就能把它解码出来——而只记录位置的生产者，例如每一个 TOML 事件，其 `end` 等于 `offset`。一个 `comment` 事件还带着第十个键 `owner`，指名这条注释被归档在哪个节点的哪个槽位下。某个格式无话可说的字段保持 `None`：`anchor` 是 YAML 自己的，`alias` 在其余格式里从不出现；TOML 的字面量 `'…'` 与基础串 `"…"` 读起来一样，因为用的是哪种引号并不留在中间表示里。JSON 或 TOML 的流只承载一个文档，而接受还是拒绝由同一个扫描器判定，与走树那条路给出的答复一致。逐键的表格见 [流式解析](../guides/streaming.md)。
 
 ### `YamlStream` { #yamlstream }
 
@@ -658,7 +658,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: 版本
 
 ```python
-__version__ = "0.18.3"
+__version__ = "0.19.0"
 ```
 
 ## 生成的 API 参考

@@ -506,7 +506,7 @@ parse_stream(
 
 各ステップで 1 つのイベント dict を生成する `StreamIterator` を返します。`YAML().load_stream()`（Python 値に解決される）とは異なり、生のトークンストリームを公開します。
 
-`format` はどの生産者が読むかを決めます — `yaml`（既定）、`json`、`jsonc`、`json5`、`toml`。どの生産者も同じ語彙を報告するので、dict は常に同じ 7 つのキー（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`）を持ちます。そのフォーマットが何も言えないフィールドは `None` のままです。`anchor` も `alias` も YAML 固有で、他の形式では現れません。TOML のリテラル `'…'` は基本文字列 `"…"` と同じ読みになります — どちらの引用符を使ったかは中間表現に残らないためです。JSON と TOML のストリームは 1 つのドキュメントだけを運び、採用か拒否かの判定はツリーを歩く経路と同じ答えになります。同じスキャナーが応えるからです。
+`format` はどの生産者が読むかを決めます — `yaml`（既定）、`json`、`jsonc`、`json5`、`toml`。どの生産者も同じ語彙を報告するので、dict は常に同じ 9 つのキー（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`、`offset`、`end`）を持ちます。`offset` と `end` はそのイベント自身のトークンのソースバイト範囲です — `source.encode()[event["offset"]:event["end"]]` でデコードできます。位置だけを記録する生産者では（すべての TOML イベントがそうです）、`end` は `offset` と等しくなります。`comment` イベントは 10 番目のキー `owner` を持ち、注釈がどのノードのどのスロットにまとめられているかを名乗ります。そのフォーマットが何も言えないフィールドは `None` のままです。`anchor` も `alias` も YAML 固有で、他の形式では現れません。TOML のリテラル `'…'` は基本文字列 `"…"` と同じ読みになります — どちらの引用符を使ったかは中間表現に残らないためです。JSON と TOML のストリームは 1 つのドキュメントだけを運び、採用か拒否かの判定はツリーを歩く経路と同じ答えになります。同じスキャナーが応えるからです。キーごとの表は [ストリーミングイベント](../guides/streaming.md) を参照してください。
 
 ### `YamlStream` { #yamlstream }
 
@@ -654,7 +654,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: バージョン
 
 ```python
-__version__ = "0.18.3"
+__version__ = "0.19.0"
 ```
 
 ## 自動生成の API リファレンス

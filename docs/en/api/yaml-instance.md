@@ -8,7 +8,7 @@ status: new
 
 ## YAML Class
 
-The `YAML` class is a configured parser instance that controls parsing behavior through `typ`, `schema`, `max_depth`, and `allow_duplicate_keys` settings. It supports round-trip (`rt`), safe, and full YAML parsing modes.
+The `YAML` class is a configured parser instance that controls parsing behavior through `typ`, `schema`, `max_depth`, `allow_duplicate_keys` / `duplicate_keys`, and `honor_version_directive` settings. It supports round-trip (`rt`), safe, and full YAML parsing modes.
 
 ### Overview
 
@@ -28,7 +28,9 @@ __init__(
     typ: str = "rt",
     schema: str | dict = "core",
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
+    honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> None
 ```
 
@@ -39,10 +41,11 @@ __init__(
 | `typ` | `str` | `"rt"` | Parser type. One of `"rt"` (round-trip), `"safe"`, `"full"`. |
 | `schema` | `str \| dict` | `"core"` | YAML schema. One of `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"`, or an inline schema dict (see [YAML Schema Language](reference.md#yaml-schema-language)). |
 | `max_depth` | `int` | `1000` | Maximum nesting depth for parsing. |
-| `allow_duplicate_keys` | `bool` | `False` | Whether to allow duplicate mapping keys. |
+| `allow_duplicate_keys` | `bool \| None` | `None` | Whether to allow duplicate mapping keys. `None` reads as `duplicate_keys="as_is"`, `True` as `"last_wins"`. |
 | `honor_version_directive` | `bool` | `False` | Version negotiation for an explicit `%YAML` directive. With `True`, a document declaring `%YAML 1.1` resolves under the 1.1 profile and re-emits the directive; an explicit `schema` still wins. |
+| `duplicate_keys` | `str \| None` | `None` | What the reader does when one mapping holds two keys that YAML counts as one: `"as_is"` (the default — the per-identity answer the reader always gave), `"error"`, `"last_wins"` (what `allow_duplicate_keys=True` means) or `"first_wins"`. `None` reads as `"as_is"`. The policies are described on [`parse()`](reference.md#parse). |
 
-**Raises:** `YamlTypeError` if `typ` or `schema` is invalid.
+**Raises:** `YamlTypeError` if `typ` or `schema` is invalid; `YamlParseError` if `duplicate_keys` names no policy, or if `duplicate_keys` and `allow_duplicate_keys` are both passed — the refusal says to pass one, because the two are spellings of a single choice.
 
 **Example:**
 

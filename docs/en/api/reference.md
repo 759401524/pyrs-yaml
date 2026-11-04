@@ -503,11 +503,15 @@ parse_stream(
 Returns a `StreamIterator` yielding one event dict per step. Unlike `YAML().load_stream()` (which resolves into Python values), this exposes the raw token stream.
 
 `format` picks the producer — `yaml` (the default), `json`, `jsonc`, `json5` or `toml` — and every producer
-reports the one vocabulary, so the dicts keep the same seven keys (`type`, `value`, `style`, `anchor`, `tag`,
-`line`, `column`). A field a format has nothing to say about stays `None`: `anchor` is YAML's own and `alias`
-never appears elsewhere, and a TOML literal `'…'` reads the same as a basic `"…"` because which quote was
-typed is not kept. A JSON or TOML stream carries one document, and the accept-or-refuse verdict is the one the
-tree route gives, because it is the same scanner.
+reports the one vocabulary, so the dicts keep the same nine keys (`type`, `value`, `style`, `anchor`, `tag`,
+`line`, `column`, `offset`, `end`). `offset` and `end` are the source-byte range of the event's own token —
+`source.encode()[event["offset"]:event["end"]]` decodes it — and where a producer records only a position, as
+every TOML event does, `end` equals `offset`. A `comment` event carries a tenth key, `owner`, naming which
+slot of which node the note is filed under. A field a format has nothing to say about stays `None`: `anchor`
+is YAML's own and `alias` never appears elsewhere, and a TOML literal `'…'` reads the same as a basic `"…"`
+because which quote was typed is not kept. A JSON or TOML stream carries one document, and the
+accept-or-refuse verdict is the one the tree route gives, because it is the same scanner. See
+[Streaming Events](../guides/streaming.md#event-dict-keys) for the per-key table.
 
 #### `YamlStream` { #yamlstream }
 
@@ -647,7 +651,7 @@ See [Exceptions](exceptions.md) for full details.
 ### :material-information: Version
 
 ```python
-__version__ = "0.18.3"
+__version__ = "0.19.0"
 ```
 
 ## Generated API reference

@@ -93,7 +93,7 @@ Value conversion rules:
 | :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | New scalar (value is *not* re-parsed) |
 | :material-language-python: `dict` | New mapping (plain style) |
 | :material-format-list-numbered: `list` | New sequence (plain style) |
-| :material-alert: `tuple` | not supported — raises `YamlEditError` |
+| :material-format-list-numbered: `tuple` | New sequence (plain style) — the same node a `list` makes |
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 
@@ -449,7 +449,8 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 | Error | When |
 |-------|------|
 | :material-alert: `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| :material-alert: `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
+| :material-alert: `YamlEditError` | Edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
+| :material-alert: `YamlTypeError` | Value of a Python type the writer does not know (`set("$.a", object())`) — a `tuple` is **not** one of them |
 | :material-alert: `YamlDocumentError` | Stale `Node` used after a document edit |
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.

@@ -8,7 +8,7 @@ status: new
 
 ## YAML 클래스
 
-`YAML` 클래스는 `typ`, `schema`, `max_depth`, `allow_duplicate_keys` 설정을 통해 파싱 동작을 제어하는 구성된 파서 인스턴스입니다. 라운드트립(`rt`), 안전(safe), 전체(full) YAML 파싱 모드를 지원합니다.
+`YAML` 클래스는 `typ`, `schema`, `max_depth`, `allow_duplicate_keys` / `duplicate_keys`, `honor_version_directive` 구성을 통해 파싱 동작을 제어하는 구성된 파서 인스턴스입니다. 라운드트립(`rt`), 안전(safe), 전체(full) YAML 파싱 모드를 지원합니다.
 
 ### 개요
 
@@ -28,7 +28,9 @@ __init__(
     typ: str = "rt",
     schema: str | dict = "core",
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
+    honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> None
 ```
 
@@ -39,10 +41,11 @@ __init__(
 | `typ` | `str` | `"rt"` | 파서 타입입니다. `"rt"`(라운드트립), `"safe"`, `"full"` 중 하나입니다. |
 | `schema` | `str \| dict` | `"core"` | YAML 스키마입니다. `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"` 중 하나, 또는 인라인 스키마 dict입니다 ([YAML 스키마 언어](reference.md#yaml-schema-language) 참조). |
 | `max_depth` | `int` | `1000` | 파싱을 위한 최대 중첩 깊이입니다. |
-| `allow_duplicate_keys` | `bool` | `False` | 중복 매핑 키를 허용할지 여부입니다. |
+| `allow_duplicate_keys` | `bool \| None` | `None` | 중복 매핑 키를 허용할지 여부입니다. `None`은 `duplicate_keys="as_is"`로, `True`는 `"last_wins"`로 읽습니다. |
 | `honor_version_directive` | `bool` | `False` | 명시된 `%YAML` 지시문의 버전 협상. `True`이면 `%YAML 1.1`을 선언한 문서를 1.1 프로파일로 해석하고 지시문도 다시 씁니다. 명시한 `schema`가 우선합니다. |
+| `duplicate_keys` | `str \| None` | `None` | 하나의 매핑에 YAML이 같은 키로 세는 키가 둘 있을 때 읽는 쪽이 어떻게 행동하는지: `"as_is"`(기본값 — 읽기가 그동안 신원마다 준 답), `"error"`, `"last_wins"`(`allow_duplicate_keys=True`의 뜻), `"first_wins"`. `None`은 `"as_is"`로 읽습니다. 정책은 [`parse()`](reference.md#parse)에 설명되어 있습니다. |
 
-**발생:** `typ` 또는 `schema`가 유효하지 않으면 `YamlTypeError`가 발생합니다.
+**발생:** `typ` 또는 `schema`가 유효하지 않으면 `YamlTypeError`가 발생합니다. `duplicate_keys`가 어떤 정책도 이름 붙이지 않거나 `duplicate_keys`와 `allow_duplicate_keys`를 함께 넘기면 `YamlParseError`가 발생합니다 — 거부는 "pass one"이라고 말하는데, 둘은 하나의 선택을 서로 다른 표기로 쓴 것이기 때문입니다.
 
 **예제:**
 

@@ -34,6 +34,15 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
+주석이 자기 줄에 실리지 못하고 바로 위가 `&a` / `!tag` 헤더 줄일 때 `note_placement`가 자리를 결정합니다:
+
+```python title="note_placement"
+yaml_str = doc.to_yaml_with_options(note_placement="note_first")  # 기본값: 헤더 위에
+yaml_str = doc.to_yaml_with_options(note_placement="header_first")  # 헤더와 본문 사이 빈자리에
+```
+
+`note_first`가 기본값인 이유는 읽기도 이미 그 자리에 두기 때문이며, 그래서 첫 출력이 곧 고정점입니다. `header_first`는 이 플래그가 생기기 전에 작성자가 택한 자리이고, 그 형태에서는 고정점이 아닙니다 — 다시 읽으면 주석이 올라갑니다. 다른 값은 조용히 기본값으로 취급하지 않고 `YamlSerializeError`로 거부합니다.
+
 #### PyYAML 호환 직렬화
 
 ```python title="PyYAML 호환 직렬화"

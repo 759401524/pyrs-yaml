@@ -33,6 +33,42 @@ data = pyrs_yaml.safe_load('{"a": [1, 2], "b": true}')
 专用的 `json` schema（见 [自定义 Schema](custom-schema.md)）还将标量解析
 限定为 JSON 兼容规则；`from_json` 与 CLI `to-json` 提供显式转换。
 
+### 行分隔 JSON：`load_json_lines` { #json-lines }
+
+一个 `.jsonl` / NDJSON 文件不是一个 JSON 文档，所以任何接收文档的入口都读不了
+它 — 对两行记录的文件调用 `load_json`，会把第二行当作尾部字符拒绝掉。
+`load_json_lines` 是那条能读的路线，它返回一个 `JsonLines` 迭代器，每个
+`__next__` 只解析出一个文档，因此同一时刻只有一行是活的：
+
+```python title="JSON Lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))
+# [{'a': 1}, {'b': 2}]
+```
+
+每个取值都是 `load_json` 对那一行返回的结果，而这条流守着引擎的约定：格式未定义
+的行会抛出 `YamlParseError`，消息里点名它在整个输入中的位置，而游标不会移动，
+于是再次索取报告的是同一条记录，而不是它后面那一条。
+
+```python title="被拒绝的一行会说什么"
+list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: a blank line carries no document in
+# a line-delimited JSON stream at line 2 column 1
+
+next(pyrs_yaml.load_json_lines("// note\n"))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a JSON value at line 1 column 1
+
+next(pyrs_yaml.load_json_lines('{"a": 1,\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a quoted object key at line 1 column 9
+```
+
+空行无论位于哪里都会被拒绝，包括文件末尾多出来的那一个，因为对
+`{"a": 1}\n\n` 回答 `[]` 的流是在猜作者本想丢掉哪一行。一行承载一个完整的值，
+既必要也充分：没有分隔符，没有尾逗号，每行一个文档。
+
 ## TOML
 
 三个函数，与 JSON 转换家族同构：

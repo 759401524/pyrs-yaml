@@ -36,6 +36,15 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
+当注释无法与自己那一行同处、而其正上方就是 `&a` / `!tag` 头行时，`note_placement` 决定它的位置：
+
+```python title="note_placement"
+yaml_str = doc.to_yaml_with_options(note_placement="note_first")  # 默认：头行之上
+yaml_str = doc.to_yaml_with_options(note_placement="header_first")  # 头行的间隙里
+```
+
+`note_first` 是默认值，因为它就是读回一次本来给出的位置，于是第一次发射即是不动点。`header_first` 是这个标志存在之前写入器选的落点，对该形状不是不动点 — 读回时注释会被抬起。其他任何取值都以 `YamlSerializeError` 拒绝，绝不会被悄悄当作默认值。
+
 #### PyYAML 兼容序列化
 
 ```python title="PyYAML 兼容序列化"

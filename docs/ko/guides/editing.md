@@ -84,7 +84,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 | :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 새 스칼라 (값은 *재파싱되지 않음*) |
 | :material-language-python: `dict` | 새 매핑 (일반 스타일) |
 | :material-format-list-numbered: `list` | 새 시퀀스 (일반 스타일) |
-| :material-alert: `tuple` | 지원되지 않음 — `YamlEditError` 발생 |
+| :material-format-list-numbered: `tuple` | 새 시퀀스 (일반 스타일) — `list`가 만드는 것과 같은 노드 |
 
 기존 스칼라를 교체할 때 대상의 메타데이터(인라인 주석, 앵커, 태그, 따옴표 스타일)는 **보존**됩니다 — 새 값이 매핑/시퀀스인 경우는 예외로, 새 노드 자체의 서식을 따릅니다.
 
@@ -165,6 +165,14 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ```
 
 매핑 순서는 항상 보존됩니다; 시퀀스 삭제는 빈자리를 메웁니다.
+
+문서에는 같은 이름을 적으면서 읽기가 남기는 태그나 앵커로만 구별되는 키 둘이 들어 있을 수 있습니다. 그래서 하나를 지우면 출력물을 다시 읽었을 때 남은 쪽이 그 이름에 답합니다. `delete()`는 `on_duplicate`으로 호출자에게 어떤 답을 원하는지 묻습니다:
+
+- `one`(기본값)은 경로가 해결하는 쌍을 삭제합니다 — 기존 호출자가 그동안 받아 온 동작입니다.
+- `all`은 그 키가 답할 수 있는 모든 쌍을 삭제합니다 — 출력에서도 그 이름이 사라집니다.
+- `error`은 둘 이상 남아 있는 동안 `duplicate-key-target`으로 거부하고 문서를 그대로 둡니다.
+
+알 수 없는 값은 기본값으로 조용히 넘어가지 않고 그 자체가 이름 붙은 거부입니다. `del doc[key]`과 `Node.delete()`는 기본값을 유지합니다.
 
 #### `__delitem__` — 루트 슈가
 
@@ -421,7 +429,8 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | 오류 | 시점 |
 |------|------|
 | :material-alert: `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 |
-| :material-alert: `YamlEditError` | 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
+| :material-alert: `YamlEditError` | 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
+| :material-alert: `YamlTypeError` | 작성자가 모르는 Python 타입의 값 (`set("$.a", object())`) — `tuple`은 그중 **아닙니다** |
 | :material-alert: `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 |
 
 모든 편집은 원자적입니다 — 실패한 편집은 문서(및 리비전)를 변경하지 않습니다.

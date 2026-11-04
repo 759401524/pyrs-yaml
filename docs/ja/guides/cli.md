@@ -52,6 +52,21 @@ pyrs-yaml --version
 
 ファイル引数が `-` または省略された場合は **stdin** から読み込み、`-o/--output` や `-i/--inplace` がない限り結果は **stdout** に出力されます。ストリーム入力は [`-A/--all-docs`](#multi-doc) で扱います。
 
+YAML を読み込むサブコマンドはすべて `--duplicate-keys` を受け取ります — `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`move`、`validate`、`to-json`、`to-toml`、`to-jsonc`、`to-json5`。これは、ひとつのマッピングに YAML が同じと数えるキーが二つあるときの読み手の答えです: `as_is`（既定）、`error`、`last_wins`、`first_wins` のいずれか。四つ以外の値は stderr で拒否されます — 四つの名前を挙げて、終了コード `1` で終わります。`as_is` または `error` で重複を読み込むときの拒否は `YamlDuplicateKeyError` です。
+
+```bash
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys last_wins    # 後のペアが勝つ
+2
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys first_wins   # 先のペアが勝つ
+1
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys newest       # 四つに含まれない値
+error: unknown duplicate_keys "newest"; expected as_is, error, last_wins or first_wins
+```
+
+ここに登場する `twins.yaml` はプレーンな重複 `a: 1` / `a: 2` を持つファイルで、`as_is` か `error` で読む場合は上で挙げた拒否になります。`last_wins` はライブラリの `allow_duplicate_keys=True` の意味です。`as_is` がクラス別の答えをどう返すかは [重複キー](../features.md) を参照してください。
+
 ### フォーマット（`fmt`） { #cmd-fmt }
 
 `fmt` はラウンドトリップ AST を経由してドキュメントを再シリアライズします——コメント・アンカー・キー順・スタイルはすべて保持されます:
@@ -108,6 +123,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # サブツリー�
 ```
 
 編集しても周辺のメタデータは保持されます——編集したノードの上や行内のコメントはそのまま残ります。
+
+「パスにつき正確に 1 ノード」が指すのは 1 *ペア*です。そしてドキュメントは、同じキーをつづる二つのペアを持てます——読み手が保つタグかアンカーでのみ両者は区別されます。その扱いを尋ねるのが `delete` です: `--on-duplicate` は `one`（既定、パスが解決するペア）、`all`（そのキーが答えになり得るすべてのペア——出力からも名前が消えます）、`error`（二つ以上残っているあいだは拒否）のいずれかを受け取ります。
+
+```bash
+$ cat dup.yaml
+a: 1
+!!str a: 2
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate all
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate error
+error: cannot delete '$.a': edit failed: duplicate-key-target
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate both
+error: cannot delete '$.a': edit failed: unknown on_duplicate "both"; expected one, all or error
+```
+
+`--on-duplicate error` はキーごとにペアが 1 つだけのドキュメントでは何も起きません——拒否が応えるのは重複が実際に残っているあいだだけです。`set`、`rename`、`sort-keys`、`move` は `one` の振る舞いのままです——そのようなフラグを持ちません。
 
 注意：
 

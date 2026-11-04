@@ -228,7 +228,7 @@ source_text() -> str
 set(path: str, value: Any, create_missing: bool = False) -> None
 ```
 
-- 스칼라, `dict`, `list` 지원; `tuple`은 지원되지 않음(`YamlEditError` 발생)
+- 스칼라, `dict`, `list`, `tuple` 지원 — `tuple`은 `list`가 만드는 것과 같은 시퀀스 노드입니다
 - 기존 스칼라를 교체하면 대상의 메타데이터가 보존됩니다; 경로가 없으면 매핑 끝에 새 키 추가
 - 빈 문서(`""`에서 파싱)에 경로를 설정하면 매핑 루트가 자동 생성됩니다
 - `create_missing=True`인 경우 누락된 중간 매핑 키가 자동으로 생성됩니다
@@ -248,7 +248,8 @@ doc.set("$.x.y.z", 3, create_missing=True)
 **발생:**
 
 - `YamlPathError` — 잘못된 경로 (와일드카드/`..` 거부)
-- `YamlEditError` — 탐색 실패, 지원되지 않는 값 타입 (`tuple`), 누락된 중간 키 (`create_missing=False`일 때) 등
+- `YamlEditError` — 탐색 실패, 누락된 중간 키 (`create_missing=False`일 때) 등
+- `YamlTypeError` — 작성자가 모르는 Python 타입의 값; `tuple`은 허용되어 시퀀스로 쓰입니다
 
 #### `insert()`
 
@@ -349,7 +350,7 @@ find(path: str) -> Node | list[Node]
 **발생:**
 
 - `YamlPathError` — 경로가 잘못되었거나 편집 경로에 와일드카드/`..` 사용
-- `YamlEditError` — 편집을 적용할 수 없음(`tuple`, 별칭을 통한 편집, 루트/복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과)
+- `YamlEditError` — 편집을 적용할 수 없음(별칭을 통한 편집, 루트/복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과)
 - `YamlDocumentError` — 문서 편집 후 오래된 `Node` 사용
 
 **참조:** [제자리 편집 가이드](../guides/editing.md)

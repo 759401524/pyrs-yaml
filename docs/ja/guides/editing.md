@@ -84,7 +84,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 | :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 新しいスカラー（値は*再パースされません*） |
 | :material-language-python: `dict` | 新しいマッピング（プレーンスタイル） |
 | :material-format-list-numbered: `list` | 新しいシーケンス（プレーンスタイル） |
-| :material-alert: `tuple` | サポートされません — `YamlEditError` を発生 |
+| :material-format-list-numbered: `tuple` | 新しいシーケンス（プレーンスタイル）— `list` と同じノード |
 
 既存のスカラーを置換する場合、対象のメタデータ（インラインコメント、アンカー、タグ、クォートスタイル）は**保持**されます — ただし、新しい値がマッピング/シーケンスの場合は、新しいノード自身のフォーマットが採用されます。
 
@@ -157,6 +157,14 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ```
 
 マッピングの順序は常に保持されます。シーケンスの削除では隙間が詰められます。
+
+ひとつの名前をつづる二つのキーが、読み手が保つタグかアンカーでのみ区別されて並ぶことがあります。そのため一方を消しても、出力を読み戻したときにはもう一方がその名前に応えてしまいます。`delete()` は `on_duplicate` で呼び出し側にどの答えを望むかを尋ねます:
+
+- `one`（既定）はパスが解決するペアを削除します — すべての既存の呼び出し側が持っている振る舞いです。
+- `all` はそのキーが答えになり得るすべてのペアを削除します — 出力からも名前が消えます。
+- `error` は二つ以上のペアが残っているあいだは `duplicate-key-target` で拒否し、ドキュメントを変更しません。
+
+分からない値は、既定へ黙って落ちるのではなく、それ自体が名前付きの拒否です。`del doc[key]` と `Node.delete()` は既定のままです。
 
 #### `__delitem__` — ルート用糖衣構文
 
@@ -424,7 +432,8 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | エラー | 発生時 |
 |-------|--------|
 | :material-alert: `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
-| :material-alert: `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
+| :material-alert: `YamlEditError` | エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
+| :material-alert: `YamlTypeError` | 書き手が知らない Python 型の値（`set("$.a", object())`）— `tuple` は**これに当たりません** |
 | :material-alert: `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
 
 すべての編集はアトミックです — 失敗した編集はドキュメント（とそのリビジョン）に影響を与えません。
