@@ -269,7 +269,8 @@ empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
 **Raises:**
 
 - `YamlPathError` — Malformed path (wildcards/`..` are rejected)
-- `YamlEditError` — Navigation failure, unsupported value type (`tuple`), missing intermediate key (when `create_missing=False`), etc.
+- `YamlEditError` — Navigation failure, missing intermediate key (when `create_missing=False`), etc.
+- `YamlTypeError` — Value of a Python type the writer does not know; a `tuple` is accepted and written as a sequence
 
 #### `walk()`
 

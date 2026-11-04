@@ -99,10 +99,11 @@ The environment is part of the floor's key rather than a footnote next to it.
    counting as an image, a non-image run filing a row, and the shape contract restored to its
    unconditional form — with the file under test restored byte-for-byte afterwards.
 
-Two rows are in the table today, both read out of job logs rather than typed: `20261023.334.3` from
-the refresh run `40636638961` whose artifact wrote the current floor, and `20261026.354.1` carried
-through that run from the job which last measured it. `load_toml_medium` reads 142,467,241 and
-144,902,515 between them, which is the 1.71 % a single floor could not hold.
+Three rows are in the table today, all read out of job logs rather than typed: `20261023.334.3`, the
+image that wrote the file when the keyed rows were introduced, `20261026.354.1`, and
+`20261101.360.1`, whose refresh run `41793835020` wrote the committed numbers. `load_toml_medium`
+reads 144,902,515 on `334.3` and 142,478,660 on both newer builds, so the 1.71 % a single floor
+could not hold separates one older image from two current ones rather than lying between every pair.
 
 What the marker rule closes: `scripts/check_ir_floor_quotes.py` compares a marked reading against
 the row the mark names, so a paragraph quoting an interpreter-counting floor has to say which
@@ -118,11 +119,13 @@ the tests are sensitive to them.
 
 ## What this page does not claim
 
-It does not claim the pool has exactly two live images — the jobs sampled named two, and a third
-image is refused until one refresh adds its row. Nor are the rows offered as an easier verdict: on
-`20261026.354.1` the row for `load_toml_medium` is 142,467,241 where the flat table now carries
-144,902,515 - the `334.3` number, because `334.3` is the image that wrote this file - so keying
-tightens the `354.1` floor by 1.71 % rather than excusing it.
+It does not claim the pool has exactly three live images — the jobs sampled named three, and a
+fourth is refused until one refresh adds its row. That is not hypothetical: the same `ubuntu-24.04`
+label served `20261026.354.1` and `20261101.360.1` twenty minutes apart, and one pull request's legs
+drew both, the enforcing one exiting 2 because the file had no row for the newer build. Nor are the
+rows offered as an easier verdict: on `334.3` the row for `load_toml_medium` is 144,902,515 where
+the flat table now carries 142,478,660 — the number both newer builds read — so keying tightens the
+older floor by 1.71 % rather than excusing it.
 
 What it does claim is measured: a CI leg has taken its floor from a row. PR #662's own `ir` leg ran
 on `20261023.334.3`, printed all seven keyed names and `OK: every scenario within tolerance`, with

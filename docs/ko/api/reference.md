@@ -507,7 +507,7 @@ parse_stream(
 
 각 단계마다 이벤트 dict를 생성하는 `StreamIterator`를 반환합니다. `YAML().load_stream()`(Python 값으로 해석)과 달리 원시 토큰 스트림을 노출합니다.
 
-`format`은 누가 이벤트를 만드는지 고릅니다 — `yaml`(기본), `json`, `jsonc`, `json5`, `toml`. 모든 생성자가 같은 어휘를 보고하므로 dict는 언제나 같은 일곱 키(`type`, `value`, `style`, `anchor`, `tag`, `line`, `column`)를 가집니다. 그 형식이 할 말이 없는 필드는 `None`으로 남습니다. `anchor`도 `alias`도 YAML 고유라 다른 형식에서는 나타나지 않고, TOML의 리터럴 `'…'`은 기본 문자열 `"…"`과 똑같이 읽힙니다 — 어떤 인용표를 쳤는지가 중간 표현식에 남지 않기 때문입니다. JSON이나 TOML 스트림은 문서 하나만 싣고, 승인 여부를 판정하는 스캐너는 트리를 가는 경로가 쓰는 그 스캐너와 같습니다.
+`format`은 누가 이벤트를 만드는지 고릅니다 — `yaml`(기본), `json`, `jsonc`, `json5`, `toml`. 모든 생성자가 같은 어휘를 보고하므로 dict는 언제나 같은 아홉 키(`type`, `value`, `style`, `anchor`, `tag`, `line`, `column`, `offset`, `end`)를 가집니다. `offset`과 `end`는 이벤트 자체 토큰의 소스 바이트 범위이고 — `source.encode()[event["offset"]:event["end"]]`가 그것을 디코딩합니다 — 프로듀서가 위치만 기록하는 자리, 즉 TOML의 모든 이벤트에서는 `end`가 `offset`과 같습니다. `comment` 이벤트에는 열 번째 키 `owner`가 더 실려, 그 주석이 어느 노드의 어느 칸에 정리되는지 이름 붙입니다. 그 형식이 할 말이 없는 필드는 `None`으로 남습니다. `anchor`도 `alias`도 YAML 고유라 다른 형식에서는 나타나지 않고, TOML의 리터럴 `'…'`은 기본 문자열 `"…"`과 똑같이 읽힙니다 — 어떤 인용표를 쳤는지가 중간 표현식에 남지 않기 때문입니다. JSON이나 TOML 스트림은 문서 하나만 싣고, 승인 여부를 판정하는 스캐너는 트리를 가는 경로가 쓰는 그 스캐너와 같습니다. 키별 표는 [스트리밍 파싱](../guides/streaming.md)을 참고하세요.
 
 ### `YamlStream` { #yamlstream }
 
@@ -655,7 +655,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: 버전
 
 ```python
-__version__ = "0.18.3"
+__version__ = "0.19.0"
 ```
 
 ## 자동 생성 API 참조

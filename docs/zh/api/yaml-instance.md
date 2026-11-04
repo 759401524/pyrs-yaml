@@ -8,7 +8,7 @@ status: new
 
 ## YAML 类
 
-`YAML` 类是一个可配置的解析器实例，通过 `typ`、`schema`、`max_depth` 和 `allow_duplicate_keys` 设置控制解析行为。支持往返（`rt`）、安全和完整 YAML 解析模式。
+`YAML` 类是一个可配置的解析器实例，通过 `typ`、`schema`、`max_depth`、`allow_duplicate_keys` / `duplicate_keys` 和 `honor_version_directive` 设置控制解析行为。支持往返（`rt`）、安全和完整 YAML 解析模式。
 
 ### 概述
 
@@ -28,7 +28,9 @@ __init__(
     typ: str = "rt",
     schema: str | dict = "core",
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
+    honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> None
 ```
 
@@ -39,10 +41,11 @@ __init__(
 | `typ` | `str` | `"rt"` | 解析器类型。可选 `"rt"`（往返）、`"safe"`（安全）、`"full"`（完整）。 |
 | `schema` | `str \| dict` | `"core"` | YAML 模式。可选 `"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`，或内联 schema dict（参见 [YAML Schema Language](reference.md#yaml-schema-language)）。 |
 | `max_depth` | `int` | `1000` | 解析的最大嵌套深度。 |
-| `allow_duplicate_keys` | `bool` | `False` | 是否允许重复的映射键。 |
+| `allow_duplicate_keys` | `bool \| None` | `None` | 是否允许重复的映射键。`None` 读作 `duplicate_keys="as_is"`，`True` 读作 `"last_wins"`。 |
 | `honor_version_directive` | `bool` | `False` | 对显式 `%YAML` 指令做版本协商。取 `True` 时，声明 `%YAML 1.1` 的文档按 1.1 档位解析并重新发射该指令；显式 `schema` 仍然优先。 |
+| `duplicate_keys` | `str \| None` | `None` | 一个映射持有两个被 YAML 算作一个的键时，读取器做什么：`"as_is"`（默认 — 读取器一向给出的、按身份类别各自的答案）、`"error"`、`"last_wins"`（即 `allow_duplicate_keys=True` 的含义）或 `"first_wins"`。`None` 读作 `"as_is"`。各策略的描述见 [`parse()`](reference.md#parse)。 |
 
-**Raises:** 如果 `typ` 或 `schema` 无效，抛出 `YamlTypeError`。
+**Raises:** 如果 `typ` 或 `schema` 无效，抛出 `YamlTypeError`；如果 `duplicate_keys` 没有点名任何策略，或 `duplicate_keys` 与 `allow_duplicate_keys` 被同时传入，抛出 `YamlParseError` — 拒绝消息里写的是 pass one，因为这两者本是同一个选择的两种写法。
 
 **Example:**
 

@@ -59,6 +59,20 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
+## 行分隔 JSON
+
+`load_json_lines` 读取 NDJSON / `.jsonl` — 每行一个完整文档 — 返回的 `JsonLines` 迭代器只在被索取时才解析那一行，因此大分片同一时刻只持有一条记录，而不是整条流：
+
+```python title="load_json_lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))  # [{'a': 1}, {'b': 2}]
+```
+
+每个取值都是 `load_json` 对那一行返回的结果。格式未定义的行 — 空行、只有注释的行、或需要下一行才能完成的值 — 会抛出 `YamlParseError`，消息里点名它在整个输入中的位置，而游标不会移动，于是被拒绝的那条记录会被再次报告。`load_json` 本身只接受一个文档，不是流：第二行属于尾部字符。确切的拒绝见 [行分隔 JSON](guides/formats.md#json-lines)。
+
 ## 异步 I/O
 
 通过 `asyncio` 进行非阻塞序列化和解析：
@@ -124,10 +138,13 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # 块映射每级缩进
     indent_sequence=2,  # 块序列每级缩进
     indent_offset=0,  # 整个文档的基础偏移
+    note_placement="note_first",  # "note_first"（默认）或 "header_first"
 )
 ```
 
 `indent_mapping` / `indent_sequence` / `indent_offset` 省略时分别默认等于 `indent_size` / 0，因此 `indent_size=4` 仍然让所有层级缩进 4。
+
+`note_placement` 决定注释行无法与自己那一行同处、而其正上方就是 `&a` / `!tag` 头行时的落点：`note_first`（默认）把它写在头行之上，也就是读回时注释归档的位置，因此第一次发射已经是不动点；`header_first` 让头行留在上面，对该形状不是不动点。其他任何取值都抛出 `YamlSerializeError`。逐步说明见 [序列化](guides/serialization.md)。
 
 ## 自定义标签处理器
 

@@ -52,6 +52,21 @@ pyrs-yaml --version
 
 파일 인수가 `-`이거나 생략되면 **stdin**에서 읽고, `-o/--output` 또는 `-i/--inplace`가 없는 한 결과는 **stdout**에 출력됩니다. 스트림 입력은 [`-A/--all-docs`](#multi-doc)으로 처리합니다.
 
+YAML을 읽는 모든 하위 명령은 `--duplicate-keys`를 받습니다 — `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `move`, `validate`, `to-json`, `to-toml`, `to-jsonc`, `to-json5`. 이는 하나의 매핑에 YAML이 같은 키로 세는 키가 둘 있을 때 읽는 쪽의 답입니다: `as_is`(기본값), `error`, `last_wins`, `first_wins` 중 하나. 넷 밖의 값은 stderr에서 네 값을 밝히며 종료 코드 `1`로 거부되고, `as_is`나 `error`에서 중복을 읽기를 거부하는 것은 `YamlDuplicateKeyError`입니다.
+
+```bash
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys last_wins    # 나중 쌍이 우선합니다
+2
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys first_wins   # 앞선 쌍이 우선합니다
+1
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys newest       # 넷 중 하나가 아님
+error: unknown duplicate_keys "newest"; expected as_is, error, last_wins or first_wins
+```
+
+여기서 `twins.yaml`은 일반 중복 `a: 1` / `a: 2`를 담고, `as_is`나 `error`로 읽는 것은 위에서 밝힌 거부입니다. `last_wins`는 라이브러리의 `allow_duplicate_keys=True`가 뜻하는 바이고, `as_is`가 신원 등급마다 무엇에 답하는지는 [중복 키](../features.md)를 참고하세요.
+
 ### 포매팅(`fmt`) { #cmd-fmt }
 
 `fmt`는 라운드트립 AST를 통해 문서를 다시 직렬화합니다——주석, 앵커, 키 순서, 스타일이 모두 유지됩니다:
@@ -108,6 +123,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # 서브트리 이
 ```
 
 편집 시 주변 메타데이터는 보존됩니다——편집한 노드 위나 행 내부의 주석은 그대로 남습니다.
+
+"경로는 정확히 하나의 노드"는 *쌍* 하나를 뜻하고, 문서에는 같은 키를 적는 두 쌍이 들어 있을 수 있습니다 — 읽기가 남기는 태그나 앵커로만 구별됩니다. 무엇을 할지 묻는 명령은 `delete`입니다: `--on-duplicate`은 `one`(기본값, 경로가 해결하는 쌍), `all`(그 키가 답할 수 있는 모든 쌍, 그래서 출력에서도 그 이름이 사라집니다), `error`(둘 이상 남아 있는 동안 거부) 중 하나를 받습니다.
+
+```bash
+$ cat dup.yaml
+a: 1
+!!str a: 2
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate all
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate error
+error: cannot delete '$.a': edit failed: duplicate-key-target
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate both
+error: cannot delete '$.a': edit failed: unknown on_duplicate "both"; expected one, all or error
+```
+
+키마다 쌍이 하나인 문서에서 `--on-duplicate error`는 no-op입니다 — 중복이 실제로 남아 있을 때만 거부가 발생합니다. `set`, `rename`, `sort-keys`, `move`는 `one` 동작을 유지하고 그런 플래그를 받지 않습니다.
 
 참고:
 

@@ -64,6 +64,20 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
+### Line-delimited JSON
+
+`load_json_lines` reads NDJSON / `.jsonl` — one complete document per line — and returns a `JsonLines` iterator that resolves a line only when the iterator is asked for it, so a large shard holds one record at a time rather than the whole stream:
+
+```python title="load_json_lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))  # [{'a': 1}, {'b': 2}]
+```
+
+Each value is what `load_json` returns for that line. A line the format does not define — blank, note-only, or a value that needs the next line to finish — raises `YamlParseError` naming its position in the whole input, and the cursor does not move, so the refused record is reported again. `load_json` itself takes one document, not a stream: a second line is trailing characters. See [Line-delimited JSON](guides/formats.md#json-lines) for the exact refusals.
+
 ### Async I/O
 
 Non-blocking serialization and parsing via `asyncio`:
@@ -176,10 +190,13 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # block mapping indent per level
     indent_sequence=2,  # block sequence indent per level
     indent_offset=0,  # base offset for the entire document
+    note_placement="note_first",  # "note_first" (default) or "header_first"
 )
 ```
 
 When `indent_mapping` / `indent_sequence` / `indent_offset` are omitted, they default to `indent_size` / `indent_size` / `0` respectively, so `indent_size=4` still indents all levels by 4.
+
+`note_placement` decides where a note line goes when it cannot ride its own line and an `&a` / `!tag` header line sits directly above it: `note_first` (the default) writes it above that header, which is where a re-read files it, so the first emission is already the fixed point; `header_first` keeps the header on top and is not a fixed point for that shape. Any other value raises `YamlSerializeError`. See [Serialization](guides/serialization.md) for the walkthrough.
 
 ### Custom Tag Handlers
 

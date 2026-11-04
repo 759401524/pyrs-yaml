@@ -35,6 +35,44 @@ data = pyrs_yaml.safe_load('{"a": [1, 2], "b": true}')
 スカラー解決を JSON 互換の規則に限定し、`from_json` と CLI の `to-json` で
 明示的変換ができます。
 
+### 行区切りの JSON: `load_json_lines` { #json-lines }
+
+`.jsonl` / NDJSON ファイルは 1 つの JSON ドキュメントではないため、ドキュメントを受け取る
+どの API もそれを読めません — 2 レコードのファイルに対する `load_json` は 2 行目を末尾の
+余分な文字として拒否します。読める経路が `load_json_lines` で、`JsonLines` イテレータを
+返して `__next__` ごとに 1 ドキュメントだけ解決するので、同時にメモリにある行は 1 行だけです:
+
+```python title="JSON Lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))
+# [{'a': 1}, {'b': 2}]
+```
+
+各値は `load_json` がその行に対して返すものそのままです。そしてストリームはエンジンの
+契約を保ちます — フォーマットが定義していない行は `YamlParseError` を投げ、入力全体に
+対するその行の位置を名乗り、カーソルは動きません。つまり再び尋ねれば、次のレコードでは
+なく同じレコードが報告されます。
+
+```python title="拒否された行が伝える内容"
+list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: a blank line carries no document in
+# a line-delimited JSON stream at line 2 column 1
+
+next(pyrs_yaml.load_json_lines("// note\n"))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a JSON value at line 1 column 1
+
+next(pyrs_yaml.load_json_lines('{"a": 1,\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a quoted object key at line 1 column 9
+```
+
+空行は、どこにある場合でも拒否されます — ファイルの末尾に余分に付く 1 行も含みます。
+`{"a": 1}\n\n` に `[]` で答えるストリームは、作者がどの行を落としたかったのかを推測する
+ことになるからです。1 行に 1 つの完全な値があることが必要であり、それで足ります —
+区切りなし、末尾カンマなし、1 行 1 ドキュメント。
+
 ## TOML
 
 JSON 変換ファミリーと同型の 3 関数:

@@ -215,7 +215,8 @@ doc.set("$.b.c.d", 2, create_missing=True)
 #### 引发：
 
 - `YamlPathError` — 格式错误的路径（通配符/`..` 被拒绝）
-- `YamlEditError` — 导航失败、不支持的值类型（`tuple`）、缺失中间键（当 `create_missing=False` 时）等
+- `YamlEditError` — 导航失败、缺失中间键（当 `create_missing=False` 时）等
+- `YamlTypeError` — 写入器不认识的 Python 类型的值；`tuple` 会被接受，并按序列写出
 
 ### `walk()`
 
@@ -316,7 +317,7 @@ find(path: str) -> Node | list[Node]
 **引发:**
 
 - `YamlPathError` — 路径格式错误，或在编辑路径中使用通配符/`..`
-- `YamlEditError` — 编辑无法应用（`tuple`、通过别名编辑、重命名根/复杂键、导航进入标量、索引越界）
+- `YamlEditError` — 编辑无法应用（通过别名编辑、重命名根/复杂键、导航进入标量、索引越界）
 - `YamlDocumentError` — 文档编辑后使用过期的 `Node`
 
 **参见:** [就地编辑指南](../guides/editing.md)

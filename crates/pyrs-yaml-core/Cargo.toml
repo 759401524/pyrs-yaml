@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml-core"
-version = "0.18.3"
+version = "0.19.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Native YAML 1.2 engine — pure Rust, no Python dependencies"
@@ -29,9 +29,9 @@ regex = { version = "1.11", optional = true }
 # module docs of `src/file.rs` for why the map is opt-in, not the default.
 memmap2 = { version = "0.9", optional = true }
 thiserror = { version = "2", default-features = false }
-pyrs-ast = { path = "../pyrs-ast", version = "0.18.3", default-features = false }
-pyrs-event = { path = "../pyrs-event", version = "0.18.3", default-features = false }
-pyrs-schema = { path = "../pyrs-schema", version = "0.18.3" }
+pyrs-ast = { path = "../pyrs-ast", version = "0.19.0", default-features = false }
+pyrs-event = { path = "../pyrs-event", version = "0.19.0", default-features = false }
+pyrs-schema = { path = "../pyrs-schema", version = "0.19.0" }
 
 [features]
 # `std` is on by default so every existing host consumer (the Python binding,
@@ -68,11 +68,11 @@ mmap = ["std", "dep:memmap2"]
 # `pyrs_toml`'s test unit compiles with no `--cfg feature="std"` at all, and in the six-crate shape
 # the CI step uses it carried `default` and `std`, as did `pyrs_json` and `pyrs_ast`. The step that
 # claims to run the engines' tests without std was running them with it.
-pyrs-json = { path = "../pyrs-json", version = "0.18.3", default-features = false }
-pyrs-toml = { path = "../pyrs-toml", version = "0.18.3", default-features = false }
+pyrs-json = { path = "../pyrs-json", version = "0.19.0", default-features = false }
+pyrs-toml = { path = "../pyrs-toml", version = "0.19.0", default-features = false }
 proptest = "1.5"
 similar = "3"
-pyrs-ast = { path = "../pyrs-ast", version = "0.18.3", default-features = false, features = ["test-strategy"] }
+pyrs-ast = { path = "../pyrs-ast", version = "0.19.0", default-features = false, features = ["test-strategy"] }
 # The CodSpeed-compatible divan harness for the bench set below.
 divan = { package = "codspeed-divan-compat", version = "6.0" }
 

@@ -52,6 +52,21 @@ pyrs-yaml --version
 
 Every command reads from **stdin** when the file argument is `-` or omitted, and writes to **stdout** unless `-o/--output` or `-i/--inplace` says otherwise. Stream-shaped input is handled with [`-A/--all-docs`](#multi-doc).
 
+Every subcommand that reads YAML takes `--duplicate-keys` — `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `move`, `validate`, `to-json`, `to-toml`, `to-jsonc` and `to-json5`. It is the reader's answer when one mapping holds two keys that YAML counts as one: `as_is` (the default), `error`, `last_wins` or `first_wins`. A value outside the four is refused on stderr, naming them, with exit code `1`; the refusal to read a duplicate under `as_is` or `error` is `YamlDuplicateKeyError`.
+
+```bash
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys last_wins    # the later pair wins
+2
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys first_wins   # the earlier pair wins
+1
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys newest       # not one of the four
+error: unknown duplicate_keys "newest"; expected as_is, error, last_wins or first_wins
+```
+
+`twins.yaml` there holds the plain duplicate `a: 1` / `a: 2`, and reading it under `as_is` or `error` is the refusal named above. `last_wins` is what the library's `allow_duplicate_keys=True` means; see [Duplicate Keys](../features.md#duplicate-keys) for what `as_is` answers per identity class.
+
 ### Formatting (`fmt`) { #cmd-fmt }
 
 `fmt` re-serializes a document through the round-trip AST — comments, anchors, key order, and styles survive:
@@ -108,6 +123,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # relocate a subtr
 ```
 
 Edits preserve surrounding metadata — a comment above or beside the edited node stays put.
+
+"Exactly one node per path" is one *pair*, and a document can hold two pairs spelling the same key — told apart only by the tag or anchor the reader keeps. `delete` is the command that asks what to do about it: `--on-duplicate` takes `one` (the default, the pair the path resolves to), `all` (every pair the key could answer with, so the name is gone from the output too) or `error` (refuse while more than one remains).
+
+```bash
+$ cat dup.yaml
+a: 1
+!!str a: 2
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate all
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate error
+error: cannot delete '$.a': edit failed: duplicate-key-target
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate both
+error: cannot delete '$.a': edit failed: unknown on_duplicate "both"; expected one, all or error
+```
+
+`--on-duplicate error` is a no-op on a document with one pair per key — the refusal fires only while a duplicate actually remains. `set`, `rename`, `sort-keys` and `move` keep the `one` behaviour and take no such flag.
 
 Notes:
 

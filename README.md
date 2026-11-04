@@ -17,6 +17,7 @@ A high-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with per
 
 - **YAML 1.2 compliant** - Uses granit-parser for full YAML 1.2 support with native comment preservation
 - **Five formats, one document tree** - Native TOML, JSON, JSONC and JSON5 readers (`load_*`, `from_*`) and writers (`to_toml`, `doc.to_json` / `to_jsonc` / `to_json5`) share the YAML document tree, keeping comments and source spellings wherever the target dialect can carry them
+- **Line-delimited JSON** - `load_json_lines(text)` returns a `JsonLines` iterator that resolves one document per line, so a `.jsonl` / NDJSON shard is read with only one record live at a time
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - **High Performance** - Rust backend, 7× faster `safe_dump`/`from_dict` vs v0.10 (direct writer, no intermediate AST); fast-path `safe_load`/`safe_loads` skips anchor tracking when none present
@@ -206,7 +207,9 @@ doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
 
-The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, serializing a document with allowed duplicate keys emits the last occurrence. `duplicate_keys` is the named spelling of the same decision - `as_is` (the default, which answers per identity class), `error`, `last_wins` (what `allow_duplicate_keys=True` means) and `first_wins` - and passing both spellings at once is refused.
+The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, serializing a document with allowed duplicate keys emits the last occurrence. `duplicate_keys` is the named spelling of the same decision - `as_is` (the default, which answers per identity class), `error`, `last_wins` (what `allow_duplicate_keys=True` means) and `first_wins` - and passing both spellings at once is refused ("pass one"), as is a value that names none of the four. Every CLI command that reads YAML takes the same choice as `--duplicate-keys`.
+
+Two keys that differ only by a tag or an anchor the reader keeps are distinct in the AST, so deleting one can leave the other answering the deleted name. `doc.delete(path, on_duplicate=...)` decides that: `one` (the default) deletes the pair the path resolves to, `all` deletes every pair the key could answer with, and `error` refuses while more than one remains. The CLI `delete` takes the same three values as `--on-duplicate`.
 
 ### Serialization options
 
@@ -219,10 +222,16 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # indent per block-mapping level
     indent_sequence=2,  # indent per block-sequence level
     indent_offset=0,  # base offset applied to the whole document
+    note_placement="note_first",  # or "header_first"
 )
 ```
 
 `indent_mapping` / `indent_sequence` / `indent_offset` default to `indent_size` / 0 when omitted, so `indent_size=4` still indents everything by 4.
+
+`note_placement` decides where a note line goes when it cannot ride its own line and an `&a` / `!tag`
+header line sits directly above it: `note_first` (the default) writes it above that header, which is where
+reading the text back files it, so the first emission already settles; `header_first` keeps the header line
+on top and is not a fixed point for that shape. Any other value raises `YamlSerializeError`.
 
 ### Tag handlers
 
@@ -290,7 +299,8 @@ cfg.name  # "Alice"
 | **Async I/O** | **Full** |
 | **Incremental re-parse** | **Full** |
 | **JSON export** | **Full** |
-| **Duplicate keys** | **Configurable (`YamlDuplicateKeyError` / last-wins)** |
+| **Duplicate keys** | **Four named policies via `duplicate_keys`: `as_is` / `error` / `last_wins` / `first_wins` (`as_is`, the default, answers per identity class and raises `YamlDuplicateKeyError` on a plain collision)** |
+| **Delete a duplicated key** | **`doc.delete(path, on_duplicate="one" \| "all" \| "error")`** |
 | **Custom tag handlers** | **Priority-chained `register_tag`** |
 | **Pydantic models** | **`parse_as()` validation** |
 
@@ -303,8 +313,9 @@ cfg.name  # "Alice"
 doc = pyrs_yaml.parse(yaml_str)
 doc = pyrs_yaml.parse(yaml_bytes)
 
-# Parse with options (max_depth, schema, allow_duplicate_keys)
+# Parse with options (max_depth, schema, allow_duplicate_keys, duplicate_keys)
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False, max_depth=500, schema="yaml1.1")
+doc = pyrs_yaml.parse("key: first\nkey: second", duplicate_keys="first_wins")
 
 # Parse YAML file
 doc = pyrs_yaml.parse_file("config.yaml")
@@ -381,6 +392,7 @@ yaml_str = pyrs_yaml.from_json5(json5_str)
 
 # Parse another dialect into Python values
 data = pyrs_yaml.load_toml(toml_str)
+records = pyrs_yaml.load_json_lines(jsonl_str)  # JsonLines iterator, one document per line
 
 # Export a document to another dialect
 json_str = doc.to_json()

@@ -35,6 +35,45 @@ The dedicated `json` schema (see [Custom Schemas](custom-schema.md)) also
 restricts scalar resolution to JSON-compatible rules, and
 `from_json` / the CLI `to-json` convert explicitly.
 
+### Line-delimited JSON: `load_json_lines` { #json-lines }
+
+A `.jsonl` / NDJSON file is not one JSON document, so nothing that takes a
+document reads it — `load_json` over a two-record file refuses the second line
+as trailing characters. `load_json_lines` is the route that does, and it returns
+a `JsonLines` iterator that resolves one document per `__next__`, so only one
+line is live at a time:
+
+```python title="JSON Lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))
+# [{'a': 1}, {'b': 2}]
+```
+
+Each value is what `load_json` returns for that line, and the stream keeps the
+engine's contract: a line the format does not define raises `YamlParseError`
+naming its position in the whole input, and the cursor does not move, so asking
+again reports the same record rather than the one after it.
+
+```python title="What a refused line says"
+list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: a blank line carries no document in
+# a line-delimited JSON stream at line 2 column 1
+
+next(pyrs_yaml.load_json_lines("// note\n"))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a JSON value at line 1 column 1
+
+next(pyrs_yaml.load_json_lines('{"a": 1,\n'))
+# pyrs_yaml.YamlParseError: YAML parse error: expected a quoted object key at line 1 column 9
+```
+
+A blank line is refused wherever it sits, including the extra one a file ends
+with, because a stream that answered `[]` for `{"a": 1}\n\n` would be guessing
+which line the author meant to drop. A line carrying one complete value is
+required and sufficient: no separator, no trailing comma, one document per line.
+
 ## TOML
 
 Three functions, mirroring the JSON conversion family:

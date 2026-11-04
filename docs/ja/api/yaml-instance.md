@@ -8,7 +8,7 @@ status: new
 
 ## YAML クラス
 
-`YAML` クラスは、`typ`、`schema`、`max_depth`、`allow_duplicate_keys` の設定を通じてパース動作を制御する、設定済みのパーサーインスタンスです。ラウンドトリップ（`rt`）、セーフ、フルの YAML パースモードをサポートします。
+`YAML` クラスは、`typ`、`schema`、`max_depth`、`allow_duplicate_keys` / `duplicate_keys`、`honor_version_directive` の設定を通じてパース動作を制御する、設定済みのパーサーインスタンスです。ラウンドトリップ（`rt`）、セーフ、フルの YAML パースモードをサポートします。
 
 ### 概要
 
@@ -28,7 +28,9 @@ __init__(
     typ: str = "rt",
     schema: str | dict = "core",
     max_depth: int = 1000,
-    allow_duplicate_keys: bool = False,
+    allow_duplicate_keys: bool | None = None,
+    honor_version_directive: bool = False,
+    duplicate_keys: str | None = None,
 ) -> None
 ```
 
@@ -39,10 +41,11 @@ __init__(
 | `typ` | `str` | `"rt"` | パーサータイプ。`"rt"`（ラウンドトリップ）、`"safe"`、`"full"` のいずれか。 |
 | `schema` | `str \| dict` | `"core"` | YAML スキーマ。`"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`、またはインラインスキーマ dict（[YAML スキーマ言語](reference.md#yaml-schema-language) 参照）。 |
 | `max_depth` | `int` | `1000` | パース時の最大ネスト深さ。 |
-| `allow_duplicate_keys` | `bool` | `False` | 重複するマッピングキーを許可するかどうか。 |
+| `allow_duplicate_keys` | `bool \| None` | `None` | 重複するマッピングキーを許可するかどうか。`None` は `duplicate_keys="as_is"` として、`True` は `"last_wins"` として読みます。 |
 | `honor_version_directive` | `bool` | `False` | 明示された `%YAML` ディレクティブのバージョン交渉。`True` なら `%YAML 1.1` 宣言文書は 1.1 プロファイルで解決され、ディレクティブも再出力されます。明示した `schema` が優先します。 |
+| `duplicate_keys` | `str \| None` | `None` | 一つのマッピングに YAML が同じと数えるキーが二つあるとき、読み手がどう動くか: `"as_is"`（既定 — 読み手がこれまで返していた身分のクラス別の答）、`"error"`、`"last_wins"`（`allow_duplicate_keys=True` の意味）、`"first_wins"`。`None` は `"as_is"` として読みます。方針の説明は [`parse()`](reference.md#parse) にあります。 |
 
-**Raises:** `YamlTypeError` — `typ` または `schema` が無効な場合。
+**Raises:** `YamlTypeError` — `typ` または `schema` が無効な場合。`YamlParseError` — `duplicate_keys` がどの方針も名乗らない場合、または `duplicate_keys` と `allow_duplicate_keys` を同時に渡した場合 — 二つはひとつの選び方の二つの書き方にすぎないので、拒否は片方を渡すよう求めます。
 
 **Example:**
 

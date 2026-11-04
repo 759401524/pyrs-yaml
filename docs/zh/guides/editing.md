@@ -84,7 +84,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 | :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 新标量（值*不会*被重新解析） |
 | :material-language-python: `dict` | 新映射（普通样式） |
 | :material-format-list-numbered: `list` | 新序列（普通样式） |
-| :material-alert: `tuple` | 不支持 — 抛出 `YamlEditError` |
+| :material-format-list-numbered: `tuple` | 新序列（普通样式）— 与 `list` 生成的是同一个节点 |
 
 替换现有标量时，目标的元数据（行内注释、锚点、标签、引号样式）会被**保留** — 除非新值是映射/序列，此时采用新节点自身的格式。
 
@@ -157,6 +157,14 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ```
 
 映射顺序始终保留；删除序列元素后会补齐空隙。
+
+一个文档可以持有拼写同一个名字的两个键 — 只能靠读取器保留的标签或锚点区分 — 因此删掉其中一个之后，把发射结果读回来时另一个仍会顶着那个名字作答。`delete()` 用 `on_duplicate` 问调用方想要哪一种答复：
+
+- `one`（默认）删掉路径解析到的那一对 — 即每个既有调用方一直看到的行为。
+- `all` 删掉该键可能应答的每一对，因此这个名字也从发射结果里一并消失。
+- `error` 在还剩多于一对时以 `duplicate-key-target` 拒绝，并保持文档原样不动。
+
+无法识别的取值本身就是一条具名拒绝，而不是悄悄退回默认值。`del doc[key]` 与 `Node.delete()` 保持默认。
 
 #### `__delitem__` — 根节点语法糖
 
@@ -428,7 +436,8 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | 错误 | 何时引发 |
 |------|---------|
 | :material-alert: `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
-| :material-alert: `YamlEditError` | 不支持的值类型（`tuple`）、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
+| :material-alert: `YamlEditError` | 通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
+| :material-alert: `YamlTypeError` | 写入器不认识的 Python 类型的值（`set("$.a", object())`）— `tuple` **不**在其中 |
 | :material-alert: `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
 
 所有编辑都是原子的 — 失败的编辑不会改动文档（及其修订号）。

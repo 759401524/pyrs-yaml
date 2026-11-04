@@ -17,2005 +17,739 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [Unreleased]
 
+### [v0.19.0] — 2026-11-04
+
+<details markdown="1">
+<summary>policies named at the call site · floors keyed by runner image</summary>
+
 #### Added
 
 - **`duplicate_keys=` names the reader's duplicate-key policy, and `as_is` keeps four answers** —
-  `allow_duplicate_keys` could ask for one of two behaviours while the reader answered four,
-  measured on `main`: `a: 1` beside `a: 2` raises `YamlDuplicateKeyError`, `: 1` beside `: 2` folds
-  to the last pair, `0set: 1` beside `!base 0set: 2` keeps both pairs and refuses only `to_dict()`,
-  `'a': 1` beside `a: 2` raises. No single default value of a new flag could preserve that, so
-  `as_is` (the default) *is* the per-identity answer; `error` also refuses the null and merge keys
-  the default exempts, `last_wins` is what `allow_duplicate_keys=True` has always meant, and
-  `first_wins` keeps the pair the document said first and moves the folded pair's notes and anchor
-  definitions onto the survivor — the two losses this engine has been fuzzed for. Passing both
-  spellings is its own refusal (`pass one`), an unknown value names the four it means, and the two
-  YAML readers — the AST receiver and the P3 direct loader, which holds its own copy of this
-  decision — agree on all four policies. Every entry point takes it: `parse`, `parse_file`,
-  `parse_all_docs`, `safe_load`, `safe_loads`, `Yaml(...)`, and the twelve CLI commands that read
-  YAML, as `--duplicate-keys`. Five Rust tests pin the four answers per identity class and the
-  fold's carriage, two Hypothesis properties pin `first_wins` as `last_wins` read from the other end
-  over generated keys on both readers, eleven Python tests pin the measured table with its two
-  refusals, and five pin the CLI surface. Taking the value-identity scan out of the `first_wins`
-  fold reddens `first_wins_keeps_the_earlier_pair_of_the_mapping`, so the branch is pinned rather
-  than assumed. The movement is named, not absorbed: the refresh artifact measured on this tree
-  raises nine floors - `parse_medium` 322,863,958 → 325,633,529 (+0.86%), `to_python_medium`
-  +0.73%, `parse_block` +0.73%, `parse_anchors` +0.68%, `parse_small` +0.67%, `parse_inline_merge`
-  +0.65%, `to_python_small` +0.64%, `to_python_anchors` +0.59%, `parse_notes` +0.53% - and leaves
-  the other forty-six within ±0.07%, so every writer scenario and the four other formats read as
-  they did. Boundary: the fuzz targets parse with the default policy, so the three named
-  alternatives are not yet in the fuzz tier, and a duplicate the default refuses still surfaces at
-  the CLI as an uncaught `YamlDuplicateKeyError`, as it did before this flag existed.
-- **`to_yaml_with_options(note_placement=...)` decides where a note the line cannot hold goes** —
-  when a pair's trailing slot is already taken and an `&a` / `!tag` header line sits directly above
-  that pair, the note has to take a line of its own. The writer parked it inside the header's gap
-  while a reader files it above the header, so the emission needed a second round to settle -
-  libFuzzer `edit_yaml` crash-547a9705 reported exactly that. `note_first` (the default) writes it
-  above the header, where the read puts it, so the first emission is the fixed point; `header_first`
-  keeps the placement this engine used to pick and is documented as not settling for that shape. An
-  unrecognised value is its own named refusal, never a silent fall back. The default is the
-  placement a re-read already gives, so no existing round-trip or placement expectation moved - the
-  Rust and Python suites pass on it unchanged. Two Rust tests pin the two answers with their exact
-  bytes, three Python ones pin the refusal, the two values agreeing where no header gap exists, and
-  the reader's own lift; the 74-byte input replays clean under `cargo fuzz run edit_yaml -- -runs=0`
-  and joins the corpus as `fuzz/seeds/edit_yaml/former-crash-547a9705.seed`. The last live finding
-  of that run, `b7e16929`, stays open as the anchor-order question it is.
-- **`delete()` now asks the caller what a duplicated key name means** — a document can hold two keys
-  that spell one name and are told apart only by a tag or an anchor the reader keeps (`0set: 1`
-  beside `!base 0set: 2`), so a delete that takes one leaves the other answering that name as soon
-  as the emission is read back: libFuzzer `edit_yaml` crash-46d35d71 reported exactly that as
-  `a deleted key is still in the document`. Rather than have the engine pick,
-  `delete(path, on_duplicate=...)` offers `one` (the default, and what every existing caller
-  already saw), `all` (every pair the addressed key can answer with goes, so the name leaves the
-  document), and `error` (refuse with `duplicate-key-target` while more than one remains, leaving
-  the tree untouched); an unrecognised value is its own named refusal, never a silent fall back. The
-  engine entry point is `delete_path_with_policy`, which returns one change unit per removal and
-  re-runs the anchor guard for each, so a definition an alias still names is refused rather than
-  emitted dangling, while `delete_path` is now the `one` wrapper and removes exactly what it removed
-  before. `del doc[key]` and `Node.delete()` keep the default. Three Rust tests
-  (`delete_all_takes_every_pair_the_addressed_path_can_answer_with`,
-  `delete_one_leaves_the_sibling_that_still_answers_the_path`,
-  `delete_error_refuses_a_key_the_document_holds_twice`) and five Python ones pin the three answers
-  and both refusals; the fuzz tier drives verb 1 with `all`, which is why `crash-46d35d71` now
-  replays clean and joins the corpus as `fuzz/seeds/edit_yaml/former-crash-46d35d71.seed`, while
-  that run's other two inputs stay open as different ambiguities (`547a9705` wants a decided note
-  position, `b7e16929` an anchor emitted before the alias that uses it).
-- **Three old fuzz artifacts with no seed and no record enter the corpus** — `fuzz/artifacts/` held
-  `yaml_roundtrip` crash-3528db38 (2026-10-07) and crash-d461a3f2 (2026-10-16) plus `parse_json`
-  crash-331b36ec (2026-10-17) with no `former-crash-*` seed beside them and no mention in any
-  ledger, changelog or commit message, so the corpus tier could not have noticed a regression in
-  any of them. Each replays clean on the current tree — rebuilt `nightly` targets, exit 0 in 3 ms —
-  so nothing here is a live bug, and the three inputs now sit in
-  `fuzz/seeds/{yaml_roundtrip,parse_json}` as `former-crash-3528db38.seed`,
-  `former-crash-d461a3f2.seed` and `former-crash-331b36ec.seed` (5–16 bytes each), which is where
-  the PR tier's `-runs=0` replay reads them. Which change closed each one is not recorded here,
-  because none was: they predate the fix wave that followed, and the archive is the part that can
-  be proved — the target accepts each input today.
-- **The weekly fuzz sampler has a consumer: one issue per target** — the aggregate job wrote its
-  table to `$GITHUB_STEP_SUMMARY` and printed a `::warning::`, and nothing read either. The five
-  scheduled runs from 2026-10-03 to 2026-10-31 all failed and all carried crash inputs (39 distinct
-  hashes across the four archives that still use the `collected/` layout), and every finding reached
-  the queue only because a person opened the run page. `scripts/fuzz_file_issues.py` now files one
-  issue per target with the run link, the signature counts and the input names, and appends to the
-  issue that target already has. Dedupe is an exact title match rather than a search, because a
-  near-miss title must not absorb a new run; and a signature is panic text from an untrusted input,
-  so it goes into a fenced body and never into argv. The job gains `issues: write`, and the step is
-  skipped on `pull_request`, where the tier replays seeds with `-runs=0` and a fork's token is
-  read-only. A sampler that failed without leaving bytes exits 2 instead of reporting "nothing
-  found".
-- **The corpus note oracle now reads two spokes, not one** —
-  `crates/pyrs-yaml-core/tests/note_survival.rs` walked `yaml_roundtrip` and `parse_yaml` while its
-  own header claimed `fuzz/seeds/**.seed`, and the conservation claim it makes had never been asked
-  of the TOML corpora: `crates/pyrs-toml/tests/roundtrip_corpus.rs` replays those seeds for the
-  fixed point only. `every_note_in_the_toml_corpus_survives_one_emission` charges the 14
-  note-bearing seeds of `toml_roundtrip` and `parse_toml` (measured 2026-11-02), and the YAML walk
-  gains the document half of `edit_yaml`, whose entries are `document NUL script`. The two claims
-  are not the same and the mutation says so: writing the section note stack under `if false` leaves
-  the fixed-point replay **green** and reddens the new test, because an emission that deletes a note
-  settles on its first round — the `(hw)`/`(hy)` failure mode, now gated against the corpus rather
-  than only against generated trees. The header names what is walked, what is left alone and why
-  (strict `to_json_text` has nowhere to put a `//` note, so a JSONC half is a different claim), and
-  both floors are derived from the measurement — 55 of the 60 charged YAML seeds, 12 of the 14 TOML
-  ones.
-- **Two more shapes of the TOML element-note family are pinned, and the batch's inputs are corpus**
-  — the scheduled fuzz run of 2026-10-31 left six `toml_roundtrip` and `edit_yaml` artifacts whose
-  report is the claim the note fix in this release settles: a `#` line above an array element that
-  is itself a container. Measured on the parent of that fix, the three `toml_roundtrip` inputs emit
-  a second round that differs from the first; on this tree all six replay clean, so all six are
-  archived. `former-crash-969291e0.seed`, `former-crash-b750553e.seed` and
-  `former-crash-fe4a2b80.seed` sit under `fuzz/seeds/toml_roundtrip` and are replayed by
-  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` on every `cargo nextest`;
-  `former-crash-445ddfff.seed`, `former-crash-450cac9b.seed` and `former-crash-dce5f5ed.seed` sit
-  under `fuzz/seeds/edit_yaml`, which the fuzz job replays. Two shapes the fix settled had no pin of
-  their own and both do now: `a_note_above_an_array_of_tables_item_stays_above_it_and_settles`
-  (`# [` above a `[[p]]` header reads back on the item, not on its first member) and
-  `a_note_above_a_nested_array_element_stays_above_it_and_settles` (a nested array's own note stays
-  above its brackets).
-- **The fuzz seed tier is counted per target, with two refusals** — the matrix printed one aggregate
-  (`174 seeds of which 84 are former crashes`), and an aggregate cannot tell a target with
-  eighty-two durable inputs from a target with one file. `fuzz_seed_inventory()` now counts each
-  `fuzz/seeds/<target>/` at the depth and suffix `fuzz.yml` copies (one level, `*.seed`), publishes
-  `fuzz_seed_counts`, and the fuzz row names both ends of the distribution, which `--write-rows`
-  rewrites. The split matters at the event that reads the corpus: on a pull request
-  `scripts/fuzz_rounds.sh` runs `-runs=0`, which replays the committed seeds and explores nothing,
-  while `fuzz/corpus/` is gitignored and what a run discovers stays on the runner. A target with no
-  seed therefore has a merge-blocking tier with no input at all, and seeds left in a directory no
-  manifest declares inflate the total every later number is quoted from. Both shapes are refused
-  now — `fuzz-corpus-unseeded` and `fuzz-corpus-orphan` — and both measure zero on today's tree,
-  whose nine targets hold between 1 and 91 seeds with no orphan directory: the rule costs nothing
-  today and catches the next deletion. `tests/test_quality_matrix.py` forces each refusal from a
-  doctored inventory, and `test_the_seed_inventory_counts_what_the_workflow_copies` reddens if the
-  count drifts back to a recursive glob, because a nested `deep.seed` is not an input —
-  `cp fuzz/seeds/<target>/*.seed` never reaches it.
-- **Two contracts of `Document.validate()` are measured and registered** — the surface delegates
-  every rule to `jsonschema`, and the tree now says what that costs. `[project.dependencies]` is
-  `typing-extensions` alone and the three extras are `cli`, `pydantic` and `settings`, so nothing
-  this project publishes installs the evaluator: with the module halted in `sys.modules` — the same
-  failure an absent wheel produces — `doc.validate({...})` answers a base install with a bare
-  `ModuleNotFoundError`, while `docs/en/quick-start.md` installs once at its top and calls the
-  method in step 12. The second boundary is the schema *text*: the `str` door runs `json.loads`
-  before the evaluator is consulted, so the YAML spelling — the form every other schema surface
-  here reads — returns a stdlib `json.decoder.JSONDecodeError`, which belongs to neither the ten
-  documented `Yaml*` classes nor the CLI's `except YamlValidateError` arm; measured,
-  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` prints exactly that traceback. Both are
-  registered in `.ci/known-residuals.json` with a live repro each
-  (`api:validate-evaluator-is-not-installed-by-anything-we-ship` and
-  `api:validate-schema-text-is-json-only`) and are deliberately not fixed here: an extra is a
-  packaging decision, widening the door or wrapping the error changes a public contract, and
-  PR #517 designs the evaluator that would make both questions moot.
-- **A note behind a tag-only line landed inside that line** — `yaml_roundtrip` crash-2c76568e hands
-  the writer a mapping whose first pair is a bare tag (`bg: !`). No scalar text is written for it,
-  so that line stays open until something closes it by inserting the value's null text; the leading
-  note stack of the *next* pair does that from `write_note_line`, and those bytes move the first
-  line right. `crates/pyrs-yaml-core/src/serializer.rs` had remembered that line's start before the
-  stack was written, so the key-note placement — refused the tail slot because its value carries a
-  note of its own — wrote "above the pair" at a stale offset, i.e. inside the previous line:
-  `bg: !: # *b` / `~` / `# *b` / `<<: …`. The engine's own reader refuses that text outright
-  (`simple key expected ':'`), a stronger failure than the one-round drift a tag-only line normally
-  costs. Both key branches recapture the line start after the leading stack now.
-  `a_key_note_behind_a_tag_only_line_settles_in_one_round` pins the 25-byte minimised input and the
-  archived 112-byte crash, byte for byte: each first emission re-parses, settles on the second, and
-  keeps both notes as lines of their own; the control — the simple-key recapture put back to the
-  stale offset — reddens it with exactly the pre-fix bytes. The `?`-marker branch takes the same
-  recapture for the same invariant, and no measured case reaches it, because the key-note block is
-  skipped for explicit keys — so this entry does not claim one. The input joins the corpus as
-  `former-crash-2c76568e.seed`, charged by the `note_survival` walk from now on. Priced on the
-  pinned `rustc 1.97.1` in WSL, none of the six YAML writer scenarios crosses the 0.5 % line —
-  `serialize_anchors` −0.24 %, `serialize_medium` −0.22 %, `serialize_note_flow` −0.06 % — so the
-  two `len()` stores are not measurable. The two TOML reader scenarios that this host reads
-  1.65–2.99 % over their flat-table floors read the same way on the parent tree, which this change
-  cannot reach.
-- **The scheduled run's last open input is corpus, and its five shapes are pinned** — libFuzzer
-  `yaml_roundtrip` crash-1bbd4d7f reduced to twelve bytes: `? &b` above an indented `? > #I`. The
-  note under that marker body's anchor header belongs above the marker, and the writer that landed
-  after the run already puts it there — measured on this tree, all five shapes the family covers
-  write the hoisted spelling on the first round and survive a second. What was missing was a name to
-  break: `a_note_under_a_marker_header_settles_above_the_marker` in
-  `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` asserts each emission, its note count and
-  its round-2 equality, and the `crash-1bbd4d7f` input is archived as a `former-crash-*` seed under
-  `fuzz/seeds/yaml_roundtrip`, so the fuzz job replays it too. No engine change: every shape the
-  family names already settled.
-- **The JSON note-conservation claim reaches the corpus** — `events_replay.rs` charges the two walks
-  against each other but compares through `to_json_text`, which forgets comment slots on purpose,
-  and `roundtrip_corpus.rs` only asks for a fixed point, so a note the tree kept and the JSONC or
-  JSON5 writer dropped reads the same as a note neither walk kept.
-  `crates/pyrs-json/tests/corpus_notes.rs` asks the generative tier's rule of both committed corpora
-  — 36 seeds x 2 comment-capable dialects is 72 trials, 56 accepted documents, 26 of them
-  note-bearing, each in the compact and the pretty spelling: every note the tree carries, flattened
-  the way
-  `push_block_flat` and the `//` line sites flatten it, must appear in the emitted document. It
-  bites: deleting the root-note call from `to_jsonc_text` or from `to_json5_text` reddens it on the
-  new `shape-root-line-note.seed`, naming that dialect — the seed was added because no other
-  document in either corpus held the root's line-end slot, the one position no member loop reaches.
-  Floors sit at 38 accepted / 15 note-bearing, below the measured 56 and 26.
-- **The YAML writer's note conservation is charged on generated trees now** — the hub's writer had
-  one oracle, `tests/note_survival.rs`, and it walks the committed fuzz corpus: a shape no seed
-  spells was never asked. `prop_yaml_writer_carries_every_note` asks the same invariant of
-  `arb_custom_node` — anchors, tags, block scalars, flow containers and notes stacked on multi-node
-  trees — reading each note through the writer's own spelling rule: `push_note_text` drops the
-  note's outer blanks and writes every interior break as a space, and `note_is_writable` drops a
-  blank note on purpose, so an empty note is exempt rather than reported. It bites: make
-  `note_is_writable` return false and the first sample reddens with `successes: 0`; 10,000 generated
-  cases pass on this tree. What it cannot see is stated rather than implied — a note lost during
-  ingest never reached the AST, and `Alias` is outside the generator. The tier is 35 properties now,
-  and `QUALITY_MATRIX.md`'s rows were rewritten by `scripts/quality_matrix.py --write-rows` rather
-  than by hand.
+  one flag asked two behaviours of a reader that answers four: `a: 1` beside `a: 2` raises
+  `YamlDuplicateKeyError`, `: 1` beside `: 2` folds to the last pair, `0set: 1` beside
+  `!base 0set: 2` keeps both pairs and refuses only `to_dict()`, `'a': 1` beside `a: 2` raises.
+  `as_is` (the default) *is* those per-identity answers; `error` also refuses the null and merge
+  keys the default exempts, `last_wins` is what `allow_duplicate_keys=True` has always meant, and
+  `first_wins` keeps the earlier pair and moves the folded pair's notes and anchor definitions onto
+  the survivor. Passing both spellings is refused (`pass one`), an unknown value names the four it
+  means, and both YAML readers agree. Every read entry point and the twelve CLI commands take it as
+  `--duplicate-keys`. The refresh on this tree raises nine floors - `parse_medium` 322,863,958 →
+  325,633,529 (+0.86%), `to_python_medium` and `parse_block` +0.73%, `parse_anchors` +0.68%,
+  `parse_small` +0.67%, `parse_inline_merge` +0.65%, `to_python_small` +0.64%, `to_python_anchors`
+  +0.59%, `parse_notes` +0.53% - and leaves the other forty-six within ±0.07%; the fuzz targets
+  parse with the default, so the three named alternatives are not yet in the fuzz tier.
+- **The call site names the ambiguity: `note_placement=` and `on_duplicate=`** — with a pair's
+  trailing note slot taken under an `&a` / `!tag` header, the writer parked the note in the header's
+  gap where readers file it above - libFuzzer `edit_yaml` crash-547a9705.
+  `to_yaml_with_options(note_placement=...)`: `note_first` (the default) writes it where the read
+  puts it, so the first emission is the fixed point; `header_first` keeps the old placement,
+  documented as not settling; an unrecognised value is its own named refusal. Two keys can also
+  spell one name, told apart only by a tag or anchor the reader keeps, so deleting one leaves the
+  other answering that name on re-read - crash-46d35d71, reported as
+  `a deleted key is still in the document`. `delete(path, on_duplicate=...)`: `one` (the default,
+  what every existing caller saw), `all` (every pair the addressed key can answer with goes),
+  `error` (refuses with `duplicate-key-target` while more than one remains, tree untouched). The
+  engine seam `delete_path_with_policy` returns one change unit per removal and re-runs the anchor
+  guard, so a definition an alias still names is refused rather than emitted dangling;
+  `delete_path`, `del doc[key]` and `Node.delete()` keep `one`; that run's `b7e16929` (an anchor
+  emitted before its alias) stays open as the anchor-order question it is.
+- **The fuzz corpus got its housekeeping: old artifacts archived, sampler findings filed, seeds
+  counted per target** — three artifacts with no seed and no record - `yaml_roundtrip`
+  crash-3528db38 (2026-10-07), crash-d461a3f2 (2026-10-16) and `parse_json` crash-331b36ec
+  (2026-10-17) - replay clean and join `fuzz/seeds/` as `former-crash-*.seed`; no fix is claimed,
+  the archive is what is proved. The 2026-10-31 scheduled run's six `toml_roundtrip` and `edit_yaml`
+  artifacts - crash-969291e0, crash-b750553e, crash-fe4a2b80, crash-445ddfff, crash-450cac9b,
+  crash-dce5f5ed - spell one shape the release's TOML note fix settles, a `#` line above an array
+  element that is itself a container; all six replay clean and are archived. The weekly sampler
+  finally has a consumer: after five scheduled runs from 2026-10-03 to 2026-10-31 failed carrying
+  crash inputs nobody read, `scripts/fuzz_file_issues.py` files one issue per target with the run
+  link, signature counts and input names, appends by exact-title dedupe with `issues: write`,
+  skipped on `pull_request`, exit 2 rather than a nothing-found report when no bytes are left.
+  `fuzz_seed_inventory()` counts each `fuzz/seeds/<target>/` as `fuzz.yml` copies it, publishes
+  `fuzz_seed_counts`, and refuses `fuzz-corpus-unseeded` - the PR tier replays committed seeds with
+  `-runs=0` and explores nothing - and `fuzz-corpus-orphan`.
+- **The note oracle widened across formats, and the run's note shapes are pinned** — deleting a TOML
+  note stack leaves the fixed-point replay green - the survival claim is now gated against the
+  corpus: a TOML note-survival test charges the note-bearing `toml_roundtrip`/`parse_toml` seeds
+  (measured 2026-11-02), and `note_survival.rs`'s YAML walk gains `edit_yaml`'s document half.
+  `corpus_notes.rs` brings the rule to both comment-capable JSON dialects across the committed
+  corpora: every tree note must appear in the emitted text, and removing the root-note call from
+  `to_jsonc_text` or `to_json5_text` reddens it on the new `shape-root-line-note.seed`.
+  `prop_yaml_writer_carries_every_note` asks the same of generated trees - notes lost during ingest
+  never reached the AST, and `Alias` is outside the generator. The run's last findings closed:
+  crash-1bbd4d7f needed only a name to break - it already hoists on the first round and its five
+  shapes are pinned; a tag-only line (`bg: !`) wrote the key note at a stale start inside the
+  previous line, text its reader refuses (`simple key expected ':'`), so both key branches now
+  recapture, and crash-2c76568e is pinned byte for byte and archived. Priced on `rustc 1.97.1`, no
+  YAML writer scenario crosses the 0.5 % line (`serialize_anchors` −0.24 %, `serialize_medium`
+  −0.22 %, `serialize_note_flow` −0.06 %), and the two TOML reader scenarios this host reads
+  1.65–2.99 % over their floors read the same on the parent.
 - **The Python generative tier draws the families its leaves could never name** — `arbitrary_json`
-  fed the dump property capped its leaves at `None`, `bool`, an `int` inside ±10^12, a finite
-  `float` and `str`, and counting the leaves says what that excluded: 25,000 draws produce 270,602
-  leaves — 58,064 / 53,396 / 53,251 / 52,978 / 52,913 across those five kinds — and not one leaf of
-  any other type. The number protocol, the type registry and the `!!binary` / `!!timestamp` routes
-  were never drawn, so the tier's claim was "no panic over a JSON subset of the domain". `hard_leaf`
-  in `tests/strategies.py` adds an unbounded integer, the non-finite floats, tuples, `bytes`,
-  `date`, `time`, `datetime`, `Decimal` and four types that carry no YAML spelling; 20,000 draws of
-  the widened generator now spend 134,145 of their 229,798 leaves on those families — roughly 10,000
-  each, plus 22,108 integers past i64 and 10,470 non-finite floats. The invariant widened with the
-  domain: `test_dump_never_raises` accepts text or `pyrs_yaml.YamlTypeError` and nothing else, so a
-  refusal wearing another name is a failure — swapping the handler for `except ValueError` reddens
-  it on a `set` draw — and `test_each_widened_family_is_text_or_the_typed_refusal` pins seventeen
-  measured outcomes one row at a time: an out-of-range integer reads back as `str`, a tuple as
-  `list`, `bytes` as `bytes`, the temporals and `Decimal` as themselves, and a `set`, `frozenset`,
-  `complex` or unregistered class as that typed refusal. Each row that reaches text also re-dumps to
-  the same bytes, which is the second new question: a family that only settles on its second
-  emission is a round trip that moves, and one of them does. `safe_dump(-(2**64))` writes bare
-  digits, the hub reads them as a string, and re-dumping that string quotes it, while the same
-  decision on `2**63` repeats its own text — a sign asymmetry in one quoting guard, recorded with
-  its measured second emission in `NON_SETTLING` instead of leaving the table, and open as a defect
-  rather than closed by this entry. The third is about the strategy itself: a leaf that stops
-  reaching the mix costs a red run, because
-  `test_the_widened_leaves_reach_every_family_they_were_added_for` draws the same generator 400
-  times and fails by naming any family that never arrived — take `hard_leaf` out and it lists all
-  twelve — so the tier cannot quietly narrow again. No engine code moves: what these rows name is
-  the binding's existing behaviour, measured rather than assumed. The exact-equality strategies stay
-  JSON-shaped, because their claim is byte-for-byte round trip and that is only true of that subset.
-  The rows also needed an isolation the widening itself broke: with `tests/test_concurrency.py`
-  first — that module ends on `clear_type_handlers()` — four of these families raised and `Decimal`
-  wrote an untagged `1.5` that reads back as a `float`, because the call drops the handlers the
-  package installs at import along with the custom ones its own docstring names. The module now
-  carries the same `_register_builtins()` guard `tests/test_toml.py` uses, so the rows answer the
-  same in any order.
-  Two of those families — an integer past i64 and a non-finite float — are rare inside an unbounded
-  integer or float strategy, and each now holds a branch of its own for the reach guard's sake: at
-  400 draws the first shape of this reddened on two CI legs with different names, 3.10 without a
-  non-finite float and 3.8 without a wide int, which is a coin flip wearing a test name. The same
-  guard then saw all twelve families in ten consecutive runs, and it still bites — take the two
-  branches out and it reddens by naming the non-finite float.
-- **TOML's note machinery is priced on both sides now** — every TOML floor ran over documents
-  holding no `#`, so `push_note_text`, the parser's `take_comment` and the note list it returns
-  alongside the table moved no committed number. `to_toml_notes` and `from_toml_notes` joined the
-  set, measured on the enforcing image (`20261026.354.1`, `rustc 1.97.1`, three repeats): the writer
-  on the same six-note document `to_jsonc_notes` and `to_json5_notes` write, the reader on a
-  seven-comment document holding `MEDIUM_TOML`'s values and nothing else, which gives the reader
-  half a measured control instead of a named one — against `from_toml_medium` the seven comments
-  cost 1,945 instructions each once the harness's 2,000 iterations divide out. Each floor's largest
-  single row sits where the notes are: `pyrs_toml::writer::push_note_text` on the writer,
-  `<pyrs_toml::parser::Parser>::take_comment` on the reader. Two shapes sat outside the price when
-  this was measured, and one of them turned out to be an unread writer slot rather than a limit: a
-  note above the first key of a map rendered as an inline table reached
-  `crates/pyrs-toml/src/writer.rs` on the table's own leading list and no arm read it, so the note
-  was dropped; the Fixed bullet below gives that slot a reader, and the fixture test now expects all
-  six of its notes to arrive. The other shape stays: an own-line note after the document's last key
-  has no AST slot, because the parser hands it back as its pair's second value and the writer never
-  sees it, so `crates/pyrs-yaml-core/tests/ir_fixtures.rs` asserts it absent from the emitted text —
-  giving it a home reads as a decision there rather than as a floor that moved on its own. Measured
-  while pricing, and now asserted: rustc normalises CRLF inside raw strings, so no fixture compiles
-  to a CR byte and the newline convention a fixture *file* is stored with cannot reach a floor —
-  learned when a helper script rewrote `bench_inputs.rs` from the CRLF all ten commits touching it
-  stored to LF and turned a 39-line change into a 919-line diff. One dispatch wrote the baseline
-  with `accept_drift` empty and nothing refused: forty-seven of the fifty-three floors it carried
-  over moved, the widest upward +0.385 % (`from_json_long_strings`) and only
-  `from_json5_medium` -1.132 %, `from_jsonc_medium` -1.130 % and `parse_inline_merge` -0.551 % past
-  0.5 % downward, where the gate warns beyond 2 %; no engine route changed on this head, so those
-  are the harness's own code size moving its siblings.
-- **The Ir harnesses are linted now, and a rule keeps them linted** — both
-  `crates/*/benches/ir_gate.rs` files declare `required-features = ["ir-gate"]`, and cargo drops a
-  target whose required features are off instead of checking it, so the repository's
-  `cargo clippy --all --all-targets -- -D warnings` — the scope CI runs, adopted so that `tests/`
-  and `benches/` could not go unlinted — never compiled the two files every instruction floor is
-  measured from. Measured by planting a type error in each harness in turn: the wide scope reported
-  a clean tree twice, while
-  `cargo clippy -p pyrs-yaml-core -p pyrs-yaml --bench ir_gate --features ir-gate` exited 101 naming
-  `crates/pyrs-yaml-core/benches/ir_gate.rs:325` and then `crates/pyrs-yaml/benches/ir_gate.rs:147`.
-  The `ir` job already *built* the harness, so a compile error could not walk past — what nothing
-  read was a lint. That command is a `rust-lint` step now, and a `prek` hook scoped to the two
-  harness files, with both clippy hooks in the hooks job's skip list because its toolchain installs
-  no `clippy` component; `tests/test_ci_ir_harness_lint.py` reads the gated crate set out of the
-  manifests and the clippy hooks out of `prek.toml`, so neither list is typed twice, and each of the
-  four mutations — step dropped, feature dropped, crate dropped, skip list left behind — reddens one
-  test. The limit `QUALITY_MATRIX.md` recorded as "checked by building it, not by the lint job" is
-  closed, and the same paragraph's scenario list gains the two `safe_dump_*` rows #673 added to that
-  harness.
-- **The Python-object write route has an instruction floor now** — `safe_dump` and `from_dict` serve
-  `crates/pyrs-yaml/src/py/direct_dump.rs`, and no committed number reached it: the engine harness's
-  `serialize_*` scenarios stop at the node model those routes never build, so every allocation, scan
-  and spelling decision the binding's own writer makes moved no floor.
-  `crates/pyrs-yaml/benches/ir_gate.rs` gains `Channel::Dump` with `safe_dump_small` and
-  `safe_dump_medium` — 8.32x the instructions between the two documents the read channel
-  already uses (`SMALL_YAML` and `MEDIUM_YAML`), with the object built by `to_python_*`'s own body
-  outside the counted loop and in `--setup-only` as well, so the loader's price stays in
-  `to_python_*` and out of these. The numbers came off the enforcing image (`20261026.354.1`,
-  `rustc 1.97.1`, three repeats) from the refresh workflow dispatched on this head, and they joined
-  that image's keyed row as well as the flat table, because a binding-harness scenario is keyed by
-  the image that measured it. The dispatch named nothing in `accept_drift` and still wrote, so no
-  floor crossed the 0.5% line; the flat table's four binding readings do move (by up to 1.68%,
-  `load_toml_medium`), because the file they came from was generated on `20261023.334.3` and an
-  enforcing leg reads its own row now, and that row is untouched — nine quoted readings in
-  `QUALITY_MATRIX.md` re-pointed at this file, every one of them inside 0.001%. The route's first
-  attribution: `needs_quotes` is the largest non-allocator term at 5.45% of `safe_dump_medium` and
-  `DirectWriter::write_key` 3.70%, with no `type_registry` function among the twelve — which
-  measures, on a document registering nothing, the empty-handler fast path #672 could only assert.
-- **The counterparty version caps are measured, and a gate keeps them measured** — five of
-  the nine `python_version < 'X.Y'` caps in the test group still read `< '3.14'` while
-  `pyjson5`, `numpy`, `ujson` and `python-rapidjson` each ship a 3.14 wheel, so the ≥3.14 legs
-  install fewer oracles: the twelve green legs of PR #665 read 4,433 assertions on 3.13 against
-  4,197 on 3.14 and 4,196 on 3.15, and making one counterparty unimportable at a time
-  attributes 141 of the 236 to `pyjson5`, 31 to `orjson` and 54 to `numpy`, none to the others
-  on an ordinary leg. `pyjson5` moves to `< '3.15'` and
-  `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` to `< '3.16'`, because a wheel exists on every
-  leg each now covers, both free-threaded ones included; `orjson` and `rtoml` stay below 3.14
-  because PEP 508 has no free-threading marker, neither publishes a 3.14t wheel, and admitting
-  3.14 admits 3.14t and leaves that leg unable to install the group.
-  `scripts/counterparty_wheels.py` records the availability per OS and band from real
-  interpreters, and `scripts/check_counterparty_caps.py` — wired as a hook — refuses a cap that
-  admits a band with no wheel *and* a cap that excludes a band with wheels on every leg of it.
-  A stale cap is a red run naming the package now, not a silent skip the size of the whole
-  JSON5 spec table.
-- **What a shared Python object becomes when it is written is now a checked fact** — given
-  `{"a": shared, "c": shared}`, both writer routes emit two copies of the subtree rather than an
-  anchor and an alias, and the re-read compares equal but the two values are not one object; the
-  round-trip route keeps `&x`/`*x`, so the loss belongs to the object routes.
-  `tests/test_safe_dump.py::TestSharedObjectShape` pins both halves plus the
-  `YamlMaxDepthError` a cyclic graph gets, PyYAML and ruamel were measured against the same graph
-  (both keep the sharing), and `docs/dev/boundaries.md` names the divergence and why closing it is
-  not free. No behaviour changed here.
-- **The pytest tier's width is derived now, not remembered** — three contributing pages said the
-  blocking Python tier runs "4 Python versions × 3 OSes" and `QUALITY_MATRIX.md` said "3 OSes × 7
-  Python versions", while the declared interpreter floor is eight wide (3.8 through 3.15) and the
-  tier is not a cross product at all: `scripts/ci_matrix_plan.py` runs every interpreter on ubuntu
-  and only the first and last on macOS and Windows, so the product of the two factors names 24 legs
-  where 12 are scheduled. The matrix probe now asks that planner - 3 OSes × 8 interpreters in 12
-  cells - and rewrites the sentence itself, with a pattern wide enough to match both the old
-  spelling and its own output, because a rule that only fits the prose it replaces reports "no
-  sentence matches" forever after running once. `tests/test_ci_matrix_plan.py` holds the three
-  locale pages to the same plan and refuses a bullet that no longer carries exactly three integers:
-  a reworded sentence is a red run here, not an unchecked claim. The scheduled tier builds the full
-  grid on purpose, so the derived numbers describe the pull-request plan the merge verdict consumes.
-- **The line the formatter would promote is now refused before it can act** — measured on the
-  pinned 0.2.78, `rumdl fmt` fixes `MD018` ("no space after a heading's hashes") by re-reading any
-  line-initial run of hashes as a heading, and it does that to a wrapped paragraph and to a
-  multi-line inline code span alike: the first comes back split into sentence-heading-sentence, the
-  second comes back as two real headings. After the rewrite that line *is* a valid heading, so no
-  rule that inspects the corpus afterwards can tell it from one the author meant — five classifiers
-  were measured and all five were rejected (144, 107, 100 and 135 false hits, and a scan that read
-  0 by erasing the construct it looked for). The shape *before* the rewrite is decidable: one to six
-  hashes at the line start, the next character not a space, outside a fenced block.
-  `scripts/check_doc_headings.py --predamage` refuses it from a `format`-priority hook slot declared
-  ahead of the formatter, because a `checks`-priority slot would only judge the formatter's own
-  output. Over the 177 tracked pages it reads 2 hits, both live damage-in-waiting, and no false
-  positive. The boundary is stated plainly: it blocks the commit, not the rewrite — with the shape
-  injected, the preflight names both lines and the run refuses, while the formatter rewrites the
-  working copy in the same pass.
-- **The ledger's own citation rule is now a hook** — `docs/dev/quality-ledger.md` numbers its
-  sections `### (xy)`, and a pointer like `(details: quality-ledger (bf))` names one section only
-  while those letters run increasing and unique. Until today the Python tier judged that alone: a
-  change whose only defect was a section placed one letter early passed the hook set, the docs
-  gates, `rust-lint` and the Ir leg, then reddened all twelve `test` legs across three OSes.
-  `scripts/check_ledger_order.py` owns the rule now — exit 1 names the section sitting wrong, exit 2
-  refuses a file with no lettered section at all, which is how a renamed heading form would
-  otherwise buy a permanent pass — and the `ledger-order` hook fires on the ledger itself. Control
-  measured in the working copy: swapping `(gq)` and `(gr)` reddens the hook with
-  `(gq) follows (gr)`, and restoring it gives `9 passed`. `tests/test_ledger_section_order.py`
-  guards the checker and its `files:` pattern instead of holding a second copy of the rule.
-- **A quoted Ir floor is checked against the file it quotes** — a refresh rewrites all forty-seven
-  readings in `.ci/ir-baseline.json`, and every copy left in undated prose becomes history nobody
-  marked: nine minutes after the last one, `QUALITY_MATRIX.md` disagreed with the file on nine of
-  the eleven floors it quotes (15 to 31,977 instructions) with every gate green. The page now
-  declares which readings it means as current, each followed by a comment naming its scenario, and
-  `scripts/check_ir_floor_quotes.py` compares every declaration with the baseline — refusing a stale
-  digit, an unknown scenario, an orphan marker whose number was deleted, and a page that declares
-  nothing (exit 2, never a pass). Declaration rather than parsing, because the same page keeps
-  refuted measurements, event counts and fixture widths, and a proximity heuristic for that question
-  produced ~110 false hits in `docs/dev/perf.md`. `tests/test_ir_floor_quote_gate.py` forces each
-  refusal and proves the hook's `files:` pattern reaches the page and the baseline. An *unmarked*
-  hand-copy stays invisible: absence of a marker reads as history, which only the author can claim
-  wrongly.
-- **A keyed Ir floor is quoted with the image that measured it** — seven scenarios carry one floor
-  per runner image, and an enforcing leg compares against its own image's row, never the flat
-  `scenarios` column. The marks compared against that column, so a sentence about the leg on
-  `20261023.334.3` could pass the gate while quoting `20261026.354.1`'s number: the committed file
-  holds 144,902,515 and 142,467,241 for `load_toml_medium`, 1.71 % apart, and which one the flat
-  column carries depends on whichever image the last refresh happened to land on.
-  `scripts/check_ir_floor_quotes.py` now requires a keyed mark to name its row, written
-  `load_toml_medium @ 20261023.334.3`, and refuses four shapes: a keyed mark naming no image, digits
-  taken from the flat column under a named image, an image the file has no row for, and an image on
-  a scenario the file does not key. Four of the page's thirteen readings are keyed; the nine
-  engine-only readings keep the bare mark, because for those the flat column is what every leg
-  compares against. The checker refused the un-repointed page four times,
-  `uv run pytest tests/test_ir_floor_quote_gate.py` reads 22 passed, and four mutations — each
-  deleting one branch of the new rule — reddened exactly the owning test.
-- **The dumpers accept the tuple the loader hands back** — `? [a, b]` projects to the Python key
-  `("a", "b")`, and both writers refused a tuple in any position with `Unsupported Python type`, so
-  `safe_dump(safe_load(text))` raised on a document `safe_load` had accepted, and `from_dict` and
-  `_set_path` refused the same value. A tuple is now a sequence on both routes; a sequence used as a
-  key is written in the explicit-key shape the node serializer owns, with the direct writer handing
-  that one pair over rather than mirroring the spelling, which is how the two routes stay
-  byte-identical. One shape stays refused and the reason is the reader's: only the *outer* sequence
-  of a key is projected, so `? [[1], [2]]` raises Python's own `unhashable type: 'list'` — measured
-  against ruamel — and a key holding another sequence has no text that re-reads. Nine rows joined
-  `tests/test_route_parity.py`, each asserted against both writers and as a fixed point (182
-  passed), and `tests/test_edit.py::test_set_tuple_value_raises` became
-  `test_set_tuple_value_writes_a_sequence`.
-- **`load_json_lines` reads a `.jsonl` stream as values, one line at a time** — the engine has
-  described line-delimited JSON since #599 (`pyrs_json::parse_documents`), but nothing at the Python
-  layer could read it: a caller split the text and called `load_json` per line, paying for a list of
-  lines plus a tree per record on top of the parse. `pyrs_yaml.load_json_lines(text)` returns a
-  `JsonLines` iterator whose `__next__` resolves one line: canonical JSON goes straight to Python
-  objects through the AST-free route `load_json` uses, and anything else through
-  `pyrs_json::document_from_line`, so one document is live at a time and a caller that stops early
-  never reaches the next record. The input is copied once into the iterator — the saving is the
-  tree, not the buffer. Refusals keep the engine's contract: a blank line, a note-only line, or a
-  value needing the next line raises naming its line in the whole input, and asking again reports
-  the same record rather than skipping it. Measured here (release build, best of 15, 10,000 records
-  / 576.5 KiB): whole stream 3.861 ms, first record 0.343 ms, per-line `load_json` 8.440 ms. Three
-  Rust tests pin the value surface to the event surface — same lines, same trees, same refusal and
-  wording — and 16 Python tests pin the surface; two CodSpeed scenarios carry the number.
-- **The refresh job can answer "where" as well as "how much"** — `scripts/ir_gate.py --profile`
-  has ranked a scenario's functions by self instructions since #401 registered it, but only a hand
-  run ever called it, and a hand run cannot pair with a committed floor: the local build and the
-  image's are different bytes. That is how the -21.23% reading on `documents_short_strings` stayed
-  unattributed (`docs/dev/quality-ledger.md` (gk)). "Ir baseline refresh" takes `profile` and
-  `profile_top` inputs now, one `--profile` flag per named scenario, on the image that enforces
-  these numbers, and the step sits behind `if: inputs.profile != ''` so a refresh that names nobody
-  still costs one measurement. Attribution rebuilds with symbols and returns before the
-  measurement, so it cannot move a floor. Two tests in `tests/test_ir_baseline_workflow.py` pin the
-  input reaching the command and the empty default keeping the refusal. No shipped behaviour and no
-  measured floor moved.
-- **The scan the aarch64 wheels ship is tested as the whole path, not as a tail** — every SSE2
-  string scan dispatches by `target_arch`, so on an x86 CI the scalar loop only ever answers for the
-  last partial vector, while the aarch64 wheels ship it as the entire answer with no test asking it
-  a full-length question. Four tests - JSON reader, JSON writer, TOML reader, TOML writer - now
-  require the scalar loop and the vector loop to return the same index for an 80-byte body carrying
-  each of the 256 byte values at each of thirteen offsets, read from twelve start positions that
-  begin, end and straddle a vector, plus a three-byte character moved across every boundary.
-  Mutating one scalar loop - the C0 bound, JSON5's `\r`, TOML's multi-line arm, the writer's DEL
-  case - reddens its test, and the comparison is arch-gated rather than self-compared: on a non-x86
-  leg the test is compiled out, because asking the scalar path to agree with itself proves nothing.
-- **The JSON and TOML event streams stop where the consumer stops them** — `parse_stream(...,
-  on_event=...)` collected every event before the first callback ran, for every format, so a `False`
-  at the first event still paid for the whole scan and a syntax error later in the document was
-  reached and raised. `pyrs_event::EventSink` now returns `ControlFlow`, and
-  `pyrs_json::parse_stream_with_options_to` / `pyrs_toml::parse_stream_to` hand each event to a sink
-  as they produce it: the callback runs under `Python::attach`, the producer under `py.detach`. What
-  `False` can stop is the format's own fact — JSON/JSON5 halt the walk before the bytes of the next
-  event, so an error past the stop is never reached, TOML halts emission from the intermediate
-  representation its scan already built, so a refused document still raises before any event is
-  delivered, and YAML's push adapter over granit stops delivery after the (unabortable) parse,
-  leaving `load_stream` as YAML's incremental surface. Collecting entry points now delegate to the
-  `_to` ones with a `Vec` sink, so the iterator and the callback see the same stream by
-  construction. A callback exception outranks the parse error behind it, and `False` returns `None`.
-  Seven tests in `tests/test_streaming.py` pin the stop prefix, the per-format refusal facts and the
-  error precedence.
-- **Every stream event names the source bytes it came from** — an event carried a line and a column,
-  so a consumer that wanted to resume from it could only count lines back through text it had to
-  keep. `StreamEvent` now carries `offset` and `end` on every event of every producer: `offset` is
-  the first source byte the event names, `end` one past the last, both character boundaries inside
-  the source's byte length. The range is the token, not the subtree — a quoted scalar includes its
-  quotes, a flow delimiter is one byte, a block container is empty — and `end == offset` where a
-  producer records a position and no extent: every TOML event (its IR keeps starts), a YAML stream
-  marker and a block container. A document marker covers `---` or `...` when the source wrote one
-  and is empty when it did not. granit hands YAML char indices, so the text route
-  converts them through the offsets it already computes and the incremental reader keeps one
-  `(chars, bytes)` mark per non-ASCII character and none for ASCII, which is what keeps
-  `load_stream`'s chunked memory flat. `parse_stream` and `load_stream` event dicts gain the two
-  keys. Seventeen tests in `tests/test_streaming.py` pin the ranges across all five formats and both
-  YAML routes, including a reader fed one byte at a time.
-- **Line-delimited JSON: one document per line, optionally one sink per shard** —
-  `pyrs_json::parse_documents*` describes NDJSON/JSON Lines through the same one-line walk as
-  `parse_stream`, with every event and every error positioned against the whole input. A blank line,
-  a note-only line and a value that needs the next line are refused rather than skipped, the chosen
-  dialect (JSONC or JSON5) applies to every line, and the stream keeps the shape the YAML engine
-  uses: one `StreamStart`, per-line `DocumentStart…DocumentEnd`, one `StreamEnd`. The opt-in
-  `parallel` feature divides the lines into consecutive shards, one sink and one thread each, so
-  nothing is buffered between a producer and its sink; shards merge by `offset` because every
-  position is global. Measured over 200,000 lines (20.5 MiB, 24 threads, interleaved medians):
-  112.3 ms through one sink, 18.9 ms across 24 shards (5.96x). A single shared sink does not
-  parallelize — 142.1 ms, and a bounded ordered pipeline 35.6 ms — because a `StreamEvent` is 136
-  bytes and a 107-byte line produces about 15 of them, so buffering costs roughly 19x the input.
-- **Opt-in `mmap` read path** — `parse_file` parses a regular non-empty file straight from a memory
-  map instead of a `read_to_string` copy, dropping one whole-file heap allocation; off by default
-  (`default = ["numpy"]` unchanged). Empty, directory, non-regular and non-UTF-8 inputs keep their
-  existing errors; see `docs/dev/boundaries.md`.
-- **The JSON Schema surface has a property tier, and it found two boundaries** — the delegated
-  `Document.validate()` row of the defence matrix read `no` where its property tier should have
-  been. The corpus suite replays 1,302 cases, but each one validates a single document against a
-  single schema object, so every case is a cold miss and the compiled-validator cache —
-  `best_match(iter_errors(...))`, which is what anyone validating in a loop actually gets — was
-  judged by four hand-written call sites and nothing generated; and every case enters through
-  `json.dumps`, so every key it hands the engine is already a string.
-  `tests/test_property_json_schema.py` draws both shapes now: a meta-valid draft2020-12 grammar
-  (seven type names, boolean schemas, `anyOf` / `prefixItems` / `if`-`then` nests) against documents
-  whose keys keep their YAML types, 300 cases per property, with every verdict and message compared
-  against `jsonschema` on the same instance. `test_the_repeat_call_is_the_cached_path` is the
-  witness that the second call really is the cached one — it counts `check_schema`, which the fresh
-  path runs and the cached path does not — because a property that compared two cold calls would
-  have reported a tier while judging nothing. Drawing key spellings at random is what surfaced the
-  two boundaries this entry registers. `to_dict()` folds `1: one` beside `true: two` into one entry,
-  because `1 == True` and an equal key is replaced rather than added, while `to_yaml()` re-emits
-  both lines and `to_json()` writes both members — and `validate()` reads the folding door, so
-  `minProperties 2` refuses a two-key document the JSON projection accepts (PyYAML's loader folds at
-  the same point, measured 2026-10-31, so the fold is the counterparties' shape and not a drift this
-  project introduced). And the two YAML readers answer opposite ways on adjacent pairs: `parse()`
-  refuses `1:` beside `'1':` that `safe_load()` keeps, and `safe_load()` refuses `1:` beside `true:`
-  that `parse()` keeps, because one tracks an untagged key by its text and the other by its resolved
-  object. Both are written down with their repros in `.ci/known-residuals.json` and
-  `docs/dev/boundaries.md` rather than absorbed; aligning the readers decides which documents are
-  valid at all, so that half is a ruling, not a patch. The row could not have been credited before:
-  the probe matched a Python property file against the row's *fuzz-target* name rather than its
-  property fragment, so a tier written for a delegated surface read as absent while it existed — the
-  fix is pinned by `test_a_python_property_tier_is_credited_by_the_rows_own_fragments`, in both
-  directions, because a loose match would credit the rule-language row with a file about JSON
-  Schema. The tier's own discrimination was checked by three mutations — compare against the other
-  door, compare against another document's instance, assert the fresh path instead of the hit — and
-  each turned its claim red.
-- **The cross-format bridges no test ever crossed** — an AST pass over every test function body in
-  all 134 modules of `tests/`, measured 2026-10-31, counted how many bodies call a reader of one
-  format and a writer of another: `json -> jsonc`, `jsonc -> toml`, `json5 -> json`,
-  `json5 -> jsonc` and `json5 -> toml` had no call site at all. JSON5 is the dialect that owns
-  `0xFF`, `.5`, `+7`, single quotes, trailing commas and two comment syntaxes, and nothing in the
-  suite ever sent it toward strict JSON, JSONC or TOML. `tests/test_cross_format_note_entry.py` is
-  that table: four entrances with comment syntax, four exports with comment syntax, four note slots,
-  64 cells, each asserting the note's token reaches the text or the export refuses with a reason
-  true about the target format — the rule `tests/test_cross_format_note_slots.py` already applies to
-  the outbound half from YAML, now applied to the inbound half. All 64 pass, and the row cannot be
-  satisfied by a note that turned into data: the token must also disappear when the output is
-  stripped with that export's own comment grammar, which separates `{"a": 1 // note}` from
-  `{"a": "note"}`. The five value bridges cross with their literals resolved (`0xFF` reaches TOML as
-  `255`), and the one cell that moves — a note on an inline array, which the TOML writer expands
-  onto the last element's line — is pinned as the relocation `docs/dev/boundaries.md` already
-  records, settling on the second round. Strict `to_json` is deliberately out of the table rather
-  than overlooked: JSON has no comment to write, so omitting one is correct there.
-- **Two public callables were never run, and now nothing can be** — the shipped stub declares 74
-  public callables, and reading every module under `tests/` for names used as the callee of a call
-  found 2 that nothing ever called: `get_plugin` and `YamlDocument.flush_source`. Both answered
-  correctly once measured — `get_plugin("!date")` is `("!date", "<class 'datetime.date'>")` and
-  `None` for an unknown or empty tag, and `flush_source()` on an unedited document keeps the text it
-  was read with, which is the sign that the call is not an eager reformat.
-  `tests/test_api_call_surface.py` is the gate that keeps the count at zero: it reads the stub for
-  module functions and public methods, requires a call site, and refuses the four ways this kind of
-  check goes quietly green — a stub read that finds nothing because the parser broke, a name
-  *mentioned* (in a docstring, a `dir()` string, a bare attribute bind) rather than called, a gate
-  pointed at an artifact other than the file the wheel ships, and the two names this row was written
-  for.
-- **The JSON property tier compares trees, not only text** — the three dialects had a writer fixed
-  point, a re-parseability claim and note conservation, and none of them compares the tree: an
-  emission that wrote `null` and read back `0` settles on both passes and loses no note, so all of
-  them stay green while the value changes. TOML has had the equality claim since
-  `prop_toml_roundtrip_preserves_the_tree`; the JSON family had only the invariants the matrix's
-  property row names as the tier's blind spot. `prop_json_roundtrip_preserves_the_tree` folds each
-  scalar to the typed value its own side names — the tag it carries, or the Core schema when
-  untagged, with every quoted or block scalar a string — and compares value, shape and order across
-  `to_json_text`, `to_jsonc_text` and `to_json5_text`. Spelling stays the dialect's: a plain `0x1f`
-  is written `31` by strict JSON and read back as the same integer. The oracle is priced by
-  mutation, not by intent: writing `0` where the writer wrote `null` leaves the seven text-level
-  JSON properties green and reddens this one at its first generated case with `strict JSON round
-  trip changed the tree: scalar value Null -> Int(0)`. 20 000 generated trees per dialect pass on
-  the restored writer. Notes remain conservation's claim, and the object-domain filter still
-  excludes the two AST keys one JSON name folds together.
+  capped the dump property's leaves at `None`, `bool`, a bounded `int`, a finite `float` and `str`:
+  not one other type in 25,000 draws, so the tier claimed only "no panic over a JSON subset".
+  `hard_leaf` adds an unbounded integer, the non-finite floats, tuples, `bytes`, `date`, `time`,
+  `datetime`, `Decimal` and four types with no YAML spelling. `test_dump_never_raises` accepts text
+  or `pyrs_yaml.YamlTypeError` and nothing else, and the family table pins the outcomes: an
+  out-of-range integer reads back as `str`, a tuple as `list`, `bytes` as `bytes`, the temporals and
+  `Decimal` as themselves, a `set`, `frozenset`, `complex` or unregistered class as that typed
+  refusal. Each text row re-dumps to the same bytes except `safe_dump(-(2**64))`: its bare digits
+  read back as a string and re-dump quoted while the same guard on `2**63` repeats its text - a sign
+  asymmetry in one quoting guard, recorded in `NON_SETTLING` and open as a defect. A reach guard
+  names any family that fails to arrive in 400 draws (the rare wide-integer and non-finite branches
+  took dedicated draws), so the tier cannot quietly narrow again; a `_register_builtins()` guard
+  keeps the answers import-order safe; the exact-equality strategies stay JSON-shaped; no engine
+  code moves.
+- **The JSON Schema surface gained a property tier, and two of its contracts are registered** —
+  `tests/test_property_json_schema.py` draws meta-valid draft2020-12 schemas against documents with
+  YAML-typed keys, comparing verdicts and messages with `jsonschema`, and a `check_schema` witness
+  proves repeat calls hit the validator cache. Key-spelling draws exposed the fold: `to_dict()`
+  collapses `1: one` beside `true: two` while `to_yaml()` and `to_json()` emit both, so `validate()`
+  reads the folding door and `minProperties 2` refuses a two-key document the JSON projection
+  accepts - PyYAML's loader folds at the same point (measured 2026-10-31), so it is the
+  counterparty's shape. The two YAML readers answer opposite ways on adjacent pairs (`parse()` and
+  `safe_load()` split in opposite directions on `1:` beside `'1':` and beside `true:`), registered
+  in `.ci/known-residuals.json` as a ruling question. The delegate's cost: nothing we ship installs
+  the evaluator, so a base install answers `Document.validate()` with a bare `ModuleNotFoundError`,
+  and the `str` door runs `json.loads` before the evaluator - a YAML-spelled schema raises
+  `json.decoder.JSONDecodeError`, outside the ten documented `Yaml*` classes and the CLI's
+  `except YamlValidateError` arm — measured, `pyrs-yaml validate doc.yaml --schema-file schema.yaml`
+  prints exactly that traceback. Both stay unfixed here; PR #517 designs the evaluator that would
+  moot them.
+- **Cross-format note entry, the public call surface, and JSON tree equality** — an AST pass over
+  134 test modules found `json -> jsonc` and four other one-way format pairs never exercised.
+  `tests/test_cross_format_note_entry.py` is that table - four comment-capable entrances, exports
+  and note slots - each cell asserting the note's token reaches the text or the export refuses with
+  a reason true about the target, and the token must vanish under the export's own grammar, so a
+  note that became data cannot fill a row. The bridges cross with literals resolved (`0xFF` reaches
+  TOML as `255`), the one moving cell is pinned as the relocation `docs/dev/boundaries.md` records,
+  and strict `to_json` is out because JSON has no comment to write. `tests/test_api_call_surface.py`
+  requires every public callable in the shipped stub to have a call site and refuses the four ways
+  such a gate goes quietly green; it found `get_plugin` and `YamlDocument.flush_source` never
+  called, now measured: `get_plugin("!date")` is `("!date", "<class 'datetime.date'>")` and `None`
+  for an unknown or empty tag, and `flush_source()` on an unedited document keeps its text.
+  `prop_json_roundtrip_preserves_the_tree` compares value, shape and order across the three JSON
+  dialects: writing `0` for `null` leaves the seven text-level properties green and reddens only
+  this.
+- **Floors and floor-quotes widened to the note routes and the Python-object writer** — TOML's note
+  routes are priced (seven comments: 1,945 instructions each); the unread inline-table note slot got
+  a reader. The dispatch carrying #673's `safe_dump_*` floors moved 47 of 53 with `accept_drift`
+  empty: widest upward +0.385 % (`from_json_long_strings`), and only `from_json5_medium` -1.132 %,
+  `from_jsonc_medium` -1.130 % and `parse_inline_merge` -0.551 % past the 0.5 % line downward, where
+  the gate warns beyond 2 % - the harness's own code size. The binding's writer is priced by
+  `safe_dump_small`/`safe_dump_medium` (setup outside the loop): `needs_quotes` is 5.45 % of
+  `safe_dump_medium`, `DirectWriter::write_key` 3.70 %, no `type_registry` at all - #672's
+  empty-handler fast path. Quoted floors are checked: nine of eleven quoted floors in
+  `QUALITY_MATRIX.md` had gone stale with every gate green, so `scripts/check_ir_floor_quotes.py`
+  refuses stale digits, unknown scenarios, orphan marks and undeclared pages (exit 2); keyed marks
+  name their image (`load_toml_medium @ 20261023.334.3`) - the file holds 144,902,515 and
+  142,467,241, 1.71 % apart, the flat column moves up to 1.68 % by image, nine re-pointed readings
+  inside 0.001 %. The refresh answers 'where': `--profile` ranks self instructions since #401, but a
+  hand run cannot pair with a committed floor - how the -21.23 % on `documents_short_strings` stayed
+  unattributed - so `profile`/`profile_top` inputs run it on the enforcing image.
+- **The repository's own claims are gated or pinned now** — CI's wide clippy silently dropped the
+  two Ir harnesses on their `required-features`; a gated step and `prek` hook cover them. Five of
+  nine `python_version` caps excluded interpreters whose wheels ship - PR #665 read 4,433 assertions
+  on 3.13 against 4,197 on 3.14 -; raised: `pyjson5` to `< '3.15'`,
+  `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` to `< '3.16'`, `orjson`/`rtoml` staying under 3.14
+  for want of 3.14t wheels; hooked `scripts/check_counterparty_caps.py` refuses staleness both ways
+  against measured availability. A shared object's written shape is pinned: object routes emit two
+  copies (equal on re-read, not one object) where the round-trip keeps `&x`/`*x`; cycles raise
+  `YamlMaxDepthError`. The pytest tier's width is derived from `scripts/ci_matrix_plan.py` (12
+  cells, ubuntu carrying all eight interpreters), the probe rewriting the sentence. `rumdl fmt`
+  promotes hash runs opening paragraphs or code spans to headings, undetectable post-rewrite, so
+  `scripts/check_doc_headings.py --predamage` refuses the shape ahead of the formatter. The ledger's
+  `(xy)` section order is a hook (exit 1 misplaced, exit 2 no lettered sections). And four tests
+  (JSON/TOML reader and writer) match the scalar string scan - the aarch64 wheels' whole path -
+  against the SSE2 loop over an 80-byte body with every byte value at thirteen offsets.
+- **Line-delimited JSON reached the Python layer: `load_json_lines`, one sink per shard, an opt-in
+  `mmap`** — the engine has described NDJSON since #599 (`pyrs_json::parse_documents`), but nothing
+  at the Python layer read it. `pyrs_yaml.load_json_lines(text)` returns a `JsonLines` iterator
+  resolving one line per `__next__` - canonical JSON through the AST-free route, else
+  `document_from_line` - so one document is live at a time. Blank, note-only and continued lines
+  raise naming the line, and asking again reports the same record rather than skipping. Measured
+  (10,000 records): whole stream 3.861 ms, first record 0.343 ms, per-line `load_json` 8.440 ms.
+  Rust's `parse_documents*` positions every event and error against the whole input, one dialect
+  (JSONC or JSON5) applying to every line; the opt-in `parallel` feature gives each shard its own
+  sink and thread, merged by global `offset`: 200,000 lines take 112.3 ms through one sink against
+  18.9 ms across 24 (5.96x) - a shared sink does not parallelize (142.1 ms), 136-byte events making
+  buffering roughly 19x the input. `parse_file` gains an opt-in `mmap` path parsing a regular
+  non-empty file from a memory map instead of a `read_to_string` copy, dropping one whole-file
+  allocation; off by default (`default = ["numpy"]` unchanged), with empty, directory and non-UTF-8
+  inputs keeping their errors.
+- **Streams stop when the consumer says so, name their source bytes, and the dumpers accept tuples**
+  — `parse_stream(..., on_event=...)` had collected every event before the first callback, so
+  `False` still paid for the whole scan. `pyrs_event::EventSink` now returns `ControlFlow`;
+  JSON/TOML streams deliver as they produce - callback under `Python::attach`, producer under
+  `py.detach`. What `False` stops is a format fact: JSON/JSON5 halt before the next event's bytes,
+  errors past the stop are never reached; TOML halts emission from its built IR, so a refused
+  document still raises first; YAML's adapter stops delivery after the unabortable parse -
+  `load_stream` stays YAML's incremental surface. Callback exceptions outrank the parse error behind
+  them, `False` returns `None`. Every `StreamEvent` carries `offset`/`end` - the token's range, not
+  the subtree's, `end == offset` where a producer records position not extent - and the event dicts
+  gain both keys. The dumpers accept the tuple the loader hands back: `? [a, b]` projects to
+  `("a", "b")`, yet both writers refused tuples with `Unsupported Python type`, so
+  `safe_dump(safe_load(text))` raised on accepted input. A tuple is now a sequence on both routes, a
+  sequence key in the explicit-key shape the node serializer owns; only the outer sequence of a key
+  projects, so `? [[1], [2]]` still raises Python's own `unhashable type: 'list'`.
 
 #### Fixed
 
-- **A fold that dropped the definition an alias binds left unreadable text** — `: &x`, `!k &x :` and
-  `:` are three null keys, two of which fold by design, and the pair the fold drops is the one that
-  defined `x` while the only surviving `&x` rides a key that lands *after* the alias `s: *x`. YAML
-  binds an alias to the nearest preceding definition, so the emission put `*x` above every `&x` and
-  the text was one this library's own reader refused with `found unknown anchor` (libFuzzer
-  `edit_yaml` crash-b7e16929, 25 bytes after `cargo fuzz tmin`). The orphan repair now asks the
-  positional question — is this name defined before this use? — and writes the dropped node into the
-  uses that cannot reach it (`inline_dropped_uses`), which puts the definition where the alias needs
-  it without reordering a single pair; the inlined copy carries the anchor, so it re-defines the
-  name at that spot and later uses keep their reference. The old predicate asked only whether a
-  definition survived somewhere, which is why the tree looked self-consistent while its text could
-  not be read. Measured: the emission re-parses and settles in one round
-  (`a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts`), the 69-byte and
-  25-byte inputs both replay exit 0 under `cargo fuzz run edit_yaml -- -runs=0` along with the 3,232
-  units that walk covered, and the input joins the corpus as
-  `fuzz/seeds/edit_yaml/former-crash-b7e16929.seed`. No committed test's expectation moved:
-  `cargo nextest run --all` 887 passed, `uv run pytest tests/` 4,682 passed / 11 skipped.
-- **The `Node` pages said `is_valid()` also refuses a modified document** — the method tests only
-  the document reference, so a node made stale by an edit still answers `True` after its `repr` has
-  flipped to `Node(invalid)` (measured: find `$.a`, then `set("$.b", 2)` — `is_valid()` is `True`,
-  the repr is `Node(invalid)`, and reading `value` raises `YamlDocumentError`). The same repr names
-  three causes the page conflated: a stale node, a path the document does not hold, and a path whose
-  read the dict projection refuses. That third cause is the boundary this note records. Reads go
-  through `to_dict()`, so on `0set: 1` beside `!base 0set: 2` — two YAML keys, one Python key —
-  every `Node` read raises `YamlTypeError` whichever path was used, including one that names
-  nothing; an absent path on an ordinary document raises `KeyError` instead. Writes do not read the
-  projection: `set_value()` walks the AST, so it lands on the first pair the reader folds to that
-  name, and `rename` makes the name answer again. The English page and its zh/ja/ko twins all
-  carried the false sentence, so all four are corrected; six Python tests pin the liveness answer,
-  the three causes behind one repr, the two exception types split by cause, and a write landing
-  where a read refused. No engine behaviour changed — this is documentation measured against the
-  shipped object.
-- **An alias key folds the plain null key that follows it** — `? &a` / `? *a` / `? &b ~` is an
-  anchored empty key, an alias naming it, and the mapping's own anchored null key. The receiver
-  folds the two null keys and drops `&a`'s only definition, so `repair_orphaned_anchors` inlines
-  that alias — key position included — and the rebuild re-inserts the pairs in iteration order. The
-  rebuild folded only the pair whose key had just been rewritten, so the rewritten pair and the
-  plain pair landed side by side as two null keys, both spelled `~:`. libFuzzer `yaml_roundtrip`
-  crash-fce042d0 (247 bytes; its 22-byte line reduction ` ? &.?- / ? *.?- / ?  &.`) wrote
-  `&a ~: ~` beside `&b ~: ~` on the first round and only `&b ~: ~` on the second. The rebuild now
-  folds every key it inserts against the keys already placed, with the same last-wins rule and note
-  re-homing that `crash-49f44d18` established.
-  `an_inlined_alias_key_folds_the_plain_null_key_that_follows_it` pins the 18-byte hand-derived form
-  and the 22-byte reduction; restoring the old `rewritten` guard reddens it, and
-  `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` stays green. The input joins the corpus
-  as `former-crash-fce042d0.seed`. The same run's three `edit_yaml` findings are not touched here.
-- **An anchor whose name ends in a quote keeps that name** — the name run this scanner harvests
-  carries `"` (`is_valid_anchor_char` mirrors granit's, which excludes only the blanks and the flow
-  indicators), so `&a"b` is one name, and the writer emits what it recovered verbatim. The pass that
-  decides whether a `#` opens a comment did not carry the same rule: `opens_quoted_node` let a quote
-  flush against an anchor or tag token open a quoted node, so re-reading that emission treated the
-  `#` of its own trailing comment as quoted content and took the `&` written inside the comment as
-  the node's anchor. libFuzzer `yaml_roundtrip` crash-abc541ff and crash-c06e8a8f, 26 bytes each,
-  emitted `<>: &*..f!ny&!#\"  # &!` and re-emitted `<>: &!  # &!` — the node renamed to `!` in
-  between. A blank now has to separate a property from the quoted node it introduces, so `&a "b"`
-  still opens a node and `&a"b` does not.
-  `an_anchor_name_ending_in_a_quote_settles_in_one_round` pins both inputs; deleting the blank test
-  reddens it with the two-round move verbatim, and both inputs join the corpus as
-  `former-crash-abc541ff.seed` and `former-crash-c06e8a8f.seed`. The run's third `yaml_roundtrip`
-  input, `crash-fce042d0` (247 bytes), is another mechanism and is closed by
-  `An alias key folds the plain null key that follows it`.
-- **The fuzz issue filer reads the target, not the download's directory shape** — every archive
-  holds `artifacts/<target>/` and `collected/<target>/`, and on run 41541555317 the download
-  extracted those roots straight into `--crashes` instead of keeping one directory per archive.
-  Reading the first path segment as the target then minted two targets named `artifacts` and
-  `collected`, so one `yaml_roundtrip` archive's three inputs were filed as issues #739 and #740,
-  and the step summary printed the same two rows while counting every input twice (6 for 3). The
-  target is now the segment after either root, with the archive's own `fuzz-artifacts-<target>`
-  directory as the fallback, and the summary reads the `collected/` mirror alone — where
-  `scripts/fuzz_rounds.sh` writes `findings.tsv` and the crash copies — so one glob names each
-  target once in both shapes. Two cases pin it: `the_download_shape_never_becomes_the_target` over
-  both layouts, and the report step run against a flat-layout archive. Restoring the first-segment
-  read reddens the flat case with `['artifacts', 'collected']` verbatim.
-- **A key rewritten from an alias folds where it lands** — the duplicate-key fold drops the pair
-  that carried an anchor's only definition and hands that node to `repair_orphaned_anchors`, which
-  inlines it into every `*name` left, key position included. The rebuild re-inserted the inlined
-  node with a plain `pairs.insert`, so a mapping that already held its own null key came to hold
-  two, both written `~:`. libFuzzer `yaml_roundtrip` crash-49f44d18, 33 bytes, wrote `!? "": ~` /
-  `~: ~` / `&b ~: ~` on the first round, and the re-read folded the first of the two null keys
-  away, so the second round differed. The rebuild now runs the fold the receiver runs — last pair
-  wins, the dropped pair's notes re-home onto the survivor — and queues the anchored nodes that
-  pair carried for another inline round, because displacing it can strip a sibling anchor of its
-  own last definition. `an_inlined_alias_key_folds_into_the_null_key_it_lands_on` pins the input
-  and two hand-reduced shapes (22 and 24 bytes); replacing the duplicate lookup with `None`
-  reddens it with the two-round move verbatim. The run's other two inputs replay clean and join
-  the corpus too: `former-crash-49f44d18.seed`, `former-crash-663b71ab.seed`,
-  `former-crash-cf1a63bf.seed`.
-- **A first entry's note climbs above the marker when its value takes the line** — inside a `?`
-  marker body the writer lifts the first entry's key note above the marker only when the container
-  writes an anchor or tag header, because the reader reports a note above that entry on the *key
-  mapping*, so the next round hoists it whatever the first emission did. The two agree while the
-  key note can stay on the entry's own line; the pair writer hands that line's trailing slot to the
-  value's own inline note unless the value is a scalar or null whose leading note has already forced
-  its body below the line, and with no slot the key note is spelled on a line of its own above the
-  entry. libFuzzer `yaml_roundtrip` crash-430f4f0e, 85 bytes, is one such body: the first emission
-  put `# *{+ &b?  !?*` under the `?` and the second above it. The lift now takes that note whenever
-  the value owns the slot, without needing a header, because inside the body that line cannot
-  survive a re-read. `a_first_entrys_note_climbs_above_the_marker_when_its_value_takes_the_line`
-  pins the input; mutating the predicate to `false` reddens it with the two-round move verbatim.
-  The input joins the corpus as `former-crash-430f4f0e.seed`.
-- **A first item's note stays under its own dash, not above the sequence's tag** —
+- **An alias whose only definition a pass dropped now gets one where the use can reach it** — the
+  duplicate-key fold drops the pair that defined `x` while the surviving `&x` rides a key landing
+  after the alias, so `*x` came out above every `&x` and this library's own reader refused its
+  emission with `found unknown anchor` (`edit_yaml` crash-b7e16929). The repair asked only whether a
+  definition survived somewhere; it now asks whether the name is defined before this use and writes
+  the node into the uses that cannot reach it (`inline_dropped_uses`). The merge pass deletes the
+  `<<` entry that carries the anchor and had no repair of its own, turning `<<: &b` / `  x: *b` into
+  a bare `x: *b` refused at char 3; `resolve_merge_keys` now reads that anchor from the entry's key
+  and value and inlines the survivors once the pass has run. `delete_path` asked only the value node
+  for its anchors, so a key-carried `&x` left unseen and `k8: *x` was accepted; it now reads the key
+  node too, while the binding still refuses the same edit with `anchor-is-referenced`
+  (crash-6a9b6538, crash-718abefa). The anchor graph walks 135 documents against the 2026-10-20
+  reading of 102.
+- **A key rewritten from an alias folds where it lands, and an anchor name ending in a quote keeps
+  that name** — `repair_orphaned_anchors` inlines the dropped pair's node into every `*name` left,
+  key position included, but the rebuild re-inserted it with a plain `pairs.insert`, so a mapping
+  holding its own null key came to hold two, both written `~:`, and the re-read folded one away
+  (`yaml_roundtrip` crash-49f44d18; crash-fce042d0 is the same fold when the rewritten pair lands
+  beside the plain one). The rebuild now folds every key it inserts against the keys already placed
+  — last pair wins, the dropped pair's notes re-homing onto the survivor — and queues that pair's
+  anchored nodes for another inline round; crash-663b71ab and crash-cf1a63bf replay clean. An anchor
+  name may end in `"` as `is_valid_anchor_char` mirrors granit's, but `opens_quoted_node` let a
+  quote flush against an anchor or tag token open a quoted node, so re-reading an emission took the
+  `#` of its own trailing comment as quoted content and the `&` inside it as the anchor, renaming
+  the node to `!` between rounds (crash-abc541ff, crash-c06e8a8f); a blank now has to separate a
+  property from the quoted node it introduces.
+- **A first entry's note climbs above the marker, and a first item's note stays under its own dash**
+  — inside a `?` marker body the writer lifts the first entry's key note above the marker only when
+  the container writes an anchor or tag header, while the pair writer hands that line's trailing
+  slot to the value's inline note, so a note the reader reports on the key mapping hoisted on the
+  second round (`yaml_roundtrip` crash-430f4f0e). The lift now takes that note whenever the value
+  owns the slot, header or not, because inside the body that line cannot survive a re-read.
   `lift_first_item_notes` moved a block sequence's first item's leading stack above the enclosing
-  container's header, a slot the reader reports as the *sequence's* note. For an item the writer
-  spells on lines of its own that is one level too high: libFuzzer `edit_yaml` crash-439f5d2c tags
-  the sequence nested inside `0X3[1]` and notes that sequence's first item (a block mapping). The
-  first emission wrote `# fuzz 47` below the item's `-`, where the re-read put it back on the item;
-  the second lifted it above `!fuzz2` — the text moved, so the emission was not a fixed point. The
-  lift now leaves the stack in the body for an item the writer breaks onto its own line (the
-  non-compact branch of `write_sequence_item`: a non-compact mapping, a block container, or a scalar
-  carrying a note) and hoists it only for the compact spell, where the dash line is the item's only
-  line and the sequence is the only node that can report a note above it. The regression is pinned
-  by `a_body_items_note_stays_under_its_dash_beneath_a_tag_line`, load-bearing by mutation: removing
-  the split reproduces the two-round move verbatim. The input joins the corpus as
-  `former-crash-439f5d2c.seed`.
-- **A consumed merge entry keeps the anchor its value defined** — the merge pass deletes the `<<`
-  entry and inserts the pairs that entry supplied, so the node carrying the entry's anchor leaves
-  the tree while `*name` still stands in the merged pairs or beside them. `finish_document` repairs
-  exactly that loss for the duplicate-key fold one pass upstream, and the merge pass ran after it
-  with no repair of its own: `<<: &b` / `  x: *b`, 15 bytes, reached the page as a bare `x: *b`,
-  which this library's reader refuses (`found unknown anchor at char 3`). Three larger inputs that
-  anchor the merge value from a pair inside it fail the same way (`char 38`, `39` and `57`).
-  `resolve_merge_keys` now reads the consumed entry's own anchor from its key and its value, and
-  collects a contributed pair's definitions only where that pair is dropped — the mapping owns the
-  key, two sources name it, or the mapping's own pair wins — then inlines the survivors once the
-  whole pass has run. A definition nested in a pair that does reach the tree needs no collection:
-  it travels inside the pair. The replacement keeps its anchor metadata, so the first use
-  re-defines the name: a definition whose body holds its own alias settles as a nested `&b`
-  instead of a dangling `*b`. Both pinned tests are load-bearing by mutation: dropping the
-  collection reddens `a_consumed_merge_entrys_anchor_survives_the_merge` with `"x: *b" … found
-  unknown anchor`, and putting `inline_aliases` back to the value-only walk reddens the fold test
-  with `? *b` left in key position, where `IndexMap` hands keys out immutably. The four inputs join
-  the corpus as `former-crash-{a7b68980,72afef34,d336d8b9,e31d0300}.seed`; two more from the same
-  run (`0941667d`, `25769705`) already replay clean on the parent tree and are archived as corpus
-  rather than claimed here. `anchor_graph.rs` walks 135 documents now, against a 2026-10-20 reading
-  of 102; six of the additions are this run's, four of which failed on the parent tree. One known
-  narrowing is inherited rather than introduced: `repair_orphaned_anchors`
-  treats a name as defined when it appears anywhere in the tree, so an orphaned definition that
-  precedes an alias while a later re-definition also exists is still not inlined — the duplicate-key
-  fold's repair has had the same limit since it landed.
-- **A finding from a push to main reaches the issue queue again** — the aggregate job's report step
-  counted each target with `grep -c .`, and a bash step on the runner starts with `-eo pipefail`:
-  the step's own `set -uo pipefail` does not turn `-e` back off, so a count of zero exited 1 and
-  ended the step. An archive holding no crash file, or no `findings.tsv`, therefore left the table
-  header-only and the filing step below never ran — a finding from a push to main reached no
-  consumer at all. Both counts now treat zero as a value to report, and
-  `tests/test_fuzz_file_issues.py` runs the workflow's own step under `-eo pipefail` against an
-  archive with nothing to count: the old form exits 1 there, the new one writes both rows.
-- **A container key the writer cannot spell apart is refused, not emitted twice** —
-  `yaml_roundtrip` crash-b88f1b4f is a two-pair mapping whose keys are themselves mappings over the
-  same tagged empty scalar, one as an empty literal block (`!? |2`) and one as an empty plain key.
-  Both stay in the node map, which compares whole nodes, but key position is lossy: the writer has
-  to quote a block scalar and an empty plain key, so both reach the page as `!? ""` and the
-  writer's own reader refuses its own output as a duplicate — a document lost between two calls
-  that both reported success. The reader now asks the writer what each container key looks like in
-  key position, reads that one-pair mapping back with duplicates allowed, and refuses the source
-  when two keys read back equal. Judging the writer's text by the reader's own rules is also what
-  catches a note the writer hoists above the `?` marker instead of onto the key line, a second live
-  shape this settles; the sibling crash-469125e3 ended in the writer learning a second spelling,
-  and here there is none to learn, so the refusal is the honest answer. It runs only for a document
-  that puts a container in key position — the receiver records that where a key node lands — so a
-  document whose keys are all scalars pays one test per finished mapping and `parse_medium`'s
-  allocation line does not move.
-  Four shapes are pinned in `container_keys_the_writer_spells_alike_are_refused` — the archived
-  34-byte seed, a colon-bearing inner key, a tagged empty plain/quoted pair and the hoisted note —
-  with flow-versus-block keys as the control that must still parse and settle; forcing the check
-  off reddens it.
-- **A repeated JSON key keeps the notes inside the value it replaces** — a duplicate name keeps the
-  first position and the last value, so the earlier value is dropped whole. The earlier rescue
-  handed the survivor the notes riding the dropped key and the dropped value node, but `notes_of`
-  reads only the node it is handed - so any note *inside* a dropped container went with it while the
-  event stream still reported it. libFuzzer `json_events_replay` crash-e294755f is the 132-byte
-  JSON5 shape: two `"a"` values are objects with three notes each; the stream reported eight notes
-  and the tree kept five, the three inside the discarded object going with it. `subtree_notes` now
-  collects a node and every node under it in source order, so the parked list is the whole displaced
-  value. Forcing the recursion off reddens
-  `a_duplicate_key_keeps_the_notes_inside_the_value_it_replaces` and the corpus walk, which now
-  replays the new `former-crash-e294755f.seed`. The Ir gate reads +0.09% on `from_json_medium` and
-  +0.07% on `from_jsonc_medium`; neither fixture contains such a duplicate, so the move is layout.
-- **The three `edit_yaml` inputs of issue #726 survive the edits that found them** — all three still
-  failed on `main` at 7dcf0f88, and two defects sit behind them. `rename_path` synthesized the
-  renamed key from its new text, dropping the `Fidelity` a simple key carries: renaming `&x 0se` in
-  `!base: &x 0se: *x` emitted `k7: *x`, an alias naming an anchor no node defines, and this reader
-  refused the text the edit wrote. The key now keeps its anchor and tag (`renamed_key_node`),
-  because a rename changes the key's text and not the entry it names. The third input failed the
-  one-round settle instead: `spine_has_notes`, the cheap guard on the lift, asked only the leading
-  stacks, while `hoist_marker_note` under an anchor/tag header also takes the first key's inline
-  note - `k: !s:  # n` leaves the note on the key, because a tag-only value owns no line-end slot -
-  so the first emission left the note below the header, the reader handed it to the container, and
-  the next round hoisted it one header further. The guard now mirrors the walk.
-  `renaming_a_key_keeps_the_anchor_and_tag_that_name_the_entry` and
-  `a_first_key_inline_note_climbs_a_chain_of_headers_in_one_round` pin the two halves, and the
-  mutation says they are load-bearing: reverting either fix reddens its own test with the crash's
-  spelling (`k7: *x`, or the note under the header). All three inputs replay clean and are archived
-  as `fuzz/seeds/edit_yaml/former-crash-{8b6110c5,b44f7f1c,db718a7e}.seed`.
-- **A dotted path inside an inline table is bounded like every other descent** —
-  `parse_inline_table` collected members as key paths and laid them out in `nest_inline`, so
-  `t = { a.b.… = 1 }` nested one table per segment without entering the `parse_value` funnel or
-  `register_kv`'s check. libFuzzer `toml_roundtrip` crash-2a5ea394 is that shape at 1059 segments:
-  `from_toml` accepted it, `to_toml` re-spelled the chain as 1059 nested inline tables, and the 1.1
-  reader refused the writer's own output with `max depth exceeded (max=1000)` — a document lost
-  between two calls that both reported success. The budget now adds the path about to be laid out
-  and every path expanded above it (`depth + inline_path_shift + key.len()`), so a containing
-  member's path keeps counting while its value is parsed; the mutation says both halves are
-  load-bearing, because dropping the shift still rejects the 1100-segment case and reddens
-  `inline_dotted_paths_accumulate_across_nesting` at 600 + 600. Four parser tests hold it — beyond
-  budget under both dialects, accumulation across nesting, a 300-segment fixed point, and the
-  999-segment edge whose emission is exactly 1000 tables and re-parses — and the input is archived
-  as `fuzz/seeds/toml_roundtrip/former-crash-2a5ea394.seed`; the fuzz target replays it clean. What
-  the guard does not change: it bounds what a document can build, not what a legal tree costs the
-  native stack, which stays the residual `(ih)` names.
-- **A tagged sequence's marker note no longer needs two rounds** — `lift_first_entry_notes` hoists a
-  block mapping's whole marker spine above its `&anchor` / `!tag` header line, so a note riding a
-  nested `?` / `-` marker lands where the reader reports it and the first emission is the fixed
-  point. The sequence's twin read only the first item's own leading stack, so a note one level down
-  the spine stayed *below* the header — where the reader hands it to the sequence itself — and the
-  emission settled only on its second pass. The sequence lift now walks the spine with
-  `hoist_marker_note`, the same walk the mapping lift does. `crash-094d4d6a` and `crash-8492f5ee`
-  (the 2026-10-17 and 2026-10-24 scheduled runs, and not the family #691 or #689 covers — both still
-  drifted against those heads) pinned it, and `crash-701f76bf` is the same leak at its smallest:
-  eight bytes, one note on the explicit `?` key under a tag, with an `&a` twin for the anchor
-  spelling of the same header. They are archived as
-  `fuzz/seeds/yaml_roundtrip/former-crash-{094d4d6a,8492f5ee,701f76bf}.seed` and
-  `a_tagged_sequences_marker_note_settles_above_its_header` holds the one-round claim — for the
-  eight-byte pair it also holds the note above the header exactly once, so an emission that dropped
-  or doubled the note cannot pass on equality alone. The guard
-  costs the writer: read on this host against the same tree without it, `serialize_block` +0.18 %
-  and `serialize_note_flow` +0.17 %, `serialize_small` +0.10 %, `serialize_medium` +0.12 %,
-  `serialize_anchors` +0.06 %, `serialize_block_scalars` +0.03 % — every scenario inside the 0.5 %
-  line, so none FAILs; the no-fix tree sat at +0.00 % on the two named rows, so the whole move is
-  the guard and not host drift.
-- **The Markdown formatter no longer edits the inside of a code span** — `rumdl fmt`'s MD038 fixes
-  "spaces inside code span elements" by *deleting* the byte, so a span written as backtick, space,
-  `? > #I` came back without that space in all five changelog mirrors and in
-  `docs/dev/quality-ledger.md`, while the hook printed `Passed`. The rule's premise holds only for
-  the paired case that CommonMark already strips at render; a leading-only space is content — here
-  the indentation that makes a YAML sample a nested marker body. `MD038` joins the disables in
-  `.rumdl.toml`, and the measurement that makes this free is that `rumdl check` over all 178 tracked
-  pages reported 0 findings on 2026-11-01 — the reading a fix-on-touch rule must leave behind, since
-  any such span is rewritten the first time its page is edited, so none survive to be counted. A
-  formatter's output *is* the fixed point, which is why no later `prek` run and no CI job can see
-  the edit.
-  `tests/test_rumdl_span_rule.py` pins the rule, the three disables before it and the reason written
-  beside it; `docs/dev/quality-ledger.md` `(id)` carries the reproduction and the trade.
-- **A note no longer splits a value across two lines** — a mapping entry remembers where its own
-  line starts, and closing a pending tag-only line inserts that value's `~` *before* the remembered
-  offset without moving it, so the next key's inline note was dropped into the middle of the
-  line the closure had just lengthened. `to_yaml` of `: !` / `<<: #b` / `<<: #b` / `3 #~`
-  emitted `~: ! # b` then a bare `~` at column zero, which this engine's own reader refuses
-  (`simple key expected ':'`): the writer had broken the one contract `yaml_roundtrip` states — its
-  output always re-parses. `note_line_above` now treats "this offset names a line" as an invariant
-  and advances a stale capture to the next line start, so the emission is `~: ! ~` plus the note
-  lines and settles on the first round. Found by the scheduled discovery tier, whose report had been
-  discarding the claim for five red weeks; pinned by a named Rust test and
-  `fuzz/seeds/yaml_roundtrip/former-crash-2c76568e….seed`, and measured to discriminate — on the
-  previous tree that one test fails with the refused text quoted while its ten siblings pass.
-- **A string spelled `+-333…` is quoted again by the JSON5 writer** — the bare-token test strips one
-  leading sign before its numeric checks, then asked whether the *body* was a strict JSON number, so
-  `+-33337333333373333333733333` passed as `+` over an acceptable `-333…` and `to_json5_text`
-  emitted text its own reader refuses (`expected integer digits in number`). Only a leading `+` over
-  an unsigned body is a JSON5 spelling now; `+7`, `-7` and `+1.5` keep their bare token, and the
-  quoted document comes back as the string it was (libFuzzer `json_roundtrip` crash-0a929a32,
-  archived as a seed).
-- **A note standing over an emptied container keeps the sequence item on its dash line** — the
-  reader files a note written above a container's first pair as that container's own leading note,
-  so an edit that deletes the last pair leaves a standalone note over nothing. `is_compact_item`
-  refused the compact `- key: value` line for any value carrying a standalone note, but an empty
-  container is the exception `write_mapping_pair` already makes for itself: it inlines `{}` and
-  demotes the note to the pair-line tail. Round one therefore wrote the dash alone, with the pair
-  indented below it, and round two, reading the demoted note as inline, took the dash line —
-  libFuzzer `edit_yaml` crash-ad42b9cc, a 46-byte input whose document is 14, archived as
-  `former-crash-ad42b9cc.seed`. The compactness test now follows the writer's rule;
-  `a_note_on_an_empty_container_value_settles_in_one_round` pins the three-edit sequence and the
-  emission `- ~: {}  # fuzz 47` byte for byte.
-- **An array element keeps the note on each side of its value** — a note after the comma and one
-  after the value reach one element through two separate flushes (`array` takes the pending list
-  before `value()` and flushes what follows it), and both land in the single inline slot: the
-  second `set_comment` overwrote the first, so the tree carried one note while `parse_stream`
-  reported both. libFuzzer `json_events_replay` crash-0449c0ae, 42 bytes, archived as
-  `former-crash-0449c0ae.seed`; crash-0466d7f6, 81 bytes, reaches the same slot from inside a
-  nested array. The earlier note now moves to the leading list instead of being dropped, and keeps
-  its `standalone` flag, so the slot the stream names and the slot the tree filed it in still
-  agree — the folded tree is the scanned tree, decorations included. Only the corpus invariant
-  charged the loss before: `the_two_walks_describe_the_same_document` reddened on
-  `("b[", false)` missing from the tree, and the named
-  `an_element_keeps_the_notes_on_both_sides_of_its_value` states the claim on
-  `[/* before */ 1 /* after */]`. Put the overwrite back and both redden; the corpus now drives
-  51 verdict pairs and replays 28 accepted documents, which is what the file's measured comment
-  records.
-- **A key's note is filed above the pair even when the key's leading note moved that line** — a pair
-  records where its key line starts before it writes anything, then writes the key's leading notes;
-  `write_note_line` closes a pending tag-only line above the pair by inserting the value's `~` at an
-  offset *before* that start and appends the note line, so the key line had moved by the time the
-  key's inline note was placed. That note cannot share the pair line when the value carries one of
-  its own, so it goes above the pair, and the placement was handed the stale offset: `# b` split the
-  pending value's line and pushed its `~` onto a bare line of its own, yielding `~: ! # b` / `~`,
-  which this reader refuses (`simple key expected ':'`) — libFuzzer `yaml_roundtrip` crash-76e05a78,
-  104 bytes, minimised to 25 and archived as `former-crash-76e05a78.seed`. The pair now re-anchors
-  its key line after those leading notes;
-  `a_key_note_above_a_closed_pending_tag_line_settles_in_one_round` pins the 25-byte emission byte
-  for byte (`~: ! ~` / `# *` / `# b` / `<<: e  # ~`) and the 104-byte original, and restoring the
-  stale offset reddens it with the pre-fix text. No new pass or allocation: the re-anchor is the
-  length already appended, read once.
-- **A container key's line-end note now lifts before the `?` marker does** — a block container that
-  writes an anchor or tag header re-reads a note riding its first entry's line end as its own, which
-  is why the header path empties that slot (`lift_first_entry_notes`). The `?` marker's own walk,
-  `hoist_marker_note`, took only the standalone stack, so an anchored container key wrote the note
-  inside its `?` body on the first emission and the re-read hoisted it above the marker — libFuzzer
-  `yaml_roundtrip` crash-6cfbaa57, 61 bytes, minimised to the 15-byte `? &x\n ? a  # c\n` and
-  archived as `former-crash-6cfbaa57.seed`. Both walks now ask one question
-  (`first_entry_inline_note`), and the lift is gated on the header rather than on the marker,
-  because a headerless container key keeps that note inside its own body: the position is what tells
-  two mapping keys apart in the table
-  `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` asserts, and the first shape of
-  this fix — unconditional — emitted `?\n  z: 1\n:\n  one\n# deep\n?\n  z: 1\n:\n  two\n`, which the
-  reader refused as a duplicate key. `a_first_entry_inline_note_under_a_marker_settles_in_one_round`
-  pins the minimised emission byte for byte and the 61-byte original; gating the lift back
-  (`if header && false`) reddens it with the pre-fix text. No new pass, no new allocation: the
-  question is asked inside the first-key walk that already ran, and only for a mapping that holds a
-  pair.
-- **A dotted key no longer nests deeper than the depth guard can see** — `DEFAULT_MAX_DEPTH` bounded
-  only `parse_value`, the recursion funnel for inline tables and arrays. A dotted key (`a.b.c = 1`)
-  and a table header (`[a.b.c]`) build their nested tables by an *iterative* pointer descent, so the
-  guard never counted them and a long-enough path produced a tree deeper than the budget. Two ways
-  that failed: the writer re-spelled the chain as an inline table the reader then refused, so
-  `parse → emit → parse` rejected a document `parse` had accepted; and a path long enough overflowed
-  the native stack (`0xC00000FD`) before any guard could answer. The crash `crash-7a3aac52` (a
-  2862-byte `a.b.b. …b = 1` from the 2026-10-24 scheduled run) aborted on a 2 MiB thread and only
-  reached the clean re-parse rejection on 512 MiB. Both descents are bounded to the same budget now,
-  so the parser's own comment — that bounding the descent "caps every nesting path" — is true: a
-  dotted or header path of at most 1000 segments round-trips and settles, and one of 1001 or more is
-  a typed `max depth exceeded` before a single table is built.
-  `dotted_key_path_beyond_budget_errors_instead_of_overflowing`,
-  `header_path_beyond_budget_errors_instead_of_overflowing` and
-  `dotted_key_within_budget_round_trips_without_inflation` hold the three claims, the crash input is
-  archived as `fuzz/seeds/toml_roundtrip/former-crash-7a3aac52.seed` and replayed by
-  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus`. The 2026-11-01 scheduled run landed
-  three more of the same shape — `crash-2503e079`, `crash-6c15f693` and `crash-837bd790`, dotted
-  paths of 1031, 1026 and 1010 segments — each a typed `max depth exceeded` on a 1 MiB thread under
-  this guard and a stack overflow without it; they are archived under `fuzz/seeds/parse_toml/`. The
-  guard's price is measured on this host against the same tree without it: `load_toml_medium`
-  +0.006 % and `load_toml_long_strings` +0.046 %, while the apparent +1.65 % / +2.98 % over the
-  committed floor
-  reproduces on the parent tree and is the WSL-host baseline drift, not this change, so it refreshes
-  on the enforcing image. The residual left standing, not silently narrowed: a legal ~900–1000-deep
-  tree still needs a stack over 1 MiB to convert and write, which the Windows main thread does not
-  carry — the same budget-versus-native-stack gap the array tests already acknowledge by running on
-  a big stack (`docs/dev/quality-ledger.md` `(hm)`), and a decision in its own right rather than a
-  number this change moves.
-- **A tagged key is one key when its tag and text agree, whatever else the line carries** — the
-  reader compared tagged keys as whole nodes, style and anchor included, while the writer chooses
-  those for the reader and not for the key: plain and quoted spellings of one tagged key both emit
-  as `!a "…"`, and an anchored `Null` emits as `!a null`. Its own emission therefore came back as
-  `duplicate key` — libFuzzer `yaml_roundtrip` crash-4bf6ee37, 45 bytes, archived as
-  `former-crash-4bf6ee37.seed`. Tagged keys are now tracked by tag and value, YAML's own equality
-  for scalar nodes; a tagged `Null` joins that track as the word `null` its line carries, so
-  `&a !E null` and `&b !E null` are one key while `!a k` and `!b k` stay two. Anchors, quotes,
-  comments and style now separate nothing, which also makes `!a k` beside `!a 'k'` a duplicate —
-  the spec's reading, and a pair the writer could only have spelled apart by accident. A merge asks
-  the same model (`merge.rs::same_emitted_key`): another spelling of a tagged key the mapping
-  already holds is now that key rather than a second pair, which the writer emitted and its reader
-  refused — `a_merge_does_not_contribute_a_second_spelling_of_a_tagged_key` pins the quoted,
-  re-anchored, block-styled and `"null"`-spelled shapes, while
-  `a_merge_keeps_two_tagged_keys_whose_tags_differ` keeps `!a k` and `!b k` apart.
-  `duplicate_tagged_scalar_key_by_tag_and_value_is_rejected` pins both sides, and the property
-  tier's key table carries the same classes. The control is the pre-fix behaviour put back
-  (`insert_tagged_key` answering "new" for every key): both tests redden and the archived seed
-  crashes with `deadly signal`, rc 77, where the fixed build replays it clean. A table filled
-  per key was the first shape and the instruction-count gate priced it off — its call site sat
-  in `push_node`, unreachable on a fixture that holds no tag, and moved every `parse_*` scenario
-  past the 0.50% line. The check therefore runs over a closed mapping's pair list, reached only
-  when the document carried a tag. Price: none on the allocation gate — `parse_medium` holds at
-  67 allocations / 24 512 bytes on std and 74 / 24 952 without it.
-- **The JSON event fold no longer drops a sequence element's earlier note** — an element's notes
-  reach the tree in two groups, the ones above it and then the ones after it, and both file onto the
-  node's one inline slot. `from_events` let the second group's same-line note overwrite the first,
-  so a document the stream had just described folded back shorter: `[1, /* b */ 2 /* c */, 3]`
-  scanned as `b` in the leading list and `c` in the inline slot, and folded as `c` alone. A dropped
-  note is invisible to the tiers built on this: the shortened text re-emits as itself, so the fixed
-  point, re-parseability and tree equality all passed on the document that had already lost
-  something — node equality does not read the comment slots, and the corpus assertion compared the
-  two trees with it. The two walks caught it instead: `json_events_replay` found the stream naming
-  both notes while the fold kept one, on the 42-byte input
-  `[1 /* a */, /* b */ 1 /* a */, /* b */ 22]` (sha1 `e72e24ef…`), now archived as
-  `fuzz/seeds/json_events_replay/former-crash-e72e24ef.seed` and replayed over both walks by
-  `crates/pyrs-json/tests/events_replay.rs` in the merge gate. `apply` in
-  `crates/pyrs-json/src/parser.rs` now files a second same-line note the way the tree walk's
-  `attach_pending` does: the earlier note moves to the leading list still carrying the source flag
-  the tree gave it, and the later one takes the slot, so the fold rebuilds the scanned tree rather
-  than a shorter one. `the_fold_files_an_elements_second_note_group_where_the_tree_does` pins the
-  tree, the stream owners and the fold, and the corpus comparison now reads the folded tree's notes
-  against the scanner's instead of trusting node equality on its own. The instruction-count harness
-  drives the scanners, the writers and the loaders, not `from_events`, so no measured scenario moves
-  on this path.
-- **A note after the document's closing bracket is written, not dropped** — every note the JSONC and
-  JSON5 writers emit came from a member loop (a pair's key and value, a sequence's elements), and
-  the document root is no member's child, so the root's own line-end slot had no writer at all:
-  parsing `{"a": 1} // after` and writing it back produced `{"a": 1}`, and the same note reached
-  through the YAML hub was lost identically. `emit_root_leading` had covered the root's *leading*
-  slot since the compact route was added, which is why the gap read like a dialect limitation
-  instead of a missing call. The generative cross-format tier had no oracle for this family — only
-  TOML charged note conservation — so `prop_jsonc_writer_carries_every_note` and its JSON5 twin were
-  added first; the JSONC one shrank to a hand-built root carrying a trailing note on its first run,
-  at 400 cases. Each of the four entry points now emits the root's line-end note after the top-level
-  value, and `test_a_note_after_the_document_reaches_both_json_dialects` pins the shipped
-  YAML→JSONC/JSON5 route in both layouts. The counterexample is the pre-fix output — both new
-  properties redden on `{"a": 1}`. The price is one `has_notes()` guard per document, not per
-  member.
-- **A noted key between repeats kept the second-to-last value** — a same-line note on one of several
-  `"a"` keys made that key unequal to the rest, so the mapping held both entries; the next clean
-  `"a"` then matched the first entry and replaced its value, and the close-time fold moved the noted
-  entry's older value back over it. `{"a": 1, /* n */ "a": 2, "a": 3}` parsed to `{"a": 2}`, and the
-  shape is what the replay target `fuzz/fuzz_targets/json_events_replay.rs` found — its 66-byte
-  minimized input threads two notes through the same repeats. The fold ends on the name's last
-  entry, so the newest value has to be parked there: `file_duplicate` moves it, carrying the slots
-  it displaced, and the tree walk and `from_events` share that function instead of each spelling the
-  insert — a replayed stream and the scanner now resolve a repeated name alike. A mapping whose keys
-  carry no note pays nothing new: the branch runs only when `insert_full` reports a replacement, and
-  the noted signal is read inside it. `a_noted_key_between_repeats_keeps_the_last_value` pins four
-  shapes (the note first, in the middle, last, and beside an unrelated key), and the minimized input
-  joined the seed corpus — 20 seeds over 3 dialects drive 60 verdict pairs and replay 34 accepted
-  documents.
-- **The fuzz report no longer throws the finding away** — `scripts/fuzz_rounds.sh` built each crash
-  signature with `grep -m1 -hoE "panicked at [^:]+"`, and `[^:]+` stops at the first colon, so a
-  panic reached the report as `panicked at fuzz_targets/yaml_roundtrip.rs`: no line, no column, no
-  message. Nothing else carried the text either, because `cargo fuzz run` writes to a per-round log
-  that is never printed. The consequence is measurable: the scheduled discovery tier came back
-  `completed/failure` on five consecutive Saturdays (2026-10-03, -10, -17, -24, -31) and nobody
-  could say what it had found. The signature now keeps the location *and* the first line of the
-  message that follows it, which is what makes an archived artifact actionable: read against
-  today's run, `yaml_roundtrip`, `toml_roundtrip` and `edit_yaml` each surfaced three crash inputs,
-  and the two writer-contract violations were reproduced from the archived bytes in minutes
-  afterwards. A tab
-  is flattened because `findings.tsv` separates two columns with one and
-  `.github/workflows/fuzz.yml` counts signatures with `cut -f1 | sort -u`, so a tab inside a message
-  would understate the number the job prints. `tests/test_fuzz_rounds.py` gains two cases, and
-  putting the old `grep` back reddens both (measured: `2 failed, 6 passed`). What should *consume* a
-  red schedule run — open an issue, block a path, or stay a report — is a separate decision and is
-  not taken here.
-- **A header's two note stacks stopped being alternatives** — a section key and the mapping it heads
-  hold two separate leading lists, and the section pass in `crates/pyrs-toml/src/writer.rs` filled
-  one slice by asking the section's list first and falling back to the key's. Both non-empty is
-  therefore one note stack short: a key carrying `# K` above a section carrying `# T` emitted
-  `# T\n[a]\nx = 1\n`, and because the shortened text re-emits as itself, the fixed point,
-  re-parseability and tree equality all passed on a document that had lost a line. The only oracle
-  in the tier that charges both slots is `prop_toml_writer_carries_every_note`, which drew the shape
-  at 20,000 cases on a head whose `crates/` tree is trunk's byte for byte — so trunk was
-  intermittently red, and a rerun that came back green was not a fix. Both lists are written now,
-  the key's lines above the section's own, and each shape settles on the first hop.
-  `a_key_line_stack_beside_a_section_stack_loses_neither_note` pins the hand-built node's bytes and
-  fixed point, and `a_header_note_stack_that_arrives_by_way_of_yaml_reaches_the_section` pins the
-  same pair reached through the shipped YAML→hub→TOML route, whose binding-level twin
-  `test_a_section_key_note_beside_the_section_note_travels_the_route` reads that text back with
-  `tomlkit` and `tomllib` too. The control is the pre-fix selection
-  put back in place of the two loops: both tests redden, with `# T\n[a]\nx = 1\n` and
-  `top = 1\n# T\n[sec]\nx = 1\n` on their lefts. The price is the guard, not the notes:
-  `to_toml_medium` reads +0.46 % over its floor where the two lists are written as two loops (the
-  same order through `Iterator::chain` costs +0.83 %, and the emitted bytes are identical between
-  the two spellings), while the scenarios that do carry notes do not move — `to_toml_notes` −0.03 %
-  and `to_toml_long_strings` −0.02 %.
-- **Five TOML note slots nobody read, and the tier that could not see them go** — `to_toml` dropped
+  header, one level too high for an item spelled on lines of its own, since the reader reports that
+  slot as the sequence's own note (`edit_yaml` crash-439f5d2c); the lift now leaves the stack in the
+  body for the non-compact branch of `write_sequence_item` and hoists it only for the compact spell.
+- **A note the marker lift hoists one header too far, and a rename that dropped the fidelity a key
+  carries** — #726's three `edit_yaml` inputs still failed behind two defects. `rename_path` rebuilt
+  the key from its new text, dropping the `Fidelity` a simple key carries, so renaming `&x 0se` in
+  `!base: &x 0se: *x` emitted `k7: *x`, an alias to an undefined anchor; the key now keeps its
+  anchor and tag. `spine_has_notes` asked only the leading stacks while `hoist_marker_note` under a
+  header also takes the first key's inline note, so the note settled a header further each round;
+  the guard now mirrors the walk. The sequence's twin read only the first item's stack, so a note
+  one level down stayed below the header and settled on the second pass; it now walks the spine the
+  same way (`crash-094d4d6a`, `crash-8492f5ee` from the 2026-10-17 and 2026-10-24 runs, outside #691
+  and #689, and `crash-701f76bf`). That walk took only the standalone stack, so a header'd container
+  key wrote its note inside the `?` body and the re-read hoisted it above the marker
+  (`crash-6cfbaa57`); both walks now ask one question (`first_entry_inline_note`) and gate on the
+  header. Six writer scenarios pay within the 0.5 % line — `serialize_block` +0.18 %,
+  `serialize_note_flow` +0.17 %, `serialize_medium` +0.12 %, `serialize_small` +0.10 %,
+  `serialize_anchors` +0.06 %, `serialize_block_scalars` +0.03 % — against +0.00 % without the
+  guard.
+- **A note no longer splits a value across two lines: the pair re-anchors its key line after a
+  closure moved it** — a mapping entry remembers where its own line starts, and closing a pending
+  tag-only line inserts that value's `~` before the remembered offset without moving it, so the next
+  key's inline note landed in the middle of the line the closure had just lengthened: `to_yaml` of
+  `: !` / `<<: #b` / `<<: #b` / `3 #~` emitted `~: ! # b` then a bare `~` at column zero, which this
+  engine's own reader refuses (`simple key expected ':'`). `note_line_above` now treats "this offset
+  names a line" as an invariant and advances a stale capture to the next line start. The same stale
+  capture moved the key line itself, since a key note cannot share the pair line when the value
+  carries one of its own (`yaml_roundtrip` crash-76e05a78, minimised from 104 bytes to 25), and the
+  pair now re-anchors its key line after its leading notes. crash-2c76568e came from the scheduled
+  discovery tier, whose report had been discarding the claim for five red weeks.
+- **A note standing over an emptied container keeps the item on its dash line, and the dash and
+  colon no longer open for a child that had decided to go block** — the reader files a note above a
+  container's first pair as the container's own leading note, so deleting the last pair leaves a
+  note over nothing, and `write_mapping_pair` already answers that by inlining `{}` and demoting the
+  note to the pair-line tail; `is_compact_item` refused the compact `- key: value` line for any
+  value carrying a standalone note, so round one wrote the dash alone and round two took the dash
+  line (`edit_yaml` crash-ad42b9cc). The compactness test now follows the writer's rule. One level
+  up, a flow-marked container is demoted when a member carries more notes than the braces can hold,
+  but seven decisions trusted the `flow_style` flag alone and each wrote its indicator while the
+  demoted child opened a block body at the parent's column; all seven now ask the demotion's own
+  question. The extra test moved the writer family +0.18 % to +0.72 % (`serialize_small` the worst)
+  and no reader scenario by more than 0.19 %, so both floors are re-measured rather than widened.
+- **Keys only node metadata tells apart are refused** — the reader compared tagged keys as whole
+  nodes, style and anchor included, while the writer picks those: a tagged key's plain and quoted
+  spellings both emit `!a "…"`, an anchored `Null` emits `!a null`, so its own emission came back
+  `duplicate key` (crash-4bf6ee37). They are now tracked by tag and value, YAML's scalar equality,
+  and a merge asks the same; a per-key table read past the 0.50% line. Key position is worse:
+  crash-b88f1b4f's two mapping keys sit over one tagged empty scalar the writer quotes alike as
+  `!? ""`; it now asks the writer what a container key spells as and refuses the source when two
+  read back equal; the sibling crash-469125e3 had a spelling to learn. A standalone note hoisted
+  above the outermost `?` is no key difference either (predating #645): `keys_collide_in_text` drops
+  every standalone slot, an inline note separates. Projections key by text, so `c: 0` beside
+  `!A c: "!"` emitted `c = 0` plus `c = "!"`, which this project's TOML reader rejects, and
+  `json.loads` folded to one entry; both writers now raise `YamlSerializeError`
+  (`toml-keys-collide-without-metadata`, `json-object-keys-collide-without-metadata`),
+  `to_dict`/`safe_load` raise `YamlTypeError` naming the text; `to_yaml()` is unchanged.
+- **A repeated JSON key keeps the notes inside the value it replaces, and a noted key between
+  repeats keeps the last value, not the second-to-last** — a duplicate name keeps the first position
+  and the last value, so the earlier value is dropped whole, and the rescue handed the survivor only
+  the notes on the dropped key and value node — `notes_of` reads just the node it is handed, so a
+  note inside a dropped container went with it while the event stream still reported it
+  (`json_events_replay` crash-e294755f: eight notes reported, five kept). `subtree_notes` now
+  collects a node and everything under it in source order; the Ir gate reads +0.09% on
+  `from_json_medium` and +0.07% on `from_jsonc_medium`, and neither fixture holds such a duplicate,
+  so the move is layout. The close-time fold has a different cause: a same-line note on one of
+  several `"a"` keys made that key unequal to the rest, so the mapping held both entries, the next
+  clean `"a"` replaced the first entry's value, and the fold moved the noted entry's older value
+  back over it — `{"a": 1, /* n */ "a": 2, "a": 3}` parsed to `{"a": 2}`. The fold ends on the
+  name's last entry, so `file_duplicate` now parks the newest value there, and the tree walk and
+  `from_events` share that function.
+- **The JSON fold files an element's second note group where the tree does, and the root's line-end
+  note is written** — an element's notes, the ones above it and the ones after it, both land in the
+  node's single inline slot: `array` takes the pending list before `value()` and flushes what
+  follows, so a second `set_comment` overwrote the first and the tree carried one note while
+  `parse_stream` reported both (`json_events_replay` crash-0449c0ae, and crash-0466d7f6 reaching the
+  same slot from a nested array). `apply` in `crates/pyrs-json/src/parser.rs` now files a second
+  same-line note the way the tree walk's `attach_pending` does, moving the earlier note to the
+  leading list with its `standalone` flag; the fold route hit the same overwrite on its own input,
+  archived as `former-crash-e72e24ef.seed`. The root's line-end note had no writer at all: every
+  note the JSONC and JSON5 writers emit came from a member loop and the root is no member's child,
+  so `{"a": 1} // after` wrote back `{"a": 1}`, lost identically through the YAML hub; each of the
+  four entry points now emits it after the top-level value, and
+  `prop_jsonc_writer_carries_every_note` and its JSON5 twin give the cross-format tier an oracle
+  here. No counted scenario reaches `from_events`.
+- **JSON5: a string that only looks numeric is quoted again, and the key refusal names a spelling
+  its grammar allows** — the bare-token test strips one leading sign before its numeric checks, then
+  asked whether the body was a strict JSON number, so `+-33337333333373333333733333` passed as `+`
+  over an acceptable `-333…` and `to_json5_text` emitted text its own reader refuses
+  (`expected integer digits in number`); only a leading `+` over an unsigned body is a JSON5
+  spelling, so such a string is quoted again while `+7` and `+1.5` keep their bare token (libFuzzer
+  `json_roundtrip` crash-0a929a32). In key position the message read `expected a quoted object key`,
+  while JSON5 also takes a bare identifier, so the error asked for a form the dialect never
+  required; the wording now comes from the dialect's own flag —
+  `expected an object key (a quoted string or a bare identifier)` where unquoted keys are allowed,
+  the old sentence where they are not — and one `Parser` serving all three dialects means the shared
+  helper covers the tree and stream routes alike while strict JSON and JSONC keep their wording.
+- **TOML header notes: the key-line slot nobody read, and the two stacks that were alternatives** —
+  `to_toml("sec: # note\n  x: 1\n")` returned `[sec]\nx = 1\n`: the comment was dropped, because the
+  section pass read only the mapping's own inline slot while the hub hands over a YAML document's
+  key-line note on the key node — the same slot #146 taught the writer to read one level down. That
+  retires two explanations given here: `pyrs_toml`'s own scanner does capture a `[sec] # note` note,
+  and granit is not in that path; only the placement rule `api:set-comment-container-owner` records
+  stays open. The header line's slot was also unread by the line that writes `key = value`, so a
+  `b: # note` above `x: 1` emitted `b = {x = 1}` without the note; `emit_pair` now falls back to
+  that slot. A section key and the mapping it heads hold two leading lists, and the pass asked the
+  section's first and fell back to the key's, so `# K` above a section carrying `# T` emitted
+  `# T\n[a]\nx = 1\n`; both are written now. Every pair pays: `to_toml_medium` +1.58 % and
+  `to_toml_long_strings` +1.25 % on the enforcing image, no other of the 37 scenarios past 0.32 %;
+  the two loops cost +0.46 % against +0.83 % through `Iterator::chain` on identical bytes, with the
+  note-carrying rows unmoved (−0.03 %, −0.02 %).
+- **TOML member note slots five nobody read, and an element note written twice** — `to_toml` dropped
   a note whenever the line it needed did not exist: on an empty table or array carrying its own
-  note, on a scalar value whose note stands on its own line, and twice where one member line was
-  answered by a single slot read through `or_else` — a key's inline note beside its value's, and
-  beside its section header's. Nothing asked: text that lost a note on the first emission loses it
-  identically on the second, so re-parseability, the fixed point and the tree equality all passed on
-  a document that had lost something. `prop_toml_writer_carries_every_note` joins the tier and asks
-  that every note the tree carries reach the emitted text — trimmed, one line, the flattening
-  restated in the checker rather than borrowed from the writer — and named all four shapes within
-  20,000 cases. They take the line above the key, where this crate's reader reports a member's
-  leading note from, so each settles on the first re-emission while the value keeps its compact `{}`
-  / `[]` spelling. Five named Rust tests hold them, `tests/test_toml_writer_suite.py` carries the
-  three value-side shapes through the shipped YAML→hub→TOML route, and one mutation — the new helper
-  answering `&[]` for every node — reddens all five plus the property. The price is the guard, not
-  the notes: on the pinned `rustc 1.97.1`, `to_toml_medium` +3.29 % and `to_toml_long_strings`
-  +3.43 % over their floors on documents holding no `#` at all (462 instructions per harness
-  document), and `to_toml_notes` +1.24 % — `docs/dev/quality-ledger.md` `(hw)` records the readings,
-  and the three names go to the baseline refresh's `accept_drift`. What stays is position rather
-  than survival: a key's inline note beside a header that carries no note of its own rides the
-  header line and moves to its own line on the second emission — measured, lossless, and beyond what
-  the fixed-point property reaches.
-- **A note above a container's first member was dropped, not moved** — `to_toml` wrote
-  `nested:\n  # above the inner key\n  inner: 1` as `nested = {inner = 1}` and
-  `arr:\n  # above the first item\n  - 1` as `arr = [1, 2]`. The hub homes a note that ends the line
-  above a member on the *container* node's own leading list, and both compact arms of
-  `crates/pyrs-toml/src/writer.rs` read only what a member carries — a key's leading list, a key's
-  inline note, a value's inline note, an element's own note — so the container counted as
-  undecorated, stayed on one line, and the note had nowhere to go. That is PR #146's fifth-slot
-  class one level up. Both arms now ask the container's list through one `container_leading_notes`,
-  which is the pair PR #114 already reads for a section header, so the question costs one lookup per
-  container rather than a guard plus a lookup, and demote: the note takes its own line inside the
-  braces or the brackets, which is where this crate's reader reports it from, so the text re-reads
-  to itself in one hop. Every half is asserted — the exact bytes and the fixed point for a table's
-  leading list, for the legacy standalone slot, and for an array in
-  `crates/pyrs-toml/src/writer.rs`; all six notes of the fixture plus the fixed point in
-  `crates/pyrs-yaml-core/tests/ir_fixtures.rs`; the shipped YAML→hub→TOML route in
-  `tests/test_toml_writer_suite.py`. A multi-line inline table or array is TOML 1.1 syntax, so the
-  note is the only thing that can incur this: the same documents with the note removed still write
-  `nested = {inner = 1}` and `arr = [1, 2]`. Which readers refuse the noted text is a fact about the
-  reader's version, measured on 2026-10-29: CPython 3.11 through 3.14 `tomllib` do, CPython 3.15.0's
-  `tomllib` and `tomli` 2.5.0 — the reader below 3.11 — do not, so the gate keys the expectation
-  instead of assuming it and this crate's own `from_toml_v1_0` stays the 1.0 judge. An empty
-  container was the exception the property tier found at 20,000 cases: `A = {}` carrying its own
-  note kept the compact form and lost the note, because a `#` line inside `{ }` reaches no member
-  and this crate's reader hands back no note for that position. `docs/dev/quality-ledger.md` `(hu)`
-  recorded the shape as a measured boundary and `(hv)` confirmed it; the bullet above it on this
-  list moves the shape off that list, because the line above the key is a line the reader does
-  report a member's leading note from. The price is on the writer and was measured on the enforcing
-  image: `to_toml_medium` +1.256%, `to_toml_long_strings` +2.081% and `to_toml_notes` +6.872%, while
-  the two TOML read floors moved +0.0014% and -0.0007% — a slot the read route never consults costs
-  it nothing.
-- **A registered handler owns the scalar it claims, and nothing else** — the three shapes #671 left
-  open are now one rule with one answer, measured on the tree that landed it. `safe_dump` of
-  `{"m": Booly()}` — a class carrying only `__bool__`, so nothing but a handler has anything to say
-  for it — emitted `m:\n  !booly B\n` where the AST route emitted `m: !booly B\n`, because the
-  direct writer reached the registry through `write_other`, which emits its own indent; the same
-  class inside a sequence item cost the item its dash line, and as a key it raised `YamlTypeError`
-  where the AST route wrote `!booly B: 1`. The array route sat on the other side of the same
-  ordering: with a handler registered for `numpy.ndarray`, the direct writer let the buffer route
-  read the array first, so `safe_dump({"m": numpy.arange(4)})` answered the array's own
-  `m:\n  - 0\n  - 1\n  - 2\n  - 3\n` while the AST route answered `!nd ND`. Both writers now ask the
-  handler before the array, before the number protocol, and before their own spelling rules, in
-  value, key, item and compact-item position. Two families keep their own spelling, and that half of
-  the ruling moves the AST route back: a handler registered for `str` used to rewrite text there
-  (`holder: !s <abc>` where the direct writer wrote `holder: abc`), because a string is YAML's own
-  scalar and what a reader resolves is the text, so `python_type` is a load-side concern; and a
-  `dict` or a `list` is still written as the container the caller's data says it is — the row that
-  passes before this change as well as after, which is what makes it the boundary rather than the
-  fix. `type_registry::claims` is new because whether an item stays compact is a layout question,
-  and a layout question must not run a handler to answer it. Six test functions joined the two
-  modules that own these rows (five in
-  `tests/test_community_plugins.py::TestHandlerOwnsTheScalarNotTheString`, one in
-  `tests/test_numpy.py::TestNumpyBufferRoute`); five of the six fail on the tree this lands on, and
-  every one of the seven changed sites was made inert alone and is named by the rows that turn red —
-  10, 2, 1, 1, 1, 1 and 1 — so none of them is decoration. One row the ruling had to move: `!time`
-  is a registered handler too, so `safe_dump({"v": datetime.time(9, 30)})` left the block spelling
-  `v:\n  !time 09:30:00\n` for `v: !time 09:30:00\n`; it was the only row in the suite pinning that
-  shape, and it now pins the inline one plus the half that must not move — both writers re-read the
-  same time. What the ruling did not decide is stated rather than absorbed: the AST route still
-  quotes a handler's text (`v: !time "09:30:00"`) where the direct route emits it as `to_yaml()`
-  wrote it, and a `date` agrees only because no colon sits in its text.
-  `docs/en/guides/plugin-development.md` states the rule. No instruction floor reaches
-  `direct_dump`, so the extra type compare per scalar is unpriced by the gate
-  (`docs/dev/quality-ledger.md` (hr)).
-- **A registered `CustomType` answers for the value it claims** — `register_type("!money", ...)`
-  whose `python_type` is a class carrying `__index__` was bypassed by both YAML writers:
-  `safe_dump({"m": Money(500)})` emitted `m: 500`, the integer Python's number protocol hands back,
-  and the handler's text appeared only for a class the `f64` extraction happened to catch. That is
-  why `Decimal` was honoured and an integer-shaped value type never was — the one registry check
-  each writer carried had been written for the float shape alone, the same ordering the array route
-  needed in the row above. `crates/pyrs-yaml/src/py/direct_dump.rs` and
-  `crates/pyrs-yaml/src/py/python_types.rs` now ask the registry before the protocol, in value, key
-  and sequence-item position, and the one exclusion is named the same way on both sides: an `int` or
-  `int` subclass — and a `bool`, which is one — keeps the integer spelling a reader resolves.
-  Measured on this build, all three positions emit `!money 500c` on both writers and
-  `{Money(500): 1}` round-trips through `from_yaml`. The direct writer's `sort_keys` text moved with
-  the spelling, because the serializer's comparator reads the key node's scalar value: a
-  `Money(5)`/`Money(50)` pair sorts on `5c` and `50c` there, so keeping the protocol's `5` and `50`
-  would have ordered the same mapping the other way on one writer. Eight test functions (nine cases)
-  joined `tests/test_community_plugins.py`, and four falsification controls — one per registry call
-  site — redden 6, 5, 4 and 1 of them; the `direct_dump` value site also carries the two
-  pre-existing float rows, which is the measurement that the new question is a superset of the one
-  it replaced. `docs/en/guides/plugin-development.md` states the rule. No instruction floor reaches
-  this route, so the extra type compare per scalar is unpriced by the gate
-  (`docs/dev/quality-ledger.md` (hq)).
+  note, on a scalar whose note stands alone, and twice where one line answered two notes from one
+  `or_else` slot. The new `prop_toml_writer_carries_every_note` named all four shapes within 20,000
+  cases, and they take the line above the key. The price is the guard, not the notes: on the pinned
+  compiler `to_toml_medium` +3.29 %, `to_toml_long_strings` +3.43 % and `to_toml_notes` +1.24 % over
+  documents holding no `#`, and on the enforcing image the same three names +1.256 %, +2.081 % and
+  +6.872 %; the two TOML read floors move +0.0014 % and -0.0007 %, which is a slot the read route
+  never consults. One level up the hub homes a note ending the line above a member on the
+  container's own leading list, which both compact arms ignored — PR #146's fifth-slot class one
+  level up; both now ask that list through one `container_leading_notes`, as PR #114 does for a
+  header, and demote, a spelling some readers refuse (2026-10-29). The fifth slot wrote twice: the
+  reader files a `#` above an array element at that element's line end, which for an inline-table
+  element is also `write_notated_table`'s leading note, so the array hoisted it and the table wrote
+  it again inside the braces (crash-3e95a4cf, crash-6802dabe, crash-9c0b2acb, crash-1ec1ea89,
+  crash-20cc6b69).
+- **A dotted path is bounded like every other descent** — `parse_inline_table` laid member key paths
+  out in `nest_inline`, so `t = { a.b.… = 1 }` nested one table per segment outside the
+  `parse_value` funnel and `register_kv`'s check: crash-2a5ea394 is that at 1059 segments,
+  `from_toml` accepted it and the 1.1 reader refused `to_toml`'s re-spelling
+  (`max depth exceeded (max=1000)`). The budget now adds the laid-out path to every path expanded
+  above it (`depth + inline_path_shift + key.len()`). `DEFAULT_MAX_DEPTH` bounded only
+  `parse_value`, while a dotted key and a table header build their tables by an iterative pointer
+  descent the guard never counted, so a long path built a deeper tree and failed two ways: its
+  re-spelling was refused, or the native stack overflowed (`0xC00000FD`) — crash-7a3aac52, from the
+  2026-10-24 run, aborted on a 2 MiB thread, clean only on 512 MiB. Both descents now share one
+  budget: at most 1000 segments round-trips and settles, 1001 or more is a typed
+  `max depth exceeded`; the 2026-11-01 run's crash-2503e079, crash-6c15f693 and crash-837bd790 are
+  that shape. Without the guard the reads move `load_toml_medium` +0.006 % and
+  `load_toml_long_strings` +0.046 %, while the apparent +1.65 % / +2.98 % over the floor reproduces
+  on the parent tree and is WSL-host baseline drift.
+- **A registered handler owns the scalar it claims, asked before the array and the number protocol**
+  — the shapes #671 left open are now one rule: `safe_dump` of a class carrying only `__bool__`
+  emitted `m:\n  !booly B\n` where the AST route emitted `m: !booly B\n`, because the direct writer
+  reached the registry through `write_other`, which emits its own indent; the same class lost its
+  dash line in an item and raised `YamlTypeError` as a key. With a handler for `numpy.ndarray` the
+  array route came first, answering the array where the AST route answered `!nd ND`. Both writers
+  now ask the handler before the array, the protocol and their own spelling rules, in every
+  position. The registry check was written for the float shape alone, so
+  `register_type("!money", ...)` whose `python_type` carries `__index__` was bypassed:
+  `safe_dump({"m": Money(500)})` emitted `m: 500`, the integer the protocol hands back — `Decimal`
+  honoured, an integer-shaped value type never — and the registry is now asked first, except that an
+  `int` or `int` subclass — a `bool` is one — keeps the integer spelling a reader resolves. A `str`
+  handler still leaves the text alone and a `dict` or `list` writes as the caller's container;
+  `type_registry::claims` exists because a layout question must not run a handler.
 - **Dumping a NumPy array no longer ends the process on Python 3.15** — the array route cast the
-  object through `rust-numpy` and read its memory, which the `cp315-abi3t` wheel cannot do soundly.
-  Measured on the published 0.18.3: `safe_dump(numpy.arange(8))` under 3.15 GIL died with
-  `Fatal Python error: Segmentation fault` (exit 139; `Windows fatal exception: access violation` on
-  the Windows leg), the same bytes under 3.15t answered `YamlTypeError`, and 3.12, 3.14 and 3.14t
-  all dumped it correctly. It was deterministic and single-threaded and `numpy.zeros((0,))` crashed
-  too, so the fault sat at the first read of array internals rather than in any race.
+  object through `rust-numpy` and read its memory, which the `cp315-abi3t` wheel cannot do soundly:
+  on the published 0.18.3 `safe_dump(numpy.arange(8))` under 3.15 GIL died with
+  `Fatal Python error: Segmentation fault` (exit 139), the same bytes under 3.15t answered
+  `YamlTypeError`, and 3.12, 3.14 and 3.14t dumped it correctly. Deterministic, single-threaded, and
+  `numpy.zeros((0,))` crashed too, so the fault sat at the first read of array internals.
   `crates/pyrs-yaml/src/py/ndarray.rs` now asks the array for its own `dtype`, `shape` and
   `tobytes()` and decodes that buffer in Rust: no numpy C API is reached in any artifact, and the
-  `numpy` Cargo feature gates the route instead of a dependency. Two more defects fell with it. The
-  first is visible on every interpreter: the old route read memory order and nested by logical
-  shape, so `safe_dump(numpy.arange(4).reshape(2, 2).T)` wrote `[[0, 1], [2, 3]]` where the array
-  says `[[0, 2], [1, 3]]` - Fortran-ordered and strided arrays now emit what they mean, and strided
-  ones are dumped where they were refused. The second was decided by the installed numpy, because
-  both writer routes asked Python's number protocol before asking the array route, and that protocol
-  answers *for* a one-element array: `float(numpy.array([1e30], dtype="float32"))` is the widened
-  double `1000000015047466200000000000000.0` with the dimension dropped, and numpy only turned that
-  into an error in 2.3. One install therefore wrote `1.5` where another wrote `- 1.5`, and the
-  spelling `docs/en/guides/numpy.md` recommends for an explicit boolean round-trip,
-  `numpy.array([True])`, answered `1`. An array carrying a dimension is now refused that protocol, a
-  0-D array keeps the scalar spelling the same page states, and the accepted dtypes and every scalar
-  spelling are unchanged. `tests/test_numpy.py::TestNumpyBufferRoute` pins eleven rows, three of
-  which fail on the published wheel with numpy 2.2.6 and pass on this tree; one rebuilt wheel then
-  carries the whole 54-test module - on 3.8 with numpy 1.24.4, on 3.10 with 2.2.6, on 3.12 and 3.15
-  with 2.5.4, and on 3.15t as 53 passed with the one GIL-contention row skipped by design - which
-  are the two interpreters on which that module could not run at all before.
-- **The memory bound on `load_stream_file` is measured now instead of skipped forever** — the test
-  that guarded it asked for `psutil` through `pytest.importorskip`, and no requirement file names
-  that package: neither `pyproject.toml` nor `.ci/requirements-test.txt`, so on every interpreter of
-  every leg the assertion reported a skip, which reads like coverage and is none. It is replaced by
-  a scaling invariant on the stdlib `tracemalloc`: consuming a 2,000-line document and a
-  200,000-line one through the same route must leave the same traced footprint, and today it leaves
-  3,168 bytes at both sizes under 3.12 and 3,200 under 3.14t. The boundary is stated, not assumed —
-  `tracemalloc` counts the interpreter's own domain, so the engine's read buffer (a fixed
-  `DEFAULT_CHUNK_SIZE`, never accumulated here) is outside the measurement, which is why the old
-  resident-set figure has no replacement; the bound on how much of the file a route reads stays with
-  the `read_calls` guard beside it. The bound is one hundredth of the accumulating route's own
-  growth, measured in the same run, and both halves are falsifiable in the same file: the streaming
-  readings stay 0 bytes apart while the buffering walk grows by 199,854,440 bytes on 3.12 and
-  242,617,688 on 3.14t, so an accumulating reader fails the guard. A fixed byte allowance was the
-  first shape and the `test-freethreaded (3.14t)` leg rejected it - that runner holds 292,544 bytes
-  for the small document where this host holds 3,168, which is a difference in how a build counts
-  memory, not in what the route reads.
-- **`to_toml` and the JSON writers now refuse a key pair only YAML can tell apart** — a tag is part
-  of a key's identity, so the reader accepts `c: 0` beside `!A c: "!"` as two keys, while TOML and
-  JSON key by text alone. The projection used to emit `c = 0` plus `c = "!"`, which this project's
-  own TOML reader rejects as a duplicate key, and `{"c": 0, "c": "!"}`, which `json.loads` resolves
-  to `{'c': '!'}` — one entry gone without a sound. Both routes now raise `YamlSerializeError` with
-  the reason keys `toml-keys-collide-without-metadata` and
-  `json-object-keys-collide-without-metadata`. The check runs only for a mapping whose keys carry a
-  tag, an anchor or a note, so an undecorated document pays one boolean per key. Found by
-  `prop_toml_writer_is_fixed_point` drawing the shape at random in the property tier.
-- **`to_dict` and `safe_load` refuse a key pair only YAML can tell apart** — the pair the writers
-  now reject had a third route, and the quietest one: a Python dict keys by text, so `c: 0` beside
-  `!A c: "!"` answered `{'c': '!'}` with the first entry gone and nothing reported. Both now raise
-  `YamlTypeError` naming the colliding text, the same shape `to_toml()` and `to_json*()` already
-  refuse with. The tree still holds both keys and `to_yaml()` is unchanged, and a decoration that
-  does not collide still projects. Against the counterparties: ruamel keeps both entries, PyYAML
-  raises at this point too.
-- **The edit floors no longer price a scan the shipped caller does not run** — the three `edit_*`
-  scenarios handed the editing layer `line_offsets: None`, and that layer answers `None` by
-  rebuilding the document's line table, which is `scan_yaml(text).line_offsets`: a full pass over
-  the input that also decides `has_hash`, `has_amp` and `is_ascii`. Measured on the baseline's own
-  `rustc 1.97.1` the scan spent 10,104,000 counted instructions in every one of the three loops, and
-  the three counts are byte-identical because the work cannot depend on the edit. The binding
-  memoizes that table per document (`Splice::line_offsets`), so the harness was pricing the
-  tree-only route while its fixture parses a document and then edits it. The harness now builds the
-  table beside the parse, hands `Some(&offsets)` to all three verbs, and lets `--setup-only`
-  subtract it exactly as it subtracts the parse. Refresh run 81 on the enforcing image read −24.45%
-  (`edit_set_nested` 48,288,771 → 36,483,718), −27.48% (`edit_insert_sequence` 42,462,454 →
-  30,793,506) and −27.86% (`edit_delete_key` 42,392,088 → 30,583,030); the excess over the scan's
-  own 20.9% share is that `Vec`'s allocation, append and free traffic. The floors are that
-  run's numbers, not a local re-tune, and what the three now assert is the first edit
-  through a parsed document plus the per-iteration tree clone — the clone stays, because an edit
-  applied twice to the same tree is not the same edit.
-- **A note inside a complex key can no longer be lifted out of it** — `hoist_marker_note` writes a
-  standalone note owned by a node inside a `? … :` block above the outermost `?`, because that is
-  where a re-read reports it. Two keys that differed only by such a note therefore emitted as two
-  pairs whose keys the reader saw as one, and it refused the second —
-  `DuplicateKey("Sequence { items: [Scalar { value: \"null\", …")`, drawn by the property tier
-  (seed `de78e195…`; the note text holds no break, so the shape predates #645's wider alphabet).
-  `keys_collide_in_text` now answers on a copy with every standalone slot dropped, which keeps the
-  unemittable pair out of a generated tree; an *inline* note still separates two keys, so both
-  directions are named — the shrunk case in `proptest-regressions/pbt.txt` and the boundary in
-  `the_key_rule_agrees_with_the_writer_and_the_reader`.
-- **A note can no longer break the line it is written on** — `arb_comment` drew note text from
-  `[ -~]+`, so no property test could reach the flattening a one-line comment carrier owes. Widening
-  it to also draw `\n` and `\r` reddened four properties at once: the YAML and TOML writers put the
-  text after the break into the document, so TOML refused its own output
+  `numpy` Cargo feature gates the route instead of a dependency. Two defects fell with it: the old
+  route read memory order and nested by logical shape, so a transposed view wrote the untransposed
+  grid; and both writers asked Python's number protocol before the array route, which answers for a
+  one-element array with the dimension dropped — an error only from numpy 2.3 — so one install wrote
+  `1.5` where another wrote `- 1.5`. An array carrying a dimension is now refused that protocol and
+  a 0-D array keeps the scalar spelling.
+- **A note can no longer break its line, and a block scalar can spell the break it carries** —
+  `arb_comment` drew note text from `[ -~]+`, so no property test could reach the flattening a
+  one-line comment carrier owes; drawing `\n` and `\r` too reddened four properties, because the
+  YAML and TOML writers put the text after the break into the document — TOML refused its own output
   (`bare carriage return (must be part of a CRLF pair)`) and an array item's note `"<\n&"` came back
-  as a bare `&` value. Both writers now flatten a break to a space in a single `push_note_text`
-  that writes into the document: the `Cow` that shape first returned allocated nothing per note and
-  still cost `serialize_note_flow` +8.80% on the enforcing image. The shape that shipped is priced
-  by the floor this change moves: 62,066,033 → 64,411,980 (+3.78%), what it costs to ask every note
-  whether it holds a break. Deleting a writer's branch reddens its own two properties again;
-  `proptest-regressions/fmt_pbt.txt` keeps the shrunk cases.
-- **The dash and the colon opened for a child that had already decided to go block** —
-  `write_mapping_node` and `write_sequence_node` demote a flow-marked container when a member
-  carries more notes than the braces can hold, but seven decisions trusted the `flow_style` flag
-  alone: `is_compact_item`, the sequence item's line, the mapping value's line, the `?` marker's
-  lift branch, `hoist_marker_note`'s two arms and its read-only twin `spine_has_notes`. Each wrote
-  its indicator and let the demoted child open a block body at the parent's column, so the emission
-  read `- # first` / `# second` / `"": v` — and a demoted value *sequence* is worse still, since `-`
-  cannot start on a `key:` line for any reader. The property tier hit the item case at 20,000 cases
-  (`prop_style_setting_roundtrip`), and only through a `<<` pair, because merge resolution is what
-  stacks two notes onto one key. All seven now ask the demotion's own question, and
-  `spine_has_notes` gained the sequence arm its twin already had — without it a note riding a
-  complex *sequence* key stayed under the container's own `&anchor` header line. A demoting complex
-  key then keeps its braces: lifting the overflowing note above the marker removes the reason to
-  demote, so the flow spelling the source asked for survives. Two table tests pin nineteen shapes
-  beside the reported seed: each must re-parse, keep its note and scalar text, be spelled the way it
-  settles — a demoted container loses its braces, one whose notes fit keeps them — and be canonical
-  on its first emission. Reverting each of the seven guards on its own reddens a named row, which is
-  what says all seven are load-bearing rather than five of six guessed. The tables are not the whole
-  guard: `arb_node_meta` carries at most one note per node, so no draw of `arb_custom_node` can
-  build the stack that triggers the demotion — the tier that reported this class could not have
-  reported it again. A new strategy builds the overflow by construction in eight roles (sequence
-  item, mapping value, complex key, complex key under an `&anchor` header; mapping body or sequence
-  body; anchored or tagged) and the property over it reddens on six of the seven guard reversions at
-  256 cases; the seventh, `is_compact_item`, is held by the tables. The enforcing image priced the
-  extra question: the writer family moved +0.18% to +0.72% (`serialize_small` the worst) and no
-  reader scenario moved by more than 0.19%, so both floors are re-measured on that image rather than
-  widened. Four reader-accepted spellings of the shape went into `fuzz/seeds/yaml_roundtrip/`, which
-  puts them under `note_survival.rs` and the two-reader parity gate on every `cargo nextest` - and
-  that gate had to learn to render a complex key at all, since `json.dumps` refuses a tuple as a
-  key. The 20,000-case sweep re-runs clean at 809/809; no new scenario, stub or public API.
-- **The refresh job stopped dropping every scenario name after the first** — `profile` and
-  `accept_drift` both split their input with `read -ra <<< "$VAR"`, and `read` consumes one line:
-  refresh run 40221999337 took a `profile` input carrying two names on two lines - the shape its own
-  description invites - and logged "attributing 1 scenario(s)", so the artefact arrived with half
-  the attribution asked for. A text assertion cannot see that, because the flag is in the script
-  either way. Both steps flatten the separators before splitting now, and
-  `tests/test_ir_baseline_workflow.py` executes each step body with `python3` replaced by an echo
-  and requires both names in the printed command and the right count in the log; the control puts
-  the one-line read back and has to reproduce the dropped name.
-- **The merge verdict could be green while the hook set was red** — `Test matrix (all legs)` is
-  computed from `ci.yml`'s jobs, and `toJSON(needs)` cannot carry a job from another workflow, so
-  `prek hook set on the full tree` — which lived in `hygiene.yml` — was never a name the verdict
-  read. Measured on PR #632's first head: that check-run reported `failure`, refused by
-  `check_changelog_coupling.py` over a changeset that moved the product with no release note, while
-  the required name on the same sha reported `success`. The job runs in `ci.yml` now, once and
-  unconditionally, `hygiene.yml` is gone, and `quality_matrix.py` reads the skip list from the job
-  the verdict waits on. Two guards in opposite directions: the fan-in's exact-set test reddens if
-  the job is added without its `needs` entry, and
-  `tests/test_matrix_verdict_gate.py::test_the_hook_set_is_a_leg_and_exists_once` reddens if the job
-  leaves `ci.yml` or a second copy of `prek run --all-files` reappears elsewhere — the duplication
-  being how this hole reopens quietly. No engine code and no shipped behaviour move.
-- **The JSON5 key refusal names a spelling its grammar allows** — in key position the message read
-  `expected a quoted object key`, while JSON5 also takes a bare identifier, so the error asked the
-  author for a form the dialect never required. The wording now comes from the dialect's own flag:
-  `expected an object key (a quoted string or a bare identifier)` where unquoted keys are allowed,
-  and the old sentence where they are not. One `Parser` serves all three dialects and both walks
-  read the same flags, so the shared helper covers the tree route and the stream route alike, and
-  strict JSON and JSONC keep their exact wording.
-  `the_key_position_error_names_what_the_dialect_accepts` asks all five dialect-and-walk
-  combinations and was red before the helper existed;
-  `test_json5_key_refusal_names_the_bare_identifier` asks the same question through the shipped
-  Python module.
+  as a bare `&`. Both writers now flatten a break to a space in one `push_note_text`; the
+  allocation-free `Cow` shape still cost `serialize_note_flow` +8.80%, so the shipped spelling is
+  priced by the floor it moves, 62,066,033 → 64,411,980 (+3.78%). The block half: the generator drew
+  printable ASCII with no break — for `Literal`/`Folded` the one thing the style is about; drawing
+  `[ -~\n\t]+` reddened `needs_double_quoted`, because the edge check guarded spaces and tabs but
+  not a break while the non-string shortcut runs first, so `"\n"`, which resolves to null, was
+  emitted bare and came back `~`. The last class was the tier's: `|-` drops a trailing break by
+  design, so the tier now resolves the claim as the reader does before comparing; resolving the
+  simple key too collapsed `"'\n"` onto the plain `'` beside it.
 - **A one-line document streams in linear time again** — `LineTable::line_col` counted characters
   from the line's start for every event, so a producer whose source has no newlines paid O(n) per
-  event and the stream was quadratic: a 1.5 MB minified JSON array spent 4.9 s reporting its
-  224,006 events, four times longer for each doubling of the input. The table now keeps a cursor at
-  the last answered position and walks only the bytes between one event and the next; a position
-  behind the cursor - a producer reporting a note it held back - still counts from its line's
-  start. The same document now streams in 19 ms, against 18 ms for its newline-per-record twin
-  (development host). `visited()` reports the characters the cursor stepped over, so
-  `a_forward_sweep_advances_the_cursor_once_per_character` asserts the sweep is one pass over a
-  200 KB single line without a clock, and a second test compares both directions and mid-code-point
-  offsets with a rescan. JSON and TOML share the table; YAML computes its own positions and never
-  had this cost.
-- **The deployed site's table of contents lists each section beside its version** — the four
-  localized changelog pages carried the `[Unreleased]`, `[v0.18.3]` and `[v0.18.1]` sections at the
-  version heading's own level, so the site rendered each section as a sibling of its version rather
-  than under it; root was correct all along, which is why the defect showed only on the localized
-  pages. `scripts/check_changelog_mirrors.py` now checks the level relationship (`level_errors`),
-  and `tests/test_changelog_placement_gate.py` pins both the clean tree and the injected shape.
-- **The published benchmark tables cover four formats, not only YAML** — the measurement surface
-  already covered five (`tests/test_benchmark_crosslib.py` races `json`, `orjson`, `tomllib`,
-  `tomlkit` and `pyjson5`, and the divan set carries twelve non-YAML benchmarks), but
-  `.ci/perf-snapshot.json` recorded only PyYAML and ruamel.yaml and every table heading named a YAML
-  document. `scripts/bench_snapshot.py` now measures a format axis - YAML on parse, serialize and
-  round-trip, JSON, TOML and JSON5 on parse - and each generated table is bound to its measurement
-  by a `<!-- bench: ... -->` marker naming format, operation, fixtures and speedup baseline rather
-  than by counting columns. `tests/test_perf_docs.py` asks both directions: a case measured and
-  never published fails, and so does a marker naming nothing measured. Two of the new rows are
-  losses and are printed as losses - `orjson` reads the 1.9 KB document 1.5x faster, `pyjson5` reads
-  the JSON5 config 2.4x faster - and TOML is 5.5x to 5.9x faster than `tomllib`. The write halves of
-  JSON, TOML and JSON5 stay unpublished for a reason the snapshot records: those are emitted from
-  the engine's own AST rather than from a Python object, so `json.dumps` and `tomli_w.dumps` are a
-  different job, and the instruction floors price them instead.
-- **The Rust-backed readers are in the published tables, and two of them win** — the YAML tables
-  raced PyYAML and ruamel.yaml, both pure Python, and the TOML table raced only `tomllib`, so the
-  readers a user weighing a Rust engine would compare against were measured nowhere in the published
-  record. `scripts/bench_snapshot.py` now carries `yaml-rs` and `ryaml` on the YAML axis and `rtoml`
-  on the TOML one, and the re-measured snapshot (2026-10-25) says `yaml-rs` parses 2.4–2.6x faster
-  and round-trips 1.6–1.9x faster than pyrs-yaml, and `rtoml` reads 1.9x faster than `load_toml`,
-  while pyrs-yaml serializes 2.2–4.1x faster than `yaml-rs` and 198–339x faster than PyYAML. The
-  losses print as losses with the reason beside them: those readers take and hand back plain Python
-  objects - their round-trip is a value's, not a document's - where the pyrs-yaml row builds the
-  tree a later edit format-preserves, and `load_toml` walks that tree before returning a dict. The
-  gate moved with the tables instead of describing them: `tests/test_perf_docs.py` takes its library
-  list from the snapshot rather than a hardcoded five-column shape, checks a peer's
-  `faster`/`slower` word against the ratio printed beside it, requires each row label to name the
-  fixture its numbers came from and the ratio column the library it divides by, and fails any
-  library comparison carrying no `bench:` marker. Six controls were run - a stale cell, a flipped
-  direction word, a dropped row, a removed marker, a swapped label, a header that stopped naming
-  its baseline - and each reddens by naming the page and the row.
-- **A release note that calls a closed gap open is a red run now** — `scripts/check_hole_claims.py`
-  read only `AGENTS.md` and `CLAUDE.md`, which is how one claim about a measurement this tree no
-  longer reproduces survived in eight places: the five changelog mirrors,
-  `docs/dev/quality-ledger.md`, a test's own reason for existing, and the Rust doc comment on the
-  `ir-gate` code that had already closed the gap it described. It then rode across two pull requests
-  (#613, #614) with every gate green. Scope is present tense now — the two instruction files plus
-  the `[Unreleased]` block of each mirror, sliced by a new `unreleased_lines` in
-  `scripts/check_changelog_mirrors.py`, so one parser owns "what is `[Unreleased]`" for both rules.
-  Released sections and the ledger stay dated records, and there a hole that has since closed may
-  still be named. A mirror yielding no `[Unreleased]` lines exits 2 rather than passing, because a
-  heading spelled without its brackets would otherwise stop the gate in silence. Four controls in
-  `tests/test_hole_claims_gate.py`: an id inside `[Unreleased]` fails by naming the path and line,
-  the same id under a released heading passes, the same id passes while the matrix measures it, and
-  a default scope that drops any mirror is red. The predicate ran on the real tree too — injecting
-  the id at `CHANGELOG.md:9` returned 1, restoring it returned 0.
-- **A note on a YAML key line no longer vanishes on the way to TOML** —
-  `to_toml("sec: # note\n  x: 1\n")` returned `[sec]\nx = 1\n`: the comment was neither kept on the
-  header nor moved anywhere, it was dropped. The section pass of the TOML writer read only the
-  mapping's own inline slot, while the hub hands over a YAML document's key-line note on the **key
-  node** — the same slot #146 taught the writer to read one level down, for an inline member. The
-  measurement also retires two explanations this repository had been giving for a related gap:
-  `pyrs_toml`'s own scanner does capture a `[sec] # note` inline note, granit is not in that path at
-  all, and a YAML-origin `sec: # note` does keep its position through the hub. What is left open is
-  the placement rule the `api:set-comment-container-owner` residual records — a TOML-origin header
-  note still comes back on its table's last body line — and that behaviour is unchanged and still
-  pinned. Pinned by
-  `writer::tests::a_note_on_the_key_line_of_a_section_header_is_written_on_the_header` and
-  `tests/test_toml.py::TestSectionHeaderCommentBoundary::test_a_note_on_a_yaml_key_line_reaches_the_toml_header`; reading only the mapping's slot again reproduces the drop verbatim, `"[sec]\nx = 1\n"` against `"[sec] # note\nx = 1\n"`.
-- **A key-line note on an entry inside a section body no longer vanishes** — the slot the previous
-  release closed for header lines was still unread by the line that writes `key = value`:
-  `to_toml("a:\n  b: # note\n    x: 1\n")` emitted `[a]\nb = {x = 1}` and the array shape emitted
-  `b = [{x = 1}]`, both without the note, while the YAML route re-emits it and a TOML-origin
-  `b = {x = 1} # note` survives two rounds. `emit_pair` now falls back to the key node's inline
-  slot. A header is rare; every pair pays. On the enforcing image, with the compiler the baseline
-  pins and three repeats keeping the largest, both TOML writer floors move - `to_toml_medium`
-  26,604,776 to 27,024,692 (+1.58 %) and `to_toml_long_strings` 28,255,071 to 28,607,004
-  (+1.25 %) - and no other scenario of the 37 moves by more than 0.32 %, so the refresh that raises
-  them names both. The inline-table spelling settles in one round; an array expands and carries the
-  note onto its last element, settling there - relocation, never loss.
-- **Six gates could answer "held" over a measurement that read nothing** - the class `(fz)` met
-  once is now swept. `check_changelog_coupling.py` exited 0 with `OK: … listed no files` on an
-  empty path list; `check_doc_headings.py` counted the paths handed in, not the files opened, so
-  one missing path read as a clean tree; `check_line_endings.py` never checked `git ls-files`'s
-  exit code; `check_doc_signatures.py` and `check_i18n.py` printed their OK lines over an empty
-  glob; and `ir_gate.py --only a,b` - `--only` appends, so that is one name matching nothing -
-  compared no scenario and reported the floor as held. All six exit 2 now, the verdict the
-  landed-claim and stub-type gates already state, each forced by a test. A prose-only changeset and
-  a page of untyped examples stay green, and that boundary is pinned too - a first draft of the
-  refusal reddened the signature gate's own suite. `check_i18n.py` had no self-test of any kind, so
-  `tests/test_i18n_gate.py` is new. Recorded as `(gc)`.
-- **Ten assertions that could report green without running one** - `(gc)` closed the class in the
-  checker scripts; the same shape sits in the suite. A test whose only `assert`s are inside a `for`
-  body passes on an empty iterable, and `all(x for x in [])` is `True`. Sweeping `tests/` by AST
-  named 41 candidates; the ten whose iterable arrives from outside the test now carry a floor that
-  states the measured number. `tests/test_dependency_merge_gate.py` reads `.github/dependabot.yml`
-  and refuses below 3 entries (measured 4), which closes its three per-entry loops plus
-  `test_every_entry_targets_main` - an `all(...)` the sweep's predicate cannot see. The mkdocstrings
-  `paths` list (measured `['python']`) refuses the empty case, where a handler told to read no
-  package still passes the loop that checks those directories exist. The API-page glob refuses two
-  vacuous shapes - no page at all, and a page published in one locale only, where comparing a page
-  with itself always agrees (measured 28 pages = 7 names x 4 locales). `load_stream`/`parse_stream`
-  parity now states both sides hold 13 events and that the lengths are equal, because `zip()`
-  truncates to the shorter side, and its per-event key check names the 8 events one pair emits. A
-  `walk()` of `a: 1` refuses fewer than its 2 nodes. Seven mutations - empty the source, truncate
-  the producer - each turned its floor red and every file came back byte-identical; that run is also
-  what showed `YamlStream` has no `__len__`, so the length equality was not expressible until the
-  stream was materialised. The other 32 candidates were read and left: literal iterables that cannot
-  empty without an edit in the same function, constants another test already floors, `@given` loops
-  whose concrete siblings pin the shape, and the two registry tests where an empty registry *is* the
-  assertion. Nothing yet stops a new vacuous-loop test: the sweep is a one-off script, not a
-  checker, and as a rule it would reject the literal and `@given` cases too. Recorded as `(ge)`.
-- **A cross-library row named a competitor it never timed** — `tests/test_benchmark_crosslib.py`
-  skips a competitor that cannot ingest a fixture, and the comment on that branch for `yaml_edit`
-  attributed the refusal to "newer yaml_edit releases". Measured against the pinned 0.1.3 the
-  refusal was not newer: all three fixtures raised `Document::from_str: Input contains stream-level
-  comments`, so the row was three skips beside an installed package, and a suite that counts passes
-  cannot see a benchmark that never ran. 0.2.0 — taken with a scoped `uv lock --upgrade-package`,
-  not as drift from a full re-resolve — parses `small` and `medium` and still refuses `large`, so
-  the row times two fixtures now. Its `YamlError` subclasses `ValueError`, so the existing `except`
-  covers both releases and only which branch is taken changes. The durable half is the floor
-  `tests/test_leaderboard.py::test_yaml_edit_row_measures_something`: installed has to mean ingests
-  at least one fixture. It lives in the leaderboard file because the benchmark file is deselected
-  from normal runs and `--codspeed` deselects every test without a `benchmark` marker (measured:
-  `50 deselected`), so the floor placed there would have run in neither leg. Control: putting the
-  venv back on 0.1.3 turns it red with the release in the message; on 0.2.0 it is green. Recorded
-  as `(gg)`.
-- **An array element's note stops being written once per round** — the reader has one place to
-  report a `#` above an array element from, the end of the line it sits on, and files it on the
-  element node; for an element that is an inline table that is the same slot `write_notated_table`
-  reads as the table's own leading note. So `write_notated_array` hoisted the note above the element
-  and the table layout wrote it again inside the braces — one more copy per round, and the text
-  never settled. Five artifacts: libFuzzer `toml_roundtrip` crash-3e95a4cf, crash-6802dabe and
-  crash-9c0b2acb, and `edit_yaml` crash-1ec1ea89 and crash-20cc6b69, 54-150-byte inputs whose second
-  emission differed only by that duplicate. `write_value` now takes the choice as an argument
-  through a private twin, and the element call site is the only one that asks for the container's
-  leading slot to be withheld: the note stays on the line above the element, where the reader
-  reports it from, and the table itself stays compact.
-  `an_element_note_over_an_inline_table_is_written_once_and_settles` pins both a readable `# lead`
-  and the note with empty text the corpus carried. The seeds are archived as
-  `former-crash-{3e95a4cf,6802dabe,9c0b2acb}.seed` under `fuzz/seeds/toml_roundtrip`, replayed by
-  `toml_writer_reaches_a_fixed_point_over_the_seed_corpus` on every `cargo nextest`, and as
-  `former-crash-{1ec1ea89,20cc6b69}.seed` under `fuzz/seeds/edit_yaml`, which the fuzz job replays.
-- **The hole-claims gate failed on the free-threaded `3.15t` leg before it had read a file** — every
-  pull request carried a red `3.15t` job whose traceback ended inside `unreleased_lines` with a
-  `NameError` for `_VERSION_HEADING_RE`, a constant defined 95 lines above it in the same module.
-  Reproduced on the untouched main tree by clearing `scripts/__pycache__`: 20 of 20 runs red cold
-  and green warm, unaffected by `PYTHONDONTWRITEBYTECODE=1`, so the trigger is the module's first
-  compilation rather than the cache write. The failing expression is the whole mechanism —
-  `load_module(path, name).unreleased_lines(text)` — and binding the module to a local before the
-  call is the measured remedy: 5 of 5 cold runs green on `3.15t`, 2 of 2 on `3.14t`, the default
-  interpreter's reading unchanged. No synthetic module reproduced it, so the comment records the
-  symptom and the remedy and claims no mechanism.
-- **A block scalar's header could not spell the line break its value carried** — the property
-  tier's scalar generator drew `[ -~]+`, printable ASCII with no break in it, which for
-  `Literal`/`Folded` is the one thing the style is about; `QUALITY_MATRIX.md`'s property row names
-  that gap as "shapes outside the generator". The block half now draws `[ -~\n\t]+`, and its first
-  run reddened `needs_double_quoted`: the edge check guarded spaces and tabs but not a break,
-  while the non-string shortcut runs first, so `"\n"` (which resolves to null) was emitted bare,
-  the break ended the line and the value came back `~`. The edge set now includes `\n` and `\r`;
-  with the old generator and the old edge set the same tree passes, so the widening is what
-  reaches the shape. The other class the widening found was the tier's, not the writer's: `|-` on
-  a value that ends in a break drops that break by design (`set_chomping("strip")` is the edit
-  that says so), so the tier now resolves the claim the way the reader does before comparing, keys
-  included — a block scalar is a legal explicit key, and that side alone reddened three properties.
-  That resolution stops at a simple scalar key, which the writer quotes and so keeps the break; a
-  container key's contents lose it. Resolving the simple key too collapsed `"'\n"` onto the plain
-  `'` beside it, and the writer then emitted the duplicate its own reader refuses — the 20k-case
-  `prop_idempotent` failure this branch fixed.
-  A lone `\r` stays outside the generator: every reader reads it as a break, so only a
-  double-quoted escape could carry it and the value returns as `\n`. Pinned by
-  `an_edge_line_break_is_quoted_even_when_the_text_resolves_to_null`, by
-  `a_strip_claim_survives_a_value_that_ends_in_a_break`, by
-  `a_strip_claim_resolves_inside_a_key_but_not_on_the_key`, and by the shrunk cases replayed from
-  `proptest-regressions/pbt.txt`.
-- **An anchor on a mapping key is a definition, so deleting its pair is refused** — `edit_yaml`
-  crashes 6a9b6538 and 718abefa are one two-pair document whose first anchor sits on the key rather
-  than on the value (`!base: &x 0set:` beside `:e: *x`). `delete_path` asks the node a path resolves
-  to for the anchors it defines, and that node is the entry's *value*; the key travels out with the
-  pair, so `&x` was never seen, the delete was accepted, and `k8: *x` reached the page naming an
-  anchor nothing defines — this library's own reader refused it with `found unknown anchor`. The
-  guard now reads the key node of the entry it is about to remove as well, the same width it already
-  accepts for a subtree holding both an anchor and the alias naming it: an unreferenced anchored key
-  still deletes, and `deleting_an_unreferenced_anchored_key_is_allowed` is that side. Both inputs
-  land as `fuzz/seeds/edit_yaml/former-crash-{6a9b6538,718abefa}.seed` and now run their script to
-  its end without emitting text the reader refuses, where before the delete ended it; the binding
-  refuses the same edit with `anchor-is-referenced`. Withdrawing the key walk reddens
-  `deleting_a_key_that_defines_a_referenced_anchor_is_refused` with the accepted `DirtyUnit` the
-  guard should have refused.
+  event and the stream was quadratic: a 1.5 MB minified JSON array spent 4.9 s reporting its 224,006
+  events, four times longer for each doubling of the input. The table now keeps a cursor at the last
+  answered position and walks only the bytes between one event and the next, while a position behind
+  the cursor still counts from its line's start; the same document streams in 19 ms, against 18 ms
+  for its newline-per-record twin. JSON and TOML share the table; YAML computes its own positions
+  and never had this cost.
+- **Six gates could answer "held" and ten assertions could report green over a measurement that read
+  nothing** — the class `(fz)` is swept: `check_changelog_coupling.py` exited 0 on an empty path
+  list, `check_doc_headings.py` counted the paths handed in rather than the files opened,
+  `check_line_endings.py` never checked `git ls-files`'s exit code, `check_doc_signatures.py` and
+  `check_i18n.py` printed OK lines over an empty glob, and `ir_gate.py --only a,b` — `--only`
+  appends, so that is one name matching nothing — compared no scenario and reported the floor as
+  held. All six exit 2 now, each forced by a test, and `check_i18n.py`, which had no self-test of
+  any kind, gained `tests/test_i18n_gate.py`. The same shape sits in the suite, where a test whose
+  only `assert`s are inside a `for` body passes on an empty iterable and `all(x for x in [])` is
+  `True`: the AST sweep named 41 candidates and the ten whose iterable arrives from outside the test
+  now carry a floor stating the measured number, the other 32 being literal iterables, constants
+  another test floors, or loops whose empty case is the assertion — recorded as `(ge)`, since the
+  sweep is a one-off script and nothing yet stops a new vacuous-loop test.
+- **A guard that reported a skip instead of a measurement, and a leaderboard row that named a
+  competitor it never timed** — the memory bound on `load_stream_file` asked for `psutil` through
+  `pytest.importorskip`, and no requirement file names that package, so every leg reported a skip
+  that reads like coverage and is none. It is replaced by a scaling invariant on stdlib
+  `tracemalloc`: a 2,000-line and a 200,000-line document through the same route must leave the same
+  traced footprint — 3,168 bytes at both sizes under 3.12, 3,200 under 3.14t — against a buffering
+  walk that grows by 199,854,440 bytes, so an accumulating reader fails a bound set at one hundredth
+  of that growth. The same blind spot sat in the leaderboard: `tests/test_benchmark_crosslib.py`
+  skips a competitor that cannot ingest a fixture and the `yaml_edit` branch blamed "newer yaml_edit
+  releases", when against the pinned 0.1.3 all three fixtures raised
+  `Document::from_str: Input contains stream-level comments`, so the row was three skips beside an
+  installed package. 0.2.0, taken with a scoped `uv lock --upgrade-package`, parses two of the
+  three, so the row times them, and `test_yaml_edit_row_measures_something` now floors it: installed
+  has to mean ingests at least one fixture.
+- **Green verdict over a red hook set, and a hole-claims gate that read too little** —
+  `Test matrix (all legs)` is computed from `ci.yml`'s jobs and `toJSON(needs)` cannot carry a job
+  from another workflow, so `prek hook set on the full tree` in `hygiene.yml` was never a name it
+  read: on PR #632's first head that check-run reported `failure`, refused by
+  `check_changelog_coupling.py` over a changeset with no release note, while the required name on
+  the same sha reported `success`. The job runs in `ci.yml` now, and `quality_matrix.py` reads the
+  skip list from the job the verdict waits on. `scripts/check_hole_claims.py` read only `AGENTS.md`
+  and `CLAUDE.md`, which is how one stale claim survived in eight places across #613 and #614 with
+  every gate green; scope is present tense now — the two instruction files plus each mirror's
+  `[Unreleased]` block, sliced by a new `unreleased_lines` in `check_changelog_mirrors.py` that
+  exits 2 when a mirror yields none. That gate then failed on the `3.15t` leg before reading a file,
+  on a `NameError` for `_VERSION_HEADING_RE` defined 95 lines above the use: 20 of 20 red cold,
+  green warm, once `scripts/__pycache__` is cleared, so the trigger is the module's first
+  compilation — binding the module to a local before the call is the remedy.
+- **The edit floors priced a scan no shipped caller runs, and the refresh job dropped names after
+  the first** — the three `edit_*` scenarios handed the editing layer `line_offsets: None`, and that
+  layer answers `None` by rebuilding the document's line table, `scan_yaml(text).line_offsets`, a
+  full pass that also decides `has_hash`, `has_amp` and `is_ascii`: on the baseline's `rustc 1.97.1`
+  the scan spent 10,104,000 counted instructions in each of the three loops, while the binding
+  memoizes the table per document (`Splice::line_offsets`). The harness now builds the table beside
+  the parse, hands `Some(&offsets)` to all three verbs and lets `--setup-only` subtract it, and
+  refresh run 81 on the enforcing image read −24.45% (`edit_set_nested` 48,288,771 → 36,483,718),
+  −27.48% (`edit_insert_sequence` 42,462,454 → 30,793,506) and −27.86% (`edit_delete_key` 42,392,088
+  → 30,583,030), the excess over the scan's 20.9% share being `Vec`'s allocation and free traffic.
+  The job that moves those floors dropped names: `profile` and `accept_drift` split their input with
+  `read -ra <<< "$VAR"`, and `read` consumes one line, so refresh run 40221999337 took a two-line
+  `profile` input and logged "attributing 1 scenario(s)"; both steps flatten the separators before
+  splitting now.
+- **The fuzz report no longer throws findings away, and its counts and filer reach the queue** —
+  archives hold `artifacts/` and `collected/` roots; on run 41541555317 the download extracted those
+  roots straight into `--crashes`, so reading the first path segment as the target minted two
+  targets named `artifacts` and `collected`, one `yaml_roundtrip` archive's three inputs were filed
+  as issues #739 and #740, and the summary counted each input twice. The target is now the segment
+  after either root, and the summary reads `collected/` alone. The report step counted each target
+  with `grep -c .` under `-eo pipefail`, which a step's own `set -uo pipefail` does not turn off, so
+  a count of zero exited 1 and ended the step: an archive with no crash file left the table
+  header-only, the filing step below never ran, and a finding from a push to main reached no
+  consumer — counts now treat zero as a value to report. The third gap was the signature:
+  `grep -m1 -hoE "panicked at [^:]+"` stops at the first colon, so a panic reached the report as
+  `panicked at fuzz_targets/yaml_roundtrip.rs`, no line, column or message, and the scheduled tier
+  came back `completed/failure` on five consecutive Saturdays (2026-10-03, -10, -17, -24, -31); the
+  signature now keeps the location and the message's first line.
+- **Published docs: a false `Node` claim, a byte a formatter deleted, misplaced sections** — `Node`
+  pages said `is_valid()` also refuses a modified document, but tests only the document reference: a
+  node made stale by an edit still answers `True` after its `repr` flips to `Node(invalid)`, and
+  reading `value` raises `YamlDocumentError`. The same repr conflates three causes: a stale node, a
+  missing path, and a path the dict projection refuses, since reads go through `to_dict()`: on
+  `0set: 1` beside `!base 0set: 2` every `Node` read raises `YamlTypeError`, an absent path
+  `KeyError`; writes walk the AST. All four locales carried it and are corrected. `rumdl fmt`'s
+  MD038 fixes "spaces inside code span elements" by deleting the byte, so a span written as
+  backtick, space, `? > #I` lost that space in all five mirrors and the ledger while the hook
+  printed `Passed`: the premise holds only for the paired case CommonMark strips at render, a
+  leading-only space being the indentation that nests a YAML marker body. `MD038` joins the
+  `.rumdl.toml` disables; `rumdl check` over 178 pages read 0 findings on 2026-11-01. Localized
+  changelog pages put their sections at the version heading's own level, so the site rendered each
+  as a sibling of its version; `check_changelog_mirrors.py` now checks that.
+- **The published benchmark tables cover four formats and the Rust-backed readers** — the
+  measurement surface already raced `json`, `orjson`, `tomllib`, `tomlkit` and `pyjson5`, but
+  `.ci/perf-snapshot.json` recorded only PyYAML and ruamel.yaml. `scripts/bench_snapshot.py` now
+  measures a format axis — YAML on parse, serialize and round-trip, JSON, TOML and JSON5 on parse —
+  and binds each table to its measurement by a `<!-- bench: ... -->` marker rather than counting
+  columns, with `tests/test_perf_docs.py` asking both directions: a measured case never published
+  fails, as does a marker naming nothing measured. Two new rows are losses and print as losses —
+  `orjson` reads the 1.9 KB document 1.5x faster, `pyjson5` the JSON5 config 2.4x faster — while
+  TOML is 5.5x to 5.9x faster than `tomllib`; JSON, TOML and JSON5 writes stay unpublished, as those
+  come from the engine's AST, not a Python object. The Rust-backed readers were measured nowhere in
+  the record, so `yaml-rs` and `ryaml` join the YAML axis and `rtoml` the TOML one; the re-measured
+  snapshot (2026-10-25) says `yaml-rs` parses 2.4–2.6x faster and round-trips 1.6–1.9x faster than
+  pyrs-yaml and `rtoml` reads 1.9x faster than `load_toml`, while pyrs-yaml serializes 2.2–4.1x
+  faster than `yaml-rs`.
 
 #### Changed
 
-- **A relocated TOML header note names the right cause** — the boundary recording that a TOML
-  `[sec] # note` keeps its text and its table but not its line blamed the YAML parser's
-  comment-capture model. The measurement says otherwise: the engine pair is a fixed point, so
-  feeding `from_toml`'s output to `to_toml` returns
-  `# above the section\n[srv] # inline\nport = 1\n` unchanged, which
-  `preserves_section_header_trailing_and_leading` pins. The move is this project's own placement
-  rule — the YAML writer parks a container's inline note on the last line of its body, and the
-  reader reports that line's note as its member's. The rule's second placement is pinned with bytes
-  now: with the tail line taken, the header's note rises above `[sec]` while `x = 1 # M` keeps its
-  own line — two notes, two lines, one round to settle, same value read back.
-- **The Ir floor for a scenario that counts an interpreter is keyed by runner image** —
-  `.ci/ir-baseline.json` gains an `image_floors` table, and `scripts/ir_gate.py` now compares an
-  enforcing run against the row for the image it is on, instead of asking one number to settle the
-  question on every host. Which scenarios get a key is derived from the harness map the measurement
-  builds, so only the ones that count CPython are keyed: at one tree with both harness digests
-  equal, `load_toml_medium` read 142,467,241 and 144,904,012 on two images, which is 1.71 % a single
-  floor cannot hold. An image with no row is refused (exit 2) rather than passed or failed; a
-  baseline with no table behaves as before.
-- **The `no_std` host tests now run on Windows as well as Ubuntu** — the job was pinned to one
-  runner, so the evidence that a `#![no_std]` crate's logic survives without std came from one
-  operating system while wheels are published for three. The bare-metal build is host-independent
-  and stays on one (`if: matrix.os == 'ubuntu-latest'`), so the matrix does not pay a second
-  dependency build for a check that cannot disagree; the unit tests, which can, now spread. Measured
-  before the leg was added rather than after: `cargo test --locked --no-default-features` over the
-  six foundation crates on a Windows host runs 724 tests over 23 targets with 0 failures, and that
-  holds only because the same change set stops three dev-dependency edges from re-enabling `std`
-  through feature unification. `tests/test_no_std_gate.py` refuses a job that drops back to one host
-  and states the asymmetry it protects.
-- **The `no_std` unit-test leg now runs the configuration its name states** — `no-std-check` runs
-  `cargo test --locked --no-default-features` over the six foundation crates in one invocation, and
-  its comment recorded that widening the list "was worth 112 host tests that had never run without
-  std". Read off the actual rustc command lines with `cargo test -v --no-run`, that was not what
-  happened: `cargo test --no-default-features -p pyrs-toml` alone compiles `pyrs_toml`'s test unit
-  with no feature cfg at all, while the same command naming all six carries
-  `--cfg feature="default"` and `--cfg feature="std"` for it, for `pyrs_json` and for `pyrs_ast`.
-  Cargo unifies features across the packages selected in ONE invocation, and `pyrs-yaml-core`'s
-  dev-dependency edges on those three siblings did not say `default-features = false`. Nothing
-  shipped was affected — dev-dependencies are in no downstream graph, and the bare-metal build had
-  been compiling every lib unit with `features=[]` all along — but the behaviour-under-no-std claim
-  rested on a step that was measuring the std build. Three manifest edges close it, and the gate is
-  widened to read the manifests rather than trust a `-p` list: `tests/test_no_std_gate.py` now
-  refuses any foundation path edge into a sibling that declares `default = ["std"]` without
-  `default-features = false`, with the pre-fix manifest as its control (it reports exactly the three
-  edges) and a second control pinning the reader's section walk. The CI shape then runs 724 tests
-  over 23 targets std-free and all pass; the default shape still runs 815, and
-  `cargo clippy --all --all-targets` stays clean under `-D warnings`.
-- **The two YAML readers now carry a floor for a note, not only the writer** — `serialize_note_flow`
-  prices what the writer does with a note it has to emit, but nothing priced what a reader does to
-  resolve one: the five `parse_*` scenarios read `SMALL_YAML`, `MEDIUM_YAML`, `BLOCK_STYLE_YAML`,
-  `BLOCK_SCALAR_YAML`, `ANCHOR_YAML` and `MERGE_INLINE_YAML` and the two document-carrying
-  `stream_*` rows read `MEDIUM_YAML` and the generated long-record document, all of which hold zero
-  `#`, so the byte scan in `parser/yaml/comment.rs`, the receiver's decision about which node owns
-  an incoming note and the pending-slot carriage ran 2,000 iterations per floor on the cheapest
-  answer available. `parse_notes` 701,017,318 and `stream_notes` 579,067,612 read the one fixture
-  the writer row already writes, so what separates the two new numbers is the route and nothing
-  else; `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins eleven notes through both readers and zero
-  through each fixture the older rows use. Against the same 434 bytes with every note run blanked to
-  the same number of spaces — both anchors, both tags and every brace untouched — the eleven notes
-  cost +16.30 % on the tree route and +19.37 % on the event route, 71 % and 74 % of it inside the
-  locked parser (`docs/dev/perf.md` carries the row-level attribution). The refresh that wrote the
-  pair refused itself first, at `from_json5_medium` +0.55 % with `pyrs-json` untouched and the
-  binding binary's digest unchanged: taking the set from forty-nine scenarios to fifty-one is what
-  moved it, so the name went into `accept_drift` and `tolerance_hint` stayed at 0.5 %.
-- **A stream asked of a single-document route is refused, not resolved** — `parse`, `parse_file`,
-  `safe_load`, `to_toml` and the `YAML()` instance's equivalents read one document, and until now an
-  input carrying two answered whichever document the event walk ended on: `a: 1\n---\nb: 2\n` came
-  back as `b: 2` and `a: 1\n---\n` as `null`, with nothing saying a document had been discarded.
-  They now raise `YamlParseError` with a message that opens `multi-document-input`, names the second
-  document's line and column, and points at `parse_all_docs`, `safe_loads` and `parse_stream` — the
-  three routes that still accept separators, each measured doing so over the same ten shapes. PyYAML
-  and ruamel.yaml raise on all ten and still accept a leading `---`, a trailing `...`, a bare `---`
-  and an empty input, which are pinned here as the controls the guard must not over-fire on; the CLI
-  says the same thing with `-A/--all-docs`, whose own behaviour is unchanged. What is not claimed:
-  that the position matches the reference libraries, which mark the second document's directive
-  where this marks its separator. Recorded as `(hg)` in `docs/dev/quality-ledger.md`, together with
-  the compliance-harness mis-scoping this exposed.
-- **The Ir gate gained two floors that price metadata carriage on an edit** — every replacement asks
-  `editing::metadata::merged_meta` whose note, whose anchor and whose tag to carry, and
-  `delete_path` asks `extend_delete_over_comments` to widen its range, yet no floor reached any of
-  it: the three `edit_*` scenarios run over `MEDIUM_YAML`, which holds zero `#`, zero `&` and zero
-  `!`, so all three branches missed on each of the 2,000 iterations. `METADATA_EDIT_YAML` is the
-  same shape with an anchored, tagged and annotated `server.port`, an alias that makes that anchor
-  load-bearing and a standalone comment above the key being deleted; `edit_set_metadata` and
-  `edit_delete_notes` run the existing two verbs over it, so making carriage dearer now moves a
-  number. `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins each answer and reddens if the shared
-  fixture is ever decorated, which would leave the pair with nothing to contrast against. The
-  enforcing image writes `edit_set_metadata` 42,838,349 against `edit_set_nested` 36,483,730 on a
-  document 26 characters *smaller*, so what separates the two is the carriage and not the clone of a
-  bigger tree. That same run moved two floors it never enters — `documents_short_strings` −10.46%
-  and `documents_long_strings` −7.00% — and the gate's own profile puts the whole move in one glibc
-  copy row and its malloc bookkeeping, with every engine row identical to the instruction on both
-  hosts: a floor is a count of what the build does, not only of what the engine does.
-- **A blank line between two YAML entries is now a registered boundary, with a test that pins it** —
-  measured through the shipped extension at eight positions (between root entries, between nested
-  keys, between sequence items, before a standalone note, consecutive blanks, after a block scalar,
-  leading, trailing) and through the edit route: the line survives none of them, while values, key
-  order, anchors and the note do, and what comes back is already a fixed point.
-  `tests/test_roundtrip.py` now asserts that behaviour as it is today, so closing the gap reddens
-  the pin and forces the registry entry and the boundary note out in the same change. It stays open
-  because restoring the layout means per-container state carried through the serialization pass,
-  which the instruction floors price on every `serialize_*` scenario. No shipped behaviour changes.
-- **Both lockfiles moved to the newest version their declared ranges allow** — `similar`
-  3.2.0 → 3.2.1 on the Rust side, the only step left under the eight crates' MSRV 1.96 floor, and
-  nine Python packages: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8,
-  `mkdocstrings-python` 2.0.9 → 2.0.10, `python-dateutil` 2.9.0.post0 → 3.0.0, `deepmerge`
-  3.0.1 → 4.0.0, plus griffelib, markdown and two patch rows. The deliberate pins held: `maturin`
-  stays at 1.15.0, which is current, and `pyo3` stays on the 0.29 line; the newest `pytest`,
-  `hypothesis`, `pydantic` and `numpy` ask for an interpreter above the 3.8 floor this release
-  still supports. Measured here: 806 Rust tests, 4,306 Python tests,
-  `cargo clippy --all --all-targets -- -D warnings`, the whole hook set, and a strict four-locale
-  docs build.
-- **Notes have a floor on both sides of the bridge** — attributing PR #641's writer-floor move meant
-  counting what the benchmark fixtures actually hold, and the count refuted the explanation written
-  beside it: every YAML input the serialize scenarios ran over at that point carried zero `#`, and
-  the five writer inputs carried zero `{`, `[`, `]` or `}` - so `notes_have_flow_spelling`, the
-  flow-to-block demotion, `hoist_marker_note`, `spine_has_notes` and the two `lift_first_*_notes`
-  helpers answered no measured question, and making any of them dearer would have moved no number.
-  The same count reddened the outbound JSON half: `to_jsonc_medium`, `to_json5_medium` and their two
-  long-string twins are handed the AST of a document holding zero `#`, so a dialect writer that
-  dropped every note it was given would have stayed green. Three documents now carry the shape their
-  halves must answer for. `serialize_note_flow` (62,066,048 counted instructions on the enforcing
-  image) runs one document through the five answers that walk can give - braces kept, braces
-  abandoned for a member holding two notes, a `?` marker with its note on the marker line, a marker
-  whose own note slot is empty but whose spine carries one three levels down, and an anchored header
-  whose first entry is annotated - and the image's own attribution puts that walk at 12.61% of the
-  scenario (7,824,000 across the predicate's two instantiations). `to_jsonc_notes` (17,002,806) and
-  `to_json5_notes` (17,120,806) write one six-note document through the two dialect writers, and run
-  75's profile named where its money went, before PR #643 took the block half in one pass:
-  `<str>::replace` - the flattening every note passes through before it is written as a comment, and
-  reachable from note text alone - is the largest self term in both, 16.08% and 16.01%, with
-  `push_block_note` and `emit_value_block_notes` behind it. Their reader twins `from_jsonc_notes`
-  (50,684,157) and `from_json5_notes` (50,864,157) exist because the defence matrix pairs a
-  `to_<format>_<shape>` with its `from_<format>_<shape>` and asserts that pair on the committed
-  harness; they resolve a document of seven comments - five line-form, one block-form, one before
-  the document - and name `<pyrs_json::parser::Parser>::ws_extended` as the largest term in both
-  (19.86% and 19.79%), with `attach_pending`, where a comment finds its node, at 1,484,000.
-  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins the five YAML answers, the six written notes and
-  the seven carried notes against the text the engine emits, and reddens by name when a note is
-  deleted from any of the three fixtures - so a floor cannot quietly come to guard a note-free
-  document. Growing the harness moved 15, then 13, then 18 floors past 0.005%, and the set that
-  crossed the 0.50% line was not the same name each time: `from_json_medium` 78,671,707 → 79,283,878
-  → 79,904,977 crossed twice at +0.78% a step, then the third growth sent it 0.41% the other way
-  while four readers it does not enter crossed instead (`from_json5_medium` +1.05%,
-  `from_jsonc_medium` +0.72%, `parse_inline_merge` +0.67%, `from_json5_long_strings` +0.50%). That
-  is why the names come from a dispatch's refusal rather than from a prediction: run 74 refused with
-  those four while `from_json_medium` sat pre-named from the two earlier crossings, and run 75 named
-  the four and wrote. `tolerance_hint` stays 0.005. All forty-seven floors come from those runs,
-  re-measured by run 79, and `QUALITY_MATRIX.md` §2 counts them out loud.
-- **The assessment's blind-spot count is derived from the list, not trusted** — the sentence in
-  `QUALITY_MATRIX.md` said `Seven blind spots were found by measuring` while the list under it
-  already carried eight entries, and no gate could see the difference: the derived tier row counts
-  tests and scenarios, never paragraphs. One test now re-derives the number from the list that
-  sentence introduces, and both ways of breaking it were proven - the digit moved to `Ten` reddened
-  it, an injected extra entry reddened it - so a hole recorded without its count is a red run
-  rather than a sentence that used to be true. The count reads nine now because the hook-set leg
-  joined the list. No measured floor and no shipped behaviour moved.
-- **The instruction gate's prose now says what was measured** — three sentences of
-  `docs/dev/perf.md` credited `AGENTS.md` with calling the binding channel noisy, a claim that file
-  does not contain (`grep -c noisy AGENTS.md` is 0), and the attribution they carried was wrong: the
-  wide reading was CPython's per-process hash seed, since pinned. The pointers name the term now,
-  and `QUALITY_MATRIX.md` section 2's cross-host ceiling is marked as the dated reading it is —
-  re-measured on the pinned tree, the binding channel sits +0.15% worst against the image's floors
-  while three scanner scenarios diverge by up to -21.23%, recorded in `docs/dev/quality-ledger.md`
-  (gk) together with the two explanations that were tested and refuted. One guard test, so a pointer
-  at an absent claim reddens. No measured floor and no shipped behaviour moved.
-- **The line route has a floor, and a long body costs more there than on the event path** —
-  the record that added the event stream's long-value floor named the clause it left standing: the
-  NDJSON path had no number of its own. `Work::Documents` now reads eight one-line records into
-  events through `pyrs_json::parse_documents`, and the pair differs only in the width of the value -
-  9 characters against 256. On the image that enforces these numbers that is 95,815,186 against
-  328,951,144 counted instructions, **+243.3%**, where the same single-dimension pair on the event
-  path reads +8.16%. All thirty-three floors come from one run, which needed exactly one
-  `accept_drift` name: growing the harness moved `from_json5_long_strings` from 100,340,744 to
-  101,160,437 (+0.82%), a scenario this change does not enter, while `from_json5_medium` (+0.479%)
-  and `from_json_medium` (-0.905%) stayed inside the line on their own. Re-measuring also moved a
-  published ratio: the event pair the previous record wrote down at 8.33% reads 8.16% on this run,
-  and `QUALITY_MATRIX.md` §2 now carries the newer number - which
-  `tests/test_ir_baseline_workflow.py` checks against the file rather than against memory.
-- **Each Rust benchmark runs in its own process** — `codspeed-divan-compat` 5.0 → 6.0. Upstream's
-  6.0.0 forks every Divan benchmark, so allocator state left behind by one benchmark no longer
-  colours the next, and it reports roughly 70% fewer benchmarks varying by more than 1 percent;
-  `CODSPEED_PROCESS_ISOLATION=false` reverts it. Nothing that decides a merge moves: the verdict is
-  `Test matrix (all legs)`, the instruction floor is the committed `.ci/ir-baseline.json`, and
-  documented wall-clock numbers still come from `.ci/perf-snapshot.json`. What does move is the
-  CodSpeed dashboard, because 6.0 declares that some values shift on the way up - so a trend read
-  across this bump is not one measurement, and the run-to-run spread is being measured on an
-  identical head before anything is claimed about it. `cargo codspeed build --workspace --exclude
-  pyrs-yaml` built both suites with CLI 5.0.3 against the 6.0 runtime; CI installs the CLI unpinned
-  and 6.0.0 was released the same day as the runtime.
-- **The event stream now has a floor at the long-value shape** — the record that added the four
-  long-value reader floors named the gap it left in one clause: "`stream_medium` and the NDJSON path
-  still carry short values, and the event path has no long-string scenario of its own". One scenario
-  closes the event half: `stream_long_strings` runs the same `Work::Stream` over `LONG_YAML`, the
-  same eight 256-character records the four writer floors use, so those numbers differ only in the
-  shape of the strings they carry. On the image that enforces them the long shape costs
-  276,633,813 counted instructions against `stream_medium`'s 255,359,778 - **+8.33%** - the first
-  reading this gate can give for a long body on the event path. The refresh needed exactly one
-  `accept_drift` name: growing the harness moved `parse_inline_merge` from 355,404,524 to
-  359,069,238 (+1.03%), a scenario this change does not enter, while `stream_medium` itself came up
-  +0.485% - inside the line, so nothing else was excused. All thirty-one floors now come from that
-  run, `QUALITY_MATRIX.md` §2 counts them out loud, and
-  `tests/test_ir_baseline_workflow.py` fails if the sentence and the file disagree.
-- **The long-string measurement surface now covers all five formats** — the vectorized readers
-  shipped floors for the long-value shape at strict JSON and TOML only, because the gate pairs a
-  bridge's reader with its writer and the two dialect bridges had neither. Four scenarios carry it
-  end to end now: `from_jsonc_long_strings` at 141,062,599 counted instructions,
-  `from_json5_long_strings` at 99,998,599, `to_jsonc_long_strings` at 60,056,647 and
-  `to_json5_long_strings` at 60,480,707 - each the largest of three samples at 0.000% spread, all
-  thirty numbers written by the refresh dispatch on the image that enforces them. That run needed no
-  `accept_drift` name at all: growing the set from 26 to 30 crossed the 0.50% line for nobody, the
-  largest upward move being `from_toml_medium` at +0.363%, so the same dispatch also re-measured the
-  four floors the previous change recorded - `from_json_long_strings` 112,664,928 → 112,987,111,
+- **A stream asked of a single-document route is now refused, a blank line between entries is a
+  pinned boundary, and a relocated TOML note names the right cause** — `parse`, `parse_file`,
+  `safe_load`, `to_toml` and the `YAML()` equivalents read one document, and a two-document input
+  answered whichever the walk ended on: `a: 1\n---\nb: 2\n` came back as `b: 2`, `a: 1\n---\n` as
+  `null`. They now raise `YamlParseError` opening `multi-document-input` with the second document's
+  line and column, pointing at `parse_all_docs`, `safe_loads` and `parse_stream`. PyYAML and
+  ruamel.yaml raise on the same ten shapes and still accept a leading `---`, a trailing `...`, a
+  bare `---` or an empty input: controls the guard must not over-fire on. `-A/--all-docs` says the
+  same in the CLI, unchanged; recorded as `(hg)`. At eight positions, and through the edit route, a
+  blank line survives none while values, key order, anchors and notes do; `tests/test_roundtrip.py`
+  pins that fixed point as it is today, and closing the gap reddens the pin. A relocated TOML
+  `[sec] # note` was blamed on the YAML parser's comment-capture model, but
+  `preserves_section_header_trailing_and_leading` shows a fixed point: the move is this project's
+  own rule that a container's inline note parks on the last line of its body.
+- **Notes have floors on both sides of every bridge, readers included** — counting the fixtures
+  refuted PR #641's writer-floor attribution: the serialize scenarios ran over YAML holding zero `#`
+  and the five writer inputs zero `{`, `[`, `]` or `}`, so five note helpers answered no measured
+  question, and the dialect writers got a zero-`#` AST too. Three documents now carry the shape
+  their halves answer for: `serialize_note_flow` walks one through the five answers and the image
+  attributes 12.61% to that walk; `to_jsonc_notes` and `to_json5_notes` make `<str>::replace` the
+  largest self term in both at 16.08% and 16.01% before PR #643 took the block half in one pass;
+  their reader twins, over seven comments, put `ws_extended` first at 19.86% and 19.79%. Against
+  zero-`#` fixtures the byte scan and note carriage ran on the cheapest answer, so `parse_notes` and
+  `stream_notes` read the writer row's own document: over the same 434 bytes with notes blanked to
+  spaces, the eleven notes cost +16.30 % on the tree route and +19.37 % on the event route, 71 % and
+  74 % inside the locked parser. `ir_fixtures.rs` reddens by name when a note leaves a fixture; that
+  refresh refused itself at `from_json5_medium` +0.55 %, so the name went into `accept_drift` and
+  `tolerance_hint` stayed at 0.5 %.
+- **Metadata carriage gains two floors, interpreter-counting floors get a runner-image key, and the
+  TOML crate documents the tree it builds** — each replacement asks `merged_meta` what to carry and
+  `delete_path` asks `extend_delete_over_comments`, yet no floor reached them: the `edit_*`
+  scenarios ran over `MEDIUM_YAML`, holding no `#`, `&` or `!`, so every branch missed.
+  `edit_set_metadata` 42,838,349 against `edit_set_nested` 36,483,730 on a 26-character-smaller
+  document is the carriage, not a bigger tree, and `ir_fixtures.rs` reddens if that fixture is
+  decorated. The run moved two floors it never enters — `documents_short_strings` −10.46%,
+  `documents_long_strings` −7.00% — all in one glibc copy row. `.ci/ir-baseline.json` gains
+  `image_floors`, and `scripts/ir_gate.py` judges a run by its own image's row — keyed only for
+  scenarios counting CPython, since at one tree with equal harness digests `load_toml_medium` read
+  142,467,241 and 144,904,012, a 1.71 % spread one floor cannot hold. An image with no row is
+  refused (exit 2). `crates/pyrs-toml/src/lib.rs` opened with "no intermediate value tree", while
+  `(fw)` priced its table-insertion at 8.10 % of `load_toml_medium` and 9.68 % of
+  `from_toml_medium`: the rewrite is not scheduled and the sentence now describes the build it
+  ships.
+- **The event stream and the line route have floors at the long-value shape, and a long body costs
+  more on the line route** — `stream_long_strings` runs the same `Work::Stream` over the eight
+  256-character records the writer floors use, so those numbers differ only in the shape of the
+  strings they carry: 276,633,813 against `stream_medium`'s 255,359,778, **+8.33%** — the gate's
+  first reading of a long body on the event path. `Work::Documents` reads eight one-line records
+  into events through `pyrs_json::parse_documents`, differing only in the width of the value, 9
+  characters against 256: 95,815,186 against 328,951,144, **+243.3%**, where the same pair on the
+  event path reads **+8.16%**. Re-measuring moved a published ratio — the event pair first written
+  down at 8.33% reads 8.16% now, which `QUALITY_MATRIX.md` §2 carries and
+  `tests/test_ir_baseline_workflow.py` checks against the file rather than memory. Thirty-one floors
+  came from the event run, thirty-three from the line run.
+- **The long-string shape is measured on both channels, and the surface covers all five formats** —
+  no benchmark read a long value (`MEDIUM_JSON`'s longest is 21 characters), so the vectorized scan
+  went unmeasured. `long_string_json` / `_toml` / `_yaml` generate the same list with 256-character
+  letters-only values, read at both ends of every bridge: four benches for the ranking channel
+  (2.599 µs and 3.499 µs to read, 950 ns and 1.174 µs to write) and four floors for the enforcing
+  one, where per source byte the long documents cost a fifth of `from_json_medium` and an eighth of
+  `from_toml_medium`. `scripts/quality_matrix.py` reports a one-sided bridge as
+  `ir-bridge-unidirectional`, so the dialect bridges run end to end — `from_jsonc_long_strings`,
+  `from_json5_long_strings`, `to_jsonc_long_strings`, `to_json5_long_strings`, each at 0.000% spread
+  — and re-measured the four earlier floors: `from_json_long_strings` 112,664,928 → 112,987,111,
   `from_toml_long_strings` 109,254,466 → 109,535,451, `to_json_long_strings` 58,550,997 →
-  58,550,735, `to_toml_long_strings` 72,438,982 → 72,438,675. The fixtures are
-  `bench_inputs::long_string_jsonc` (2,557 bytes: the same eight records, a line comment and a block
-  comment between members) and
-  `long_string_json5` (2,550 bytes: single-quoted values - the dialect whose string body the
-  single-quote instantiation of the vector scans - bare keys, and a trailing comma on every member).
-  `crates/pyrs-yaml-core/tests/ir_fixtures.rs` pins both to the record list the strict JSON fixture
-  renders, to a widest run of exactly `LONG_VALUE`, and to carrying both comment forms, so a fixture
-  that loses its comments cannot keep the scenario honest unnoticed; one already caught a fixture of
-  this author's that emitted a double comma. The two writer floors also record what the outbound
-  scan costs today, before anything proposes to vectorize it.
-- **The long-string shape now has a committed measurement on both channels** — every benchmark in
-  this tree reads short values (`MEDIUM_JSON`'s longest is 21 characters, and both leaderboard
-  documents build `item_N` names), so the bulk scan this release vectorized could only be measured
-  from a throwaway probe. `bench_inputs::long_string_json` / `long_string_toml` / `long_string_yaml`
-  generate the same record list with 256-character values - letters only, no byte a scanner stops
-  on, pinned by `crates/pyrs-yaml-core/tests/ir_fixtures.rs` - and both harnesses read them at both
-  ends of the two cross-format bridges: four benches for the ranking channel (2.599 µs and 3.499 µs
-  a call to read, 950 ns and 1.174 µs to write, one run on this box) and four floors for the channel
-  that enforces - 112,664,928 and 109,254,466 read, 58,550,997 and 72,438,982 written. Per source
-  byte of that one image run the long documents cost a fifth of `from_json_medium` and an eighth of
-  `from_toml_medium`, their writers two fifths of the medium twins: the scan, not the node, is the
-  cost centre there. The writer halves are not decoration - `scripts/quality_matrix.py` reports a
-  bridge numbered on one side only as `ir-bridge-unidirectional`, which is what the reader-only
-  first version was. Growing the harness also moved a scenario it never enters: the head before this
-  one read `stream_medium` at +0.01% on the enforcing image and this one reads it at +0.63%, one
-  variable apart, which failed the leg until the refresh dispatch recorded all 26 numbers on that
-  image with `accept_drift stream_medium` - so every other move still refuses itself.
-- **The bump bot may no longer offer the compiler that defines the tested floor** - the weekly
-  `github-actions` group opened #620 to raise two actions and rewrote
-  `dtolnay/rust-toolchain@1.96` to `@1.120` inside `ci.yml`, where for the `msrv-check` leg that ref
-  is not a version but the compiler it installs. The defence caught it - five tests in
-  `tests/test_msrv_gate.py` and `tests/test_ci_rust_leg_exclusion.py` went red on that head - but a
-  pull request that is red every Monday gets closed and re-offered, and the config guaranteed the
-  re-offer: the `actions` group carried `patterns: ["*"]` and no `ignore`. The name is excluded in
-  `.github/dependabot.yml` now, with the measurement written beside the reason, and
-  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` reddens if the exclusion is edited
-  away. Moving the floor stays a human act.
-- **The TOML crate documented a parser that builds no intermediate tree; it builds one** —
-  `crates/pyrs-toml/src/lib.rs` opened with "no intermediate value tree", a sentence the three
-  records `(fs)`, `(ft)` and `(fv)` each left owed to the change that removes the tree. `(fw)`
-  measured it: the two table-insertion rows are 8.10 % of `load_toml_medium` and 9.68 % of
-  `from_toml_medium`, and the larger rows in that profile are scanning work a tree-free parser
-  still performs. The rewrite is therefore not scheduled and the sentence now describes the build
-  it ships. Documentation only - no behaviour, output or counted number moves.
-- **The bump bot can read its own config again** - three `groups` entries in
-  `.github/dependabot.yml` carried `version-update:semver-patch` / `-minor` / `-major`, which is the
-  `ignore` and `allow` vocabulary: `groups.*.update-types` accepts only `major` / `minor` / `patch`,
-  so Dependabot rejected the file - nine days after it landed, as a check-run no merge gate reads,
-  with every workflow still passing. The five values now use the short forms, the one `ignore` rule
-  that declares types keeps the prefixed form where it belongs, and
-  `tests/test_dependabot_config.py` pins the two vocabularies separately - and fails if the sites
-  either one polices disappear - so an edit that harmonises them reddens a test instead of quietly
-  stopping the bumps.
+  58,550,735, `to_toml_long_strings` 72,438,982 → 72,438,675. Its `long_string_jsonc` (2,557 bytes,
+  both comments) and `long_string_json5` (2,550 bytes, single-quoted — the dialect the single-quote
+  vector instantiation scans) are pinned to the strict JSON list.
+- **Growing the harness moves floors the change never enters, so the names come from a dispatch's
+  refusal rather than a prediction** — it crossed 15, then 13, then 18 floors past 0.005%, and the
+  names past the 0.50% line differed each growth: `from_json_medium` 78,671,707 → 79,283,878 →
+  79,904,977 crossed twice at +0.78% a step, then the third growth moved it 0.41% back while four
+  readers it never enters crossed (`from_json5_medium` +1.05%, `from_jsonc_medium` +0.72%,
+  `parse_inline_merge` +0.67%, `from_json5_long_strings` +0.50%); run 74 refused on those four, run
+  75 named them and wrote. Later runs needed one name each: `parse_inline_merge` +1.03%
+  (`stream_medium` +0.485% stayed inside), then `from_json5_long_strings` +0.82%
+  (`from_json5_medium` +0.479% and `from_json_medium` −0.905% inside); the 26-to-30 growth crossed
+  for nobody, `from_toml_medium` +0.363% the largest move. `stream_medium` read +0.01% then +0.63%
+  one variable apart, let through only by `accept_drift stream_medium`. `tolerance_hint` stays
+  0.005; the forty-seven floors come from those runs, re-measured by run 79, and on the pinned tree
+  the binding channel sits +0.15% worst against the image's floors while three scanner scenarios
+  diverge by up to -21.23%, so §2's cross-host ceiling is marked dated (ledger (gk)).
+- **Each Rust benchmark runs in its own process, and both lockfiles moved to the newest version
+  their ranges allow** — `codspeed-divan-compat` 5.0 → 6.0 forks every Divan benchmark, so allocator
+  state left by one no longer colours the next, and upstream reports roughly 70% fewer benchmarks
+  varying by more than 1 percent; `CODSPEED_PROCESS_ISOLATION=false` reverts it. Nothing that
+  decides a merge moves, but a CodSpeed trend across this bump is not one measurement. `similar`
+  3.2.0 → 3.2.1 is the only Rust step left under the eight crates' MSRV 1.96 floor, and nine Python
+  packages moved: `zensical` 0.0.71 → 0.0.72, `mkdocstrings` 1.0.7 → 1.0.8, `mkdocstrings-python`
+  2.0.9 → 2.0.10, `python-dateutil` 2.9.0.post0 → 3.0.0, `deepmerge` 3.0.1 → 4.0.0, plus griffelib,
+  markdown and two patch rows. `maturin` stays at 1.15.0 and `pyo3` on the 0.29 line, since the
+  newest `pytest`, `hypothesis`, `pydantic` and `numpy` need an interpreter above the 3.8 floor.
+  Measured: 806 Rust and 4,306 Python tests, clippy under `-D warnings`, the hook set, a strict
+  four-locale docs build.
+- **The `no_std` host tests run on Windows as well as Ubuntu, and the unit-test leg runs the
+  configuration its name states** — the job was pinned to one runner while wheels ship for three;
+  the host-independent bare-metal build stays on one, and the unit tests now spread. The comment on
+  that step said widening the crate list "was worth 112 host tests that had never run without std",
+  but `cargo test -v --no-run` shows the six-crate invocation carrying `--cfg feature="std"` for
+  `pyrs-toml`, `pyrs_json` and `pyrs_ast` where `-p pyrs-toml` alone carries none: Cargo unifies
+  features across the packages in one invocation, and `pyrs-yaml-core`'s dev-dependency edges on
+  those siblings did not say `default-features = false`. Nothing shipped was affected, but the claim
+  rested on a step measuring the std build. Three manifest edges close it, and
+  `tests/test_no_std_gate.py` now reads the manifests rather than trusting a `-p` list: it refuses a
+  foundation edge into a sibling declaring `default = ["std"]` without `default-features = false`,
+  with the pre-fix manifest as control (exactly the three edges), and refuses a job that drops back
+  to one host. The std-free command runs 724 tests over 23 targets, 0 failures on Windows, where the
+  default shape still runs 815.
+- **The bump bot neither offers the floor's compiler nor mis-spells its config, and two documents
+  say what was measured** — the weekly `github-actions` group opened #620 to raise two actions and
+  rewrote `dtolnay/rust-toolchain@1.96` to `@1.120` in `ci.yml` — the ref `msrv-check` installs as
+  its compiler. Five tests went red, but `patterns: ["*"]` with no `ignore` guaranteed the weekly
+  re-offer; the name is excluded in `.github/dependabot.yml` now, and
+  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` reddens if that exclusion is edited
+  away. Three `groups` entries carried `version-update:semver-patch`/`-minor`/`-major` — the
+  `ignore`/`allow` vocabulary, since `groups.*.update-types` takes only `major`/`minor`/`patch` — so
+  Dependabot rejected its own file nine days later, as a check-run no merge gate reads; the five
+  values use the short forms and `tests/test_dependabot_config.py` pins the two vocabularies.
+  `QUALITY_MATRIX.md` said `Seven blind spots were found by measuring` over a list of eight; a test
+  now re-derives that count, which reads nine since the hook-set leg joined. Three
+  `docs/dev/perf.md` sentences credited `AGENTS.md` with calling the binding channel noisy
+  (`grep -c noisy AGENTS.md` is 0); the wide reading was CPython's per-process hash seed, since
+  pinned.
 
 #### Performance
 
-- **A writer's output buffer takes one allocation instead of climbing the growth ladder** — the
-  JSON, JSONC, JSON5, TOML and YAML writers each began with `String::new()`, which reaches 512
-  bytes through seven reallocations (8, 16, 32, 64, 128, 256, 512). On a config-sized document
-  those copies and their malloc/free pairs are most of what the write does. Measured in counted
-  instructions on the same host under the gate's pinned `rustc 1.97.1`: `to_json_medium`, a
-  300-byte document, 22,884,635 → 17,718,056 (−22.6%), `to_toml_notes` 16,468,905 → 12,071,715
-  (−26.7%), `serialize_block` 14,518,712 → 10,899,301 (−24.9%), `serialize_note_flow` 64,411,669
-  → 59,227,943 (−8.1%), and every one of the sixteen writer scenarios moves down, the smallest
-  being `to_toml_long_strings` −5.2%. The control is the same tree without the change, which read
-  the committed floor of `to_json_medium` to +0.002% — so the movement is the edit, not the host.
-  `edit_set_metadata`, which regenerates a spliced pair through the same serializer, moves −7.3%;
-  the other edit scenarios land between −1.3% and neutral, and `safe_dump_*` / `to_python_*` sit
-  inside ±0.28%. One capacity for every document rather than a size estimate: measuring the tree
-  first would cost a second walk, more than the growth it removes on exactly the documents where
-  the chain is long, while a larger document starts from this floor and grows geometrically — it
-  loses the same seven reallocations and pays nothing extra. No byte of output changes; the floors
-  that price these writers are refreshed with this change.
-- **A block note is written in one pass** — `to_jsonc_notes` and `to_json5_notes` price the
-  flattening a note passes through before it is written as a comment, and the block half of it
-  allocated twice: `push_block_note` did `text.replace(['\\n', '\\r'], " ").trim()
-  .replace("*/", "* /")`, so a compact note cost two intermediate `String`s before being written
-  into a buffer that was a `String` already. One pass writes it now: trim, map interior breaks to
-  spaces, split `*/` only where it could close the comment early. Trimming first is equivalent and
-  not assumed — `\\n` and `\\r` are whitespace and so is the space that replaces them, so
-  flatten-then-trim drops the same prefix and suffix. On the enforcing image `to_jsonc_notes` reads
-  17,002,806 and `to_json5_notes` 17,120,806, down 38.27% and 38.11% from the floors PR #642
-  committed, with the other 45 scenarios inside ±0.16% (`to_json_medium` −0.0004%) — the refresh
-  wrote all forty-seven without naming a single drift. The six line-form sites went through the same
-  pass in a first version and were taken back out: they bought a further 2.5 points on the two notes
-  floors but moved six note-free writers past the tolerance `ir_gate.py` enforces (`to_jsonc_medium`
-  +1.63%, `to_json5_medium` +1.59%, `to_jsonc_long_strings` +1.44%, `to_json5_long_strings` +1.42%,
-  `to_json_medium` +1.02%, `to_json_long_strings` +0.96%), reproduced on a second run of that same
-  tree, and `#[inline(never)]` on the new helper changed none of the six — so the price is that edit
-  itself, not the pass being inlined, and 2.5 points did not repay 1% on paths that never reach a
-  note. What shipped stays guarded by the two floors and by
-  `a_note_is_flattened_and_a_block_carrier_splits_its_own_terminator`, which pins the line spelling
-  as `// first  second` for a note carrying `"  first\\r\\nsecond  "`, the block spelling as
-  `/* ends * / here */`, and reddens on the second assertion when the terminator split is removed.
-- **A line of JSON is now indexed eight bytes at a time** — `pyrs_event::LineTable` counted one
-  UTF-8 character per step, both to find the line starts and to carry the cursor between events, and
-  on the image that enforces the instruction floors that walk read 51.79% of
-  `documents_long_strings` and 21.09% of `documents_short_strings` (`docs/dev/quality-ledger.md`
-  (gl)). A `u64` now answers eight bytes at once: `zero_lanes` finds the breaks, and each candidate
-  lane is checked against the byte it claims, because the borrow out of a zero lane makes a
-  following `0x01` look like a break too - the new property test caught that before it shipped. The
-  cursor's column advances by the byte count while a word holds no byte at or above 0x80, and a word
-  that does goes back to the character walk. Measured twice on one host with the compiler the
-  baseline names: `documents_long_strings` 308,642,512 counted instructions against 126,840,512
-  (**-58.84%**), `line_col` down 82.6% and `LineTable::new` down 66.0%; `documents_short_strings`
-  75,506,559 against 64,952,559 (**-13.98%**). Positions are unchanged: the property asserts
-  `starts` and `line_col` against a rescan at every byte of an arbitrary document, and a lane table
-  covers a break sitting in any of the eight positions and eight breaks in one word. Core only - no
-  dependency, no unsafe, so the `no_std` set is unchanged. The floors moved with the code,
-  re-measured on the image that enforces them: `documents_long_strings` 328,990,934 to 147,188,912
-  (**-55.26%**) and `documents_short_strings` 95,854,968 to 85,300,932 (**-11.01%**), and two
-  scenarios no local profile had named moved with them - `stream_json_medium` **-14.90%** and
-  `stream_json_stop` **-27.17%** - because the same index serves the whole JSON stream route. The
-  other 38 moved by 0.0051% or less.
-- **The gate's widest reading was the interpreter, and it is pinned now** - three refresh runs
+- **Writer output stops paying for intermediate allocations: one buffer capacity, one-pass note
+  flattening** — the JSON, JSONC, JSON5, TOML and YAML writers each began with `String::new()`,
+  whose seven reallocations to 512 bytes are most of a config-sized write. Counted instructions
+  under the gate's pinned `rustc 1.97.1`: `to_json_medium` 22,884,635 → 17,718,056 (-22.6%),
+  `to_toml_notes` 16,468,905 → 12,071,715 (-26.7%), `serialize_block` 14,518,712 → 10,899,301
+  (-24.9%), `serialize_note_flow` 64,411,669 → 59,227,943 (-8.1%) - all sixteen writer scenarios
+  down, the smallest `to_toml_long_strings` -5.2% - while the unchanged tree reads
+  `to_json_medium`'s floor to +0.002%. `edit_set_metadata` moves -7.3%, the other edit scenarios
+  between -1.3% and neutral, `safe_dump_*` / `to_python_*` inside 0.28%. The block note's flattening
+  allocated twice; one pass writes it now, and on the enforcing image `to_jsonc_notes` and
+  `to_json5_notes` sit 38.27% and 38.11% under the floors PR #642 committed, the other 45 scenarios
+  inside 0.16% (`to_json_medium` -0.0004%). The six line-form sites through that pass bought 2.5
+  further points there but pushed six note-free writers past `ir_gate.py`'s tolerance
+  (`to_jsonc_medium` +1.63%, `to_json5_medium` +1.59%, `to_jsonc_long_strings` +1.44%,
+  `to_json5_long_strings` +1.42%, `to_json_medium` +1.02%, `to_json_long_strings` +0.96%) - 2.5
+  points do not repay 1% where no note is reached, so that half came back out. No output byte
+  changes.
+- **Readers' string bodies, the TOML line and writers' escape scan run sixteen bytes at a time on
+  SSE2** — the JSON and TOML readers scanned string bodies one byte at a time, and TOML walked the
+  whole source per call to reject a bare carriage return; the writers' escape test joined once its
+  long-value floors landed (#600). SSE2 is in the x86_64 baseline - no new dependency, no `std` -
+  with the byte loop as the vector's tail and the whole path on other architectures. On the host, 2
+  MB of JSON with 5000-byte strings 2.47 → 1.97 ms, the same as 6 MB of CJK 6.17 → 5.27, JSON5
+  single-quoted 1.53 → 1.11, 2 MB of TOML basic 2.36 → 0.99, literal 2.41 → 0.96, multiline 3.37 →
+  1.01, 0.45 MB of 100-byte values 2.98 → 2.54; on the enforcing image, `from_toml_medium` -4.02%
+  (125,580,997 → 120,534,055), `from_jsonc_medium` -3.69%, `from_json_medium` -3.55%,
+  `from_json5_medium` -1.09%. The escape question measured 75.12% of `to_json_long_strings` and
+  69.01% of `to_toml_long_strings`, and the four refreshed floors read 58,550,735 → 22,038,711
+  (-62.36%), 72,438,675 → 28,254,711 (-60.99%), 60,056,647 → 23,544,666 (-60.80%), 60,480,707 →
+  23,968,721 (-60.37%). Short values are another shape - the scan is 25.95-26.61% of those
+  scenarios - and one paid: `to_json_medium` +0.52%; `to_jsonc_medium` +0.48% and `to_json5_medium`
+  +0.47% stayed inside the line, `to_toml_medium` came down 0.84%, and `parse_inline_merge` (a YAML
+  scenario, +0.55% on the development host) +0.00% on the image.
+- **A line of JSON is indexed eight bytes at a time** — `pyrs_event::LineTable` counted one UTF-8
+  character per step, both to find the line starts and to carry the cursor between events, and on
+  the image that enforces the floors that walk read 51.79% of `documents_long_strings` and 21.09% of
+  `documents_short_strings` (`docs/dev/quality-ledger.md` (gl)). A `u64` answers eight bytes at
+  once: `zero_lanes` finds the breaks and each candidate lane is checked against the byte it claims,
+  because a borrow out of a zero lane makes a following `0x01` look like a break too - the new
+  property test caught that before it shipped. On one host: `documents_long_strings` 308,642,512 →
+  126,840,512 (-58.84%), `line_col` down 82.6% and `LineTable::new` down 66.0%,
+  `documents_short_strings` 75,506,559 → 64,952,559 (-13.98%). Positions are unchanged, and the
+  floors moved with the code on the enforcing image: `documents_long_strings` 328,990,934 →
+  147,188,912 (-55.26%), `documents_short_strings` 95,854,968 → 85,300,932 (-11.01%), plus two
+  scenarios no local profile had named because the same index serves the whole JSON stream route -
+  `stream_json_medium` -14.90% and `stream_json_stop` -27.17%. The other 38 moved by 0.0051% or
+  less.
+- **`load_toml` stopped building the tree it cannot keep, and `load_json5` takes the AST-free route
+  its two siblings already had** — TOML text went scan, table tree, `CustomNode`, Python, so a plain
+  dict paid for a format-preserving node model; `pyrs_toml::read_toml` now walks the IR into a
+  caller's `TomlSink` whose scalars come from the shared `scalar_projection`, and the guard is the
+  tag registry: a read while any handler is installed takes the AST route. Against `rtoml` in the
+  same run the published row went from 1.92x and 1.91x behind to 1.47x and 1.46x, about 1.31x
+  faster - the host drifted about 20% between the two snapshots, so absolute readings are not the
+  evidence - and in-process against the guarded route it reads 1.15-1.34x and 1.31-1.35x.
+  `json_fast::try_load` was wired into `load_json` and `load_jsonc` only, so `load_json5` paid the
+  whole `CustomNode` round-trip: 2.063 µs against 0.473 µs for `load_json` over the same 123 B.
+  JSON5 is a superset of strict JSON, so what the fast path accepts is a legal document of the same
+  value and everything the dialect adds bails onto the AST path; values are unchanged, judged
+  against `json.loads` and `pyjson5` by 712 tests. Against the loader's own dialect route it wins
+  6.25x on 300 items and 9.34x on 1,200, 5/5 pairs each - the ratio `tests/test_json_leaderboard.py`
+  now gates, because neither route is priced by an instruction count.
+- **The loader routes, the three edit verbs and the stream stop have instruction floors** — no Ir
+  harness entered them: `from_toml_*` stops at the tree, `from_json_*` at the node model the fast
+  readers skip, and the binding channel had only `bench_to_python` and `bench_load_toml`. Two
+  scenarios drive `load_toml` through a feature-gated seam, and it reads 1.20x and 1.29x
+  `from_toml_medium` and `from_toml_long_strings` - the Python half no counted number had described;
+  `load_json_medium` and `load_json_long_strings` floor the JSON fast route at 0.74x and 0.86x of
+  `from_json_medium` and `from_json_long_strings`, this route replacing the tree rather than adding
+  to it; `load_jsonc` and `load_json5` share the row. Three edit scenarios join, one per verb over
+  `MEDIUM_YAML`, clone and parse inside setup so what is left is the verb; `move_path`'s halves are
+  priced. `stream_json_medium` against `stream_json_stop` puts the stop at 25.09 % of the walk -
+  `Break` ends the scan, not just the delivery; TOML gets no such row, its `Break` ending the
+  emission. The baseline grew from 33 scenarios to 35 and these rows moved siblings:
+  +0.212%, -0.357% and -0.111% on the three `to_python_*` rows, `to_python_anchors` +0.1343%,
+  `load_toml_long_strings` -0.2175%, six JSON readers +0.73%…+1.91% with no engine file in the diff,
+  `load_json_long_strings` +0.76 % from the runner and not the code - named in `accept_drift`,
+  `tolerance_hint` still 0.5%. Recorded as `(fs)`, `(ft)`, `(gf)`, `(gi)`, `(gh)`.
+- **The gate's widest reading was the interpreter, and it is pinned now** — three refresh runs
   record the binding harness under one binary digest (`7adbeac719edacd6`) and spread
-  `load_json_long_strings` 1.121% across their nine samples, while the engine scenarios on those
-  same bytes agree inside 0.00001%. Only one harness links CPython, and the term is the hash seed
-  it draws per process: under `PYTHONHASHSEED=0` that scenario reads 95,136,157 three times over
-  and all seven binding scenarios collapse (0.2811%, 0.2550%, 0.1249%, 0.0787% down to
-  0.0000-0.0004%). `scripts/ir_gate.py` pins the seed beside the glibc caps - the same remedy that
-  closed the 1.44% cross-host term - and the refresh run on this change's head reports all 42
-  scenarios within 0.0010% of themselves. The floors moved only where the seed had been doing the
-  work: `load_json_long_strings` -0.526%, five other loaders -0.166% to -0.055%,
-  `to_python_medium` +0.051%, and the 35 engine scenarios 0.001% or less, nothing past the line
-  upward. The line stays at 0.5% because the instrument no longer needs the room;
-  `tests/test_ir_gate_provenance.py` names the key if it goes missing, and no shipped code moved.
-- **The TOML loader's route has an instruction floor now** - `(fs)` moved `load_toml` onto
-  `pyrs_toml::read_toml`, and neither Ir harness entered it: the engine channel's `from_toml_*`
-  stops at the tree, the binding channel's `to_python_*` measures the YAML AST-to-Python walk.
-  Two binding scenarios, `load_toml_medium` and `load_toml_long_strings`, drive `load_toml` itself
-  through a feature-gated seam, and the harness asks that loader's own route guard before the
-  counted loop rather than price the node model under a reader's name. On the image that enforces
-  the floors, largest of three samples: 144,803,683 against `from_toml_medium`'s 120,986,802, and
-  140,182,211 against `from_toml_long_strings`' 109,012,890 - the loader is 1.20x and 1.29x the
-  tree builder, and that gap is the Python half no counted number described. The baseline goes
-  from 33 scenarios to 35, and growing it moved its siblings by +0.212%, -0.357% and -0.111% on
-  the three `to_python_*` rows - inside the 0.5% line, so the refresh was written naming nobody.
-  The JSON loaders' fast paths stay wall-clock-gated; floors of the same shape are the follow-up.
-- **`load_json5` takes the AST-free route its two siblings already had** — the family's fast path
-  (`json_fast::try_load`, one pass straight into `dict` / `list` / scalars) was wired into
-  `load_json` and `load_jsonc` only, so the loader advertising the same family paid the whole
-  `CustomNode` round-trip on every document: 2.063 µs against 0.473 µs for `load_json` over the
-  same 123 B of bytes. JSON5 is a superset of strict JSON, so what the fast path accepts is a legal
-  JSON5 document with the same resolved value, and everything the dialect adds - single quotes,
-  unquoted keys, `.5`, `0x…`, `+7`, `Infinity`, comments, trailing commas - bails the whole
-  document onto the AST path that owns those semantics. Values are unchanged, judged against
-  `json.loads` and `pyjson5` by 712 tests across `test_json.py`, `test_json5_spec_table.py`,
-  `test_json_crosslib.py`, `test_key_resolution_parity.py` and `test_property_dialects.py`.
-  Measured in one process against the same loader's own dialect route - the only way Python can
-  see both - the fast path wins 6.25x on a 300-item document and 9.34x on 1,200 items, 5/5 pairs
-  each, and `tests/test_json_leaderboard.py` now gates that ratio because neither of this
-  loader's routes is priced by an instruction count - CodSpeed builds the workspace with
-  `--exclude pyrs-yaml`, and the Ir channel's binding harness floors one route only,
-  `bench_to_python`, the YAML AST-to-Python walk. With the probe disabled by hand both sides sit
-  at 187.8 µs and the gate reddens naming every pair. The published JSON5 row is a
-  dialect-shaped
-  fixture, so it still takes the AST route and stays behind `pyjson5`; that gap needs a
-  JSON5-aware direct builder, not this change.
-- **The outbound escape scan runs sixteen bytes at a time in the JSON and TOML writers** — the
-  readers were vectorized first because their share was bigger; the writers' turn came once the
-  long-value shape had committed floors (#600), and the question "does this value need escaping?"
-  measured 75.12% of `to_json_long_strings` and 69.01% of `to_toml_long_strings`.
-  `write_json_string` and `write_single_quoted` now take the first byte needing a decision from one
-  SSE2 pass over {delimiter, `\`, `b < 0x20`} - const-generic, so strict JSON, JSONC and JSON5 each
-  monomorphize their own delimiter - and copy the clean prefix in one `push_str` before the char
-  loop runs verbatim. `write_basic_body` had asked `any(forbidden_single_line)` and then re-walked
-  the whole value; it now gets a position over {`"`, `\`, C0, DEL`}, with DEL its own equality mask
-  because the saturating subtract that catches the C0 range cannot see it. Measured on the
-  enforcing image by the refresh dispatch this change carries, largest of three samples:
-  58,550,735 → 22,038,711 (−62.36%), 72,438,675 → 28,254,711 (−60.99%), 60,056,647 → 23,544,666
-  (−60.80%) and 60,480,707 → 23,968,721 (−60.37%). The same-session wall-clock pair, with only the
-  dispatch swapped, is 1.199 µs → 399.9 ns on TOML, 943.5 ns → 431.1 ns on JSONC and 987.2 ns →
-  474.9 ns on JSON5, while `to_json`'s pair does not separate at the timer's 100 ns precision - so
-  its claim is the floor, not the clock. Four new tests ask every byte value at every offset of a
-  corpus crossing the vector boundary, and the output pair at lengths 0, 1, 15, 16, 17, 31, 33 and
-  256: mutating TOML's DEL mask from `0x7f` to `0x7e` reddens both of them, and compiling the
-  vector out leaves all 187 unit tests green on the scalar path the aarch64 wheels take. Short
-  values are a different shape and no win is claimed there - the same scan is 25.95-26.61% of those
-  scenarios - and one of them paid: `to_json_medium` rose to 21,492,584, +0.52%, the price of
-  asking a 16-byte question of a 21-byte value, named in that dispatch so every other move still
-  refuses itself. `to_jsonc_medium` (+0.48%) and `to_json5_medium` (+0.47%) stayed inside the line,
-  `to_toml_medium` came down 0.84%, and `parse_inline_merge` - a YAML scenario, +0.55% on the
-  development host - read +0.00% on the image, which is why the move is decided there. The YAML
-  writer is untouched, its quoting answer is already one byte pass, and the only lead left there is
-  `serialize_block_scalars`' line-break search inside `std`'s pattern machinery.
-- **String bodies and the TOML line are searched sixteen bytes at a time** — the JSON and TOML
-  readers asked "closing quote, escape, or a byte this dialect refuses?" one byte at a time, and on
-  a document whose strings are long that question is between a quarter and two fifths of the whole
-  parse. TOML also walked the entire source once per call to reject a bare carriage return, which
-  every input over a megabyte paid a fifth of its time for and which has nothing to do with string
-  length. Both searches now run on SSE2 - part of the x86_64 baseline, so this added no dependency,
-  no runtime detection and no `std` - with the byte loop kept as the vector's tail and as the whole
-  path on other architectures. Measured on the development host (release build, median of eleven
-  interleaved runs): 2 MB of JSON with 5000-byte strings 2.47 → 1.97 ms, the same records as 6 MB of
-  CJK 6.17 → 5.27, JSON5 single-quoted 1.53 → 1.11, 2 MB of TOML basic strings 2.36 → 0.99, TOML
-  literal 2.41 → 0.96, a TOML multiline 3.37 → 1.01, and a 0.45 MB config of 100-byte values 2.98 →
-  2.54. Each stop set is pinned by a differential test that asks every offset of a corpus holding
-  every byte value against an inline restatement of the rule, and the same 200 tests pass with the
-  vector path compiled out, which is the path the aarch64 wheels take. The instruction-count gate
-  prices the same change on the committed fixtures, on the image that enforces them, and it moves
-  down rather than holding: `from_toml_medium` −4.02% (125,580,997 → 120,534,055),
-  `from_jsonc_medium` −3.69%, `from_json_medium` −3.55%, `from_json5_medium` −1.09%. No floor sits
-  above the tree it now describes - the refresh dispatch recorded all 26 numbers there, which is its
-  job and not a local `--update`. YAML has no
-  search of its own to move: granit owns its tokenizer, and our side of a long-scalar parse is the
-  scalar copy (two thirds of the share, with a whole-source memcpy as its floor) and of a
-  small-scalar one the per-node build (24 ms of 39 ms for 50,000 nodes).
-- **`load_toml` stopped building the tree it cannot keep** — the loader advertises the same AST-free
-  route its JSON siblings take and did not take it: TOML text went scan, intermediate table tree,
-  `CustomNode`, Python, so a plain dict paid for a node model that exists for format-preserving
-  edits. `pyrs_toml::read_toml` now walks the IR into a caller's `TomlSink`, and the binding's sink
-  builds `dict` / `list` / scalars through the same `scalar_projection` the AST and event routes
-  already share - one function states what `0b1101`, a multi-line string and a date mean, so a
-  third reader cannot restate them differently. The guard is the tag registry: a registered handler
-  rewrites a tagged scalar on its node, and only the node model has nodes, so a document read while
-  any handler is installed takes the AST route. Measured against `rtoml` in the same run - the host
-  drifted about 20% between the two snapshots, so absolute readings are not the evidence - the
-  published row went from 1.92× and 1.91× behind to 1.47× and 1.46×, about 1.31× faster on both
-  fixtures; a paired in-process comparison against the route the guard selects reads 1.15-1.34× and
-  1.31-1.35×. The alternative that was measured and rejected: the event stream reaches the same dict
-  and costs the same (slower where the document has notes, a wash once its positions and notes are
-  stripped), which is why this reader carries no notes, no offsets and no anchors.
-  `crates/pyrs-toml/tests/value_reader.rs` flattens the tree and the new reader to the token list
-  the stream comparison uses and requires them equal over the seed corpus in both dialects, with a
-  named floor of 16 documents and a refused document reaching no value; `tests/test_toml.py`'s
-  `TestValueReader` compares eight documents against the hub's own export and reimport, and proves
-  the guard by a value only the AST route can change. What is left of the row is the intermediate
-  tree, which stays.
-- **The JSON loaders' fast route has an instruction floor now** — `(ft)` floored `load_toml`'s route
-  and named what it left open: `load_json`, `load_jsonc` and `load_json5` each ask
-  `json_fast::try_load` first, and neither harness entered that route. The engine's `from_json_*`
-  rows stop at the node model the fast reader skips, and the binding channel measured only
-  `bench_to_python` and `bench_load_toml`, so a per-key allocation inside the JSON fast path would
-  have moved no committed number. `bench_load_json` now drives `load_json` end to end and
-  `load_json_medium` / `load_json_long_strings` floor it over the same bytes the engine reads
-  (`MEDIUM_JSON`, `long_string_json()`) at 57,286,388 and 95,502,189 counted instructions from the
-  enforcing image - 0.74x and 0.86x what `from_json_medium` and `from_json_long_strings` pay, the
-  opposite direction to TOML's 1.20x because this route replaces the tree and the YAML text rather
-  than adding to them. `load_jsonc` and `load_json5` share the row by design: for bytes the fast
-  reader accepts all three call exactly the same code, and what differs is the fallback the engine
-  already prices. The premise is per-document rather than per-process, because `try_load` bails on
-  the whole document at any non-canonical spelling, so the harness asks `json_route_is_fast` of the
-  fixture's own bytes before the counted loop and exits 4 instead of pricing the fallback under
-  this name; forcing that guard to `false` made `load_json_medium` exit 4 while
-  `load_toml_medium` stayed green. Growing the scenario set moves its siblings, so the refresh ran
-  on this head: `to_python_anchors` read +0.1343% and `load_toml_long_strings` -0.2175%, both
-  inside the 0.5% line, so the run was written naming nobody.
-- **The edit layer has an instruction floor now** — `AGENTS.md` names parse, edit and AST serialize
-  as the three expensive pure-Rust computations, and the gate priced two of them: no scenario
-  entered `set_path`, `insert_path` or `delete_path`, so an edit that began doing more work moved no
-  committed number. Three scenarios join, one per verb, over the `MEDIUM_YAML` the readers already
-  use, with the tree cloned inside the measured span and `--setup-only` subtracting that clone along
-  with the parse, so what is left is the verb; `move_path` needs no row because its halves are
-  priced. Named gate-only rather than after divan's `edit_set_medium`, which replaces a whole
-  `database` section — a different edit, and a shared name would make two reports of different work
-  read as one measurement. Both premise guards were observed against a single misspelling: the
-  harness exits 3 on `missing-path`, and the test-time pin fails on the same scenario for the same
-  reason. Growing the set was priced by the refresh instead of predicted — six JSON readers moved
-  +0.73%…+1.91% on the enforcing image with no engine file in the diff, were named in
-  `accept_drift`, and left `tolerance_hint` at 0.5%. Recorded as `(gf)`.
-- **The event stream's cancellation half now costs a number, and it is a quarter of the walk** —
-  `parse_stream(..., on_event=...)` stops a producer mid-document and nothing priced the stop: the
-  JSON producer had no floor in any shape (`stream_medium` and `stream_long_strings` are YAML's path
-  over granit), so a change to the check that ends the walk, to the state dropped on the way out, or
-  to an event built for a consumer that had already refused could land with every gate green. Two
-  paired scenarios on `MEDIUM_JSON` - `stream_json_medium` and `stream_json_stop` - and the run that
-  wrote the file read 50,237,295 against 12,603,257: the stop costs **25.09 %** of the walk, which
-  is the evidence that `Break` ends the scan and not merely the delivery. That document emits 49
-  events, so the stop sits at twelve; the limit is derived from the stream's own length in setup
-  rather than written down, and both premise guards were observed against a mutation - asking for
-  the whole stream exits 3 ("so a quarter asks for 49"), and a sink that answers `Break` one event
-  late exits 3 ("the sink saw 13 events where the stop asks for 12 of 49"). Growing the set was
-  again priced by the refresh instead of predicted: the first dispatch refused over one upward move,
-  `load_json_long_strings` +0.76 %, measured from a binding binary whose digest the committed file
-  already records, so the runner moved and the code did not - named in `accept_drift`, and
-  `tolerance_hint` stayed at 0.5 %. TOML deliberately gets no stop scenario: its `Break` ends the
-  emission, not the scan, so the number would price the intermediate representation under a name
-  that promises cancellation. Recorded as `(gi)`, with `(gh)`: the harness had copied a floor into a
-  comment (`parse_medium` "321,836,091" against a committed 321,580,801), and a refresh rewrites the
-  JSON without ever touching a comment, so those citations state the relationship now and leave the
-  numbers to `.ci/ir-baseline.json`.
-- **An empty block body writes the chomping it declares and takes no body line, so two container
-  keys that differ only there stay two keys** - map equality reads `chomping`, so the reader kept
-  `? hF&a?k !tag o: |+1` beside `? hF&a?k !tag o:  |`; the writer forced `Clip` on every empty body,
-  spelled both `|`, and its own reader refused the emission as `DuplicateKey` (libFuzzer
-  `yaml_roundtrip` crash-469125e3, 48 bytes minimised). `effective_chomping` returns the declared
-  chomping for an empty value now, and the two block writers leave the header line for the caller's
-  terminator instead of opening a body line - both halves are load-bearing, and a mutation says they
-  are two claims: restoring `Clip` reddens `container_keys_differing_only_in_chomping_survive` with
-  the reader's own "duplicate key", while putting the header newline back leaves that test green and
-  reddens `empty_block_header_reaches_a_fixed_point` with `">+\n\n"` where `">+\n"` was expected,
-  because a blank line under `Keep` re-reads as `"\n"`. The empty-`Keep` seeds the old rule
-  normalised (`>+8\r#`, `ancho: |+`; crash-89d81d99, crash-b5dcc38f) settle on their first emission,
-  `k: |` is not promoted to `|+`, and a non-empty `|+` body keeps its indicator. Archived as
-  `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`. The branch sits in the two block writers,
-  so no other scalar asks the emptiness question and every non-empty body takes the old path; the
-  instruction-count gate ran on this head and no writer scenario crossed the 0.5 % line.
+  `load_json_long_strings` 1.121% across nine samples, while the engine scenarios on the same bytes
+  agree inside 0.00001%. Only one harness links CPython, and the term is the hash seed it draws per
+  process: under `PYTHONHASHSEED=0` that scenario reads 95,136,157 three times over and all seven
+  binding scenarios collapse (0.2811%, 0.2550%, 0.1249%, 0.0787% down to 0.0000-0.0004%).
+  `scripts/ir_gate.py` pins the seed beside the glibc caps - the remedy that closed the 1.44%
+  cross-host term - and the refresh on this head reports all 42 scenarios within 0.0010% of
+  themselves. The floors moved only where the seed had been doing the work:
+  `load_json_long_strings` -0.526%, five other loaders -0.166% to -0.055%, `to_python_medium`
+  +0.051%, the 35 engine scenarios 0.001% or less, nothing past the line upward. The line stays at
+  0.5% because the instrument no longer needs the room, and `tests/test_ir_gate_provenance.py` names
+  the key if it goes missing.
+- **An empty block body writes the chomping it declares, so two container keys that differ only
+  there stay two keys** — map equality reads `chomping`, so the reader kept `? hF&a?k !tag o: |+1`
+  beside `? hF&a?k !tag o: |`; the writer forced `Clip` on every empty body, spelled both `|`, and
+  its own reader refused the emission as `DuplicateKey` (libFuzzer `yaml_roundtrip` crash-469125e3,
+  48 bytes minimised). `effective_chomping` now returns the declared chomping for an empty value,
+  and the two block writers leave the header line for the caller's terminator instead of opening a
+  body line - both halves load-bearing, and a mutation says they are two claims: restoring `Clip`
+  reddens `container_keys_differing_only_in_chomping_survive` with the reader's own "duplicate key",
+  while putting the header newline back leaves that green and reddens
+  `empty_block_header_reaches_a_fixed_point` with `">+\n\n"` where `">+\n"` was expected. The
+  empty-`Keep` seeds the old rule normalised (`>+8\r#`, `ancho: |+`; crash-89d81d99, crash-b5dcc38f)
+  settle on their first emission, and the input is archived as
+  `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`.
+
+</details>
 
 ### [v0.18.3] — 2026-10-22
 

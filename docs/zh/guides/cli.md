@@ -52,6 +52,21 @@ pyrs-yaml --version
 
 文件参数为 `-` 或省略时从 **stdin** 读取；除非指定 `-o/--output` 或 `-i/--inplace`，结果一律输出到 **stdout**。流式输入通过 [`-A/--all-docs`](#multi-doc) 处理。
 
+每个读取 YAML 的子命令都接受 `--duplicate-keys` — `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`move`、`validate`、`to-json`、`to-toml`、`to-jsonc` 与 `to-json5`。它是一个映射里持有两个被 YAML 算作一个的键时，读取器给出的答复：`as_is`（默认）、`error`、`last_wins` 或 `first_wins`。四种之外的取值会在 stderr 上被拒绝并点名这四个，退出码为 `1`；在 `as_is` 或 `error` 下拒绝读取重复键的是 `YamlDuplicateKeyError`。
+
+```bash
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys last_wins    # 后出现的一对胜出
+2
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys first_wins   # 先出现的一对胜出
+1
+
+$ pyrs-yaml get twins.yaml '$.a' --duplicate-keys newest       # 不属于这四种
+error: unknown duplicate_keys "newest"; expected as_is, error, last_wins or first_wins
+```
+
+那里的 `twins.yaml` 持有普通重复键 `a: 1` / `a: 2`，在 `as_is` 或 `error` 下读取它就是上面点名的那个拒绝。`last_wins` 即库里的 `allow_duplicate_keys=True` 的含义；`as_is` 按身份类别各自答什么，见 [重复键](../features.md)。
+
 ### 格式化（`fmt`） { #cmd-fmt }
 
 `fmt` 通过往返 AST 重新序列化文档——注释、锚点、键顺序与样式全部保留：
@@ -108,6 +123,26 @@ pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # 移动子树
 ```
 
 编辑会保留周边元数据——被编辑节点上方或行内的注释原样不动。
+
+「每条路径恰好命中一个节点」命中的是一个*键值对*，而一个文档可以持有拼写同一个键的两个对 — 只能靠读取器保留的标签或锚点把它们区分开。`delete` 就是询问该怎么处理它们的命令：`--on-duplicate` 接受 `one`（默认，路径解析到的那一对）、`all`（该键可能应答的每一对，因此这个名字也从输出里一并消失）或 `error`（还剩多于一对时拒绝）。
+
+```bash
+$ cat dup.yaml
+a: 1
+!!str a: 2
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate all
+b: 3
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate error
+error: cannot delete '$.a': edit failed: duplicate-key-target
+
+$ pyrs-yaml delete dup.yaml '$.a' --on-duplicate both
+error: cannot delete '$.a': edit failed: unknown on_duplicate "both"; expected one, all or error
+```
+
+对每个键只有一对的文档，`--on-duplicate error` 是空操作 — 只有确实还剩重复时拒绝才会发生。`set`、`rename`、`sort-keys` 与 `move` 保持 `one` 的行为，也不接受这个标志。
 
 注意：
 

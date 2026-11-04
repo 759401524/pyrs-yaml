@@ -59,6 +59,20 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
+## 行区切りの JSON
+
+`load_json_lines` は NDJSON / `.jsonl` — 1 行に 1 つの完全なドキュメント — を読み、`JsonLines` イテレータを返します。行はイテレータに尋ねたときだけ解決されるので、大きなシャードではストリーム全体ではなく 1 件のレコードだけがメモリに残ります:
+
+```python title="load_json_lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))  # [{'a': 1}, {'b': 2}]
+```
+
+各値は `load_json` がその行に対して返すものそのままです。フォーマットが定義していない行 — 空行、注釈だけの行、次の行を必要とする値 — は `YamlParseError` を投げ、入力全体に対するその行の位置を名乗り、カーソルは動きません。つまり拒否されたレコードは再び報告されます。`load_json` 自体はストリームではなく 1 ドキュメントを取ります — 2 行目は末尾の余分な文字です。正確な拒否の内容は [行区切りの JSON](guides/formats.md#json-lines) を参照してください。
+
 ## 非同期 I/O
 
 `asyncio` を使用した非ブロッキングシリアライズとパース：
@@ -124,10 +138,13 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # ブロックマッピングのレベルごとのインデント
     indent_sequence=2,  # ブロックシーケンスのレベルごとのインデント
     indent_offset=0,  # ドキュメント全体の基本オフセット
+    note_placement="note_first",  # "note_first"（既定）または "header_first"
 )
 ```
 
 `indent_mapping` / `indent_sequence` / `indent_offset` を省略すると、それぞれ `indent_size` / `indent_size` / `0` になるため、`indent_size=4` でもすべてのレベルが 4 つインデントされます。
+
+`note_placement` は、注釈が自分の行に乗れず、その直上に `&a` / `!tag` ヘッダー行があるときの位置を決めます: `note_first`（既定）はヘッダーの上に書きます — 読み戻したときもそこへまとまるので、最初の出力がすでに不動点です。`header_first` はヘッダーを上に保ち、その形では不動点になりません。それ以外の値は `YamlSerializeError` をスローします。手順の説明は [シリアライゼーション](guides/serialization.md) を参照してください。
 
 ## カスタムタグハンドラ
 

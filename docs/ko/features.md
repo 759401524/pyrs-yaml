@@ -59,6 +59,20 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
+## 행 구분 JSON
+
+`load_json_lines`는 NDJSON / `.jsonl`을 읽습니다 — 줄마다 완전한 문서 하나 — 그리고 요청한 줄만 해석하는 `JsonLines` 반복자를 돌려줍니다. 큰 샤드에서도 한 번에 살아 있는 기록은 하나이고, 스트림 전체를 올려 두지 않습니다:
+
+```python title="load_json_lines"
+import pyrs_yaml
+
+records = pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n')
+next(records)  # {'a': 1}
+list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))  # [{'a': 1}, {'b': 2}]
+```
+
+각 값은 그 줄에 대해 `load_json`이 돌려주는 것과 같습니다. 형식이 정의하지 않는 줄 — 빈 줄, 주석만 있는 줄, 다음 줄이 따라와야 완성되는 값 — 은 전체 입력 속 자기 위치를 밝히는 `YamlParseError`를 발생시키고 커서는 움직이지 않으므로, 거부된 기록이 다시 보고됩니다. `load_json` 자체는 스트림이 아니라 문서 하나를 받습니다: 두 번째 줄은 뒤에 남는 문자입니다. 정확한 거부는 [행 구분 JSON](guides/formats.md#json-lines)을 참고하세요.
+
 ## 비동기 I/O
 
 `asyncio`를 통한 논블로킹 직렬화 및 파싱:
@@ -111,7 +125,7 @@ doc.get("key")  # "second"
 
 이 스위치는 `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, `YAML(allow_duplicate_keys=True)`에 적용됩니다. 순환 모드에서 중복 키가 허용된 문서는 마지막 키-값 쌍을 출력하여 직렬화됩니다.
 
-이 선택을 이름으로 밝히는 것이 `duplicate_keys`입니다. `"as_is"`(기본값, 위 등급별 답), `"error"`(기본이 접는 null 키와 병합 키까지 모두 거부), `"last_wins"`(`allow_duplicate_keys=True`의 뜻), `"first_wins"`(앞선 쌍의 값을 지키고 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮김) 중 하나를 고릅니다. 두 표기는 겹치는 층이 아니라 나란한 대체이므로 함께 넘기면 거부됩니다.YAML을 읽는 모든 CLI 하위 명령도 같은 선택을 받습니다(`--duplicate-keys`).
+이 선택을 이름으로 밝히는 것이 `duplicate_keys`입니다. `"as_is"`(기본값, 위 등급별 답), `"error"`(기본이 접는 null 키와 병합 키까지 모두 거부), `"last_wins"`(`allow_duplicate_keys=True`의 뜻), `"first_wins"`(앞선 쌍의 값을 지키고 접히는 쪽의 주석과 앵커 정의는 남는 열쇠로 옮김) 중 하나를 고릅니다. 두 표기는 겹치는 층이 아니라 나란한 대체이므로 함께 넘기면 거부됩니다. YAML을 읽는 모든 CLI 하위 명령도 같은 선택을 받습니다(`--duplicate-keys`).
 
 ## 직렬화 옵션
 
@@ -124,10 +138,13 @@ yaml_str = doc.to_yaml_with_options(
     indent_mapping=4,  # 블록 매핑 레벨별 들여쓰기
     indent_sequence=2,  # 블록 시퀀스 레벨별 들여쓰기
     indent_offset=0,  # 전체 문서의 기본 오프셋
+    note_placement="note_first",  # "note_first"(기본값) 또는 "header_first"
 )
 ```
 
 `indent_mapping` / `indent_sequence` / `indent_offset`를 생략하면 각각 `indent_size` / `indent_size` / `0`이 되므로 `indent_size=4`도 모든 레벨을 4만큼 들여씁니다.
+
+`note_placement`는 주석이 자기 줄에 실리지 못하고 바로 위가 `&a` / `!tag` 헤더 줄일 때 그 주석의 자리를 정합니다: `note_first`(기본값)는 주석을 그 헤더 위에 씁니다 — 읽기도 거기 두므로 첫 출력 자체가 고정점입니다; `header_first`는 헤더를 위에 남기고 그 형태에서는 고정점이 아닙니다. 다른 값은 `YamlSerializeError`를 발생시킵니다. 자세한 풀이는 [직렬화](guides/serialization.md)를 참고하세요.
 
 ## 커스텀 태그 핸들러
 

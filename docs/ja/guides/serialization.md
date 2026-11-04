@@ -34,6 +34,15 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
+注釈が自分の行に乗れず、その直上が `&a` / `!tag` ヘッダー行になるときに位置を決めるのが `note_placement` です:
+
+```python title="note_placement"
+yaml_str = doc.to_yaml_with_options(note_placement="note_first")  # 既定: ヘッダーの上に
+yaml_str = doc.to_yaml_with_options(note_placement="header_first")  # ヘッダーの隙間に
+```
+
+`note_first` が既定なのは、読み戻しがもともとそこに注釈をまとめる位置だからです — つまり最初の出力が不動点になります。`header_first` はこのフラグが生まれる前に書き手が選んでいた位置で、その形では不動点になりません — 読み戻すと注釈が持ち上がります。それ以外の値は `YamlSerializeError` で拒否されます — 既定として黙って扱われることはありません。
+
 #### PyYAML 互換シリアライゼーション
 
 ```python title="PyYAML 互換シリアライゼーション"
