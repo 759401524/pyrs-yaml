@@ -27,6 +27,14 @@ status: new
   布するものは `jsonschema` をインストールせず、テキストとして渡したスキーマはまず `json.loads` で読
   まれるため、YAML つづりのスキーマは `json.decoder.JSONDecodeError` を投げます。
 
+#### 変更
+
+- **ドキュメントのツールチェーンを範囲が許す最新 `zensical` へ** — `zensical` 0.0.72 → 0.0.74、とも
+  に `zensical-ui` 0.0.41 が届き、`zensical>=0.0.69` の制約は変わらない。緑の `Docs` 実行はページに
+  関する証拠にならない: ロックされた 0.0.56 は front matter が写像でないページを公開し、0.0.69 はビ
+  ルドを失敗させるため、この bump は `scripts/check_doc_metadata.py`（165 ページのメタデータを生成器
+  が読める）と四 locale の strict ビルドで判定する。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
