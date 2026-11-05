@@ -21,24 +21,18 @@ status: new
 
 - **三条关于穿过别名编辑的说法是假的，而消息打印的那套原因词汇表现已列出** — 那些页面写道穿过别名的
   一次写入会抛 `cannot-edit-alias`，又写道 `set()` 在一次写入会让还活着的定义失去引用时回
-  `anchor-is-referenced`。在发布的构建上实测：`base: &x 1\nuse: *x` 上的 `set("$.use", 2)` 成功并留
-  下 `base: &x 1\nuse: 2`；`delete("$.use")` 留下 `base: &x 1`；`rename("$.use", "used")` 留下
-  `used: *x`；而同一对上的 `set("$.base", 2)` 留下 `base: &x 2\nuse: *x` — 没有任何 `set` 路由能到达
-  那个令牌，它住在 delete、rename、move 与元数据这几条路径上。别名的*父节点*仍然被拒绝
-  （`set("$.prod.timeout", 99)` → `edit failed: cannot-edit-alias`），别名节点上的那十二个元数据动词
-  也一样。`api/exceptions.md` 得到一张编辑原因令牌表，列出十五个可达令牌、应答每个令牌的那次调用与完
-  整的实测消息 — `edit failed: cannot-descend-into-scalar:b`、`duplicate-key-target`、
-  `unknown on_duplicate "both"; expected one, all or error` — 并说明哪些已声明的变体没有构造点
+  `anchor-is-referenced`；在发布的构建上实测，`set`、`delete` 与 `rename` 都会改写 `use: *x`，且没有
+  任何 `set` 路由能到达那个令牌 — 它住在 delete、rename、move 与元数据这几条路径上。别名的*父节点*仍
+  然被拒绝，别名节点上的那十二个元数据动词也一样。`api/exceptions.md` 得到一张编辑原因令牌表，列出十
+  五个可达令牌、应答每个令牌的那次调用与完整的实测消息，并说明哪些已声明的变体没有构造点
   （`wildcard-or-deep-scan`、`invalid-index`、`invalid-path`）。`validate()` 的委托现在写在使用者会
-  碰到它的位置：本项目发布的任何东西都不安装 `jsonschema`（基础依赖是 `typing-extensions`，extras 是
-  `cli`/`pydantic`/`settings`），所以全新安装回一个裸的 `ModuleNotFoundError`，而作为文本传入的
-  schema 先由 `json.loads` 读取，因此 YAML 拼法的 schema 抛 `json.decoder.JSONDecodeError`；两条都登
-  记在 .ci/known-residuals.json 里，名为
+  碰到它的位置：本项目发布的任何东西都不安装 `jsonschema`，所以全新安装回一个裸的
+  `ModuleNotFoundError`，而作为文本传入的 schema 先由 `json.loads` 读取，因此 YAML 拼法的 schema 抛
+  `json.decoder.JSONDecodeError` — 两条登记为
   `api:validate-evaluator-is-not-installed-by-anything-we-ship` 与
-  `api:validate-schema-text-is-json-only`，而这里都不修。墙钟表也在 2026-11-04 按本版本的构建重测过
-  一次，因此每一格、正文区间与出处日期都出自同一份快照；日文的两页还删掉了一个英文版从未有过、且与现
-  行消息格式相矛盾的错误消息示例块，并把只写 `dict` 的 `validate()` 签名补成 `str | dict`。英文版与
-  它的 zh/ja/ko 镜像。
+  `api:validate-schema-text-is-json-only`，这里都不修。墙钟表也在 2026-11-04 按本版本的构建重测过一
+  次，因此每一格、正文区间与出处日期都出自同一份快照；日文的两页还删掉了一个英文版从未有过的私有错误
+  消息块，并把只写 `dict` 的 `validate()` 签名补成 `str | dict`。
 
 ### [v0.19.0] — 2026-11-04
 
@@ -52,576 +46,503 @@ status: new
   对，`0set: 1` 与 `!base 0set: 2` 相邻两对都保留、只有 `to_dict()` 拒绝，`'a': 1` 与 `a: 2` 相邻抛
   错。`as_is`（默认）*就是*这些按键的身份各自给出的答案；`error` 连默认豁免的空键与合并键一并拒绝，
   `last_wins` 正是 `allow_duplicate_keys=True` 一直以来的含义，而 `first_wins` 保留先出现的那一对，
-  并把被折叠那对的注释与锚点定义移到幸存者身上。同时传入两种写法会被拒绝（`pass one`），无法识别的取
-  值会说出它想要的四个值，两条 YAML 读路径答案一致。每个读取入口和十二个 CLI 子命令都以
-  `--duplicate-keys` 收它。在本树上的刷新抬升九条地板——`parse_medium` 322,863,958 → 325,633,529
-  （+0.86%）、`to_python_medium` 与 `parse_block` +0.73%、`parse_anchors` +0.68%、`parse_small`
-  +0.67%、`parse_inline_merge` +0.65%、`to_python_small` +0.64%、`to_python_anchors` +0.59%、
-  `parse_notes` +0.53%——其余四十六条仍在 ±0.07% 以内；fuzz 目标按默认策略解析，所以三个具名替代值还
-  没进 fuzz 层。
-- **调用点命名这份歧义：`note_placement=` 与 `on_duplicate=`** — 一对键值的行尾注释槽位已被占掉、而
-  它正上方又是一行 `&a` / `!tag` 头时，写器把注释停在头的间隙里，读者却把它归在头的上方——libFuzzer
-  `edit_yaml` 的 crash-547a9705。`to_yaml_with_options(note_placement=...)`：`note_first`（默认）写
-  在读取归档的位置，因此第一次发射就是不动点；`header_first` 保留从前的落点，并被写明不收敛；无法识
-  别的取值本身是命名拒绝。两条键也能拼出同一个名字，只靠读者保留的 tag 或锚点区分，所以取走一条之
-  后，另一条在重读时仍会应答这个名字——crash-46d35d71，以 `a deleted key is still in the document` 报
-  出。`delete(path, on_duplicate=...)`：`one`（默认，也是每个既有调用方所见）、`all`（凡该键可能应答
-  的每一对都去掉）、`error`（只要还剩多条就以 `duplicate-key-target` 拒绝，且树不动）。引擎入口
-  `delete_path_with_policy` 每次删除产出一个变更单元，并重跑锚点守卫，因此仍被别名指称的定义会被拒绝
-  而不是发出去悬空；`delete_path`、`del doc[key]` 与 `Node.delete()` 保持 `one`；该轮那条 `b7e16929`
-  （锚点发在它的别名之前）作为它本来的锚点次序问题继续敞开。
-- **模糊测试语料做了内务：老产物归档、采样器发现登记、种子按目标计数** — 三条既无种子也无记录的产物
-  ——`yaml_roundtrip` 的 crash-3528db38（2026-10-07）、crash-d461a3f2（2026-10-16）与 `parse_json` 的
-  crash-331b36ec（2026-10-17）——回放干净，并以 `former-crash-*.seed` 加入 `fuzz/seeds/`；这里不声称
-  任何修复，归档才是能被证明的那部分。2026-10-31 定时跑的六个 `toml_roundtrip` 与 `edit_yaml` 产物
-  ——crash-969291e0、crash-b750553e、crash-fe4a2b80、crash-445ddfff、crash-450cac9b、crash-dce5f5ed——
-  拼出同一个形状，正是本次发布的 TOML 注释修复所了结的那一种：一个自身是容器的数组元素上方的一行
-  `#`；六条全部回放干净并归档。每周采样器终于有了消费者：在 2026-10-03 到 2026-10-31 五次定时跑失
-  败、带回没人读过的崩溃输入之后，`scripts/fuzz_file_issues.py` 为每个目标开一条 issue，附上 run 链
-  接、签名计数与输入名，以标题精确匹配去重追加，带上 `issues: write`，在 `pull_request` 上跳过，没留
-  下字节时退出 2 而不是报告「没有发现」。`fuzz_seed_inventory()` 按 `fuzz.yml` 复制它的方式来清点每
-  个 `fuzz/seeds/<target>/`，公开 `fuzz_seed_counts`，并拒绝 `fuzz-corpus-unseeded`——PR 档以
-  `-runs=0` 重放已提交的种子，不做任何探索——以及 `fuzz-corpus-orphan`。
-- **注释预言机跨格式加宽，本轮的注释形状都有了钉子** — 删掉一整摞 TOML 注释，不动点回放仍然绿——这条
-  存活断言如今对着语料设防：一条 TOML 注释存活测试把带注释的 `toml_roundtrip`/`parse_toml` 种子记上
-  账（2026-11-02 实测），`note_survival.rs` 的 YAML 遍历补上 `edit_yaml` 的文档半段。
-  `corpus_notes.rs` 把这条规则带到两个支持注释的 JSON 方言、覆盖已提交的语料：树里的每条注释都必须出
-  现在发射出的文本中，而从 `to_jsonc_text` 或 `to_json5_text` 删掉根注释调用，就会在新的
-  `shape-root-line-note.seed` 上把它打红。`prop_yaml_writer_carries_every_note` 对生成的树问同样的问
-  题——摄取阶段丢掉的注释从未到达 AST，而 `Alias` 不在生成器范围内。本轮最后几条发现已结：
-  crash-1bbd4d7f 只缺一个会被打破的名字——它第一轮就已上提，它的五种形状也都钉住了；一行只有标签的写
-  法（`bg: !`）把键注释写在上一行内部一个过期的起点上，产出的文本它自己的读者拒绝
-  （`simple key expected ':'`），于是两条键分支现在都重新记录起点；crash-2c76568e 逐字节钉住并归档。
-  按 `rustc 1.97.1` 计价，没有 YAML 写器场景越过 0.5 % 线（`serialize_anchors` −0.24 %、
-  `serialize_medium` −0.22 %、`serialize_note_flow` −0.06 %），而本机把地板读出高 1.65–2.99 % 的那两
-  个 TOML 读器场景，在父树上读数相同。
-- **Python 生成层画出它的叶子从前叫不出名字的家族** — `arbitrary_json` 把 dump 属性测试的叶子限制在
-  `None`、`bool`、有界 `int`、有限 `float` 和 `str`：25,000 次抽样里没有一片别的类型，所以这一层宣称
-  的只是「在 JSON 这个子集上不 panic」。`hard_leaf` 加上无界整数、非有限浮点、元组、`bytes`、
-  `date`、`time`、`datetime`、`Decimal`，以及四种没有 YAML 拼法的类型。`test_dump_never_raises` 只接
-  受文本或 `pyrs_yaml.YamlTypeError`，别的一概不收；家族表钉住各个结果：越界整数读回 `str`，元组读回
-  `list`，`bytes` 读回 `bytes`，时间类型与 `Decimal` 读回自身，`set`、`frozenset`、`complex` 或未注
-  册的类得到那个类型化拒绝。除 `safe_dump(-(2**64))` 之外，每个到达文本的行都重写出同一串字节：它的
-  裸数字被读回成字符串、再写时加了引号，而同一个守卫作用在 `2**63` 上却复述自己的文本——一处引号守卫
-  上的正负号不对称，记进 `NON_SETTLING`，作为缺陷挂着。一条可达性守卫会点名任何在 400 次抽样里没到达
-  的家族（稀少的宽整数与非有限分支各占一条专门抽样），所以这一层不可能悄悄重新变窄；一个
-  `_register_builtins()` 守卫让这些答案不受导入顺序影响；精确相等的策略仍保持 JSON 形状；引擎代码一
-  行未动。
-- **JSON Schema 面得到一个属性层，它的两条契约被登记** — `tests/test_property_json_schema.py` 抽出元
-  合法的 draft2020-12 schema，对着带 YAML 类型键的文档校验，判定与消息都与 `jsonschema` 比对，而一个
-  `check_schema` 见证证明重复调用确实命中了校验器缓存。抽键的拼法查出了那处折叠：`to_dict()` 把
-  `1: one` 与 `true: two` 折成一项，而 `to_yaml()` 与 `to_json()` 两者都写，所以 `validate()` 读的是
-  会折叠的那扇门，于是 `minProperties 2` 拒绝了 JSON 投影接受的双键文档——PyYAML 的加载器在同一处也折
-  叠（2026-10-31 实测），所以这是对手共同的形状。两条 YAML 读路径在相邻键对上给出相反答案（`parse()`
-  与 `safe_load()` 在 `1:` 与 `'1':` 相邻时、以及与 `true:` 相邻时朝相反方向分裂），作为一条待裁定的
-  问题登记进 `.ci/known-residuals.json`。委托的代价：本项目发布的任何东西都不安装求值器，所以全新安
-  装对 `Document.validate()` 只回一个裸的 `ModuleNotFoundError`，而 `str` 这道门在问求值器之前先跑
-  `json.loads`——YAML 拼法的 schema 抛 `json.decoder.JSONDecodeError`，它既不在文档写明的十个 `Yaml*`
-  类里，也不在 CLI 的 `except YamlValidateError` 分支里——实测
-  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` 正打出这段 traceback。两条都刻意留在这里不
-  修；PR #517 设计的求值器能让这两个问题一起消失。
-- **跨格式注释入口、公开调用面与 JSON 树相等** — 一次扫过 134 个测试模块的 AST 走过发现
-  `json -> jsonc` 和另外四对单向格式从未被走过。`tests/test_cross_format_note_entry.py` 就是这张表——
-  四种支持注释的入口、导出与注释槽位——每格断言注释的标记确实到达文本，或出口以一条针对目标为真的理由
-  拒绝，而且该标记按出口自己的语法必须消失，所以一条变成了数据的注释填不满一行。桥都带着已解析的字面
-  量贯通（`0xFF` 到 TOML 是 `255`），唯一会移动的一格按 `docs/dev/boundaries.md` 记下的那次换位钉
-  住，而严格的 `to_json` 在表外，因为 JSON 没有注释可写。`tests/test_api_call_surface.py` 要求随
-  wheel 发布的桩里每个公开可调用名都有一个调用点，并拒绝这类门禁悄悄变绿的四种方式；它查出
-  `get_plugin` 与 `YamlDocument.flush_source` 从未被调用，现已实测：`get_plugin("!date")` 是
-  `("!date", "<class 'datetime.date'>")`，未知或空标签答 `None`，而未经编辑的文档调用
-  `flush_source()` 仍保持它的文本。`prop_json_roundtrip_preserves_the_tree` 跨三种 JSON 方言比较值、
-  形状与顺序：在 `null` 的位置写 `0`，七条文本级属性仍绿，只有这一条变红。
-- **地板与抄写的地板加宽到注释路线与 Python 对象写器** — TOML 的注释路线有了价格（七条注释：每条
-  1,945 条指令）；从前没人读的内联表注释槽位有了一位读者。接走 #673 的 `safe_dump_*` 地板的那次派
-  发，在 `accept_drift` 为空的情况下动了 53 条里的 47 条：向上最宽 +0.385 %
-  （`from_json_long_strings`），而向下越过 0.5 % 线的只有 `from_json5_medium` -1.132 %、
-  `from_jsonc_medium` -1.130 % 与 `parse_inline_merge` -0.551 %，门禁要到 2 % 之外才告警——那是
-  harness 自身的代码尺寸。绑定层的写器由 `safe_dump_small`/`safe_dump_medium` 定价（setup 在计数环之
-  外）：`needs_quotes` 占 `safe_dump_medium` 的 5.45 %，`DirectWriter::write_key` 占 3.70 %，而一个
-  `type_registry` 也不见——正是 #672 那条空处理器快路径。抄写的地板被对账：`QUALITY_MATRIX.md` 里十一
-  条被引用的地板有九条在所有门禁全绿时已经过期，于是 `scripts/check_ir_floor_quotes.py` 拒绝过期数
-  字、不存在的场景、孤立标记和什么都不声明的页面（退出 2）；键控标记指名自己的镜像
-  （`load_toml_medium @ 20261023.334.3`）——文件里存着 144,902,515 与 142,467,241，差 1.71 %，平铺列
-  按镜像最多移动 1.68 %，九处重指的读数在 0.001 % 以内。刷新回答了「花在哪里」：`--profile` 自 #401
-  起就按自身指令数排名，但一次人手的剖析配不上已提交的地板——`documents_short_strings` 那个 -21.23 %
-  就是这样始终无人归因——所以 `profile`/`profile_top` 两个输入在执法镜像上跑它。
-- **仓库自己的声明如今要么被门禁守住，要么被钉住** — CI 那条宽范围的 clippy 因两个 Ir harness 各自的
-  `required-features` 而静默把它们丢掉了；现在一个受门禁的步骤和一条 `prek` 钩子覆盖它们。九个
-  `python_version` 上限里有五个把 wheel 实际发布的解释器挡在外面——PR #665 在 3.13 上读到 4,433 条断
-  言，在 3.14 上只剩 4,197——已抬高：`pyjson5` 到 `< '3.15'`，
-  `numpy`/`ujson`/`python-rapidjson`/`yaml-rs` 到 `< '3.16'`，`orjson`/`rtoml` 因为等不到 3.14t 的
-  wheel 而留在 3.14 之下；挂成钩子的 `scripts/check_counterparty_caps.py` 依实测的可得性双向拒绝陈
-  旧。一个共享对象写出的形状被钉住：对象路线发射两份副本（重读相等，但不是同一个对象），而往返路线保
-  留 `&x`/`*x`；环形结构抛 `YamlMaxDepthError`。pytest 档位的宽度由 `scripts/ci_matrix_plan.py` 派生
-  （12 格，ubuntu 承载全部八个解释器），由探针自己重写那句话。`rumdl fmt` 会把以井号串开头的段落或
-  code span 提升成标题，而改写之后无从察觉，所以 `scripts/check_doc_headings.py --predamage` 在格式
-  化器动手之前拒绝这个形状。账本的 `(xy)` 小节次序成了一条钩子（排错时退出 1，没有字母小节时退出
-  2）。另有四条测试（JSON 与 TOML 的读者和写器）把标量字符串扫描——aarch64 wheel 走的整条路径——与
-  SSE2 循环作比对，用的是一个 80 字节正文上十三个偏移里的每一种字节取值。
-- **行分隔 JSON 到达 Python 层：`load_json_lines`、每分片一个 sink、可选的 `mmap`** — 引擎自 #599
-  （`pyrs_json::parse_documents`）就能描述 NDJSON，但 Python 层没有任何入口读它。
-  `pyrs_yaml.load_json_lines(text)` 返回一个 `JsonLines` 迭代器，每个 `__next__` 只解析一行——规范
-  JSON 走免 AST 路线，其余交给 `document_from_line`——所以同一时刻只有一份文档存活。空行、只有注释的
-  行和需要下一行才能完成的值都会抛错并指出所在行，再次取值报告的是同一条记录而不是跳过它。实测
-  （10,000 条记录）：整条流 3.861 ms，首条记录 0.343 ms，逐行 `load_json` 8.440 ms。Rust 的
-  `parse_documents*` 把每个事件与每个错误的位置都对着整个输入，一种方言（JSONC 或 JSON5）应用到每一
-  行；可选的 `parallel` 特性给每个分片自己的 sink 和线程，按全局 `offset` 归并：200,000 行经单个
-  sink 要 112.3 ms，24 个分片是 18.9 ms（5.96x）——共享一个 sink 无法并行（142.1 ms），136 字节的事件
-  让缓冲的代价约为输入的 19x。`parse_file` 得到一条可选的 `mmap` 路径，对一个常规非空文件从内存映射
-  解析，而不是做一份 `read_to_string` 拷贝，从而省掉一次整文件分配；默认关闭（`default = ["numpy"]`
-  不变），空文件、目录与非 UTF-8 输入保持原有报错。
-- **流在消费者说停的地方停下，指认自己的源字节，写出器也开始接住 tuple** —
-  `parse_stream(..., on_event=...)` 此前要在第一次回调之前收齐全部事件，所以返回 `False` 仍然付出整
-  次扫描的代价。`pyrs_event::EventSink` 现在返回 `ControlFlow`；JSON/TOML 流边产出边送达——回调在
-  `Python::attach` 下，生产者在 `py.detach` 下。`False` 能停下什么，是格式自身的事实：JSON/JSON5 在
-  下一个事件的字节之前停住，停止点之后的错误永不被读到；TOML 从它已构建的 IR 停止发射，所以一份被拒
-  绝的文档仍会先抛出；YAML 的适配器在无法中止的解析之后只停止送达——`load_stream` 仍是 YAML 的增量表
-  面。回调抛出的异常优先于它身后的解析错误，`False` 返回 `None`。每个 `StreamEvent` 都带上
-  `offset`/`end`——那是词法记号的范围而非子树的，生产器只记录位置而不记范围时 `end == offset`——事件字
-  典也多出这两个键。写出器接住读入器交回的那个 tuple：`? [a, b]` 投影成 `("a", "b")`，而两条写器此前
-  都以 `Unsupported Python type` 拒绝 tuple，于是 `safe_dump(safe_load(text))` 在一份已被接受的输入
-  上抛错。现在 tuple 在两条路线都按序列写出，被当作键的序列改用节点序列化器自己的显式键写法；只有键
-  的最外层序列会被投影，所以 `? [[1], [2]]` 仍然抛 Python 自己的 `unhashable type: 'list'`。
+  并把被折叠那对的注释与锚点定义移到幸存者身上。同时传入两种写法会被拒绝，无法识别的取值会说出它想要
+  的四个值，两条 YAML 读路径答案一致，每个读取入口和十二个 CLI 子命令都以 `--duplicate-keys` 收它。
+  在本树上的刷新抬升九条地板（`parse_medium` 322,863,958 → 325,633,529，最差 +0.86%），其余四十六条
+  仍在 ±0.07% 以内；fuzz 目标按默认策略解析，所以三个具名替代值还没进 fuzz 层。
+- **调用点命名这份歧义：`note_placement=` 与 `on_duplicate=`** — 一对键值的行尾注释槽位已被 `&a` /
+  `!tag` 标头占掉时，写器把注释停在读者归档位置之外的标头缝隙里（`edit_yaml` crash-547a9705）；
+  `note_first`（默认）按读取给出的位置写，所以第一次发射就是不动点，`header_first` 保留旧落点并注明
+  不安定。两个键也能拼出同一个名字，只靠读者留存的标记或锚点区分，于是删掉一个后重读时另一个仍应答那
+  个名字（crash-46d35d71）；`delete(path, on_duplicate=...)` 答 `one`（默认）、`all`，或 `error`
+  （`duplicate-key-target`，树不动）。引擎接缝 `delete_path_with_policy` 每次移除返回一个变更单元并
+  重跑锚点守卫，所以别名还指着的定义是被拒绝而非发出悬空；`delete_path`、`del doc[key]` 与
+  `Node.delete()` 保持 `one`，而那轮的 `b7e16929`（锚点发在其别名之前）作为它本来的锚点次序问题仍然
+  开着。
+- **fuzz 语料做了内务：旧 artifact 归档、抽样器发现开单、种子按目标计数** — 三个没有种子也没有记录的
+  artifact（`yaml_roundtrip` crash-3528db38、crash-d461a3f2、`parse_json` crash-331b36ec）回放干净，
+  以 `former-crash-*.seed` 加入 `fuzz/seeds/`；这里不声称修好了什么，被证明的是归档。2026-10-31 那轮
+  的六个 `toml_roundtrip`/`edit_yaml` artifact 拼出本版本 TOML 注释修复已经了结的同一种形状，六个回
+  放干净。在 2026-10-03…-31 五次定时运行带着没人读的输入失败之后，定时抽样器终于有了消费者：
+  `scripts/fuzz_file_issues.py` 按目标开一张 issue，带上运行链接、签名计数与输入名；
+  `fuzz_seed_inventory()` 按 `fuzz.yml` 复制的方式统计每个 `fuzz/seeds/<target>/`，发布
+  `fuzz_seed_counts`，并拒绝 `fuzz-corpus-unseeded` 与 `fuzz-corpus-orphan`。
+- **注释预言机跨格式加宽，而这一轮的注释形状被钉住** — 删掉一叠 TOML 注释曾让不动点回放保持绿色，于
+  是存活断言现在被语料管住：一条 TOML 注释存活测试向带注释的 `toml_roundtrip`/`parse_toml` 种子收费
+  （2026-11-02 实测），`note_survival.rs` 的 YAML 行走得到 `edit_yaml` 的文档那一半；
+  `corpus_notes.rs` 把该规则带到两种可写注释的 JSON 方言上，从 `to_jsonc_text` 或 `to_json5_text` 拿
+  掉根注释那一笔就在新的 `shape-root-line-note.seed` 上判红，而
+  `prop_yaml_writer_carries_every_note` 对生成的树问同样的问题。这一轮最后的发现都已了结：
+  crash-1bbd4d7f 只差一个名字，它第一轮就已提升，五种形状被钉住；一行只有标记的标签（`bg: !`）把键注
+  释写进上一行的陈旧起点，那是它自己的读者拒绝的文本，于是两个键分支现在都会重新取回
+  （crash-2c76568e，逐字节钉住并归档）。在 `rustc 1.97.1` 上定价，没有 YAML 写器场景越过 0.5 % 那条
+  线（最差 `serialize_anchors` −0.24 %）。
+- **Python 生成层画出它的叶子从来说不出的那些家族** — `arbitrary_json` 把 dump 属性的叶子限制在
+  `None`、`bool`、有界 `int`、有限 `float` 与 `str`：25,000 次抽样里没有别的类型。`hard_leaf` 加上无
+  界整数、非有限浮点、元组、`bytes`、`date`、`time`、`datetime`、`Decimal` 与四个没有 YAML 拼法的类
+  型；`test_dump_never_raises` 只接受文本或 `pyrs_yaml.YamlTypeError`，家族表钉住每种答案。每一行文
+  本都重 dump 回同样的字节，只有 `safe_dump(-(2**64))` 例外 — 一处引号守卫里的正负号不对称，登记在
+  `NON_SETTLING` 里作为未决缺陷。可达性守卫会点名任何在 400 次抽样里没出现的家族，
+  `_register_builtins()` 守卫让答案与导入顺序无关；没有引擎代码被移动。
+- **JSON Schema 表面得到一层属性测试，其中两条契约被登记** — `tests/test_property_json_schema.py` 拿
+  元合法的 draft2020-12 schema 对带 YAML 类型键的文档抽样，与 `jsonschema` 比较判定与消息，并用
+  `check_schema` 见证者证明重复调用命中校验器缓存。键拼法抽样暴露了那次折叠：`to_dict()` 把 `1: one`
+  与 `true: two` 折成一个，而 `to_yaml()` 与 `to_json()` 两对都发，于是 `validate()` 从折叠那道门读
+  数，`minProperties 2` 就拒绝 JSON 投影接受的双键文档 — PyYAML 的加载器在同一处折叠（2026-10-31 实
+  测），所以那是对手的形状。两条 YAML 读路径在相邻键对上答向相反（`1:` 挨着 `'1':`、也挨着
+  `true:`），登记在 `.ci/known-residuals.json` 里作为一个待裁定的问题。委托者的代价与 `str` 那道门的
+  `json.loads` 在这里都不修；PR #517 设计的那台求值器会让这个问题失去意义。
+- **跨格式注释入口、公开调用表面，以及 JSON 树等值** — 一次覆盖 134 个测试模块的 AST 行走发现
+  `json -> jsonc` 另外四对从未被走的单向格式对；`tests/test_cross_format_note_entry.py` 就是那张表，
+  每个单元断言注释的令牌抵达文本、或导出以一条对目标为真的理由拒绝，桥以字面量解析后交叉过去（`0xFF`
+  以 `255` 抵达 TOML），而严格的 `to_json` 不在表内，因为 JSON 没有注释可写。
+  `tests/test_api_call_surface.py` 要求已发布桩里的每个公开可调用对象都有调用点，并拒绝这类门禁悄悄
+  变绿的四种方式；它发现 `get_plugin` 与 `YamlDocument.flush_source` 从未被调用。
+  `prop_json_roundtrip_preserves_the_tree` 跨三种 JSON 方言比较值、形状与顺序：把 `null` 写成 `0`
+  时，七条文本级属性仍绿，只有这条判红。
+- **地板与地板引文向注释路由与 Python 对象写器加宽** — TOML 的注释路由被定价（七条注释：每条 1,945
+  指令），没人读的行内表注释槽位有了读者；携带 #673 的 `safe_dump_*` 地板的那次派发在 `accept_drift`
+  为空时动了 53 条里的 47 条，向下越过 0.5 % 线的只有 `from_json5_medium` −1.132 %、
+  `from_jsonc_medium` −1.130 % 与 `parse_inline_merge` −0.551 % — 那是 harness 自身的代码体积。绑定
+  层的写器由 `safe_dump_small`/`safe_dump_medium` 定价：`needs_quotes` 占 `safe_dump_medium` 的
+  5.45 %，`DirectWriter::write_key` 3.70 %，完全没有 `type_registry` — #672 的空处理器快路径。
+  `QUALITY_MATRIX.md` 里十一处被引用的地板有九处已在所有门禁全绿的情况下过期，于是
+  `scripts/check_ir_floor_quotes.py` 拒绝过期数字、未知场景、孤立标记与未声明页面（退出 2），按镜像
+  键控的标记要写出镜像名（`load_toml_medium @ 20261023.334.3`，文件里是 144,902,515 与 142,467,241，
+  差 1.71 %），而 `profile`/`profile_top` 输入在执法镜像上跑 `--profile`，因为手跑的一次无法与已提交
+  地板配对。
+- **本仓库自己的断言现在要么被门禁管住、要么被钉住** — CI 的宽域 clippy 曾因 `required-features` 静
+  默丢掉两个 Ir harness；一条被门控的步骤与一个 `prek` 钩子现在覆盖它们。九个 `python_version` 上限
+  里有五个排除了其实发布了 wheel 的解释器（PR #665 在 3.13 读到 4,433 条断言、3.14 只有 4,197），现
+  已抬高并由 `scripts/check_counterparty_caps.py` 双向拒绝过期。共享对象的写出形状被钉住：对象路由发
+  两份（重读相等，而不是一个对象），而往返保留 `&x`/`*x`；环抛 `YamlMaxDepthError`。pytest 层的宽度
+  由 `scripts/ci_matrix_plan.py` 派生（12 个单元，ubuntu 承载全部八个解释器）；`rumdl fmt` 会把段落
+  或代码跨度行首的 `#` 串提升成标题且事后无法察觉，所以 `scripts/check_doc_headings.py --predamage`
+  在格式化器之前拒绝该形状；ledger 的 `(xy)` 小节次序是一个钩子。四个测试（JSON/TOML 读写）把标量字
+  符串扫描 — aarch64 wheel 的整条路径 — 与 SSE2 循环在一个 80 字节正文的十三个偏移上逐字节比较。
+- **行分隔 JSON 抵达 Python 层：`load_json_lines`、每分片一个汇、可选 `mmap`** — 引擎自 #599 起就在
+  描述 NDJSON，但 Python 层没有东西读它；`pyrs_yaml.load_json_lines(text)` 返回一个每次 `__next__`
+  解一行的一文档在世的迭代器，空行、只有注释的行与续行都以点名该行的方式抛出。实测（10,000 条记
+  录）：整条流 3.861 ms、首条 0.343 ms、逐行 `load_json` 8.440 ms。可选的 `parallel` feature 让每个
+  分片有自己的汇与线程：200,000 行走一个汇是 112.3 ms、走 24 个是 18.9 ms（5.96x）。`parse_file` 增
+  加可选的 `mmap` 路径，省掉一次整文件分配；默认关闭，空文件、目录与非 UTF-8 输入保持它们原有的错
+  误。
+- **流在消费者说停时停下、点名它读过的源字节，而 dumper 接受元组** —
+  `parse_stream(..., on_event=...)` 曾把每个事件收集完才回调第一次，所以回 `False` 仍要付整次扫描的
+  代价；`pyrs_event::EventSink` 现在返回 `ControlFlow`。`False` 停住的是格式事实：JSON/JSON5 在下一
+  个事件的字节之前停，TOML 从它内建的 IR 停止发出、被拒的文档仍先抛，YAML 的适配器在不可中断的解析之
+  后停止交付 — `load_stream` 仍是 YAML 的增量表面。每个 `StreamEvent` 带 `offset`/`end` — 是令牌的区
+  间，不是子树的，记录位置而非范围的生产者处 `end == offset` — 事件字典也得到这两个键。dumper 接受加
+  载器交回的元组（`? [a, b]` 投影成 `("a", "b")`，可两个写器都曾拒绝元组，于是
+  `safe_dump(safe_load(text))` 在被接受的输入上抛错）；只有键的外层序列会投影，所以 `? [[1], [2]]`
+  仍抛 Python 自己的 `unhashable type: 'list'`。
 
 #### 修复
 
-- **被折叠丢掉唯一定义的别名，现在在用得到它的地方拿到一个定义** — 重复键折叠丢掉定义了 `x` 的那一
-  对，而幸存的 `&x` 骑在落在别名之后的键上，于是 `*x` 出现在所有 `&x` 之上，本库自己的读者以
-  `found unknown anchor` 拒绝了这次发射（`edit_yaml` crash-b7e16929）。修复此前只问「别处是否还有定
-  义幸存」；现在它问这个名字在本处使用之前是否已定义，并把节点写进那些够不着它的使用点
-  （`inline_dropped_uses`）。merge 过程删除承载该锚点的 `<<` 条目，自己却没有修复，把 `<<: &b` /
-  `  x: *b` 变成裸的 `x: *b`，在第 3 个字符处被拒绝；`resolve_merge_keys` 现在从该条目的键和值读出那
-  个锚点，并在整趟流程跑完之后一次性内联幸存者。`delete_path` 只向值节点询问它的锚点，于是挂在键上的
-  `&x` 从未被看到，`k8: *x` 被接受；它现在也读取键节点，而绑定层仍以 `anchor-is-referenced` 拒绝同一
-  次编辑（crash-6a9b6538, crash-718abefa）。锚点图走 135 个文档，而 2026-10-20 的读数是 102。
-- **由别名改写出来的键会就地折叠，而以引号结尾的锚点名保住自己的名字** — `repair_orphaned_anchors`
-  把被丢那一对的节点内联进每一个剩余的 `*name`，键位置也算在内，但重建用裸的 `pairs.insert` 把它插回
-  去，于是本来已有自己 null 键的映射多出了两个，两者都写作 `~:`，重读时折叠掉了一个
-  （`yaml_roundtrip` crash-49f44d18；crash-fce042d0 是改写来的那一对落在那个普通空键旁边时同一个折
-  叠）。重建现在对每一个插入的键都与已经就位的键折叠——最后一个 pair 赢，被丢那一对的注释归位到幸存者
-  ——并把该 pair 携带的锚定节点排入下一轮内联；crash-663b71ab 与 crash-cf1a63bf 重放干净。锚点名可以
-  以 `"` 结尾，因为 `is_valid_anchor_char` 对齐 granit 的规则，但 `opens_quoted_node` 允许紧贴锚点或
-  标签记号的引号开启一个被引号包裹的节点，于是重读一次发射时，它把自己行尾注释里的 `#` 当作引号内的
-  内容、把其中的 `&` 当作该节点的锚点，节点在两轮之间被改名成了 `!`（crash-abc541ff,
-  crash-c06e8a8f）；现在属性与它所引入的引号节点之间必须有一个空白。
-- **首条目的注释升到标记之上，而首项的注释留在自己的破折号之下** — 在 `?` 标记体内，只有当容器写出锚
-  点或标签头行时，写器才把首条目键上的注释提到标记之上，而 pair 写端把该行的行尾槽位让给值的行内注
-  释，于是读者记在 key mapping 上的那条注释在第二轮被上提（`yaml_roundtrip` crash-430f4f0e）。现在只
-  要值占住那个槽位，上提就取这条注释，有无头行都一样，因为在主体内部那一行无法经受一次重读。
-  `lift_first_item_notes` 会把块序列首项的前导注释栈移到外层头行之上，而对拆成独立行的项来说这高了一
-  层，因为读者把那个位置的注释记为序列自己的注释（`edit_yaml` crash-439f5d2c）；该提升现在对
-  `write_sequence_item` 的非紧凑分支把该栈留在正文里，只有紧凑拼写才上提。
-- **标记提升把注释多抬了一个头行，而改名丢掉了键携带的保真** — #726 的三条 `edit_yaml` 输入仍旧失
-  败，背后是两个缺陷。`rename_path` 用新文本重建键，丢掉了简单键携带的 `Fidelity`，所以把
-  `!base: &x 0se: *x` 里的 `&x 0se` 改名后发射出 `k7: *x`——一个指向未定义锚点的别名；键现在保住自己
-  的锚点与标签。`spine_has_notes` 只问前导注释栈，而 `hoist_marker_note` 在头行之下还会取首键的行内
-  注释，于是注释每轮都落到更高一层的头行之上；守卫现在镜像那次遍历。序列的那一份孪生只读首项自己的
-  栈，所以低一层的注释留在头行下方，到第二趟才落定；它现在也用同一方式走脊柱（`crash-094d4d6a`、
-  `crash-8492f5ee` 来自 2026-10-17 与 2026-10-24 的运行，在 #691 与 #689 之外，以及
-  `crash-701f76bf`）。那次走查只取了独占注释栈，于是带标签的容器键把自己的注释写进 `?` 体内，重读又
-  把它抬到标记之上（`crash-6cfbaa57`）；两趟走查现在问同一个问题（`first_entry_inline_note`），并挂
-  在头行上。六个写器场景都在 0.5 % 线内付出代价——`serialize_block` +0.18 %、`serialize_note_flow`
-  +0.17 %、`serialize_medium` +0.12 %、`serialize_small` +0.10 %、`serialize_anchors` +0.06 %、
-  `serialize_block_scalars` +0.03 %——而没有这道守卫的同一棵树是 +0.00 %。
-- **注释不再把一个值劈成两行：闭把键行挪动之后，键值对重新锚定自己的键行** — 映射条目会记住自己那行
-  的起点，而闭合一条待完成的纯标签行时，是把该值的 `~` 插到那个记下的偏移之前且不搬移它，于是后一个
-  键的行内注释落进刚被那次闭合拉长的那一行中间：`: !` / `<<: #b` / `<<: #b` / `3 #~` 经 `to_yaml` 写
-  成 `~: ! # b`，紧跟一个列 0 的裸 `~`，本引擎自己的读者拒绝它（`simple key expected ':'`）。
-  `note_line_above` 现在把「这个偏移指着一行」当作不变式，并把陈旧的捕获推进到下一个行首。同一次陈旧
-  捕获也挪动了键行本身，因为当值自带一条注释时键注释不能与 pair 行同行（`yaml_roundtrip`
-  crash-76e05a78，从 104 字节最小化到 25），而键值对现在会在写完自己的前导注释之后重新锚定键行。
-  crash-2c76568e 来自按计划跑的发现层，其报表在五周红灯里一直把这条主张丢掉。
-- **悬在被清空容器之上的注释仍让项留在自己的破折号行，而破折号与冒号不再为一个已经决定改走块式的子节
-  点开行** — 读取器把写在容器首个键值对之上的注释记为容器自己的前导注释，因此删掉最后一对会留下一条
-  悬在空无之上的注释，而 `write_mapping_pair` 早已这样答复：把 `{}` 内联，并把注释降级到键值对行尾；
-  `is_compact_item` 原先对任何带独立注释的值都拒绝紧凑的 `- key: value` 行，于是第一轮把破折号单独写
-  出、第二轮收回破折号行（`edit_yaml` crash-ad42b9cc）。紧凑性判定现在跟随写器的规则。高一层，成员携
-  带的注释多到花括号装不下时，标为 flow 的容器会被降级，但七处判定只信 `flow_style` 旗标，各自写下自
-  己的指示符，而降级的子节点在父节点的列上摊开块体；七处现在都问降级自己那个问题。这道额外的测试让写
-  侧一族动了 +0.18 % 到 +0.72 %（`serialize_small` 最贵），读侧没有一条超过 0.19 %，所以这两条地板都
-  是重测而不是放宽。
-- **只有节点元数据分得开的键会被拒绝** — 读取端把带标签的键按整节点比较，样式与锚点都算在内，而这两
-  样正是写入端自己挑的：同一个带标签键的明文与引号拼法都输出成 `!a "…"`，带锚点的 `Null` 输出成
-  `!a null`，于是它自己写出的文本回来被判成 `duplicate key`（crash-4bf6ee37）。两者现在按标签与值记
-  录，这正是 YAML 对标量的相等定义，合并问的也是同一个；按每个键填一张表曾把读数推过 0.50% 线。键位
-  更糟：crash-b88f1b4f 的两个映射键骑在同一个带标签的空标量上，写入端把两者一律加引号写成 `!? ""`；
-  读取端现在问写入端一个容器键拼成什么样，并在两个键读回相等时拒绝源文本；同族的 crash-469125e3 还有
-  一种拼法要学。被抬到最外层 `?` 之上的独立注释也不是键的差别（早于 #645）：`keys_collide_in_text`
-  丢掉全部独立槽，行内注释仍然区分。投影按文本作键，所以 `c: 0` 与 `!A c: "!"` 并列时发出 `c = 0` 加
-  `c = "!"`，本项目的 TOML 读方拒绝它，而 `json.loads` 把它归约成一条记录；两条写路径现在都抛
-  `YamlSerializeError`（`toml-keys-collide-without-metadata`,
-  `json-object-keys-collide-without-metadata`），`to_dict`/`safe_load` 抛出点明该文本的
-  `YamlTypeError`；`to_yaml()` 不变。
-- **重复的 JSON 键会把注释留在被它替换掉的值内部，而夹在重复键之间的带注释键保留最后一个值，不是倒数
-  第二个** — 重名键保留首个位置与末个值，所以先前那个值被整体丢弃，而救援只把被丢弃的键节点与值节点
-  上的注释交给幸存值——`notes_of` 只读它拿到的那个节点，于是被丢弃容器内部的注释随之消失，而事件流仍
-  然报告它们（`json_events_replay` crash-e294755f：报出八条注释、只留下五条）。`subtree_notes` 现在
-  按源码顺序收集一个节点及其之下的一切；Ir 门禁读到 `from_json_medium` +0.09%、`from_jsonc_medium`
-  +0.07%，而两个夹具都不含这种重复键，所以这次移动来自布局。收尾折叠是另一个原因：多个 `"a"` 键中有
-  一个带同行注释，使该键与其余键不相等，于是映射同时保留这两个条目，随后一个干净的 `"a"` 替换了第一
-  个条目的值，而折叠又把带注释条目里较旧的值覆写回去——`{"a": 1, /* n */ "a": 2, "a": 3}` 解析成
-  `{"a": 2}`。折叠终止于该名字的最后一个条目，因此 `file_duplicate` 现在把最新的值停在那里，而树走法
-  与 `from_events` 共用这个函数。
-- **JSON 折叠把元素的第二批注释安在树所安的位置，而根的行尾注释会被写出** — 元素的注释——它上方的与它
-  后方的——都落进该节点唯一的行内槽位：`array` 在 `value()` 之前取走待定列表、并在其后 flush 紧随的那
-  批，于是第二次 `set_comment` 覆盖了第一次，树只留一条注释而 `parse_stream` 报告了两条
-  （`json_events_replay` crash-0449c0ae，以及从嵌套数组内部走到同一个槽位的 crash-0466d7f6）。
-  `crates/pyrs-json/src/parser.rs` 的 `apply` 现在按树走法 `attach_pending` 的方式归档第二条同行注
-  释，把较早的那条连同其 `standalone` 标志移入前导列表；折叠路线在自己的输入上撞上同一次覆写，已归档
-  为 `former-crash-e72e24ef.seed`。根的行尾注释根本没有写器：JSONC 与 JSON5 写器发射的每一条注释都来
-  自成员循环，而根不是任何成员的孩子，于是 `{"a": 1} // after` 写回得到 `{"a": 1}`，经由 YAML 中枢以
-  同样方式丢失；四个入口现在都在顶层值之后写出它，而 `prop_jsonc_writer_carries_every_note` 及其
-  JSON5 孪生在此给跨格式层提供了一个预言机。没有被计数的场景到达 `from_events`。
-- **JSON5：只看像数值的字符串重新被加上引号，而键位拒绝说出该方言允许的写法** — 裸记号判定先剥掉一个
-  前导符号再做数值检查，随后只问剩下的主体是不是严格 JSON 数字，于是 `+-33337333333373333333733333`
-  以 `+` 叠加可接受的 `-333…` 通过，`to_json5_text` 写出了自己读取端拒绝的文本
-  （`expected integer digits in number`）；只有「`+` 后接无符号主体」才算 JSON5 拼法，所以这样的字符
-  串重新被加上引号，而 `+7` 与 `+1.5` 仍保持裸记号（libFuzzer `json_roundtrip` crash-0a929a32）。键
-  位置的消息此前写作 `expected a quoted object key`，可 JSON5 也接受裸标识符，于是这条报错要求了一个
-  方言从未要求的写法；措辞现在由方言自己的旗标决定——允许无引号键时是
-  `expected an object key (a quoted string or a bare identifier)`，不允许时仍是原来那句——而一个
-  `Parser` 服务三种方言，意味着这层共享的 helper 同时覆盖建树与事件流两条路线，严格 JSON 与 JSONC 保
-  住各自的措辞。
-- **TOML 表头注释：没人读的键行槽位，以及那两条被当成二选一的注释栈** —
-  `to_toml("sec: # note\n  x: 1\n")` 返回 `[sec]\nx = 1\n`：那条注释被丢掉了，因为章节 pass 只读映射
-  自己的行内槽，而中枢把 YAML 文档键行的注释交在键节点上——正是 #146 教写器在下一层去读的那个槽位。这
-  撤掉了此处给过的两个解释：`pyrs_toml` 自己的扫描器确实捕获了 `[sec] # note` 的注释，granit 根本不
-  在该路径上；仍未关闭的只有 `api:set-comment-container-owner` 记录的那条摆放规则。表头行的槽位同样
-  没被写 `key = value` 的那一行读到，于是 `x: 1` 上方的 `b: # note` 写成不含那条注释的
-  `b = {x = 1}`；`emit_pair` 现在退而读那个槽位。章节键与它领衔的映射各有自己的前导列表，而该 pass
-  先问章节的、空了才回退去读键的，于是自带 `# T` 的章节上方的 `# K` 只写出 `# T\n[a]\nx = 1\n`；现在
-  两条都会写出。每一对键值都要付钱：在执法镜像上 `to_toml_medium` +1.58 %、`to_toml_long_strings`
-  +1.25 %，其余 37 个场景里没有一个越过 0.32 %；两个循环的成本是 +0.46 %，而字节完全相同地经
-  `Iterator::chain` 要 +0.83 %，真带注释的那两行不动（−0.03 %, −0.02 %）。
-- **五个没人读的 TOML 成员注释槽位，以及被写了两遍的元素注释** — 只要所需的那一行不存在，`to_toml`
-  就把注释丢掉：自带注释的空表或空数组上、注释自成一行的标量上，以及两处让一行经一个 `or_else` 槽位
-  只认一个槽位的情形。新加入的 `prop_toml_writer_carries_every_note` 在 20,000 例之内把这四种形状全
-  部点名，而它们改用键上方那一行。代价是那道守卫而不是注释本身：在钉住的编译器上，对着根本不含 `#`
-  的文档，`to_toml_medium` +3.29 %、`to_toml_long_strings` +3.43 %、`to_toml_notes` +1.24 %；在执法
-  镜像上同样这三个名字是 +1.256 %、+2.081 % 与 +6.872 %；两个 TOML 读地板只动了 +0.0014 %
-  和 -0.0007 %，那是读路线从不查问的槽位。高一层，中枢把结束于成员上方那一行的注释安在容器自己的前导
-  清单上，而两个紧凑分支都忽略了它——PR #146 那个第五槽位问题高一层的样子；两个分支现在都经一个
-  `container_leading_notes` 问那份清单，正如 PR #114 为节标题所做的那样，并把容器降级，那是一种某些
-  读取端拒绝的拼法（2026-10-29）。第五个槽位会被写两遍：读取端把数组元素上方的 `#` 记在该元素所在行
-  的行尾，而元素是内联表时，那也正是 `write_notated_table` 当作表自身前导注释读取的同一个槽位，于是
-  数组把它提到上方、表又在花括号内写了一遍（crash-3e95a4cf, crash-6802dabe, crash-9c0b2acb,
-  crash-1ec1ea89, crash-20cc6b69）。
-- **点号路径和其他任何下降一样受预算约束** — `parse_inline_table` 在 `nest_inline` 里把成员键路径逐
-  段铺开，于是 `t = { a.b.… = 1 }` 每段嵌套一张表，既没进 `parse_value` 的漏斗，也没过 `register_kv`
-  的检查：crash-2a5ea394 就是这种形状、1059 段，`from_toml` 接受了它，而 1.1 读者拒绝了 `to_toml` 的
-  重新拼写（`max depth exceeded (max=1000)`）。预算现在把即将铺开的路径加进它上方已展开的每条路径
-  （`depth + inline_path_shift + key.len()`）。`DEFAULT_MAX_DEPTH` 只约束 `parse_value`，而点号键与
-  表头通过一道守卫从未计数的迭代式指针下降构建自己的表，于是一条足够长的路径造出更深的树，并以两种方
-  式失败：它的重新拼写被拒绝，或者原生栈溢出（`0xC00000FD`）——crash-7a3aac52，来自 2026-10-24 的运
-  行，在 2 MiB 线程上中止，只有在 512 MiB 上才干净。如今两条下降共用同一预算：至多 1000 段能往返并稳
-  定，1001 段及以上是带类型的 `max depth exceeded`；2026-11-01 运行的 crash-2503e079, crash-6c15f693
-  与 crash-837bd790 就是这一形状。没有这道守卫时，读侧动的是 `load_toml_medium` +0.006 % 与
-  `load_toml_long_strings` +0.046 %，而表面上高出地板的 +1.65 % / +2.98 % 在父树上同样复现，是 WSL
-  主机的基线漂移。
-- **注册的处理器拥有它声称拥有的标量，且在数组与数值协议之前被询问** — #671 留下的三种形状现在收成一
-  条规则：对一个只带 `__bool__` 的类，`safe_dump` 写成 `m:\n  !booly B\n`，而 AST 路线写成
-  `m: !booly B\n`，因为直接写器是经由 `write_other` 才走到注册表的，而它自己输出缩进；同一个类放进序
-  列项会让那一项丢掉破折号行，作为键时它抛 `YamlTypeError`。为 `numpy.ndarray` 注册处理器之后，数组
-  路线排在前面，于是它答出数组本身，而 AST 路线答出 `!nd ND`。两条写器现在在每个位置都在数组之前、协
-  议之前、自己的拼写规则之前问处理器。注册表检查原本只为浮点形状而写，所以 `python_type` 带
-  `__index__` 的 `register_type("!money", ...)` 被绕过：`safe_dump({"m": Money(500)})` 输出
-  `m: 500`，也就是协议交回的那个整数——`Decimal` 一直被尊重，整数形态的值类型却从来没有——注册表现在先
-  被询问，唯一的例外是 `int` 或 `int` 子类——`bool` 就属于它——保留读者会解析出的整数拼写。为 `str` 注
-  册的处理器仍然不动那段文本，`dict` 或 `list` 仍按调用方的容器形状写出；`type_registry::claims` 之
-  所以存在，是因为排版问题不许靠运行处理器来回答。
-- **3.15 上转储 NumPy 数组不再终结进程** — 数组路线把对象交给 `rust-numpy` 强转后再读它的内存，而
-  `cp315-abi3t` 轮子这样做并不安全：在已发布的 0.18.3 上，3.15 GIL 下 `safe_dump(numpy.arange(8))`
-  以 `Fatal Python error: Segmentation fault` 死亡（退出码 139），同一串字节在 3.15t 下回答
-  `YamlTypeError`，而 3.12、3.14 与 3.14t 都转储正确。它是确定性的、单线程的，`numpy.zeros((0,))` 同
-  样会崩，所以故障落在第一次读取数组内部数据之处。`crates/pyrs-yaml/src/py/ndarray.rs` 现在向数组本
-  身索取 `dtype`、`shape` 与 `tobytes()`，再在 Rust 里解码这块缓冲区：任何产物都不再触及 numpy 的 C
-  API，`numpy` 这个 Cargo 特性门控的因此是路由而不是依赖。另有两处缺陷随之倒下：旧路由读的是内存顺
-  序、嵌套却按逻辑形状，于是转置视图写出的是未转置的网格；而两条写器都在问数组路线之前先问了 Python
-  的数值协议，这个协议会替一个单元素数组回答、维度随之丢掉——numpy 直到 2.3 才把它变成报错——于一台机
-  器写 `1.5`，另一台写 `- 1.5`。现在带维度的数组被拒绝进入该协议，0-D 数组保留标量拼写。
-- **注释不再能折断自己落上的那一行，而块标量能拼出它携带的那个换行** — `arb_comment` 从 `[ -~]+` 里
-  抽注释文本，所以没有任何属性测试能走到单行注释载体欠下的那次压平；把 `\n` 与 `\r` 也纳入抽样，一次
-  让四条属性变红，因为 YAML 与 TOML 写器把折行之后的文本写进了文档——TOML 拒绝自己的输出
-  （`bare carriage return (must be part of a CRLF pair)`），而数组一项的注释 `"<\n&"` 回来时只剩一个
-  裸 `&`。两个写器现在都在单个 `push_note_text` 里把折行压成空格；那个免分配的 `Cow` 形状仍让
-  `serialize_note_flow` 贵了 +8.80%，所以出货的这份拼法由它移动的地板定价：62,066,033 → 64,411,980
-  （+3.78%）。块标量那一半：生成器抽的是不含换行的可打印 ASCII——而对 `Literal`/`Folded` 来说换行正是
-  这种风格的全部意义；抽 `[ -~\n\t]+` 让 `needs_double_quoted` 变红，因为边缘检查挡住了空格与制表符
-  却没挡换行，而非字符串捷径先于扫描执行，于是解析为 null 的 `"\n"` 被裸写出去，读回来成了 `~`。最后
-  那一类属于属性层本身：`|-` 按设计就该丢掉结尾的换行，所以属性层现在照读取端的方式解析这条声明再比
-  较；把简单键也解析掉，`"'\n"` 就塌到了旁边那个普通 `'` 上。
-- **单行文档的事件流重回线性时间** — `LineTable::line_col` 过去为每个事件都从所在行首数一遍字符，于
-  是源里没有换行的生产者每报一个事件就付出 O(n)，整条流退化为二次方：一个 1.5 MB 的压缩 JSON 数组报
-  告其 224,006 个事件要花 4.9 s，输入每翻一倍耗时变为四倍。现在表在上次应答的位置保留游标，只走过相
-  邻两个事件之间的字节；落在游标之后的位置仍从所在行首重新计数；同一文档以 19 ms 完成流式处理，而逐
-  记录换行的孪生版本是 18 ms。JSON 与 TOML 共用这张表；YAML 自行计算位置，从未有过这项开销。
-- **六道门禁曾能在什么都没量到时答「守住」，十条断言能在一条都没执行时报告绿灯** — `(fz)` 那一类如今
-  一次扫清：`check_changelog_coupling.py` 在路径表为空时以 0 退出，`check_doc_headings.py` 数的是交
-  给它的路径而不是真正打开的文件，`check_line_endings.py` 从不检查 `git ls-files` 的退出码，
-  `check_doc_signatures.py` 与 `check_i18n.py` 在空的通配结果上照样打印 OK，而
-  `ir_gate.py --only a,b`——`--only` 是追加，所以那是一个谁也匹配不上的名字——一个场景都没比，却报告地
-  板守住了。六处现在一律以 2 退出，每处都由测试逼住，而原本连一条自测都没有的 `check_i18n.py` 新增了
-  `tests/test_i18n_gate.py`。同一个形状也躺在测试套件里：只有写在 `for` 体内的 `assert` 的测试在空的
-  可迭代对象上照样通过，而 `all(x for x in [])` 就是 `True`：AST 扫描点出 41 个候选，其中十处的可迭
-  代对象来自测试之外，现在各自带上一条写明实测数字的地板，其余 32 个是字面量可迭代对象、已由别的测试
-  钉住的常量，以及空表本身就是要断言的那两条——记为 `(ge)`，因为这次扫描是一次性脚本，还没有任何东西
-  拦住下一条空循环测试。
-- **一条报告 skip 而不报告度量的守卫，以及排行榜里点了竞品却从未计时的一行** — `load_stream_file` 的
-  内存上界用 `pytest.importorskip` 索要 `psutil`，而没有任何依赖清单声明这个包，于是每一条腿都报一个
-  看着像覆盖、实际一点没有的 skip。它被换成基于标准库 `tracemalloc` 的标度不变量：同一路线读完 2,000
-  行与 200,000 行文档必须留下相同的被追踪内存——两种尺寸在 3.12 下都是 3,168 字节，在 3.14t 下是
-  3,200——对照增长 199,854,440 字节的缓冲式走法，所以累积型读取器过不了那道设在该增长量百分之一上的
-  界。同一个盲点也坐在排行榜里：`tests/test_benchmark_crosslib.py` 把读不进夹具的竞品退成 skip，而
-  `yaml_edit` 那条分支把拒绝说成 "newer yaml_edit releases"，可对着钉住的 0.1.3 实测，三个夹具全部抛
-  `Document::from_str: Input contains stream-level comments`，于是那一行是三个 skip 摆在已安装的包旁
-  边。用有范围的 `uv lock --upgrade-package` 取的 0.2.0 能解析三个夹具里的两个，所以这一行现在计时它
-  们，而 `test_yaml_edit_row_measures_something` 为它设下地板：已安装必须意味着至少读进一个夹具。
-- **钩子集是红的而裁定报绿，以及读得太少的漏洞声明门禁** — `Test matrix (all legs)` 由 `ci.yml` 的作
-  业算出，而 `toJSON(needs)` 带不动另一个 workflow 里的作业，所以住在 `hygiene.yml` 的
-  `prek hook set on the full tree` 从来不在它读取的名字里：PR #632 首个 head 上，那条 check-run 报了
-  `failure`——`check_changelog_coupling.py` 拒绝了一个没有发布说明的 changeset——而同一 sha 上的必需名
-  报的是 `success`。该作业现在就在 `ci.yml` 里跑，而 `quality_matrix.py` 从裁定等待的那个作业读跳过
-  清单。`scripts/check_hole_claims.py` 原先只读 `AGENTS.md` 与 `CLAUDE.md`，所以一条过期断言得以在八
-  处存活、跟着 #613 与 #614 一路全绿；现在的范围按现在时划定——两份指令文件，加上每份镜像的
-  `[Unreleased]` 区块，切分交给 `check_changelog_mirrors.py` 新增的 `unreleased_lines`，某份镜像切不
-  出任何此类行时它以 2 退出。随后这道门禁在还没读到文件之前就在那条 `3.15t` 腿上失败，报的是
-  `_VERSION_HEADING_RE` 的 `NameError`，而它定义在用法上方 95 行处：清空 `scripts/__pycache__` 后冷
-  启动 20 次里 20 次全红、热启动全绿，所以触发点是模块的首次编译——补救是在调用之前先把模块绑到一个局
-  部变量上。
-- **三条编辑地板定价了一次出货调用方不跑的扫描，而刷新作业丢掉第一个之后的场景名** — 三个 `edit_*`
-  场景把 `line_offsets: None` 交给编辑层，而该层对 `None` 的答复是重建文档的行表，即
-  `scan_yaml(text).line_offsets`：一整趟扫描，顺带决定 `has_hash`、`has_amp` 与 `is_ascii`；在基线自
-  带的 `rustc 1.97.1` 上，这趟扫描在三个循环里各花 10,104,000 条计数指令，而绑定层把这张表按文档
-  memoize（`Splice::line_offsets`）。量具现在在解析旁边把表建好、把 `Some(&offsets)` 交给三个动词，
-  并让 `--setup-only` 把它减掉，执法镜像上的刷新 run 81 读出 −24.45%（`edit_set_nested` 48,288,771 →
-  36,483,718）、−27.48%（`edit_insert_sequence` 42,462,454 → 30,793,506）与 −27.86%
-  （`edit_delete_key` 42,392,088 → 30,583,030），比扫描自己 20.9% 的份额多出的那部分是 `Vec` 的分配
-  与释放流量。移动这些地板的那个作业会丢掉名字：`profile` 与 `accept_drift` 用 `read -ra <<< "$VAR"`
-  切分输入，而 `read` 只吃一行，于是刷新 run 40221999337 收到把两个名字写在两行的 `profile` 输入，却
-  只记录 "attributing 1 scenario(s)"；现在两步都先把分隔符压平再切分。
-- **模糊测试报表不再把发现丢掉，它的计数与归档器也能抵达队列** — 归档同时含有 `artifacts/` 与
-  `collected/` 两个根目录；run 41541555317 的下载把这两个根目录直接解到 `--crashes`，于是把路径第一
-  段当作 target 便凭空造出名为 `artifacts` 与 `collected` 的两个 target：一个 `yaml_roundtrip` 归档
-  的三个输入被开成 issue #739 与 #740，而摘要把每个输入数了两遍。target 现在取任一根本身之后的那一
-  段，摘要则只读 `collected/`。汇报步骤用 `grep -c .` 统计每个目标，跑在 `-eo pipefail` 之下，而步骤
-  自己的 `set -uo pipefail` 并不会关掉它，于是计数为零便以 1 退出并终止该步骤：没有崩溃文件的归档只
-  留下表头，下面的建单步骤从不运行，一次主干推送上的发现到不了任何消费者——两处计数现在都把零当作要汇
-  报的值。第三处缺口是签名：`grep -m1 -hoE "panicked at [^:]+"` 停在第一个冒号，所以一条 panic 到报
-  表里只剩 `panicked at fuzz_targets/yaml_roundtrip.rs`，没有行号、没有列、没有消息，而按计划跑的档
-  位连续五个周六都带回 `completed/failure`（2026-10-03、-10、-17、-24、-31）；签名现在同时留下位置与
-  消息的第一行。
-- **已发布文档：一条关于 `Node` 的假说法、一个被格式化器删掉的字节、放错层级的小节** — `Node` 页面称
-  `is_valid()` 还会拒绝已被修改的文档，可它只检查文档引用：被一次编辑弄成过期的节点，在其 `repr` 已
-  经翻成 `Node(invalid)` 之后依然回答 `True`，而读 `value` 抛 `YamlDocumentError`。同一个 repr 把三
-  种原因混为一谈：节点过期、路径不存在，以及该路径的读取被 dict 投影拒绝，因为读取经过 `to_dict()`：
-  在 `0set: 1` 与 `!base 0set: 2` 并排时，任何 `Node` 读取都抛 `YamlTypeError`，不存在的路径抛
-  `KeyError`；写入走 AST。四个语言版本都带着这句错误说法，四处一并改正。`rumdl fmt` 的 MD038 以删除
-  那个字节的方式修复「code span 元素内的空格」，所以一个写成反引号、空格、`? > #I` 的 span 在五张镜
-  像和账本里都丢了那个空格回来，而钩子打印 `Passed`：这条前提只在成对的情形成立——CommonMark 渲染时本
-  就会从两端各剥掉一个空格——只有开头带空格的那一字节是内容，此处的它正是让 YAML 标记体成为嵌套的缩
-  进。`MD038` 已并入 `.rumdl.toml` 的禁用清单；对 178 页跑 `rumdl check` 在 2026-11-01 读出 0 条发
-  现。本地化的 changelog 页面把小节放在与版本标题同级的层级上，于是文档站把每个小节渲染成其版本的同
-  级；`check_changelog_mirrors.py` 现在检查这一点。
-- **公开基准表现在覆盖四种格式与 Rust 后端的读取器** — 测量面早已与 `json`、`orjson`、`tomllib`、
-  `tomlkit` 与 `pyjson5` 对拍，但 `.ci/perf-snapshot.json` 只记 PyYAML 与 ruamel.yaml。
-  `scripts/bench_snapshot.py` 现在按格式轴测量——YAML 测解析、序列化与往返，JSON、TOML 与 JSON5 测解
-  析——并以 `<!-- bench: ... -->` 标记把每张表绑定到它的测量，而不是数列数，`tests/test_perf_docs.py`
-  两头都问：测了却没发布的用例要红，标记指向一个没测过的用例也要红。新增的两行是我们更慢，也照输登出
-  ——1.9 KB 文档上 `orjson` 读得快 1.5x，JSON5 配置上 `pyjson5` 快 2.4x——而 TOML 比 `tomllib` 快 5.5x
-  到 5.9x；JSON、TOML 与 JSON5 的写侧仍不发布，因为它们从引擎自己的 AST 出发，而非 Python 对象。Rust
-  后端的读取器在记录里无处测过，于是 `yaml-rs` 与 `ryaml` 加入 YAML 轴、`rtoml` 加入 TOML 轴；重测的
-  快照（2026-10-25）说 `yaml-rs` 解析快 2.4–2.6x、往返快 1.6–1.9x，`rtoml` 读得比 `load_toml` 快
-  1.9x，而 pyrs-yaml 序列化比 `yaml-rs` 快 2.2–4.1x。
+- **别名唯一的定义被一次遍历丢掉时，现在会在引用够得着的地方补一个** — 重复键折叠丢掉定义 `x` 的那一
+  对，而活下来的 `&x` 骑在一个落在别名之后的键上，于是 `*x` 出现在所有 `&x` 之上，本库自己的读者拒绝
+  自己的发回 `found unknown anchor`（`edit_yaml` crash-b7e16929）。修复原先只问定义是否在别处活下
+  来；现在问这个名字是否在这次引用之前被定义，并把节点写进够不着的引用里（`inline_dropped_uses`）。
+  合并遍历会删掉携带锚点的 `<<` 条目且原先没有对应的修复，把 `<<: &b` / `  x: *b` 变成第 3 列就被拒
+  的裸 `x: *b`，于是 `resolve_merge_keys` 在该遍历跑完后把幸存者的锚点读出来并内联。`delete_path` 原
+  先只向值节点要锚点，于是键上的 `&x` 被漏看、`k8: *x` 被接受（crash-6a9b6538、crash-718abefa）；现
+  在也读键节点，而绑定层对同一次编辑仍拒以 `anchor-is-referenced`。锚点图行走 135 份文档，对照
+  2026-10-20 读到的 102。
+- **从别名改写而来的键在落地处折叠，而以引号结尾的锚点名保住那个名字** — `repair_orphaned_anchors`
+  把被丢那对的节点内联进每个留下的 `*name`，包括键位置，但重建用普通 `pairs.insert` 再插回去，于是本
+  来自身空键的映射有了两个都写作 `~:` 的键，重读折掉一个（crash-49f44d18；crash-fce042d0 是改写到普
+  通对旁边时的同一次折叠）。重建现在对它插入的每个键都做折叠 — 后一对胜出、被丢那对的注释搬回幸存者
+  — 并把该对的锚点节点排进下一轮内联；crash-663b71ab 与 crash-cf1a63bf 回放干净。锚点名可以像
+  `is_valid_anchor_char` 对齐 granit 那样以 `"` 结尾，但 `opens_quoted_node` 让紧贴锚点或标记令牌的
+  引号开启一个被引节点，于是重读一次发射时把自己行尾注释里的 `#` 当成引号内容、把其中的 `&` 当成锚
+  点，在两轮之间把节点改名成 `!`（crash-abc541ff、crash-c06e8a8f）；现在性质与被引节点之间必须有一个
+  空格。
+- **第一条目的注释爬到标记之上，而第一项的注释留在自己的横杠之下** — 在 `?` 标记体内，写器只在容器写
+  出锚点或标记标头时把第一条目的键注释抬到标记之上，而键值对写器把那一行的行尾槽位交给值的行内注释，
+  于是读者报告在键映射上的注释在第二轮被提升（crash-430f4f0e）；现在只要值占有那个槽位，提升就拿走该
+  注释。`lift_first_item_notes` 把块序列首项的前置栈抬到外层标头之上，对一个逐行拼写的项来说高了一层
+  （crash-439f5d2c）；现在非紧凑分支把栈留在体内，只有紧凑拼法才提升。
+- **标记提升把一条注释多抬一层标头，而一次改名丢掉了键携带的保真** — #726 的三个 `edit_yaml` 输入在
+  两个缺陷之后仍然失败。`rename_path` 用新文本重建键，丢掉简单键携带的 `Fidelity`，于是把
+  `!base: &x 0se: *x` 里的 `&x 0se` 改名后发出 `k7: *x`，一个指向未定义锚点的别名；键现在保住自己的
+  锚点与标记。`spine_has_notes` 只问前置栈，而 `hoist_marker_note` 在标头下也会带走第一个键的行内注
+  释，于是那条注释每轮多定居一层标头；两条行走现在问同一个问题（`first_entry_inline_note`）并以标头
+  为门（crash-094d4d6a、crash-8492f5ee、crash-701f76bf、crash-6cfbaa57）。六个写器场景付在 0.5 % 线
+  内（最差 `serialize_block` +0.18 %），对照没有守卫时是 +0.00 %。
+- **注释不能再把一个值劈成两行：闭合移动之后键值对重新锚定自己的键行** — 一个映射条目记得自己那行从
+  哪开始，而闭合一个待处理的只有标记的行会在记住的偏移之前插入该值的 `~` 却不移它，于是下一个键的行
+  内注释落在刚被拉长的行中间：对 `: !` / `<<: #b` / `<<: #b` / `3 #~` 调 `to_yaml` 发出第 0 列一个裸
+  `~`，本引擎自己的读者拒绝（`simple key expected ':'`）。`note_line_above` 现在把"这个偏移指着一行"
+  当作不变量，并把陈旧的捕获推进到下一行起点；同一个陈旧捕获也移动过键行本身，因为值自带注释时键注释
+  不能与键值对同行，于是键值对在自己的前置注释之后重新锚定键行（crash-76e05a78，从 104 字节最小化到
+  25）。crash-2c76568e 来自定时发现层，而它的报表已连续五个红色星期把这条断言丢掉。
+- **立在空容器之上的注释把条目留在它的横杠行上，而横杠与冒号不再为一个已决定转块的子节点开启** — 读
+  者把容器第一对之上的注释归档为容器自己的前置注释，所以删掉最后一对会让注释悬空，而
+  `write_mapping_pair` 本来就以 inline `{}` 并把注释降级到键值对行尾来应答；`is_compact_item` 对任何
+  携带独立注释的值都拒绝紧凑的 `- key: value` 行，于是第一轮只写横杠、第二轮把横杠行拿走
+  （crash-ad42b9cc）。上一层，当一个成员携带的注释比花括号装得下更多时带标记的容器会被降级，但七个判
+  断只信 `flow_style` 标志，各自在自己的位置写出指示符、同时被降级的子节点在父列开块体；七个现在都问
+  降级自己那个问题。新增的测试把写器家族从 +0.18 % 推到 +0.72 %（最差 `serialize_small`），没有读器
+  场景超过 0.19 %，所以两条地板是重测而不是放宽。
+- **只有节点元数据能区分的键被拒绝** — 读者把带标记的键当整节点比较，连样式与锚点都算，而写器正是靠
+  这些挑选：带标记键的普通与引号拼法都发 `!a "…"`，带锚点的 `Null` 发 `!a null`，于是自己的发射回来
+  是 `duplicate key`（crash-4bf6ee37）。现在按标记与值跟踪，即 YAML 的标量等值，合并问同一个问题；一
+  张按键的表读过 0.50 % 线。键位置更糟：crash-b88f1b4f 的两个映射键压在同一个被写器同样引成 `!? ""`
+  的带标记空标量之上；现在问写器一个容器键拼成什么，两个读回相等就拒绝该源文档，姊妹 crash-469125e3
+  是有拼法可学。立在最外层 `?` 之上的独立注释也不是键的差异（早于 #645）：`keys_collide_in_text` 丢
+  掉每个独立槽位，行内注释才区分。投影按键的文本取键，所以 `c: 0` 挨着 `!A c: "!"` 发出 `c = 0` 与
+  `c = "!"`，本项目的 TOML 读者拒绝、`json.loads` 折成一项；两个写器现在抛 `YamlSerializeError`
+  （`toml-keys-collide-without-metadata`、`json-object-keys-collide-without-metadata`），
+  `to_dict`/`safe_load` 抛点名该文本的 `YamlTypeError`；`to_yaml()` 不变。
+- **重复的 JSON 键保住被它替换那个值内部的注释，而重复之间带注释的键留下最后一个值、不是倒数第二个**
+  — 重复的名字保住第一个位置与最后一个值，所以较早那个值被整块丢掉，而救援只把被丢键与值节点上的注释
+  交给幸存者 — `notes_of` 只读递给它的那个节点，于是一个被丢容器内部的注释随之消失，而事件流仍报告它
+  （`json_events_replay` crash-e294755f：报告八条注释、保住五条）。`subtree_notes` 现在按源次序收集
+  一个节点及其之下的一切；Ir 门在 `from_json_medium` 上读到 +0.09 %、`from_jsonc_medium` 上
+  +0.07 %，两个夹具都不含这样的重复，所以这次移动是布局。闭合时的折叠另有原因：几个 `"a"` 键之一上的
+  行内注释让那个键与其余不等，于是映射持有两项，下一个干净的 `"a"` 替换掉第一项的值，而折叠把带注释
+  那项的旧值又搬回去 — `{"a": 1, /* n */ "a": 2, "a": 3}` 解析成 `{"a": 2}`。折叠现在终结于该名字的
+  最后一项，`file_duplicate` 把最新的值停在那里，树行走与 `from_events` 共用这个函数。
+- **JSON 折叠把元素第二组注释放进树所在的地方，而根的行尾注释被写出来了** — 一个元素的注释，它之上的
+  与它之后的，都落进节点那个唯一的行内槽位：`array` 在 `value()` 之前取走待定列表、并把随后flush 的
+  东西刷出去，于是第二次 `set_comment` 覆盖第一次，树携带一条注释而 `parse_stream` 报告两条
+  （crash-0449c0ae，以及从嵌套数组抵达同一槽位的 crash-0466d7f6）；`crates/pyrs-json/src/parser.rs`
+  里的 `apply` 现在按树行走 `attach_pending` 的方式安放第二次同行注释，把较早那条连同 `standalone`
+  标志移到前置列表。折叠路由在自己的输入上撞同一次覆盖，归档为 `former-crash-e72e24ef.seed`。根的行
+  尾注释先前根本没有写器：JSONC 与 JSON5 写器发出的每条注释都来自成员循环，而根不是任何成员的子节
+  点，所以 `{"a": 1} // after` 原样写回 `{"a": 1}`，穿过 YAML 中枢同样丢失；四个入口现在都在顶层值之
+  后发出它，`prop_jsonc_writer_carries_every_note` 与它的 JSON5 姊妹在此给跨格式层一个预言机。没有计
+  数场景抵达 `from_events`。
+- **JSON5：只看着像数字的字符串再次被引起来，而键的拒绝点名它的语法允许的一种拼法** — 裸令牌测试在数
+  字检查之前剥掉一个前导正负号，然后问主体是否为严格 JSON 数字，于是 `+-33337333333373333333733333`
+  被当成 `+` 加上一个可接受的 `-333…`，`to_json5_text` 发出自己的读者拒绝的文本
+  （`expected integer digits in number`）；只有无符号主体之上的前导 `+` 才是 JSON5 拼法，于是这样的
+  字符串再次被引起来，而 `+7` 与 `+1.5` 保住裸令牌（libFuzzer `json_roundtrip` crash-0a929a32）。在
+  键位置上消息写着 `expected a quoted object key`，而 JSON5 也接受裸标识符，于是该错误要求方言从不要
+  求的形式；措辞现在来自方言自己的标志 — 允许非引号键时是
+  `expected an object key (a quoted string or a bare identifier)`，不允许时保留原句 — 一个 `Parser`
+  服务三种方言，意味着这层共享的 helper 同时覆盖树与流两条路由，而严格 JSON 与 JSONC 保住它们的措
+  辞。
+- **TOML 标头注释：没人读的键行槽位，以及本是替代解释的那两叠** — `to_toml("sec: # note\n  x: 1\n")`
+  返回 `[sec]\nx = 1\n`：注释被丢掉，因为小节那一遍只读映射自己的行内槽位，而中枢把 YAML 文档的键行
+  注释交在键节点上 — 正是 #146 教写器往下一层读的那个槽位。这让本文给过的两个解释作废：`pyrs_toml`
+  自己的扫描器确实捕获 `[sec] # note`，granit 也不在那条路径上；只有
+  `api:set-comment-container-owner` 记录的落点规则仍开着。写 `key = value` 的那一行也没读标头的槽
+  位，于是 `x: 1` 之上的 `b: # note` 发出 `b = {x = 1}` 而丢了注释；`emit_pair` 现在回退到该槽位。小
+  节键与它带领的映射各持一个前置列表，那一遍先问小节的第一个、再回退到键的，于是携带 `# T` 的小节之
+  上的 `# K` 只发出 `# T\n[a]\nx = 1\n`；现在两个都写。每一对都要付：执法镜像上 `to_toml_medium`
+  +1.58 %、`to_toml_long_strings` +1.25 %，37 个场景里没有别的过 0.32 %。
+- **五个没人读的 TOML 成员注释槽位，以及被写两次的元素注释** — 只要它需要的那一行不存在，`to_toml`
+  就丢注释：携带自身注释的空表或空数组、注释独立成行的标量，以及一行同时应答两个 `or_else` 槽位注释
+  的两处；新的 `prop_toml_writer_carries_every_note` 在两万次抽样里点名全部四种形状，它们取键之上的
+  那一行。代价是守卫而不是注释：钉住的编译器上 `to_toml_medium` +3.29 %、`to_toml_long_strings`
+  +3.43 %、`to_toml_notes` +1.24 %（相对不含 `#` 的文档），执法镜像上同样是 +1.256 %、+2.081 % 与
+  +6.872 %，而两条 TOML 读地板动 +0.0014 % 与 −0.0007 % — 读路由从不查询那个槽位。上一层，中枢把成员
+  上一行行尾的注释安在容器自己的前置列表上，而两个紧凑分支都忽略它 — 是 PR #146 的第五槽位类高一层；
+  两个现在都通过一个 `container_leading_notes` 问那张列表，正如 PR #114 对表头那样，并降级，一种有些
+  读者拒绝的拼法（2026-10-29）。第五槽位还写两次：读者把元素之上的 `#` 归档在该元素的行尾，而对行内
+  表元素那也正是 `write_notated_table` 的前置注释，于是数组把它提升、表又在花括号里写一遍
+  （crash-3e95a4cf、crash-6802dabe、crash-9c0b2acb、crash-1ec1ea89、crash-20cc6b69）。
+- **点号路径像其它下降一样被限界** — `parse_inline_table` 把成员键路径铺在 `nest_inline` 里，于是
+  `t = { a.b.… = 1 }` 每段嵌一张表、绕开 `parse_value` 漏斗与 `register_kv` 的检查：crash-2a5ea394
+  就是 1059 段时这样，`from_toml` 接受、1.1 读者拒绝 `to_toml` 的再拼写
+  （`max depth exceeded (max=1000)`），于是预算把铺出来的路径加到它之上展开的每条路径
+  （`depth + inline_path_shift + key.len()`）。`DEFAULT_MAX_DEPTH` 只限界 `parse_value`，而点号键与
+  表头用一条迭代指针下降建表、守卫从不计数，于是长路径建出更深的树并以两种方式失败：再拼写被拒，或者
+  原生栈溢出（`0xC00000FD`；来自 2026-10-24 那轮的 crash-7a3aac52 在 2 MiB 线程上中止，只有 512 MiB
+  才干净）。两条下降现在共用一个预算：至多 1000 段可往返并定居，1001 段以上是带类型的
+  `max depth exceeded`（2026-11-01 那轮的 crash-2503e079、crash-6c15f693、crash-837bd790 正是该形
+  状）。没有守卫时读路径只动 `load_toml_medium` +0.006 % 与 `load_toml_long_strings` +0.046 %，而看
+  着像超过地板的 +1.65 % / +2.98 % 在父树上复现，是 WSL 宿主的基线漂移。
+- **注册的处理器拥有它声称的那个标量，且在数组与数字协议之前被问** — #671 留下的形状现在归成一条规
+  则：只带 `__bool__` 的类，`safe_dump` 发出 `m:\n  !booly B\n` 而 AST 路由发出 `m: !booly B\n`，因
+  为直写器是经 `write_other` 到达注册表的，而它自己发缩进；同一个类在序列项里丢掉横杠行、作键时抛
+  `YamlTypeError`。带 `numpy.ndarray` 的处理器时数组路由先来，在 AST 路由答 `!nd ND` 处答出数组。两
+  个写器现在在每个位置都先问处理器，再问数组、协议与自己的拼写规则。该注册检查当初只为浮点形状写，于
+  是 `python_type` 带 `__index__` 的 `register_type("!money", ...)` 被绕过：
+  `safe_dump({"m": Money(500)})` 发出协议交回的整数 `m: 500` — `Decimal` 被尊重，整数形状的值类型从
+  来没有 — 现在注册表先被问，只有 `int` 或 `int` 子类（`bool` 就是一个）保住读者能解析的整数拼法；
+  `str` 处理器仍不动文本，`dict` 或 `list` 按调用方的容器来写；`type_registry::claims` 存在，是因为
+  一个布局问题不该运行处理器。
+- **转储 NumPy 数组不再终结进程（Python 3.15）** — 数组路由经 `rust-numpy` 强转对象并读它的内存，而
+  `cp315-abi3t` wheel 无法可靠地做这件事：在已发布的 0.18.3 上，3.15 GIL 下
+  `safe_dump(numpy.arange(8))` 以 `Fatal Python error: Segmentation fault`（退出 139）死掉，同样字节
+  在 3.15t 下答 `YamlTypeError`，而 3.12、3.14、3.14t 转储正确。确定性、单线程，且
+  `numpy.zeros((0,))` 也崩，所以故障坐在第一次读取数组内部。`crates/pyrs-yaml/src/py/ndarray.rs` 现
+  在向数组自己要 `dtype`、`shape` 与 `tobytes()`，在 Rust 里解码那个缓冲区：任何制品都不再触及 numpy
+  C API，而 `numpy` Cargo feature 门的是路由而不是依赖。两个缺陷随之倒下：旧路由读内存序、按逻辑形状
+  嵌套，所以转置视图写出未转置的网格；两个写器都在数组路由之前问 Python 的数字协议，而单元素数组它会
+  丢掉维度答出来 — 只有 numpy 2.3 起才算错 — 于是一台安装写 `1.5`、另一台写 `- 1.5`。携带维度的数组
+  现在被拒绝该协议，0 维数组保住标量拼法。
+- **注释不能再折断它自己的行，而块标量能拼出它携带的那个断行** — `arb_comment` 从 `[ -~]+` 抽注释文
+  本，所以没有属性测试能到达单行注释载体欠下的那个展平；连 `\n` 与 `\r` 一起抽就判红四条属性，因为
+  YAML 与 TOML 写器会把断行之后的文本放进文档 — TOML 拒绝自己的输出
+  （`bare carriage return (must be part of a CRLF pair)`），序列项的注释 `"<\n&"` 回来成了裸 `&`。两
+  个写器现在在一个 `push_note_text` 里把断行展平成一格空格；免分配的 `Cow` 形状仍要
+  `serialize_note_flow` +8.80 %，所以发布的拼法由它移动的那条地板定价，62,066,033 → 64,411,980
+  （+3.78 %）。块的那一半：生成器抽不带断行的可打印 ASCII — 而对 `Literal`/`Folded` 断行正是该样式唯
+  一关心的东西；抽 `[ -~\n\t]+` 让 `needs_double_quoted` 判红，因为边界检查守了空格与制表符却没守断
+  行，而非字符串捷径先跑，于是解析成 null 的 `"\n"` 被裸发出、回来成 `~`。最后一类是这层自己的：`|-`
+  按设计丢掉尾随断行，所以这层现在按读者的方式先解析断言再比较；把简单键也解析之后，`"'\n"` 塌到旁边
+  的裸 `'` 上。
+- **一行文档的流式重新回到线性时间** — `LineTable::line_col` 为每个事件从行首数起，所以源里没有换行
+  的生产者为每个事件付 O(n)、流式变成二次：1.5 MB 压缩后的 JSON 数组为报出 224,006 个事件花掉 4.9
+  秒，输入每翻一倍就慢四倍。表现在把游标停在最后一次应答的位置，只走一个事件与下一个之间的字节，而落
+  后于游标的位置仍从行首数；同一份文档流式用 19 ms，对照每记录一换行的孪生是 18 ms。JSON 与 TOML 共
+  用这张表；YAML 自己算位置，从未有这个代价。
+- **六条门禁能在什么都没量的情况下答"通过"，十条断言也能这样报绿** — 类别 `(fz)` 被扫清了：
+  `check_changelog_coupling.py` 在空路径清单上退出 0，`check_doc_headings.py` 数的是交进来的路径而不
+  是打开的文件，`check_line_endings.py` 从不检查 `git ls-files` 的退出码，`check_doc_signatures.py`
+  与 `check_i18n.py` 在空的通配结果上打印 OK 行，而 `ir_gate.py --only a,b` — `--only` 是追加，所以
+  那是一个匹配不到任何东西的名字 — 没有比较任何场景却把地板报成守住。六条现在都退出 2，各由一条测试
+  逼出，而原本没有任何自测的 `check_i18n.py` 得到 `tests/test_i18n_gate.py`。同样的形状在套件里：断
+  言只在 `for` 体内出现的测试在空可迭代对象上通过，而 `all(x for x in [])` 是 `True` — AST 行走点出
+  41 个候选，可迭代对象来自测试之外的那十个现在带上写明实测数字的地板，其余 32 个是字面可迭代对象、
+  别处已钉住的常量，或以空为断言本身的循环 — 记作 `(ge)`，因为这次扫查是一次性脚本，还没有东西拦住新
+  的空循环测试。
+- **一条守卫报的是跳过而不是测量，而排行榜有一行点了它从未计时的对手** — `load_stream_file` 的内存上
+  限经 `pytest.importorskip` 要 `psutil`，而没有任何需求文件写这个包，于是每条腿都报一个看着像覆盖、
+  其实不是的跳过。它被换成 stdlib `tracemalloc` 的一个标度不变量：2,000 行与 200,000 行文档走同一条
+  路由必须留下同样的被跟踪足迹 — 3.12 下两处都是 3,168 字节、3.14t 下都是 3,200 — 而一条缓冲式的行走
+  会涨 199,854,440 字节，于是把上限设在百分之一涨量上的断言能抓住累积读数器。排行榜里有同一个盲区：
+  `tests/test_benchmark_crosslib.py` 会跳过吞不下夹具的对手，而 `yaml_edit` 那一行怪罪"较新的
+  yaml_edit 发布"，实际对钉住的 0.1.3 三个夹具全都抛
+  `Document::from_str: Input contains stream-level comments`，所以那一行是装好包装旁边的三个跳过。用
+  一次限定范围的 `uv lock --upgrade-package` 取来 0.2.0 后它能解析三个中的两个，于是该行开始计时，而
+  `test_yaml_edit_row_measures_something` 钉住它：装了就必须至少吞得下一个夹具。
+- **钩子集是红的而判定是绿的，还有一条洞断言门禁读得太少** — `Test matrix (all legs)` 由 `ci.yml` 的
+  作业算出，而 `toJSON(needs)` 带不来另一个 workflow 的作业，所以 `hygiene.yml` 里的
+  `prek hook set on the full tree` 从来不是它读到的名字：PR #632 的第一个 head 上那个 check-run 报
+  `failure` — 被 `check_changelog_coupling.py` 因变更集没有发布说明而拒 — 而同一 sha 上被要求的那个
+  名字报 `success`。该作业现在跑在 `ci.yml` 里，`quality_matrix.py` 也从判定等待的那个作业读跳过清
+  单。`scripts/check_hole_claims.py` 只读 `AGENTS.md` 与 `CLAUDE.md`，这就是一条过期断言在 #613
+  与 #614 里、于所有门禁全绿之下活过八处的原因；范围现在是现在时 — 两份指令文件加每个镜像的
+  `[Unreleased]` 块，由 `check_changelog_mirrors.py` 里新增的 `unreleased_lines` 切片，镜像切不出内
+  容时退出 2。该门禁随后在 `3.15t` 腿上一次文件都没读就失败，因为 `_VERSION_HEADING_RE` 的
+  `NameError` 定义在用法之上 95 行：清掉 `scripts/__pycache__` 前 20 次冷启动全红、暖启动全绿，所以
+  触发条件是模块的第一次编译 — 补救是在调用之前把模块绑到局部名。
+- **编辑地板为一个没有已发布调用方会跑的扫描付费，而刷新作业从第一个之后就把名字丢掉** — 三个
+  `edit_*` 场景把 `line_offsets: None` 交给编辑层，而那层对 `None` 的答法是重建文档的行表
+  （`scan_yaml(text).line_offsets`）— 一次完整遍历，还要决定 `has_hash`、`has_amp` 与 `is_ascii`：在
+  基线的 `rustc 1.97.1` 上，这次扫描在三个循环里各花 10,104,000 条被计数指令，而绑定层是按文档记忆这
+  张表的（`Splice::line_offsets`）。harness 现在在解析旁边建表、把 `Some(&offsets)` 交给三个动词、让
+  `--setup-only` 把它减掉，执法镜像上第 81 次刷新读到 −24.45 %（`edit_set_nested` 48,288,771 →
+  36,483,718）、−27.48 %（`edit_insert_sequence` 42,462,454 → 30,793,506）与 −27.86 %
+  （`edit_delete_key` 42,392,088 → 30,583,030），超出扫描那 20.9 % 份额的部分是 `Vec` 的分配与释放流
+  量。负责搬这些地板的作业丢名字：`profile` 与 `accept_drift` 用 `read -ra <<< "$VAR"` 切输入，而
+  `read` 只吃一行，所以刷新 40221999337 拿到两行 `profile` 输入却记了 "attributing 1 scenario(s)"；
+  两处现在都在切分前把分隔符压平。
+- **fuzz 报表不再把发现扔掉，它的计数与开单器也能抵达队列** — 归档里有 `artifacts/` 与 `collected/`
+  两个根；在运行 41541555317 上下载把这两个根直接解进 `--crashes`，于是把第一段路径当目标就造出两个
+  名叫 `artifacts` 与 `collected` 的目标，一个 `yaml_roundtrip` 归档的三份输入被开成 issue #739
+  与 #740，摘要还把每份输入数两遍。目标现在是任一根之后的那一段，摘要只读 `collected/`。报表步骤用
+  `grep -c .` 计数却带着 `-eo pipefail` — 步骤自己的 `set -uo pipefail` 并不会关掉它 — 于是计数为零
+  时退出 1 并结束该步：一个没有 crash 文件的归档留下只有表头的表格，下面的开单步骤从不运行，一次推送
+  到 main 的发现到不了任何消费者；计数现在把零当成要报的值。第三个缺口是签名：
+  `grep -m1 -hoE "panicked at [^:]+"` 停在第一个冒号，于是一次 panic 进报表时是
+  `panicked at fuzz_targets/yaml_roundtrip.rs`，没有行、列或消息，定时层连续五个周六
+  （2026-10-03、-10、-17、-24、-31）都是 `completed/failure`；签名现在保住位置与消息的第一行。
+- **已发布文档：一个假的 `Node` 断言、格式化器删掉的一个字节、放错层级的小节** — `Node` 页面写道
+  `is_valid()` 也拒绝被改过的文档，可它测的只是文档引用：一次编辑让节点过期后，它的 `repr` 翻成
+  `Node(invalid)` 之后仍答 `True`，而读 `value` 抛 `YamlDocumentError`。同一个 `repr` 混淆三种起因：
+  过期节点、缺失路径，以及被字典投影拒绝的路径，因为读都走 `to_dict()`：在 `0set: 1` 挨着
+  `!base 0set: 2` 时每次 `Node` 读都抛 `YamlTypeError`，缺失路径是 `KeyError`；写行走 AST。四个
+  locale 都带着它，现已改正。`rumdl fmt` 的 MD038 靠删字节来修"代码跨度元素内的空格"，于是一个写成反
+  引号、空格、`? > #I` 的跨度在五个镜像与 ledger 里都丢了那个空格，而钩子打印 `Passed`：该前提只在
+  CommonMark 渲染时剥掉的那对情形成立，只有前导空格是嵌套 YAML 标记体的缩进。`MD038` 进入
+  `.rumdl.toml` 的关闭清单；2026-11-01 对 178 页跑 `rumdl check` 读到 0 条结论。本地化的 changelog
+  页面把自己的小节放在版本标题同一层级，于是站点把每个都渲成它所在版本的兄弟；
+  `check_changelog_mirrors.py` 现在检查这点。
+- **已发布的计时表覆盖四种格式与由 Rust 支撑的读取器** — 测量表面早就在与 `json`、`orjson`、
+  `tomllib`、`tomlkit` 与 `pyjson5` 竞跑，但 `.ci/perf-snapshot.json` 只记 PyYAML 与 ruamel.yaml。
+  `scripts/bench_snapshot.py` 现在量一条格式轴 — YAML 的解析、序列化与往返，JSON、TOML 与 JSON5 的解
+  析 — 并用 `<!-- bench: ... -->` 标记把每张表绑定到它自己的测量，而不是数列，
+  `tests/test_perf_docs.py` 双向追问：量过却没发布的用例判红，点了没量东西的标记也判红。两行新数据是
+  落后、也就按落后印 — `orjson` 读 1.9 KB 文档快 1.5x、`pyjson5` 读 JSON5 配置快 2.4x — 而 TOML 比
+  `tomllib` 快 5.5x 到 5.9x；JSON、TOML 与 JSON5 的写仍不发布，因为它们来自引擎的 AST 而不是 Python
+  对象。由 Rust 支撑的读取器在记录里哪都没量，于是 `yaml-rs` 与 `ryaml` 加入 YAML 轴、`rtoml` 加入
+  TOML 轴；重测的快照（2026-10-25）说 `yaml-rs` 解析快 2.4–2.6x、往返快 1.6–1.9x，`rtoml` 读比
+  `load_toml` 快 1.9x，而 pyrs-yaml 序列化比 `yaml-rs` 快 2.2–4.1x。
 
 #### 变更
 
-- **向单文档路由要一个流现在会被拒绝，两条目之间的空行是钉住的边界，而被移位的 TOML 注释指向对的原因
-  ** — `parse`、`parse_file`、`safe_load`、`to_toml` 以及 `YAML()` 的对应方法都只读一个文档，而一份
-  带着两个文档的输入返回的是事件遍历最后落脚的那一个：`a: 1\n---\nb: 2\n` 给出 `b: 2`，`a: 1\n---\n`
-  给出 `null`。现在它们抛出以 `multi-document-input` 起始的 `YamlParseError`，报出第二个文档的行与
-  列，并指向 `parse_all_docs`、`safe_loads` 与 `parse_stream`。PyYAML 与 ruamel.yaml 在同样的十种形
-  状上全部报错，却仍然接受开头的 `---`、结尾的 `...`、单独的 `---` 与空输入——这四种便是守卫不得误伤
-  的控制样本。CLI 上 `-A/--all-docs` 说的是同一件事，行为未变；此事记为 `(hg)`。在八个位置上，以及经
-  由编辑路线，空行一处都不保留，而值、键序、锚点和注释都保留；`tests/test_roundtrip.py` 按今天的样子
-  钉住那个不动点，补上这个缺口会让钉子变红。一处移位的 TOML `[sec] # note` 曾被归给 YAML 解析器的注
-  释捕获模型，但 `preserves_section_header_trailing_and_leading` 显示那是一个不动点：这次移动出自本
-  项目自己的规则——容器的行内注释停在它正文的末行。
-- **注释在每座桥的两侧都有了地板，读者也算在内** — 数过夹具之后，PR #641 那个写侧地板的归因被推翻：
-  serialize 场景跑的 YAML 里 `#` 计数为零，五条写侧输入里 `{`、`[`、`]`、`}` 也全为零，于是五个注释
-  辅助函数不回答任何被测量的问题，而方言写器拿到的也是一份零 `#` 的 AST。现在三份文档各自带着自己那
-  一半必须回答的形状：`serialize_note_flow` 让一份走完那五个答案，镜像把 12.61% 归给这次遍历；
-  `to_jsonc_notes` 与 `to_json5_notes` 让 `<str>::replace` 在两个场景里都是最大的自身项，16.08% 与
-  16.01%——那还在 PR #643 把块那一半收成一次遍历之前；它们的读取孪生对着七条注释，把 `ws_extended` 排
-  在第一位，19.86% 与 19.79%。对着零 `#` 的夹具，字节扫描与注释携带跑的是最便宜的那个答案，于是
-  `parse_notes` 与 `stream_notes` 读的是写器那一行早就在用的同一份文档：同样 434 字节、把每段注释换
-  成等长的空格之后，十一条注释在建树路线上贵出 +16.30 %，在事件路线上贵出 +19.37 %，其中 71 % 与
-  74 % 落在被锁定的解析器里。注释一旦离开某个夹具，`ir_fixtures.rs` 就按名字报红；那次刷新起初在
-  `from_json5_medium` +0.55 % 上拒绝了自己，于是这个名字被写进 `accept_drift`，`tolerance_hint` 保持
-  0.5 %。
-- **元数据携带得到两条地板，数进解释器的地板按 runner 镜像键控，而 TOML crate 写下它真正构建的树** —
-  每次替换都要问 `merged_meta` 该携带什么，`delete_path` 还要问 `extend_delete_over_comments`，可没
-  有任何地板到达过它们：`edit_*` 场景跑在 `MEDIUM_YAML` 上，那里没有 `#`、`&`、`!`，所以每条分支每次
-  都落空。`edit_set_metadata` 的 42,838,349 对着 `edit_set_nested` 的 36,483,730，而带元数据的那份文
-  档还小 26 个字符：拉开两个数的是携带本身，不是更大那棵树，而 `ir_fixtures.rs` 会在那个夹具被添上装
-  饰时判红。这次刷新动了它根本不进入的两条地板——`documents_short_strings` −10.46%、
-  `documents_long_strings` −7.00%——整个移动都落在 glibc 的一行拷贝里。`.ci/ir-baseline.json` 多出
-  `image_floors`，`scripts/ir_gate.py` 让一趟运行与自己所在镜像的那一行比对——只对把 CPython 也数进去
-  的场景键控，因为在同一棵树上、两个 harness 摘要相同的前提下，`load_toml_medium` 读出 142,467,241
-  与 144,904,012，这是一条地板装不下的 1.71 %。表里没有的镜像被拒绝（exit 2）。
-  `crates/pyrs-toml/src/lib.rs` 开头写着 "no intermediate value tree"，而 `(fw)` 把它的表插入量成
-  `load_toml_medium` 的 8.10 % 与 `from_toml_medium` 的 9.68 %：那次重写并未排期，这句话现在描述它实
-  际发布的构建。
-- **事件流与行分隔路由都有了长值形状的地板，而长正文在行路由上贵得多** — `stream_long_strings` 用同
-  一个 `Work::Stream` 跑四条写侧地板所用的那八条 256 字符记录，于是这些数字只在它们所携带字符串的形
-  状上不同：276,633,813 对着 `stream_medium` 的 255,359,778，**+8.33%**——这是本门禁第一次读到的「事
-  件路径上的长正文」。`Work::Documents` 经 `pyrs_json::parse_documents` 把八条单行记录读成事件，只在
-  值的宽度上不同，9 个字符对 256 个：95,815,186 对着 328,951,144，**+243.3%**，而同一对数字在事件路
-  径上读作 **+8.16%**。重测也移动过一个已公布的比值——先前写下 8.33% 的那条事件对，如今读作 8.16%，这
-  个数由 `QUALITY_MATRIX.md` §2 带着，而 `tests/test_ir_baseline_workflow.py` 对着文件核它，不是对着
-  记忆核。三十一条地板出自那次事件运行，三十三条出自那次行运行。
-- **长字符串形状在两条通道上都被度量，度量面覆盖全部五种格式** — 没有任何基准读过长值（`MEDIUM_JSON`
-  最长的只有 21 字符），所以那次向量化的扫描一直无人度量。`long_string_json` / `_toml` / `_yaml` 生
-  成同一份列表，值是 256 字符、只有字母，在每座桥的两端读取：四条基准给排名的通道（读 2.599 µs 与
-  3.499 µs，写 950 ns 与 1.174 µs），四条地板给执法的通道，按源字节算，长文档在那条通道上约为
-  `from_json_medium` 的五分之一、`from_toml_medium` 的八分之一。`scripts/quality_matrix.py` 把只编号
-  一侧的桥报成 `ir-bridge-unidirectional`，于是方言的桥都端到端跑起来——`from_jsonc_long_strings`、
-  `from_json5_long_strings`、`to_jsonc_long_strings`、`to_json5_long_strings`，每条离散度都是
-  0.000%——并把早先那四条地板重测了一遍：`from_json_long_strings` 112,664,928 → 112,987,111、
-  `from_toml_long_strings` 109,254,466 → 109,535,451、`to_json_long_strings` 58,550,997 →
-  58,550,735、`to_toml_long_strings` 72,438,982 → 72,438,675。它的 `long_string_jsonc`（2,557 字节，
-  两种注释都有）与 `long_string_json5`（2,550 字节，单引号——正是单引号那个向量实例扫描其字符串正文的
-  方言）都钉到严格 JSON 的那份列表上。
-- **把 harness 变大就会推动这次改动根本不进入的地板，所以名字要从派发自己的拒绝里拿，而不是靠预测**
-  — 它把 15 条、接着 13 条、再接着 18 条地板推过 0.005%，而三次增长里越过 0.50% 线的名字各不相同：
-  `from_json_medium` 78,671,707 → 79,283,878 → 79,904,977 前两次每级 +0.78% 越线，第三次它自己掉回
-  0.41%，改由四条本次根本不进入的读路径越线（`from_json5_medium` +1.05%、`from_jsonc_medium`
-  +0.72%、`parse_inline_merge` +0.67%、`from_json5_long_strings` +0.50%）；run 74 带着那四条拒绝写
-  入，run 75 点名它们才写进去。后来的运行各需要一个名字：`parse_inline_merge` +1.03%
-  （`stream_medium` +0.485% 留在线内），接着 `from_json5_long_strings` +0.82%（`from_json5_medium`
-  +0.479% 与 `from_json_medium` −0.905% 在线内）；从 26 增到 30 那一次谁也没越线，最大的移动是
-  `from_toml_medium` 的 +0.363%。`stream_medium` 相隔一个变量读出 +0.01% 与 +0.63%，只靠
-  `accept_drift stream_medium` 放行。`tolerance_hint` 保持 0.005；四十七条地板都出自那几次运行、由
-  run 79 重测，而在钉住种子的树上，绑定通道相对镜像地板最差 +0.15%，三个扫描族场景最多差到 -21.23%，
-  所以 §2 那条跨主机上限被标明是过期读数（账本 (gk)）。
-- **每条 Rust 基准各自一个进程跑，两个锁文件都升到各自区间允许的最新版本** — `codspeed-divan-compat`
-  5.0 → 6.0 为每条 Divan 基准另起进程，于是一条基准留下的分配器状态不再污染下一条，上游报告抖动超过
-  1 percent 的基准约少 70%；`CODSPEED_PROCESS_ISOLATION=false` 可退回旧行为。决定合并的东西一样没
-  动，但跨过这次 bump 读出的 CodSpeed 趋势线不是同一次度量。`similar` 3.2.0 → 3.2.1 是八个 crate 的
-  MSRV 1.96 地板之下仅剩的一步 Rust 更新，另有九个 Python 包动了：`zensical` 0.0.71 → 0.0.72、
+- **向只读单文档的路由要流现在被拒绝，条目之间的空行是被钉住的边界，而一次被移动的 TOML 注释点名正确
+  的起因** — `parse`、`parse_file`、`safe_load`、`to_toml` 与 `YAML()` 的等价物只读一个文档，两文档
+  输入回的是行走最后停在哪个：`a: 1\n---\nb: 2\n` 回来是 `b: 2`，`a: 1\n---\n` 是 `null`。现在抛
+  `YamlParseError`，以 `multi-document-input` 开头并带上第二个文档的行列，指向 `parse_all_docs`、
+  `safe_loads` 与 `parse_stream`。PyYAML 与 ruamel.yaml 在同样十种形状上抛，却仍接受前导 `---`、尾随
+  `...`、裸 `---` 或空输入 — 守卫不可过度触发的对照。CLI 里 `-A/--all-docs` 说的是同一件事，未变；记
+  作 `(hg)`。在八个位置上，并穿过编辑路由，空行一种都留不下，而值、键序、锚点与注释都留得下；
+  `tests/test_roundtrip.py` 把那个不动点按今天的样子钉住，补上缺口会让这枚钉子判红。一次被移动的
+  TOML `[sec] # note` 曾怪到 YAML 解析器的注释捕获模型头上，但
+  `preserves_section_header_trailing_and_leading` 显出的是一个不动点：这次移动是本项目的规则 — 容器
+  的行内注释停在它身体的最后一行。
+- **每座桥两侧现在都有注释地板，读侧也算** — 数一遍夹具就否证了 PR #641 对写侧地板的归因：serialize
+  场景跑在零个 `#` 的 YAML 上，五个写器输入零个 `{`、`[`、`]` 或 `}`，于是五个注释 helper 没有回答任
+  何被量的问题，方言写器也拿到一棵零 `#` 的 AST。现在三份文档各自携带其半问的那个形状：
+  `serialize_note_flow` 带一份穿过那五个答案，镜像把 12.61 % 归给这次行走；`to_jsonc_notes` 与
+  `to_json5_notes` 让 `<str>::replace` 成为两者最大的自身项、占 16.08 % 与 16.01 %，在 PR #643 一次
+  过拿走块的那一半之前；它们的读侧孪生在七条注释上把 `ws_extended` 排第一，占 19.86 % 与 19.79 %。对
+  着零 `#` 夹具时，字节扫描与注释搬运跑在最便宜的答案上，所以 `parse_notes` 与 `stream_notes` 改读写
+  侧那一行自己的文档：同样 434 字节、把注释刷成空格时，十一条注释在树路由上 +16.30 %、在事件路由上
+  +19.37 %，其中 71 % 与 74 % 在被锁定的解析器里。注释离开夹具时 `ir_fixtures.rs` 按名字判红；那次刷
+  新曾在 `from_json5_medium` +0.55 % 上拒绝自己，于是这个名字进了 `accept_drift`，而
+  `tolerance_hint` 留在 0.5 %。
+- **元数据搬运得到两条地板，数解释器的地板按 runner 镜像加键，而 TOML crate 写下它建的那棵树** — 每
+  次替换都问 `merged_meta` 该搬什么，`delete_path` 问 `extend_delete_over_comments`，可没有任何地板
+  抵达他们：`edit_*` 场景跑在 `MEDIUM_YAML` 上，不含 `#`、`&` 或 `!`，所以每个分支都落空。
+  `edit_set_metadata` 42,838,349 对照小 26 个字符的文档上 `edit_set_nested` 的 36,483,730，那是搬运
+  而不是更大的树，而 `ir_fixtures.rs` 在该夹具被装饰时判红。这一轮移动了两个它从不进入的地板 —
+  `documents_short_strings` −10.46 %、`documents_long_strings` −7.00 % — 全在 glibc 的拷贝一行里，所
+  以 `.ci/ir-baseline.json` 得到 `image_floors`，`scripts/ir_gate.py` 按运行所在镜像的那一行判定，且
+  只对数 CPython 的场景键控：同一棵树、harness 摘要相同，`load_toml_medium` 读到 142,467,241 与
+  144,904,012，一条地板兜不住的 1.71 % 差；没有对应行的镜像被拒绝（退出 2）。
+  `crates/pyrs-toml/src/lib.rs` 开头写着"没有中间值树"，而 `(fw)` 把它的表插入定价为
+  `load_toml_medium` 的 8.10 %、`from_toml_medium` 的 9.68 %：这次重写不在日程上，那句话现在描述它发
+  的这棵 build。
+- **事件流与行路由在长值形状上有了地板，而长正文在行路由上更贵** — `stream_long_strings` 用写器地板
+  那八条 256 字符记录跑同一个 `Work::Stream`，所以这些数字只差在字符串的形状：276,633,813 对照
+  `stream_medium` 的 255,359,778，**+8.33 %** — 门禁第一次在事件路径上量到长正文。`Work::Documents`
+  经 `pyrs_json::parse_documents` 把八条一行记录读成事件，只差值的宽度、9 个字符对 256：95,815,186
+  对照 328,951,144，**+243.3 %**，而同样的成对在事件路径上是 **+8.16 %**。重测移动了一个已发布比例 —
+  事件成对最初写下的是 8.33 %、现在读 8.16 % — `QUALITY_MATRIX.md` §2 携带它，而
+  `tests/test_ir_baseline_workflow.py` 拿文件而不是记忆核对。三十一个地板来自事件那次运行，三十三来
+  自行那次。
+- **长字符串形状在两条通道上都有测量，而表面覆盖全部五种格式** — 没有基准读过长值（`MEDIUM_JSON` 最
+  长 21 个字符），于是向量化的扫描无人量过。`long_string_json` / `_toml` / `_yaml` 生成同一个列表、
+  值换成 256 个纯字母字符，在每座桥两端读：排行榜通道四个基准（读 2.599 µs 与 3.499 µs，写 950 ns 与
+  1.174 µs），执法通道四条地板，且按源字节算长文档是 `from_json_medium` 的五分之一、
+  `from_toml_medium` 的八分之一。`scripts/quality_matrix.py` 把单向桥报成
+  `ir-bridge-unidirectional`，于是方言桥端到端地跑 — `from_jsonc_long_strings`、
+  `from_json5_long_strings`、`to_jsonc_long_strings`、`to_json5_long_strings`，每条散布 0.000 % — 并
+  重测早先四条地板（`from_json_long_strings` 112,664,928 → 112,987,111、`from_toml_long_strings`
+  109,254,466 → 109,535,451、`to_json_long_strings` 58,550,997 → 58,550,735、`to_toml_long_strings`
+  72,438,982 → 72,438,675）。
+- **harness 变大会移动变更从未进入的地板，所以名字来自一次派发的拒绝而不是预测** — 它先越过 15 条、
+  再 13 条、再 18 条超过 0.005 %，而越过 0.50 % 线的名字每次增长都不同：`from_json_medium`
+  78,671,707 → 79,283,878 → 79,904,977 每步 +0.78 % 越过两次，然后第三次增长把它退 0.41 %，而四个它
+  从不进入的读器越过（`from_json5_medium` +1.05 %、`from_jsonc_medium` +0.72 %、`parse_inline_merge`
+  +0.67 %、`from_json5_long_strings` +0.50 %）；第 74 次运行在这四个上拒绝，第 75 次命名它们并写下。
+  随后的运行各需一个名字（`parse_inline_merge` +1.03 %，`stream_medium` +0.485 % 留在线内；随后
+  `from_json5_long_strings` +0.82 %，`from_json5_medium` +0.479 % 与 `from_json_medium` −0.905 % 留
+  在线内）；26 到 30 的增长谁也没越线，最大是 `from_toml_medium` +0.363 %。`stream_medium` 读
+  +0.01 % 又 +0.63 %，只差一个变量，只有靠 `accept_drift stream_medium` 放行。`tolerance_hint` 仍是
+  0.005；四十七条地板来自那些运行、由第 79 次重测，而在钉住的树上绑定通道相对镜像地板最差 +0.15 %，
+  三个扫描器场景最多偏离 −21.23 %，所以 §2 的跨宿主上限被标成过期（ledger (gk)）。
+- **每个 Rust 基准在自己进程里跑，两份 lockfile 都移到其范围允许的最新版本** —
+  `codspeed-divan-compat` 5.0 → 6.0 为每个 Divan 基准 fork，于是一个基准留下的分配器状态不再染下一
+  个，上游报告变化超过 1 % 的基准少约 70 %；`CODSPEED_PROCESS_ISOLATION=false` 可退回。没有任何决定
+  合并的东西被移动，但跨过这次 bump 的 CodSpeed 趋势不是一次测量。`similar` 3.2.0 → 3.2.1 是八个
+  crate 的 MSRV 1.96 地板之下唯一剩下的 Rust 步骤，九个 Python 包动了（`zensical` 0.0.71 → 0.0.72、
   `mkdocstrings` 1.0.7 → 1.0.8、`mkdocstrings-python` 2.0.9 → 2.0.10、`python-dateutil` 2.9.0.post0
-  → 3.0.0、`deepmerge` 3.0.1 → 4.0.0，加上 griffelib、markdown 和两条补丁行。`maturin` 停在 1.15.0，
-  `pyo3` 留在 0.29 系列，因为最新的 `pytest`、`hypothesis`、`pydantic` 和 `numpy` 要求的解释器高于
-  3.8 地板。实测：806 条 Rust 测试、4,306 条 Python 测试、`-D warnings` 下的 clippy、整套钩子、四
-  locale 的严格文档构建。
-- **`no_std` 的主机测试现在也在 Windows 上跑，而单元测试那条腿真的跑在它名字所写的配置上** — 那个
-  job 钉死在一台 runner 上，而 wheel 是给三个系统发的；与宿主无关的裸机构建仍留在一台，会出差异的单
-  元测试则铺开。那一步的注释说加宽 crate 列表「值 112 条从没在 std 之外跑过的主机测试」，但
-  `cargo test -v --no-run` 显示一次点六个 crate 的调用为 `pyrs-toml`、`pyrs_json` 与 `pyrs_ast` 带上
-  `--cfg feature="std"`，而单独的 `-p pyrs-toml` 一个都不带：Cargo 会在一次调用里把所选包的 feature
-  统一，而 `pyrs-yaml-core` 指向那三条兄弟的 dev-dependency 边没写 `default-features = false`。出货
-  的东西都没受影响，但那句话靠的是一条其实在测 std 构建的步骤。三条清单边把它关掉，而
-  `tests/test_no_std_gate.py` 现在读清单而不是信一份 `-p` 列表：它拒绝任何通往声明了
-  `default = ["std"]` 的兄弟却不带 `default-features = false` 的基建边，以修复前的清单作控制（正好是
-  那三条边），并拒绝一个退回单主机的 job。那条不含 std 的命令跑 724 条测试、23 个 target，在 Windows
-  上 0 失败，而默认形状仍跑 815 条。
-- **依赖机器人既不报出定义地板的编译器，也不拼错自己的配置，而两份文档写的是实测过的东西** — 每周的
-  `github-actions` 分组开了 #620 去抬两个 action，顺手在 `ci.yml` 里把 `dtolnay/rust-toolchain@1.96`
-  改写成 `@1.120`——那个 ref 正是 `msrv-check` 要装的编译器。五条测试转红，而 `patterns: ["*"]` 不配
-  `ignore` 保证了每周的重报；现在这个名字在 `.github/dependabot.yml` 里被排除，而一旦那处排除被改
-  掉，`test_the_bump_bot_is_told_never_to_offer_the_floor_selector` 就转红。三个 `groups` 条目带着
-  `version-update:semver-patch`/`-minor`/`-major`——那是 `ignore`/`allow` 的词汇表，因为
-  `groups.*.update-types` 只接受 `major`/`minor`/`patch`——于是 Dependabot 九天之后拒收自己的文件，以
-  一条没有任何合并门禁会读的 check-run 的形式；那五个值现在改用短形式，
-  `tests/test_dependabot_config.py` 分别钉住两套词汇表。`QUALITY_MATRIX.md` 在一份八条的列表上写着
-  `Seven blind spots were found by measuring`；现在有一条测试重新算出这个计数，而自从钩子集那一腿进
-  表之后它读作九。`docs/dev/perf.md` 里有三句把「绑定通道很抖」记在 `AGENTS.md` 名下
-  （`grep -c noisy AGENTS.md` 是 0）；那个宽的读数出自 CPython 每进程自取的哈希种子，如今已钉住。
+  → 3.0.0、`deepmerge` 3.0.1 → 4.0.0，外加 griffelib、markdown 与两个补丁行）。`maturin` 留在
+  1.15.0、`pyo3` 留在 0.29 线，因为最新的 `pytest`、`hypothesis`、`pydantic` 与 `numpy` 要 3.8 地板
+  之上的解释器。实测：806 条 Rust 与 4,306 条 Python 测试、`-D warnings` 下的 clippy、整套钩子、一次
+  严格的四 locale 文档构建。
+- **`no_std` 宿主测试在 Windows 与 Ubuntu 上都跑，而单元测试那条腿跑它名字里写的那个配置** — 该作业
+  钉在一个 runner 上，而 wheel 发向三个；与宿主无关的裸机构建仍留一个，单元测试现在摊开。那一步的注
+  释说加宽 crate 列表 "换来 112 个从未在无 std 下跑过的宿主测试"，可 `cargo test -v --no-run` 显示六
+  crate 的那次调用为 `pyrs-toml`、`pyrs_json` 与 `pyrs_ast` 携带 `--cfg feature="std"`，而单独的
+  `-p pyrs-toml` 不带：Cargo 会把一次调用里的 feature 统一，而 `pyrs-yaml-core` 对这些兄弟的
+  dev-dependency 边没写 `default-features = false`。发布的东西都没受影响，但那条断言靠的是一个量 std
+  构建的步骤。三处清单边补上，`tests/test_no_std_gate.py` 现在读清单而不是信 `-p` 名单：它拒绝一条通
+  向声明了 `default = ["std"]` 却没写 `default-features = false` 的兄弟的基础边，以修复前的清单作对
+  照（正是那三条边），并拒绝退回单宿主的作业。无 std 的命令在 23 个目标上跑 724 条测试、Windows 上 0
+  失败，而默认形状仍跑 815 条。
+- **bump 机器人既不递出地板的编译器也不拼错自己的配置，两份文档写下量过什么** — 每周的
+  `github-actions` 组开了 #620 抬两个 action，并把 `ci.yml` 里的 `dtolnay/rust-toolchain@1.96` 改写
+  成 `@1.120` — 而那个 ref 正是 `msrv-check` 安装的编译器。五条测试判红，但没有 `ignore` 的
+  `patterns: ["*"]` 保证每周再递一次；那个名字现在在 `.github/dependabot.yml` 里被排除，而
+  `test_the_bump_bot_is_told_never_to_offer_the_floor_selector` 会在该排除被改掉时判红。三个
+  `groups` 条目带着 `version-update:semver-patch`/`-minor`/`-major` — 那是 `ignore`/`allow` 的词表，
+  因为 `groups.*.update-types` 只收 `major`/`minor`/`patch` — 于是 Dependabot 九天之后拒绝自己的文
+  件，而作为一条合并门禁读不到的 check-run；五个值改用短形式，`tests/test_dependabot_config.py` 钉住
+  两套词表。`QUALITY_MATRIX.md` 在八项的列表上写着 `Seven blind spots were found by measuring`；一条
+  测试现在重推那个计数，自钩子集那条腿加入后读作九。三句 `docs/dev/perf.md` 把"称绑定通道嘈杂"记在
+  `AGENTS.md` 名下（`grep -c noisy AGENTS.md` 是 0）；那个宽的读数是 CPython 每进程的哈希种子，现已
+  钉住。
 
 #### 性能
 
-- **写器的输出不再为中间分配付钱：一次到位的缓冲区容量，注释一趟压平** — JSON、JSONC、JSON5、TOML 与
-  YAML 五个写器都从 `String::new()` 起步，它那七次涨到 512 字节的重分配占了一次配置规模写出的大半。
-  在门禁钉住的 `rustc 1.97.1` 下按计数指令量：`to_json_medium` 22,884,635 → 17,718,056（-22.6%）、
-  `to_toml_notes` 16,468,905 → 12,071,715（-26.7%）、`serialize_block` 14,518,712 → 10,899,301
-  （-24.9%）、`serialize_note_flow` 64,411,669 → 59,227,943（-8.1%）——十六个写器场景全部下移，幅度最
-  小的是 `to_toml_long_strings` 的 -5.2%——而未改动的树把 `to_json_medium` 的地板读在 +0.002% 以内。
-  `edit_set_metadata` 下移 -7.3%，其余编辑场景落在 -1.3% 到持平之间，`safe_dump_*` / `to_python_*`
-  在 0.28% 以内。块注释那次压平原先要分配两次，现在一趟写完；在执法镜像上，`to_jsonc_notes` 与
-  `to_json5_notes` 分别落在 PR #642 落下的地板之下 38.27% 与 38.11%，其余 45 个场景在 0.16% 以内
-  （`to_json_medium` -0.0004%）。经由那一趟带上那六处行式站点，在那里再多换 2.5 个点，却把六条碰不到
-  注释的写器推过 `ir_gate.py` 的那条容差（`to_jsonc_medium` +1.63%、`to_json5_medium` +1.59%、
-  `to_jsonc_long_strings` +1.44%、`to_json5_long_strings` +1.42%、`to_json_medium` +1.02%、
-  `to_json_long_strings` +0.96%）——到不了注释的地方，2.5 个点抵不上 1%，所以那一半又撤回了。输出字节
-  一个未变。
-- **读者的字符串正文、TOML 的行与写器的转义扫描，都改为一次在 SSE2 上扫 16 字节** — JSON 与 TOML 的
-  读者此前逐字节扫描字符串正文，而 TOML 每次调用都会完整走一遍源码以拒绝裸回车；写器的转义判定等它的
-  长值地板落下（#600）才加入。SSE2 属于 x86_64 基线——没有新增依赖、不依赖 `std`——逐字节循环保留为向
-  量的尾段，在别的架构上它就是整条路径。在开发主机上，2 MB、每串 5000 字节的 JSON 由 2.47 → 1.97
-  ms，同样记录改成 6 MB 中日韩文本为 6.17 → 5.27，JSON5 单引号 1.53 → 1.11，2 MB 的 TOML 基础字符串
-  2.36 → 0.99，字面量 2.41 → 0.96，多行 3.37 → 1.01，0.45 MB、每值 100 字节 2.98 → 2.54；在执法镜像
-  上，`from_toml_medium` -4.02%（125,580,997 → 120,534,055）、`from_jsonc_medium` -3.69%、
-  `from_json_medium` -3.55%、`from_json5_medium` -1.09%。那句「这个值需要转义吗」测得占
-  `to_json_long_strings` 的 75.12% 与 `to_toml_long_strings` 的 69.01%，四条刷新后的地板读出
-  58,550,735 → 22,038,711（-62.36%）、72,438,675 → 28,254,711（-60.99%）、60,056,647 → 23,544,666
-  （-60.80%）、60,480,707 → 23,968,721（-60.37%）。短值是另一种形状——同一个扫描在那类场景只占
-  25.95-26.61%——而其中一条付了代价：`to_json_medium` +0.52%；`to_jsonc_medium` +0.48% 与
-  `to_json5_medium` +0.47% 留在线内，`to_toml_medium` 降了 0.84%，而在开发主机上读到 +0.55% 的 YAML
-  场景 `parse_inline_merge` 在镜像上是 +0.00%。
-- **一行 JSON 现在一次按八个字节来索引** — `pyrs_event::LineTable` 此前每步只数一个 UTF-8 字符，既用
-  来找行首，也用来把游标带到事件之间，而在执法这些地板的那台镜像上，这段走查读出
-  `documents_long_strings` 的 51.79% 与 `documents_short_strings` 的 21.09%
-  （`docs/dev/quality-ledger.md` (gl)）。一个 `u64` 一次答八个字节：`zero_lanes` 找断点，每个候选
-  lane 再回查它声称的那个字节，因为一个零 lane 里的借位会把它后面的 `0x01` 也照成断点——这条是新加的
-  属性测试在上线前抓到的。在同一台主机上：`documents_long_strings` 308,642,512 → 126,840,512
-  （-58.84%），`line_col` 降 82.6%、`LineTable::new` 降 66.0%，`documents_short_strings` 75,506,559
-  → 64,952,559（-13.98%）。位置一个没变，而地板随代码一起在执法镜像上下调：`documents_long_strings`
-  328,990,934 → 147,188,912（-55.26%）、`documents_short_strings` 95,854,968 → 85,300,932
-  （-11.01%），另有两条本地剖析从未点名的场景——`stream_json_medium` -14.90% 与
-  `stream_json_stop` -27.17%——因为同一张索引服务于整条 JSON 流路由。其余 38 条最多只动 0.0051%。
-- **`load_toml` 不再构建它留不住的那棵树，`load_json5` 走上两个同胞早已启用的免 AST 路径** — TOML 文
-  本依次经过扫描、表树、`CustomNode`、Python，于是一个普通 dict 替一份只为保格式而存在的节点模型付了
-  钱；`pyrs_toml::read_toml` 现在把 IR 走给调用方的 `TomlSink`，其标量来自共用的
-  `scalar_projection`，而闸门是标签注册表：只要装着任何处理器，这一次读就走 AST 路线。以同一轮里的
-  `rtoml` 为参照，已公布那一行从落后 1.92x 与 1.91x 变成落后 1.47x 与 1.46x，约快 1.31x——两次快照之
-  间主机漂移约 20%，所以绝对读数不算证据——在同进程里与闸门所选路线配对比较，读作 1.15-1.34x 与
-  1.31-1.35x。`json_fast::try_load` 此前只接到 `load_json` 与 `load_jsonc`，所以 `load_json5` 对每份
-  文档都要付完整的 `CustomNode` 往返：同样的 123 B 上 `load_json` 是 0.473 µs，它是 2.063 µs。JSON5
-  是严格 JSON 的超集，所以快速路径接受的就是同值的合法文档，而方言额外加的一切都会退出到 AST 路径；
-  值没有变，裁决它的是 712 条对照 `json.loads` 与 `pyjson5` 的测试。与加载器自己的方言路线相比，它在
-  300 项上快 6.25x、在 1,200 项上快 9.34x，两者都是 5/5 配对——这个比值现在由
-  `tests/test_json_leaderboard.py` 把关，因为这两条路线都没有指令计数给它定价。
-- **两条加载路线、三个编辑动词与流的停止都有了指令地板** — 没有任何 Ir harness 进入过它们：
-  `from_toml_*` 停在树那里，`from_json_*` 停在快读者跳过的节点模型，绑定通道只有 `bench_to_python`
-  与 `bench_load_toml`。两条场景经一道特性门控的缝驱动 `load_toml`，它读作 `from_toml_medium` 与
-  `from_toml_long_strings` 的 1.20x 与 1.29x——那段正是此前没有任何计数指令描述过的 Python 一半；
-  `load_json_medium` 与 `load_json_long_strings` 把 JSON 快速路径钉在 `from_json_medium` 与
-  `from_json_long_strings` 的 0.74x 与 0.86x，这条路线是替掉那棵树而不是往上叠加；`load_jsonc` 与
-  `load_json5` 共用这一行。三条编辑场景加入，每个动词一条，跑在 `MEDIUM_YAML` 上，克隆与解析都放在
-  setup 之内，于是剩下的就是动词本身；`move_path` 的两半也已定价。`stream_json_medium` 对着
-  `stream_json_stop` 把停放成整趟走查的 25.09 %——`Break` 结束的是扫描，不只是送达；TOML 有意不给这样
-  一行，它的 `Break` 结束的是发射。基线从 33 个场景增到 35 个，而这些行动了兄弟项：三条
-  `to_python_*` 各 +0.212%、-0.357% 与 -0.111%，`to_python_anchors` +0.1343%，
-  `load_toml_long_strings` -0.2175%，六条 JSON 读路径 +0.73%…+1.91% 而 diff 里没有一行引擎代码，
-  `load_json_long_strings` 的 +0.76 % 来自 runner 而不是代码——都写进 `accept_drift` 点名，
-  `tolerance_hint` 仍是 0.5%。记为 `(fs)`、`(ft)`、`(gf)`、`(gi)`、`(gh)`。
-- **门禁读到的最宽一项来自解释器，如今已经钉住** — 三次刷新运行把绑定 harness 记在同一个二进制摘要
-  （`7adbeac719edacd6`）之下，九个采样把 `load_json_long_strings` 铺开 1.121%，而同样字节上的引擎场
-  景在 0.00001% 以内一致。链接 CPython 的 harness 只有一侧，那一项就是它每进程自取的哈希种子：在
-  `PYTHONHASHSEED=0` 下该场景三次都读到 95,136,157，七条绑定场景全部收敛（0.2811%、0.2550%、
-  0.1249%、0.0787% 降到 0.0000-0.0004%）。`scripts/ir_gate.py` 把这颗种子钉在 glibc 上限旁边——当初消
-  掉 1.44% 跨主机项的就是这个手法——而本 head 上的刷新作业报告全部 42 个场景彼此不超过 0.0010%。地板
-  只在种子原先做工的地方移动：`load_json_long_strings` -0.526%，另外五条加载器 -0.166% 至 -0.055%，
-  `to_python_medium` +0.051%，35 条引擎场景不超过 0.001%，向上无一越线。线仍是 0.5%，因为仪器不再需
-  要这点余量；键一旦丢失，`tests/test_ir_gate_provenance.py` 会点名。
-- **空块体写回它声明的 chomping，于是只在这一处不同的两个容器键仍是两个键** — 映射相等会读
-  `chomping`，所以读取端同时保留 `? hF&a?k !tag o: |+1` 与 `? hF&a?k !tag o: |`；写器却把每个空体一
-  律强制成 `Clip`、两者都写成 `|`，于是它自己的读取端以 `DuplicateKey` 拒绝了这版发射（libFuzzer
-  `yaml_roundtrip` 的 crash-469125e3，最小化后 48 字节）。`effective_chomping` 现在对空值返回其声明
-  的 chomping，两个块写器把标题行留给调用方的终止符，而不再自己开一行体——两半都吃重，而一次突变说明
-  它们是两条断言：把 `Clip` 恢复回去，会用读取端自己的 "duplicate key" 打红
-  `container_keys_differing_only_in_chomping_survive`；而把标题换行放回去，那条仍绿，却以 `">+\n\n"`
-  对预期的 `">+\n"` 打红 `empty_block_header_reaches_a_fixed_point`。旧规则曾归一化的空 `Keep` 种子
-  （`>+8\r#`、`ancho: |+`；crash-89d81d99、crash-b5dcc38f）现在第一次发射就安定下来，而该输入归档为
+- **写器输出不再为中间分配付费：一次缓冲区容量、一趟注释展平** — JSON、JSONC、JSON5、TOML 与 YAML 写
+  器各自从 `String::new()` 起，那七次涨到 512 字节的重新分配几乎就是一次配置大小写入的全部。在门禁钉
+  住的 `rustc 1.97.1` 下数指令：`to_json_medium` 22,884,635 → 17,718,056（−22.6 %）、`to_toml_notes`
+  16,468,905 → 12,071,715（−26.7 %）、`serialize_block` 14,518,712 → 10,899,301（−24.9 %）、
+  `serialize_note_flow` 64,411,669 → 59,227,943（−8.1 %）— 十六个写器场景全降，最小的
+  `to_toml_long_strings` −5.2 % — 而未变的树把 `to_json_medium` 的地板读到 +0.002 %。
+  `edit_set_metadata` 动 −7.3 %，其余编辑场景在 −1.3 % 与持平之间，`safe_dump_*` / `to_python_*` 在
+  0.28 % 内。块注释的展平原先分配两次，现在一趟写完，执法镜像上 `to_jsonc_notes` 与 `to_json5_notes`
+  比 PR #642 提交的地板低 38.27 % 与 38.11 %，其余 45 个场景在 0.16 % 内（`to_json_medium`
+  −0.0004 %）。经这一趟的六处行内形状在那里再买 2.5 个点，却把六个无注释写器推过 `ir_gate.py` 的容差
+  （`to_jsonc_medium` +1.63 %、`to_json5_medium` +1.59 %、`to_jsonc_long_strings` +1.44 %、
+  `to_json5_long_strings` +1.42 %、`to_json_medium` +1.02 %、`to_json_long_strings` +0.96 %）— 在够
+  不着注释的地方 2.5 个点还不清 1 %，所以那一半被退回。没有一个输出字节改变。
+- **读取器的字符串正文、TOML 的行与写器的转义扫描在 SSE2 上一次十六字节** — JSON 与 TOML 读取器逐字
+  节扫字符串正文，TOML 每次调用走完整份源来拒绝裸回车；写器的转义问题在它的长值地板落地后加入
+  （#600）。SSE2 在 x86_64 基线里 — 没有新依赖、没有 `std` — 字节循环是向量的尾巴，其它架构整条走老
+  路。在宿主上：2 MB 带 5000 字节字符串的 JSON 2.47 → 1.97 ms，6 MB CJK 同样 6.17 → 5.27，JSON5 单引
+  号 1.53 → 1.11，2 MB TOML 基本串 2.36 → 0.99、字面串 2.41 → 0.96、多行 3.37 → 1.01，0.45 MB 一百字
+  节值 2.98 → 2.54；执法镜像上 `from_toml_medium` −4.02 %（125,580,997 → 120,534,055）、
+  `from_jsonc_medium` −3.69 %、`from_json_medium` −3.55 %、`from_json5_medium` −1.09 %。转义问题量得
+  `to_json_long_strings` 的 75.12 % 与 `to_toml_long_strings` 的 69.01 %，四条刷新后的地板读作
+  58,550,735 → 22,038,711（−62.36 %）、72,438,675 → 28,254,711（−60.99 %）、60,056,647 → 23,544,666
+  （−60.80 %）、60,480,707 → 23,968,721（−60.37 %）。短值是另一种形状 — 扫描占那些场景的
+  25.95-26.61 % — 有一个付了钱：`to_json_medium` +0.52 %；`to_jsonc_medium` +0.48 % 与
+  `to_json5_medium` +0.47 % 留在线内，`to_toml_medium` 下来 0.84 %，而 `parse_inline_merge`（一个
+  YAML 场景，开发宿主上 +0.55 %）在镜像上 +0.00 %。
+- **一行 JSON 一次八个字节地建索引** — `pyrs_event::LineTable` 一步一步各数一个 UTF-8 字符，既用来找
+  行起点、也用来在事件之间搬游标，而在执法那条线的镜像上这些行走读掉 `documents_long_strings` 的
+  51.79 % 与 `documents_short_strings` 的 21.09 %（`docs/dev/quality-ledger.md` (gl)）。一个 `u64`
+  一次答八个字节：`zero_lanes` 找断点，而每个候选道要与它声称的那个字节核对，因为零道里借出的位在后
+  面让一个 `0x01` 看着也像断点 — 新的属性测试在出厂前抓到这点。在一台宿主上：
+  `documents_long_strings` 308,642,512 → 126,840,512（−58.84 %），`line_col` 降 82.6 %、
+  `LineTable::new` 降 66.0 %，`documents_short_strings` 75,506,559 → 64,952,559（−13.98 %）。位置不
+  变，地板随代码在执法镜像上一起移动：`documents_long_strings` 328,990,934 → 147,188,912
+  （−55.26 %）、`documents_short_strings` 95,854,968 → 85,300,932（−11.01 %），外加两个本地 profile
+  从没点名的场景，因为同一个索引服务整条 JSON 流路由 — `stream_json_medium` −14.90 % 与
+  `stream_json_stop` −27.17 %。其余 38 个动 0.0051 % 或更少。
+- **`load_toml` 不再建它留不住的那棵树，而 `load_json5` 走它的两个兄弟早就有的免 AST 路由** — TOML
+  文本走扫描、表树、`CustomNode`、Python，于是一个普通 dict 为一棵保格式节点的模型付费；
+  `pyrs_toml::read_toml` 现在把 IR 走进调用方的 `TomlSink`，其标量来自共享的 `scalar_projection`，而
+  守卫是标记注册表：任何处理器装着时的读走 AST 路由。对 `rtoml` 在同一轮里，已发布那行从落后 1.92x
+  与 1.91x 变成落后 1.47x 与 1.46x，约快 1.31x — 宿主在两份快照之间漂了约 20 %，所以绝对读数不是证据
+  — 而在进程内对照被守卫的路由读作 1.15-1.34x 与 1.31-1.35x。`json_fast::try_load` 只接进
+  `load_json` 与 `load_jsonc`，于是 `load_json5` 付整趟 `CustomNode` 往返：同一条 123 B 上 2.063 µs
+  对照 `load_json` 的 0.473 µs。JSON5 是严格 JSON 的超集，所以快路径接受的是一份同值的合法文档、方言
+  新加的一切都退回 AST 路径；值不变，由 712 条测试对照 `json.loads` 与 `pyjson5` 判定。对照加载器自
+  己的方言路由它在 300 项上赢 6.25x、在 1,200 项上 9.34x，各 5/5 成对 — 那条比例现在由
+  `tests/test_json_leaderboard.py` 把门，因为两条路由都不被指令计数定价。
+- **加载路由、三个编辑动词与流停止都有指令地板** — 没有 Ir harness 进入它们：`from_toml_*` 停在树
+  上、`from_json_*` 停在快读器绕开的那个节点模型上，而绑定通道只有 `bench_to_python` 与
+  `bench_load_toml`。两个场景经一个 feature 门控的接缝驱动 `load_toml`，读作 `from_toml_medium` 与
+  `from_toml_long_strings` 的 1.20x 与 1.29x — 那个没有任何计数数字描述过的 Python 一半；
+  `load_json_medium` 与 `load_json_long_strings` 把 JSON 快路由钉在 `from_json_medium` 与
+  `from_json_long_strings` 的 0.74x 与 0.86x，这条路由是替换那棵树而不是给它加东西；`load_jsonc` 与
+  `load_json5` 共用该行。三个编辑场景加入，每个动词一条、跑在 `MEDIUM_YAML` 上，克隆与解析放在 setup
+  里，剩下的就是动词；`move_path` 的两半被定价。`stream_json_medium` 对照 `stream_json_stop` 把停止
+  放在行走的 25.09 % — `Break` 结束的是扫描，不只是交付；TOML 没有这样一行，它的 `Break` 结束发出。
+  基线从 33 个场景长到 35，这些行移动了兄弟：三条 `to_python_*` +0.212 %、−0.357 % 与 −0.111 %，
+  `to_python_anchors` +0.1343 %，`load_toml_long_strings` −0.2175 %，六个 JSON 读器 +0.73 %…+1.91 %
+  而 diff 里没有引擎文件，`load_json_long_strings` +0.76 % 来自 runner 而不是代码 — 进了
+  `accept_drift` 的名字，`tolerance_hint` 仍是 0.5 %。记作 `(fs)`、`(ft)`、`(gf)`、`(gi)`、`(gh)`。
+- **门禁最宽的读数是解释器，现在被钉住了** — 三次刷新运行在同一个二进制摘要（`7adbeac719edacd6`）下
+  记录绑定 harness，并把 `load_json_long_strings` 在九次抽样间散布 1.121 %，而同样字节上的引擎场景一
+  致到 0.00001 % 以内。只有一个 harness 链接 CPython，而那个项是它每进程抽的哈希种子：在
+  `PYTHONHASHSEED=0` 下该场景三次都读 95,136,157，七条绑定场景全部收敛（0.2811 %、0.2550 %、
+  0.1249 %、0.0787 % 降到 0.0000-0.0004 %）。`scripts/ir_gate.py` 把种子与 glibc 上限一起钉住 — 就是
+  关掉 1.44 % 跨宿主项的那个补救 — 而这一轮刷新把所有 42 个场景报在自己 0.0010 % 之内。地板只在种子
+  先前替代码干活的地方移动：`load_json_long_strings` −0.526 %、另外五个加载器 −0.166 % 到 −0.055 %、
+  `to_python_medium` +0.051 %，35 个引擎场景 0.001 % 或更少，向上没有任何一条过线。线留在 0.5 %，因
+  为仪器不再需要那点余量，而 `tests/test_ir_gate_provenance.py` 会在键丢失时点名它。
+- **空的块体写出它声明的 chomping，于是只差在这里的两个容器键仍是两个键** — 映射等值读 `chomping`，
+  所以读者把 `? hF&a?k !tag o: |+1` 与 `? hF&a?k !tag o: |` 各留一份；写器对每个空体强制 `Clip`、两
+  者都拼成 `|`，而它自己的读者以 `DuplicateKey` 拒绝这次发射（libFuzzer `yaml_roundtrip`
+  crash-469125e3，最小化到 48 字节）。`effective_chomping` 现在对空值给出声明的 chomping，两个块写器
+  把标头行留给调用方的终止符而不开一行体 — 两半都吃重，而一次突变说它们是两条断言：恢复 `Clip` 会让
+  `container_keys_differing_only_in_chomping_survive` 带着读者自己的 "duplicate key" 判红，而把换行
+  放回标头会让那条保持绿、让 `empty_block_header_reaches_a_fixed_point` 带着期望 `">+\n"` 却得
+  `">+\n\n"` 判红。旧规则归一化过的空 `Keep` 种子（`>+8\r#`、`ancho: |+`；crash-89d81d99、
+  crash-b5dcc38f）在第一次发射上定居，而输入归档为
   `fuzz/seeds/yaml_roundtrip/former-crash-469125e3.seed`。
 
 </details>
