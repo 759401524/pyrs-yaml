@@ -27,6 +27,14 @@ status: new
   赖写在使用者会碰到它们的位置：本项目发布的任何东西都不安装 `jsonschema`，而作为文本传入的 schema
   先由 `json.loads` 读取，因此一个 YAML 拼法的 schema 抛 `json.decoder.JSONDecodeError`。
 
+#### 变更
+
+- **文档工具链升到其范围允许的最新 `zensical`** — `zensical` 0.0.72 → 0.0.74，随之带来 `zensical-ui`
+  0.0.41，`zensical>=0.0.69` 约束未变。绿色的 `Docs` 运行不构成关于某个页面的证据：被锁的 0.0.56 会
+  发布 front matter 不是映射的页面，而 0.0.69 直接让构建失败，所以这次升级由
+  `scripts/check_doc_metadata.py`（165 个页面的元数据站点生成器读得懂）与四 locale 的 strict 构建判
+  定。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

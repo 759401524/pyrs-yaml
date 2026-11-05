@@ -27,6 +27,14 @@ status: new
   않고, 텍스트로 넘긴 스키마는 `json.loads`가 먼저 읽으므로 YAML로 철자한 스키마는
   `json.decoder.JSONDecodeError`를 발생시킵니다.
 
+#### 변경
+
+- **문서 도구 체인을 범위가 허락하는 최신 `zensical`로** — `zensical` 0.0.72 → 0.0.74, 함께
+  `zensical-ui` 0.0.41이 오고 `zensical>=0.0.69` 제약은 그대로다. 초록 `Docs` 실행은 페이지에 대한
+  증거가 아니다: 잠긴 0.0.56은 front matter가 맵이 아닌 페이지를 게시하고 0.0.69는 빌드를
+  실패시키므로, 이번 bump는 `scripts/check_doc_metadata.py`(165 페이지의 메타데이터를 생성기가
+  읽는다)와 네 locale의 strict 빌드로 판단한다.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

@@ -19,6 +19,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ships installs `jsonschema`, and a schema passed as text is read by `json.loads` first, so a
   YAML-spelled schema raises `json.decoder.JSONDecodeError`.
 
+### Changed
+
+- **The docs toolchain moved to the newest `zensical` its range allows** — `zensical` 0.0.72 →
+  0.0.74, with `zensical-ui` 0.0.41 arriving beside it, under an unchanged `zensical>=0.0.69`
+  constraint. A green `Docs` run is not evidence about a page: the locked 0.0.56 published pages
+  whose front matter is not a mapping while 0.0.69 fails the build outright, so the bump is judged
+  by `scripts/check_doc_metadata.py` (165 pages carry metadata the generator can read) and by a
+  strict four-locale build.
+
 ## [v0.19.0] — 2026-11-04
 
 <details markdown="1">
