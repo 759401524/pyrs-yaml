@@ -135,11 +135,19 @@ proved flaky on shared CI runners (macOS especially) and are tracked in CodSpeed
   (`pyrs_yaml_core::bench_inputs` is now the single source for both harnesses, so they cannot
   drift), and the per-node constant in this pillar's open ledger got its first decomposition —
   `serialize_small` costs ~2,848 Ir per 22-byte document while `parse_small` costs ~24,876, so the
-  big fish is **parse**, not serialize. Open: #267's five `serialize_*` benchmarks are still flagged
-  red by CodSpeed; the Ir gate — built with the repo's real release profile, unlike the +2.57%
-  figure above which came from an `lto = false` probe — measures the residual cost at +3.2%…+5.8% on
-  the serialize scenarios while `parse_anchors` gains 11%, and #267 now carries the re-baselined
-  numbers.
+  big fish is **parse**, not serialize. The shortboard this sentence names — #267's five
+  `serialize_*` benchmarks were flagged red by CodSpeed — is measured closed on the current tree
+  (2026-11-05): every one of the five scenarios reads -0.00% against the committed baseline, the
+  largest of three samples (
+  `serialize_small` 2,977,393 / 2,977,467; `serialize_medium` 27,567,340 / 27,567,443;
+  `serialize_block` 10,953,367 / 10,953,441; `serialize_anchors` 22,517,420 / 22,517,444;
+  `serialize_block_scalars` 7,954,987 / 7,955,036), each passes
+  `OK: every scenario within tolerance of the committed baseline`, and the CodSpeed run
+  on the current head (2026-11-05, run 41891268269 on `01b9134a`) is `success` for both the Rust
+  and Python benchmarks. The `+3.2%…+5.8%` the sentence quoted was a stale re-baseline
+  paragraph: the red is the harness's runner-type reporting, not the engine, because the Ir gate
+  — the arbiter for single-digit regressions — measures this engine path at baseline, while
+  CodSpeed keeps the cross-library ranking role.
 
 ## The per-node constant, attributed on the Ir channel (2026-10-13)
 
