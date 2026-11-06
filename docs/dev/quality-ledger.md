@@ -13125,3 +13125,40 @@ Consequences measured, not assumed.
   GitHub-link tokens with nothing after them, so that test now asserts the span alone and the
   span-plus-prose shape moved to the new one. The docstring was written from the fixer's old
   behavior, not from the tree - which is how it survived a change that made it false.
+
+### (jo) A dead TOML seed re-mined out of the registry, and the two that stay (2026-11-07)
+
+`fuzz/seeds/toml_roundtrip/shape-literal-and-folded.seed` was 29 bytes and began `l = |`. `|` is not
+a TOML value, so `from_toml` and `from_toml_v1_0` both refused it, `toml_roundtrip.rs:30`
+`continue`s past each refused gate, and the file sat in the corpus counting toward a writer promise
+it never asked - the shape `.ci/seed-reach.txt` existed to name.
+
+Re-mined to what its own filename claims: a multi-line literal string (`'''`-delimited, two lines)
+beside a basic string carrying a `\n` escape. The evidence came in the two parts the PR tier's
+contract requires.
+
+- It reaches: `cargo test -p pyrs-yaml-core --test seed_reach` reddened with
+  `STALE ENTRY toml_roundtrip shape-literal-and-folded.seed (the seed now reaches the assertion)` -
+  the gate's own way of reporting that the reach predicate flipped, and the reason the registry
+  could not quietly keep the line.
+- It passes: `cargo fuzz run toml_roundtrip <seed> -- -runs=0` in WSL executed the target on those
+  bytes with no panic (`Running 1 inputs 1 time(s) each`, 2 ms), so the writer re-parse and the
+  fixed-point assertions at `toml_roundtrip.rs:34-43` ran on it.
+
+`SEED_REACH_UPDATE=1` then rewrote `.ci/seed-reach.txt` to 14 entries under its 8-line header, 15 to
+14. The corpus did not move: 286 seeds, 259 in the six walked directories, because this replaced a
+file rather than adding one - which is the point of re-mining over deleting.
+
+The hole stays open, narrower. `seed-unreachable:toml_roundtrip` now names two of the three seeds:
+`former-crash-2a5ea394` and `former-crash-7a3aac52` answer `max depth exceeded (max=1000)`, the
+refusal PR #694 was filed for, so their exit is a shallower input that still records the runaway
+output - not deleting them, and not relocating them to `parse_toml`, whose two writer promises are
+gated on a successful read too (measured: its three seeds are unreachable there).
+
+Restatements the number lives in, all touched in this change: the registry file, the `why` and
+`exit` text in `.ci/quality-holes.json`, the `QUALITY_MATRIX.md` row, and the seed-reach Internal
+entry in five changelog mirrors. One judgement call is worth its reason: the mirror sentence
+"auditing all 15 unreachable registry lines left this as the only naked one" reports what an
+*audit* covered, not what the gate reads today, so it kept 15 and gained the word "then" ("the 15
+registry lines then unreachable"), while the four sentences that claim today's reading moved to 14.
+A count that mixes those two tenses is the quiet rot this section exists to prevent.

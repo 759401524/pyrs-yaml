@@ -13,7 +13,6 @@ parse_toml former-crash-6c15f693.seed
 parse_toml former-crash-837bd790.seed
 toml_roundtrip former-crash-2a5ea394.seed
 toml_roundtrip former-crash-7a3aac52.seed
-toml_roundtrip shape-literal-and-folded.seed
 yaml_roundtrip cr-only-break-note-ownership.seed
 yaml_roundtrip former-crash-3ff42607.seed
 yaml_roundtrip former-crash-41c6594b.seed

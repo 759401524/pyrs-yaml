@@ -50,7 +50,7 @@ status: new
   才用，所以只是以 `>` 开头的正文行仍走原来的路径。实测：引出该问题的两条 fuzz 输入
   （`crash-aa8a0447`、`crash-95b66309`）已离开失败集合，`yaml_roundtrip` 从 9 降到 7，而 `edit_yaml`
   仍为 14；两条都已归档为种子 — 语料 284 到 286，`seed_reach` 依旧在那四个往返目标的 242 个种子上
-  报出 11 条不可达（这道门现在走查六个目标，报出 259 条里的 15 条）。
+  报出 11 条不可达（这道门现在走查六个目标，报出 259 条里的 14 条）。
 
 #### 变更
 
@@ -74,29 +74,30 @@ status: new
   最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 907 条 Rust `#[test]`、242 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
-  （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json`
-  看三种 JSON 方言，`toml_roundtrip` 与 `parse_toml` 看 TOML 的两道门），所以一份读者拒绝的归档
-  输入在 `-runs=0` 下干净回放，而它当初被归档时所要防的那条写侧承诺根本没被问过——语料总数却依旧
-  把这个文件算在内。`crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
-  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；在这六个目录的 259 个种子上它量出
-  15 条不可达，而 `scripts/quality_matrix.py` 为清单点名的每个目标导出一个
-  `seed-unreachable:<target>` id——现在是五条，五条都已登记并写明各自移除它的条件。
-  `parse_json` 与 `parse_toml` 是在本条写下之后才加入这个总体的：`parse_json.rs:36` 与
-  `parse_toml.rs:57` 遇到拒绝就 `continue`，全部断言都在它们身后，这正是四个往返目标的形状，
-  而不是那句排除理由所说的“它们断言的就是拒绝本身”——同一句话还把出路说错了：把一份被拒绝的
-  种子挪进 `fuzz/seeds/parse_toml/` 只是把盲区搬走，并没有关掉它。这些输入留在语料里：15 条中
-  有 5 条答的是 `max depth exceeded (max=1000)`，那正是 PR #694 自己的后置条件，所以它们防的是
-  那道拒绝，其余一概不算。`edit_yaml` 这一条是有意比它自己的目标少问一道前置条件：该目标还要
-  一个 NUL 分隔符、至少一条完整的两字节记录、非空的路径清单，以及一个答 ok 的动词。这道缺口是量
-  出来的，不是想当然：把目标插桩成每到前置条件就 panic，再让每条种子在自己的进程里回放，它的 62
-  条种子全部抵达了某条断言，所以今天这个弱一点的谓词和真谓词说的是同一件事
-  （`docs/dev/quality-ledger.md` (jm)）。
+  （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三
+  种 JSON 方言，`toml_roundtrip` 与 `parse_toml` 看 TOML 的两道门），所以一份读者拒绝的归档输入在
+  `-runs=0` 下干净回放，而它当初被归档时所要防的那条写侧承诺根本没被问过——语料总数却依旧把这个文件算
+  在内。`crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
+  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；在这六个目录的 259 个种子上它量出 14 条不可达，
+  而 `scripts/quality_matrix.py` 为清单点名的每个目标导出一个 `seed-unreachable:<target>` id——现在是
+  五条，五条都已登记并写明各自移除它的条件。`parse_json` 与 `parse_toml` 是在本条写下之后才加入这个
+  总体的：`parse_json.rs:36` 与 `parse_toml.rs:57` 遇到拒绝就 `continue`，全部断言都在它们身后，这正
+  是四个往返目标的形状，而不是那句排除理由所说的“它们断言的就是拒绝本身”——同一句话还把出路说错了：把
+  一份被拒绝的种子挪进 `fuzz/seeds/parse_toml/` 只是把盲区搬走，并没有关掉它。这些输入留在语料里：14
+  条中有 5 条答的是 `max depth exceeded (max=1000)`，那正是 PR #694 自己的后置条件，所以它们防的是那
+  道拒绝，其余一概不算。登记表里已经有一条被重新挖出去了：`shape-literal-and-folded` 当初写的是
+  `l = |`，两道门都判它非法；改写成多行字面量字符串与基本字符串并排之后，它被读侧接受，在 `-runs=0`
+  下干净回放，并抵达写侧——所以 `seed-unreachable:toml_roundtrip` 现在三条里只点名两条（账本 (jo)）。
+  `edit_yaml` 这一条是有意比它自己的目标少问一道前置条件：该目标还要一个 NUL 分隔符、至少一条完整的
+  两字节记录、非空的路径清单，以及一个答 ok 的动词。这道缺口是量出来的，不是想当然：把目标插桩成每到
+  前置条件就 panic，再让每条种子在自己的进程里回放，它的 62 条种子全部抵达了某条断言，所以今天这个弱
+  一点的谓词和真谓词说的是同一件事（`docs/dev/quality-ledger.md` (jm)）。
 
 - **fuzz 找到、而什么都没留下的 23 条输入现已进入语料** — 今天回放干净的 2026-11-02 与
   2026-11-03 那批发现（15 条 `edit_yaml`、8 条 `yaml_roundtrip`，45 到 234 字节）从未被归档，
   而一份不存在的种子什么都保护不了：矩阵按文件计数，所以那道缺口是看不见，而不是没被测出。每条
   都按原字节登记到 `fuzz/seeds/<target>/former-crash-<short>.seed`，再向它自己目标的引擎重新发问
-  ——`seed_reach` 报出 259 条走查里 15 条不可达，而这 23 条都不在其中，所以它们都抵达了归档它的那
+  ——`seed_reach` 报出 259 条走查里 14 条不可达，而这 23 条都不在其中，所以它们都抵达了归档它的那
   条断言，而不是
   靠一次拒绝通过；回放层跑满 198 条中的 198 条，产物为零。仍在失败的 23 条继续挂在各自 issue 上，
   其中包括需要注释归属裁定的 `edit_yaml` 容器 note 形态。
@@ -135,14 +136,13 @@ status: new
 - **只含注释的 JSON 文档现在由三种方言各自具名拒绝** — 钉住这条的那份语料输入
   `fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`，既被它自己的目标跳过（没有方言接受时
   `json_roundtrip` 会 `continue`），也被逐条重问种子的 JSON 语料门跳过，于是规则无人断言，语料总数却
-  依旧把这个文件算在内。把 15 条不可达登记行逐个问“那一类由谁防守”，只剩这一条是裸的：5 条深度门输入
-  由 PR #694 落下的带类型 `MaxDepthExceeded` 拒绝断言，CR 换行与保留首字符两类由
+  依旧把这个文件算在内。把当时登记为不可达的 15 条逐个问“那一类由谁防守”，只剩这一条是裸的：5 条深度
+  门输入由 PR #694 落下的带类型 `MaxDepthExceeded` 拒绝断言，CR 换行与保留首字符两类由
   `settles_in_one_round.rs` 里具名的测试断言，TOML 多行字符串由读写两侧四条测试断言，BOM 边界则两个
   方向都有断言。`comment_only_documents_are_refused_by_every_dialect` 把主张配成对：
-  `// nothing here`、`// c`、`/* x */` 以及 `# hash` 再接 `// c` 必须被 JSON、JSONC、JSON5 三者
-拒绝，
-  而同样注释放在值之前必须在两种带注释的方言里读出、在严格 JSON 里仍被拒绝（实测：12 次拒绝、6 次
-  接受）。其余 14 条保留登记：它们记的是语料信用的丢失，不是防守的丢失。
+  `// nothing here`、`// c`、`/* x */` 以及 `# hash` 再接 `// c` 必须被 JSON、JSONC、JSON5 三者拒
+  绝，而同样注释放在值之前必须在两种带注释的方言里读出、在严格 JSON 里仍被拒绝（实测：12 次拒绝、6
+  次接受）。其余 14 条保留登记：它们记的是语料信用的丢失，不是防守的丢失。
 
 - **文档换行器的中日韩安全性现在用出厂页面来量，而不只用注入样本** — `--fix` 把正文重排到 100
   显示列，保护排版的规则此前只在 `tests/test_doc_wrapping_gate.py` 里由人工注入触发，而真正出厂的
