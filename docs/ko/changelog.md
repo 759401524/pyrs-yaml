@@ -74,6 +74,19 @@ status: new
   고정했습니다. 세 입력과 두 최소 입력을 그 코퍼스에 넣었고, 코퍼스는 `-runs=0`에서 초록으로
   재생되며, 매트릭스는 Rust `#[test]` 907개와 시드 242개를 읽습니다.
 
+- **대상이 거부한 시드는 보호로 계산되지 않고 세어 넣습니다** — 왕복하는 fuzz 대상은 모두 타입이
+  있는 거부를 통과로 취급합니다(`parse(Schema::Core)`, JSON 세 방언, TOML 두 관문). 그래서 읽는
+  쪽이 거부하는 보관 입력은 `-runs=0`에서 초록으로 재생되면서, 그 입력을 보관한 이유인 불변
+  조건은 한 번도 묻지 않은 채 코퍼스 총합만 파일을 셉니다. 그 네 대상 아래의 보관 시드 217개에서
+  실측: 11개가 단언에 이르지 못합니다 — `yaml_roundtrip` 7개(그중 5개는 후일 결정이 중복 키 문서를
+  거부로 바꿨기 때문), `toml_roundtrip` 3개, `json_roundtrip` 1개.
+  `crates/pyrs-yaml-core/tests/seed_reach.rs`는 각 대상 자신의 엔진 호출을 물어
+  `.ci/seed-reach.txt`와 실측이 어느 쪽으로 어긋나도 빨갛게 만듭니다. `scripts/quality_matrix.py`는
+  그 목록에서 `seed-unreachable:json_roundtrip`, `seed-unreachable:toml_roundtrip`,
+  `seed-unreachable:yaml_roundtrip`을 유도하고, 세 항목 모두 해제 조건과 함께 등록됐습니다.
+  입력은 코퍼스에 남깁니다 — 그것들이 박아 둔 거부 자체가 과거의 결함이었으니, 코퍼스를 슬쩍
+  줄이는 대신 맹점을 문서에 적습니다.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

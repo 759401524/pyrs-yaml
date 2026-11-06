@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 909 Rust `#[test]`, 2,165 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 912 Rust `#[test]`, 2,168 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 261 seeds of which 167 are `former-crash-*`, thinnest 1 (`parse_schema`) / fullest 128 (`yaml_roundtrip`) | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -193,9 +193,11 @@ denotes, and `jsonschema` - which owns that membership - can refuse it. The deco
 (a standard type the same value must NOT satisfy) is what stops the confirmation being a rubber stamp;
 JSON Schema keeps `boolean` and `integer` disjoint even though Python's `bool` subclasses `int`, so a
 tag the grammar got wrong is a red run, not an agreement. The blind spot this closed was registered as
-`authority-tier:schema-rule-language` and is now gone, so the registry is empty again - and the reading
+`authority-tier:schema-rule-language` and is now gone, so the registry was empty again - and the reading
 of an empty registry, that nothing is unmeasured rather than nothing is unjudged, is a statement about
-the measurement, not a claim of coverage.
+the measurement, not a claim of coverage. It has not stayed empty: three `seed-unreachable` holes were
+measured into it on 2026-11-06, and the section *Registered blind spots* carries them with the state
+that removes each.
 
 `partial` in the parity column is measured per dialect, not per family. The column reads the readers
 each `test_*_crosslib.py` imports - at module level, or through a `pytest.importorskip` inside the test
@@ -869,6 +871,9 @@ measurement no longer reproduces fails CI.
 | *none measured* | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two used to pass it — `docs/en` was one `[Unreleased]` entry behind and `docs/zh` one Added and five Fixed behind, with one Changed bullet no other mirror had. Condensing `[Unreleased]` into user-facing entries, written into all five pages in the same pass, closed the divergence, and `check_changelog_mirrors.py` now asserts the per-section counts instead of printing them | satisfied: the five pages report equal counts and the probe derives nothing |
 | *none measured* | the pyq jq/yq shell's accepted set was judged by the real binaries only on a host that happened to carry them: the tier skips when neither is installed, cargo captures the `SKIP:` line, and the leg still reported success — so the PR's central claim was host-dependent while reading as measured | satisfied by `ci.yml`'s rust-lint job, which installs the pinned release binaries (`v4.54.1`, `jq-1.8.2`, linux amd64), verifies their sha256, and binds them with `PYQ_DIALECT_YQ`/`PYQ_DIALECT_JQ` — under a binding, a missing or wrong reference fails the leg instead of skipping it, and `dialect_reference_bound()` measures the premise off the workflow text |
 | *none measured* | counting `prop_*` functions measures how many properties exist, not whether each one asserts. The probe found seven of the 25 properties guarding their assertion inside `if let Some(parsed) = try_roundtrip(&node)`, so any sample the helper declined to return was never spoken about - measured on 2026-10-14 by drawing 4000 trees from `arb_custom_node()`: 3423 filtered, none failed to parse. That is the mechanism by which a writer emitting `null: v` for a document's `? *x` key stayed green while the tier ran (#410 fixed the writer; this row is why nothing saw it) | closed by the round-trip classifier: each difference between a tree and its re-parse is either asserted or named in an enumerated set of tolerable normalizations (`NullToken`, `PlainRequoted`, `BlockRestyled`, `EmptyContainerFlow`, `NoteRehomed`), so the whitelist is capped instead of open-ended and the probe measures an empty guard list |
+| `seed-unreachable:yaml_roundtrip` | the target's first line is `let Ok(node) = parse(text, Schema::Core) else { return }`, so a seed the reader refuses never reaches the idempotence assertion it was archived for - yet `fuzz_seed_inventory()` counts the file, the PR tier replays it green, and 5 of the 7 named inputs became unreachable precisely because a later ruling made duplicate-keyed documents a refusal (`former-crash-4bf6ee37`, `3ff42607`, `41c6594b`, `b88f1b4f`, `f59d4ae3`), with `cr-only-break-note-ownership` and `special-keys` refused as syntax | `.ci/seed-reach.txt` carries no `yaml_roundtrip` line: each named input is re-mined into a document `parse(Schema::Core)` accepts, or moved to a target whose assertion is the refusal itself. `crates/pyrs-yaml-core/tests/seed_reach.rs` measures it against the engine call and reddens when the file and the measurement disagree in either direction |
+| `seed-unreachable:toml_roundtrip` | the target skips its whole body when both the 1.1 and the 1.0 gate refuse, so the three seeds named there (`former-crash-2a5ea394`, `former-crash-7a3aac52`, `shape-literal-and-folded`) prove the refusal still stands and nothing about the note placement they were filed for | `.ci/seed-reach.txt` carries no `toml_roundtrip` line, reached by re-mining each input into a document one gate parses or moving it to `fuzz/seeds/parse_toml/`, where the refusal is the thing under test |
+| `seed-unreachable:json_roundtrip` | `json_roundtrip` `continue`s when none of the three dialects accepts, so `shape-comment-only-document.seed` replays clean without the round-trip invariant ever being asked of it | `.ci/seed-reach.txt` carries no `json_roundtrip` line, reached by re-mining the input into a document some dialect accepts or moving it to `fuzz/seeds/parse_json/` |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
 pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears

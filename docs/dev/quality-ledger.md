@@ -12544,3 +12544,51 @@ function), `fuzz/seeds/yaml_roundtrip` replayed one by one `clean=128 failing=0 
 `fuzz/seeds/edit_yaml` `clean=47 failing=0 total=47`. `quality_matrix.py --write-rows` moves 908 ->
 909 Rust `#[test]`, 244 -> 261 seeds and 150 -> 167 `former-crash-*`, and `yaml_roundtrip` becomes
 the fullest target at 128.
+
+### (jc) A seed the target refuses replays clean and protects nothing (2026-11-06)
+
+Every round-trip fuzz target opens by treating a typed refusal as a pass:
+`yaml_roundtrip` and `edit_yaml` run `let Ok(node) = parse(text, Schema::Core) else { return }`,
+`json_roundtrip` `continue`s when none of `from_json` / `from_jsonc` / `from_json5` accepts,
+`toml_roundtrip` when neither the 1.1 nor the 1.0 gate does. A seed the engine refuses therefore
+replays under `-runs=0`, counts in the corpus total, and never once asks the invariant it was
+archived for. Nothing measured that before: `fuzz_seed_inventory()` counts files, and a refused
+file is a file.
+
+Measured over the 217 seeds under those four targets (261 in the whole corpus; the 44 under
+`parse_yaml`, `parse_json`, `parse_toml`, `parse_schema` and `json_events_replay` are out of the
+population by design, because those targets assert on the refusal itself), asking each target's own
+engine call: **11 never reach** -
+7 in `yaml_roundtrip`, 3 in `toml_roundtrip`, 1 in `json_roundtrip`, 0 in `edit_yaml`. Five of the
+seven (`former-crash-3ff42607`, `41c6594b`, `4bf6ee37`, `b88f1b4f`, `f59d4ae3`) became unreachable
+because a later ruling made a duplicate-keyed document a refusal, which is the honest reason they
+stay in the corpus: the refusal they now pin was itself the defect. `cr-only-break-note-ownership`
+and `special-keys` are refused as syntax. `quality_matrix.py` derives
+`seed-unreachable:json_roundtrip`, `seed-unreachable:toml_roundtrip` and
+`seed-unreachable:yaml_roundtrip` from the registry `.ci/seed-reach.txt`, and all three are
+declared in `.ci/quality-holes.json` - the registry was empty before this section.
+
+The gate is `crates/pyrs-yaml-core/tests/seed_reach.rs`: it re-measures and refuses when the
+registry and the measurement disagree in either direction, so a seed that starts reaching again
+cannot leave a stale entry behind any more than a new unreachable one can pass unlisted. It is a
+Rust test rather than a Python one because the question is which engine call the *target* makes
+first, and only the 1.1 TOML gate has a Python surface - asking `load_toml` alone would have called
+a 1.0-only document unreachable.
+
+Two probe defects found on the way, both of which would have produced a false clean number. The
+first pass measured every seed through `pyrs_yaml_core::parser` and so "refused" the JSON and TOML
+inputs of their own accord: 35 refusals, of which only 8 were the real population. The second was
+an equation, not a bug - `edit_yaml` asserts `emitted == emit(parse(emitted))` (a writer output is
+already a fixed point), while `yaml_roundtrip` asserts `once == twice` (the output is stable one
+round later). Judging the settle family with the weaker claim read "all nine reproduce as plain
+documents, so no gap" when in fact `to_yaml(parse(T))` differed from `T` for all nine; the corpus
+answer under the strong claim is that every one of the 226 measurable seeds is a one-step fixed
+point, and the seven drifters are reachable only through an edited tree.
+
+Measured: `cargo test -p pyrs-yaml-core --test seed_reach` 3 passed (the drift check both ways, the
+renderer/reader agreement, and the registry's header shape), `pytest tests/test_seed_reach.py`
+3 passed, `tests/test_quality_matrix.py` 64 passed, `quality_matrix.py --write-rows` moves 909 ->
+912 Rust `#[test]` and 2,165 -> 2,168 Python test functions; `SEED_REACH_UPDATE=1` wrote 11 lines
+to `.ci/seed-reach.txt`. The gate prints its own population - 11 unreachable of 217 seeds walked -
+because a hard-coded corpus size would be a number nothing checks, and the corpus grows the moment
+another input is archived.

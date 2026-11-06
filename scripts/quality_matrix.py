@@ -161,6 +161,33 @@ def fuzz_seed_inventory(root: Path | None = None) -> dict:
     }
 
 
+def seed_reach_gaps(file: Path | None = None) -> dict[str, int]:
+    """Seeds that never reach the assertion their target asserts, counted per target.
+
+    Read from `.ci/seed-reach.txt`, the registry written by
+    `crates/pyrs-yaml-core/tests/seed_reach.rs`, which asks each round-trip target's OWN first
+    engine call. That is the only question that shows a `-runs=0` replay passing while the archived
+    defect is out of reach: every such target treats a typed refusal as a pass, so a refused input
+    is counted in the corpus total and run by the tier without ever touching the invariant. The
+    matrix reads the list instead of re-deriving it because a static probe cannot run a parser -
+    and the day the file is missing the measurement says nothing, which is why an absent registry
+    yields no holes rather than a clean sheet.
+    """
+    path = file or (REPO / ".ci" / "seed-reach.txt")
+    if not path.exists():
+        return {}
+    counts: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        parts = entry.split()
+        if len(parts) < 2:
+            continue
+        counts[parts[0]] = counts.get(parts[0], 0) + 1
+    return counts
+
+
 def engine_crates(fuzz_links: list[str]) -> list[str]:
     """The fuzzed crates that also own a writer, so a round trip exists to test."""
     found = []
@@ -1386,6 +1413,22 @@ def measure() -> dict:
                 target,
                 "these seeds are counted in the corpus total that every quoted number comes from, but no "
                 "declared target replays them, so the durable tier is thinner than its own count",
+            ]
+        )
+
+    # A seed the target refuses before its first assertion replays clean and protects nothing
+    # against the defect it was archived for, and the corpus total cannot see it: the file is
+    # counted either way. Registered per target with the count in the wording, so the row that
+    # quotes "N seeds" cannot be read as "N reachable inputs".
+    for target, count in sorted(seed_reach_gaps().items()):
+        holes.append(
+            [
+                "seed-unreachable",
+                target,
+                f"{count} of this target's archived seeds are refused before the target reaches its "
+                "first assertion, so `-runs=0` proves the refusal still stands and not that the "
+                "archived defect cannot return; .ci/seed-reach.txt names them and "
+                "tests/seed_reach.rs reddens when that list and the measurement disagree",
             ]
         )
 

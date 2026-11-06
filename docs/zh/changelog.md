@@ -65,6 +65,18 @@ status: new
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
   最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 907 条 Rust `#[test]`、242 个种子。
 
+- **被目标拒绝的种子现在被计数，不再被算作保护** — 每个往返 fuzz 目标都以"类型化拒绝即通过"开场
+  （`parse(Schema::Core)`、三种 JSON 方言、TOML 的两道门），所以一份读者拒绝的归档输入在
+  `-runs=0` 下干净回放，而它当初被归档时所要防的那条不变量根本没被问过——语料总数却依旧把这个
+  文件算在内。在那四个目标下的 217 个种子上实测：11 条从未到达断言——`yaml_roundtrip` 7 条（其中
+  5 条是因为后来的裁定把带重复键的文档判成拒绝）、`toml_roundtrip` 3 条、
+  `json_roundtrip` 1 条。
+  `crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
+  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；`scripts/quality_matrix.py` 从那份清单导出
+  `seed-unreachable:json_roundtrip`、`seed-unreachable:toml_roundtrip` 与
+  `seed-unreachable:yaml_roundtrip` 三个 id，三条都已登记并写明各自移除它的条件。这些输入留在
+  语料里——它们钉住的拒绝本身就是曾经的缺陷，所以这里写下的是盲区，而不是悄悄削减语料。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
