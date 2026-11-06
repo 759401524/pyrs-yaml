@@ -99,7 +99,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 928 Rust `#[test]` over 287 seeds.
+  matrix reads 928 Rust `#[test]` over 288 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,
@@ -273,6 +273,19 @@ s own
   artifact tree, and the two thinnest targets 14,786 and 13,165 runs with the same. Because the
   pull-request tier replays seeds with `-runs=0`, this is a merge gate
   (`docs/dev/quality-ledger.md` (jv)).
+
+- **A JSON5 non-finite document now walks the events target's refusal arm** — `json_events_replay`
+  asserts the two walks agree, and `fuzz/fuzz_targets/json_events_replay.rs:105` carries
+  `(Err(_), Err(_)) => {}` for the case where both accept the document and the strict writer refuses
+  it, with a comment naming JSON5 infinity as that case. No archived input reached it: an
+  instrumented `-runs=0` replay of all 21 seeds printed a writable verdict for every document both
+  walks accepted. The 16 bytes of `{"a": Infinity}` are filed as
+  `fuzz/seeds/json_events_replay/shape-json5-non-finite.seed`, so the pull-request tier walks the
+  refusal rather than only describing it, at 22 seeds and 23 runs clean. The same probe priced the
+  claims that were already sound — the note-slot equality is reached non-vacuously by 12 seeds, with
+  leading- and inline-owned notes both present — and left the asymmetric-writability arm at `:106`
+  named as unwalkable by construction, since both trees come from one document
+  (`docs/dev/quality-ledger.md` (jw)).
 
 ### [v0.19.0] — 2026-11-04
 

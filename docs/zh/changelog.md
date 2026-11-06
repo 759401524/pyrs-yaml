@@ -83,7 +83,7 @@ status: new
   和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
   的范围远宽于为它写下的两条最小输入。引擎的答案由
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 928 条 Rust `#[test]`、287 个种子。
+  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 928 条 Rust `#[test]`、288 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
   （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三
@@ -219,6 +219,16 @@ status: new
   这条断言的第一轮定价在交付版与突变版两个构建上都干净回放。发现层 8 个作业共 88,704 次运行、
   artifact 目录为空，两个最稀疏的目标也同样得到 14,786 与 13,165 次运行且无 artifact。由于 PR 层就是
   以 `-runs=0` 回放种子，这条断言现在是合并门禁（`docs/dev/quality-ledger.md` (jv)）。
+
+- **JSON5 的非有限值文档现在会走 events 目标的拒绝分支** — `json_events_replay` 要求两次遍历
+  的答案一致，而 `fuzz/fuzz_targets/json_events_replay.rs:105` 用 `(Err(_), Err(_)) => {}`
+  容纳"两个遍历都接受、严格写器却拒绝"这一对，注释点名的正是 JSON5 无穷值。归档输入里没有一个
+  走到那里：给 21 条种子做插桩 `-runs=0` 回放时，两遍都接受的文档全都回答"写得出来"。于是
+  `{"a": Infinity}` 的 16 字节入库为
+  `fuzz/seeds/json_events_replay/shape-json5-non-finite.seed`，PR 层从此每次拉取请求都会真的
+  走一遍这条拒绝，22 条种子、23 次运行、`rc=0`。同一次插桩也给本就成立的断言定了价 —
+  注释槽位等式由 12 条种子非空洞地抵达，独占整行与内联两种归属都出现过 — 而 `:106` 那条
+  "两棵树可写性不同"记为按构造走不到：两棵树出自同一份文档（`docs/dev/quality-ledger.md` (jw)）。
 
 ### [v0.19.0] — 2026-11-04
 
