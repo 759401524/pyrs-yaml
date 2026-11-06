@@ -40,6 +40,16 @@ use pyrs_yaml_core::parser::yaml::Schema;
 /// reach. `parse_json` and `parse_toml` are not like those: both loop over the dialects (or the two
 /// TOML gates) and `continue` when a parse refuses, so a seed no dialect accepts runs no writer and
 /// asserts nothing - the same hole the round-trip targets have, which is why they are listed here.
+///
+/// `edit_yaml` is measured one precondition short of its harness on purpose. The target also needs a
+/// NUL separator, at least one complete two-byte record, a non-empty path list, and one verb that
+/// answers ok (`edit_yaml.rs:418-597`); this predicate asks only whether the document parses,
+/// because deciding the rest means duplicating the harness's own path walk and verb dispatch, and a
+/// second copy of that logic drifts silently. The gap was measured rather than assumed: with the
+/// harness instrumented to panic at each precondition and every seed replayed in its own process,
+/// 62 of 62 `edit_yaml` seeds reached an assertion, so the weaker predicate and the real one agree
+/// on today's corpus. A script whose every verb refuses would be counted reachable here while the
+/// target asserts nothing - ledger (jm) carries the replay method for re-checking that.
 const SKIP_ON_REFUSAL: [&str; 6] = [
     "yaml_roundtrip",
     "edit_yaml",
