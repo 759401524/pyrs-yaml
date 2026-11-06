@@ -13162,3 +13162,43 @@ entry in five changelog mirrors. One judgement call is worth its reason: the mir
 *audit* covered, not what the gate reads today, so it kept 15 and gained the word "then" ("the 15
 registry lines then unreachable"), while the four sentences that claim today's reading moved to 14.
 A count that mixes those two tenses is the quiet rot this section exists to prevent.
+
+### (jp) Two more dead YAML seeds re-mined, and the refusal reason that was not the CR breaks (2026-11-07)
+
+The same procedure as (jo), applied to the two `yaml_roundtrip` lines the registry called
+syntax-refused. Asking the shipped engine for the reason first is what made them movable:
+`special-keys` answers `unexpected character: '@' at char 37 line 4 column 3`, and
+`cr-only-break-note-ownership` answers `mapping values are not allowed in this context … line 4
+column 3` - the second is the bare `- :` empty key, not the CR vocabulary the file is named for.
+That distinction is measurable rather than argued: lone-CR documents parse and are fixed points
+through the binding (`a: 1\r# note\r` and `- k: 1\r\r# note\r- j: 2\r` both round-trip), so the
+shape the file wanted to carry was still available in legal YAML.
+
+Both files replaced rather than deleted, then measured the two ways the contract asks for. The gate
+reddened with two `STALE ENTRY` lines naming both seeds - its only way of saying the reach
+predicate flipped - and `SEED_REACH_UPDATE=1` rewrote `.ci/seed-reach.txt` from 14 entries to 12
+(20 lines under its 8-line header; `yaml_roundtrip` 7 lines to 5). Each seed then ran in its own
+process against the WSL-built target (`cargo fuzz build yaml_roundtrip --debug`, then
+`cargo fuzz run yaml_roundtrip <seed> -- -runs=0`): both exited 0 with no panic, so the idempotence
+and re-parse assertions executed. The bytes were checked on disk with `od -c` before any claim was
+written down, because the writing path is where escapes have gone missing before.
+
+One boundary stated rather than blurred. The re-mined `special-keys` asks the writer about four
+scalar spellings with the reserved one quoted; the plain `@`-leading spelling the original bytes
+carried cannot be produced by any legal input, so that half stays where (ji) put it - the Rust test
+that builds the node and questions the emission. A file that reaches is not automatically a file
+that tests what its name says.
+
+Counts the number lives in were enumerated, not remembered: every `14` in the first 260 lines of
+each of the five changelogs was classified before anything was replaced, which found two mentions
+my first anchor list missed - `The other 14 lines keep their` in the two English pages, and the
+`其余 14 条保留登记` / `残る 14 行` / `나머지 14줄` sentence in the three locales. Two mentions were
+deliberately left at 14: they count the `edit_yaml` failing-input set, not the registry. Restated
+in the same change: the registry, the `yaml_roundtrip` exit in `.ci/quality-holes.json`, the
+`QUALITY_MATRIX.md` row, and six sentences per mirror.
+
+Two of my own mistakes belong here because both recur. The first locale anchor list was written
+from a previous turn's line layout, and that turn's `--fix` reflow had moved the text - the
+`count(old) == 1` assert caught it, so no file was left half-written. And a Japanese phrase came
+out with a simplified-only glyph (续) where 続 belongs, which the amendment now checks with a
+tripwire: Han in Korean, Hangul in Japanese or Chinese, and that glyph in Japanese.

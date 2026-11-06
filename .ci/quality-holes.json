@@ -40,7 +40,7 @@
   {
    "id": "seed-unreachable:yaml_roundtrip",
    "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `yaml_roundtrip` line, reached either by re-mining each named input into a document `parse(Schema::Core)` accepts or by moving it to `parse_yaml`, whose whole claim is the two `let _ =` calls, so a refusal satisfies it rather than skipping it. Five of the seven became unreachable because a later ruling made the engine refuse duplicate-keyed documents, which is why they are registered rather than deleted",
+   "exit": "`.ci/seed-reach.txt` carries no `yaml_roundtrip` line, reached either by re-mining each named input into a document `parse(Schema::Core)` accepts or by moving it to `parse_yaml`, whose whole claim is the two `let _ =` calls, so a refusal satisfies it rather than skipping it. The five lines it names now are exactly the inputs that became unreachable when a later ruling made the engine refuse duplicate-keyed documents, which is why they are registered rather than deleted; the two syntax-refused inputs this id also carried have been re-mined into documents the reader accepts, and reach the assertion (ledger (jp))",
    "why": "`let Ok(node) = parse(text, Schema::Core) else { return }` is the target's first line, so a refused seed never reaches the idempotence assertion, yet the corpus total and the `former-crash-*` count still credit it as regression protection"
   }
  ]
