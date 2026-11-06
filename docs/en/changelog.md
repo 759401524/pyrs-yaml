@@ -99,7 +99,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 923 Rust `#[test]` over 286 seeds.
+  matrix reads 928 Rust `#[test]` over 287 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,
@@ -256,6 +256,23 @@ s own
   archived as seeds, none appears among the ten unreachable lines, and each replayed at `rc=0` under
   `-runs=0` against its own target. `QUALITY_MATRIX.md`'s fuzz row stated the weaker claim and now
   states the qualified one (`docs/dev/quality-ledger.md` (ju)).
+
+- **`parse_yaml` now asks the two YAML entry points to refuse alike** — the target called `parse`
+  and `parse_all` as two `let _ =` statements, so its only claim was "no input panics the parser",
+  while `load_ast`'s own comment says the shared helper exists so the single-document door and the
+  stream door cannot drift. What is asserted now: a stream refusal carries the identical message at
+  both doors, at most one accepted document means the single door accepts, and two or more must
+  answer `ParseError::SingleDocumentExpected`. Five named cases in
+  `crates/pyrs-yaml-core/tests/reader_door_agreement.rs` hold each branch, and they caught the first
+  version's mistake on its first run — the prose token `multi-document-input` is the binding's
+  mapping (`py/mod.rs:51`), not the engine's rendering (`pyrs-ast/src/error.rs:55`). Measured on the
+  file as shipped (sha `3165fb959464`): the 144 archived YAML inputs replay as 145 runs with no
+  panic, and the mutated expectation crashes on the 18-byte `---\na: 1\n---\nb: 2\n` - an input the
+  archive did not hold until this change, which is why the oracle's first pricing replayed clean on
+  both the shipped and the mutated build. Discovery totalled 88,704 runs across 8 jobs with an empty
+  artifact tree, and the two thinnest targets 14,786 and 13,165 runs with the same. Because the
+  pull-request tier replays seeds with `-runs=0`, this is a merge gate
+  (`docs/dev/quality-ledger.md` (jv)).
 
 ### [v0.19.0] — 2026-11-04
 

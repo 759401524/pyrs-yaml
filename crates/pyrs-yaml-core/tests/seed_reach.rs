@@ -35,11 +35,13 @@ use pyrs_yaml_core::parser::yaml::Schema;
 /// The targets that skip their whole body on a typed refusal.
 ///
 /// `json_events_replay` is absent on purpose: its `(Err, Err)` arm asserts that the two walks refuse
-/// with the same message, so a refusal is the claim it makes. `parse_yaml` and `parse_schema` hold
-/// their result in `let _ =`, which leaves "no panic on any input" as the assertion every seed does
-/// reach. `parse_json` and `parse_toml` are not like those: both loop over the dialects (or the two
-/// TOML gates) and `continue` when a parse refuses, so a seed no dialect accepts runs no writer and
-/// asserts nothing - the same hole the round-trip targets have, which is why they are listed here.
+/// with the same message, so a refusal is the claim it makes. `parse_schema` holds its result in
+/// `let _ =`, which leaves "no panic on any input" as the assertion every seed does reach.
+/// `parse_yaml` is absent for the opposite reason: its body asks something on both arms, the
+/// refusal arm compares the two doors' messages, so no seed can replay it blind. `parse_json` and
+/// `parse_toml` are not like those: both loop over the dialects (or the two TOML gates) and
+/// `continue` when a parse refuses, so a seed no dialect accepts runs no writer and asserts
+/// nothing - the same hole the round-trip targets have, which is why they are listed here.
 ///
 /// `edit_yaml` is measured one precondition short of its harness on purpose. The target also needs a
 /// NUL separator, at least one complete two-byte record, a non-empty path list, and one verb that

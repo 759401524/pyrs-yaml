@@ -96,7 +96,7 @@ status: new
   수가 짊어지는 범위는 그 둘을 위해 쓰인 두 최소 입력보다 훨씬 넓습니다. 엔진의 답은
   `rename_moves_one_pair_of_a_name_the_document_spells_twice`와 그 옆의 `move` 테스트로
   고정했습니다. 세 입력과 두 최소 입력을 그 코퍼스에 넣었고, 코퍼스는 `-runs=0`에서 초록으로
-  재생되며, 매트릭스는 Rust `#[test]` 923개와 시드 286개를 읽습니다.
+  재생되며, 매트릭스는 Rust `#[test]` 928개와 시드 287개를 읽습니다.
 
 - **대상이 거부한 시드는 보호로 계산되지 않고 세어 넣습니다** — 여섯 fuzz 대상은 모두 타입이 있는
   거부를 통과로 취급합니다(`yaml_roundtrip`과 `edit_yaml`은 `parse(Schema::Core)`,
@@ -251,6 +251,21 @@ status: new
   입력 세 개와 #733의 `yaml_roundtrip` 입력 두 개는 모두 시드로 보관됐고, 닿지 않는 열 줄 어디에도
   없으며, 각 대상에서 `-runs=0` 재생이 `rc=0`입니다. `QUALITY_MATRIX.md`의 fuzz 행은 약한 쪽을 적던
   자리를 조건이 붙은 문장으로 채웠습니다(`docs/dev/quality-ledger.md` (ju)).
+
+- **`parse_yaml`이 두 YAML 진입 지점에 같은 거부를 요구했습니다** — 대상은 `parse`과 `parse_all`을
+  `let _ =`로만 불러서 "어떤 입력도 parser를 panic시키지 않는다"가 주장의 전부였는데, `load_ast`
+  자기 주석은 단일 문서 진입과 스트림 진입이 어긋나지 않게 공유 헬퍼가 있다고 적혀 있습니다. 이제
+  요구하는 것: 스트림이 거부하면 두 진입의 메시지가 완전히 같아야 하고, 문서가 최대 한 개면 단일
+  진입도 받아들여야 하며, 두 개 이상이면 `ParseError::SingleDocumentExpected`로 답해야 합니다.
+  `crates/pyrs-yaml-core/tests/reader_door_agreement.rs`의 이름 붙은 사례 다섯이 각 갈래를 고정하고,
+  첫 실행에서 초판의 잘못을 잡았습니다 — 글자 토큰 `multi-document-input`은 바인딩의
+  대응(`py/mod.rs:51`)이지 엔진의 표시(`pyrs-ast/src/error.rs:55`)가 아닙니다. 실측: 출하된 파일
+  (sha `3165fb959464`)에서, 보관된 YAML 입력 144개를 `-runs=0`으로 재생하면 145회에 패닉이
+  없습니다. 기대하는 변형을 틀리게 두자 18바이트 `---\na: 1\n---\nb: 2\n`에서 붕괴하지만, 그 입력은
+  이 변경 때까지 아카이브에 들어 있지 않았기 때문에 처음 가격 매김에서는 출하본과 변형본 모두
+  패닉이 나지 않았습니다. 발견 계층은 8작업에 합계 88,704회이고 artifact는 비며, 가장
+  얇은 두 대상도 같은 방식으로 14,786회와 13,165회에서 비었습니다. PR 단계는 `-runs=0`으로 시드를
+  재생하므로 이것은 병합 관문입니다(`docs/dev/quality-ledger.md` (jv)).
 
 ### [v0.19.0] — 2026-11-04
 
