@@ -85,6 +85,15 @@ status: new
   靠一次拒绝通过；回放层跑满 198 条中的 198 条，产物为零。仍在失败的 23 条继续挂在各自 issue 上，
   其中包括需要注释归属裁定的 `edit_yaml` 容器 note 形态。
 
+- **导出路径里数字原文拼写的界限现在有了具名** — 抵达 `to_json5` 或 `to_toml` 的树在第一轮保住
+  原文、第二轮却规范化：`k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6`（26 位十六进制，core schema 把它判为
+  *字符串*）被导出成裸的 `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`，于是导出改变了它的类型；而
+  `k: +83e6` 先写 `k = +83e6`、再写 `k = 83e6`。`crates/pyrs-yaml-core/tests/exports_settle.rs`
+  把两个形状钉成当前状态，因为任一侧写器都无法自己回答这问题：实测在同一棵树上，`from_json5` 与
+  `parse` 对一个 JSON5 数字和一个只是长得像数字的 YAML 字符串，交回的都是同一个
+  `Scalar { style: Plain, tag: None, fidelity: None }`。把原文放进节点的 `fidelity` 槽、总是规范化，
+  还是做成按次参数，是尚未拍板的决定，连同实测记在 `docs/dev/quality-ledger.md` (je)。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

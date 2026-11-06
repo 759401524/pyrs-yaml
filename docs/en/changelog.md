@@ -99,6 +99,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   zero artifacts. The 23 findings that still fail stay open on their issues, including the
   `edit_yaml` container-note shape that needs a placement ruling.
 
+- **A number's source spelling now has a named limit in the export spokes** — a tree reaching
+  `to_json5` or `to_toml` kept the text on the first round and canonicalized on the second:
+  `k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6` (26 hex digits, which the core schema resolves as a *string*)
+  exported as the bare token `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`, so the export changed its type,
+  and `k: +83e6` wrote `k = +83e6` and then `k = 83e6`.
+  `crates/pyrs-yaml-core/tests/exports_settle.rs` pins both shapes as the state they are, because
+  neither writer can answer the question itself: measured on this tree, `from_json5` and `parse`
+  hand back the same `Scalar { style: Plain, tag: None, fidelity: None }` for a JSON5 number and for
+  a YAML string that merely looks like one. Carrying the source text in the node's `fidelity` slot,
+  canonicalizing always, or making it per call is an open decision, recorded with its measurements
+  in `docs/dev/quality-ledger.md` (je).
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

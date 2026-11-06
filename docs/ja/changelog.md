@@ -98,6 +98,17 @@ status: new
   いまも失敗する 23 件は各 issue に残し、配置の裁定が要る `edit_yaml` のコンテナ注釈のかたちも
   その中です。
 
+- **出力経路で数の原文表記がもつ限界に名前が付きました** — `to_json5` や `to_toml` に届いた木は
+  一度目の表記を保ち、二度目で正規化しました。`k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6`（16 進 26 桁、
+  core スキーマはこれを*文字列*と判定します）は `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}` と裸のまま
+  出力され、書き出しが型を変えています。`k: +83e6` は `k = +83e6`、その次が `k = 83e6` です。
+  `crates/pyrs-yaml-core/tests/exports_settle.rs` は両者を実測状態のまま固定します。どちらの書き手も
+  自分で答えを決められないからです。実測では同じ木上で `from_json5` と `parse` が、JSON5 の数も
+  それに見えるだけの YAML 文字列も、どちらも
+  `Scalar { style: Plain, tag: None, fidelity: None }` にします。原文をノードの `fidelity` 欄に
+  入れるのか、常に正規化するのか、呼び出しごとの引数にするのかは未決で、実測とともに
+  `docs/dev/quality-ledger.md` (je) に記しました。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
