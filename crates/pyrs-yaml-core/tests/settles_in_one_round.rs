@@ -243,6 +243,53 @@ fn a_tagged_empty_sequence_item_with_a_note_settles_in_one_round() {
     );
 }
 
+/// libFuzzer `edit_yaml` crash-92f3fc65 and crash-e392c402: a note on the entry under a tag header
+/// whose block body is not indented.
+///
+/// `!base:` is a tag on the root, and its sequence starts on the next line at the same column. A
+/// note written on that first entry has to take a line of its own, and the line the writer chose was
+/// the gap between the header and the body - where granit does not report it: the re-read files it
+/// as the root node's leading note, and the next emission lifts it above `!base: `. `crash-e392c402`
+/// is the same shape with the root also carrying an anchor (`!base: &xuzz2eUt:`).
+#[test]
+fn a_note_in_the_gap_under_a_tag_header_settles_in_one_round() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+    use std::borrow::Cow;
+
+    let src = "!base:\n  - etss: !s:\n\n";
+    let item = [Segment::Index(0)];
+    let value = [Segment::Index(0), Segment::Key(Cow::Borrowed("etss"))];
+    let note = || Comment {
+        text: "fuzz 47".into(),
+        standalone: false,
+    };
+
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    set_anchor_path(&mut node, &value, "a0", src, None).expect("the anchor is set");
+    let text = to_yaml(&node);
+
+    let mut node = parse(&text, Schema::Core).expect("the intermediate text re-parses");
+    set_comment_path(&mut node, &item, note(), &text, None).expect("the entry note is set");
+    let text = to_yaml(&node);
+
+    let mut node = parse(&text, Schema::Core).expect("the intermediate text re-parses");
+    set_comment_path(&mut node, &value, note(), &text, None).expect("the value note is set");
+
+    let one = to_yaml(&node);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert_eq!(
+        one.matches("# ").count(),
+        2,
+        "both notes survive the placement, and no round may invent or fold one: {one:?}"
+    );
+}
+
 /// libFuzzer `edit_yaml` crash-a58caa38: an edit that empties a block sequence leaves its flag behind.
 ///
 /// An empty container has no block form, so the writer always spells it `[]` on the key's line - the

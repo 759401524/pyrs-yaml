@@ -12412,3 +12412,55 @@ boundary stands, because the targets parse with the default duplicate policy, so
 decided - `rename_path` still picks by identity where a caller reading `get()` would expect the
 first spelling, which is what `(iv)` left to the caller's `on_duplicate` and this triage had no
 ruling to widen.
+
+### (ja) A note under a header that opens the document was left in the gap (2026-11-06)
+
+libFuzzer `edit_yaml` crash-92f3fc65 and crash-e392c402 (81 and 82 bytes, the main-push batch of run
+42147565843, issue #732) reddened the fixed-point assertion with two emissions one line apart:
+
+```text
+!base: \n# fuzz 47\n- etss: &a0 !s: ~  # fuzz 47\n
+```
+
+against `# fuzz 47\n!base: \n- etss: &a0 !s: ~  # fuzz 47\n`. `crash-e392c402` is the same shape
+with an anchor on that header (`!base: &xuzz2eUt:`). The session reduces to three operations - an
+anchor on the `etss` value, a note on the first entry, a second note on that value - so the input
+costs 29 bytes (40 for the anchored sibling).
+
+Attributed by tagging the writers, not by reading: a build that prefixed each note line with the
+function that emitted it turned round one into `# A[fuzz 47]`, which is `note_line_above` - the lift
+ran and declined. `header_gap_start` asked for the break *before* the line above
+(`before[..before.len() - 1].rfind('\n')`) and gave up when there was none, which is exactly the
+case of a header that is the document's first line: `!base:` at offset 0. A note that cannot ride
+its line therefore stayed in the gap, granit reported it on the root, and round two moved it above
+the header. The fix is `map_or(0, …)` in place of the `break` - the line above a body starts at
+offset 0 when no earlier break exists - and it moves no other placement, because the walk still
+stops at the first line `is_header_line` refuses.
+
+Measured before the fix, because the two notes look alike and only their order matters: the entry
+note alone emits `!base: \n- etss: &a0 !s:  # N\n` and settles; the value note alone emits
+`!base: \n- etss: &a0 !s: ~  # N\n` and settles; the pair line has one trailing slot, so the second
+note takes it and displaces the first into the gap. The Rust test
+`a_note_in_the_gap_under_a_tag_header_settles_in_one_round` pins the triple, and on the trunk bytes
+it fails with the fuzz strings verbatim.
+
+The third input of that batch is a different defect and stays open. `crash-a87ef583` (89 bytes, two
+operations from `- !base: &x 0se: *x`: an anchor on item 0, then a note on item 0) emits
+`- \n  &a5 \n  &x !base: 0se: *x  # fuzz 227\n` and re-reads it as
+`- \n  # fuzz 227\n  &a5 \n  &x !base: 0se: *x\n`. Nothing declined to lift there - the first round
+put the note in the pair line's trailing slot and the reader homes that note on the `  &a5 ` header
+above, which the writer spells as a line of its own. That is an inline-slot ownership question, so
+it is left on #732 rather than answered by this lift.
+
+Measured: `cargo nextest run --all` 895 passed / 0 skipped, `uv run pytest tests/ -q` 4,713 passed /
+11 skipped / 119 deselected in 129.83 s (the two new seeds add two `test_reader_parity` cases and no
+test function, which is why the matrix's Python count stays 2,165), `fuzz/seeds/edit_yaml` replayed
+one by one `clean=47 failing=0 total=47`, and the three artifacts of the batch
+`clean=2 failing=1 total=3` with `crash-a87ef583` the failure. On the Ir floor, read
+on this WSL host under the baseline's pinned `rustc 1.97.1` with all 55 scenarios
+measured, every `serialize_*` row reads -0.00 % - the lift costs the writer nothing -
+and the only rows past the 0.50 % line are `load_toml_medium` +1.86 % and
+`load_toml_long_strings` +2.99 %, the host-versus-image pair `(iz)` reproduced byte
+for byte on the parent tree. `quality_matrix.py --write-rows` moves 907 -> 908 Rust
+`#[test]`, 242 -> 244 seeds and 148 -> 150 `former-crash-*`; the two settled inputs join
+`fuzz/seeds/edit_yaml/former-crash-92f3fc65.seed` and `former-crash-e392c402.seed`.
