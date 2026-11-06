@@ -12520,6 +12520,24 @@ assembled in one buffer from the header's own bytes. The row is reported, not re
 naming `serialize_note_flow` in the refresh workflow's `accept_drift` input is the decision this
 section does not make.
 
+The alternative was built and measured rather than argued. Threading the offset instead of
+re-deriving it - a `pair_header_gap` slot written by the pair that finishes the header line,
+taken at the read once "one break still separates it from the tail", shifted by
+`insert_note_at` the way the pending marker is - emits byte for byte what the walk emits. A
+temporary probe serialized every input under `fuzz/seeds/**` and every downloaded artifact, 367
+documents, and the two builds' dumps compare with zero differing files. It reads dearer:
+`serialize_note_flow` +1.66 % (60,329,933) against +1.10 % for the walk, with +0.14 % for
+neither, because the guard runs on every pair that moves a block value down while hoisted notes
+stay rare. The slot was dropped and the walk kept.
+
+CI reports the same number as this host. The enforcing image's `Instruction-count baseline` leg on
+the PR head reads `serialize_note_flow 59,343,982 -> 59,993,938 +1.10 %` - the identical count - and
+in that same log `load_toml_medium` and `load_toml_long_strings` read -0.03 % each, where this WSL
+box reads +1.86 % and +2.99 %. So the host pair is the host and the +1.10 % is this code, and the
+only rows the gate rejects are the two the engine cannot move. `Test matrix (all legs)` therefore
+says `failure` on that head and nothing else does; the row's sanctioned remedy is the refresh
+workflow's `accept_drift` input, with the baseline commit that carries it as its own change.
+
 Measured: `cargo nextest run --all` 896 passed / 0 skipped, `uv run pytest tests/ -q` 4,730 passed /
 11 skipped / 119 deselected in 156.18 s (the 17 seeds add 17 `test_reader_parity` cases and no test
 function), `fuzz/seeds/yaml_roundtrip` replayed one by one `clean=128 failing=0 total=128` and
