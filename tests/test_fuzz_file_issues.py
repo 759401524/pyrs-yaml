@@ -268,3 +268,26 @@ def test_the_aggregate_job_grants_issues_write_and_runs_this_script():
         "a pull-request leg replays seeds with -runs=0 and never explores, and a fork PR's token is "
         "read-only, so filing there would fail the job instead of the gate"
     )
+
+
+def test_the_closure_criterion_demands_that_the_seed_reaches(mod, tmp_path):
+    """A refused input replays clean, so "replay clean" alone credits a seed that asked nothing.
+
+    The report step writes the pipeline into the issue body, which is the only place a triager
+    reads it. Deleting the reach clause from `build_body` reddens here - the criterion is the
+    guard, and this is what stops it decaying back to the weaker sentence that let issues #732
+    and #733 sit on archived seeds that reach nothing.
+    """
+    crashes = archive(tmp_path, "yaml_roundtrip", ["crash-ddd"], [])
+    run_gh = Recorder()
+    code = mod.file_issues(
+        mod.collect(crashes),
+        run_url="https://example.invalid/run/2",
+        dry_run=False,
+        run_gh=run_gh,
+    )
+    assert code == 0
+    body = run_gh.calls[1][1]
+    assert "replay clean" in body, body
+    assert ".ci/seed-reach.txt` names none" in body, body
+    assert "seed_reach.rs" in body, body

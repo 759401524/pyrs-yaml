@@ -13400,3 +13400,32 @@ gate working as designed, and the reason its expected set is now the three that 
 failure message that says how each direction of change should be read. A hardcoded membership is not
 a bug when membership is the thing being guarded; the failure mode would be a gate that still passed
 after the set it named had shrunk.
+
+### (ju) A replay that passes because the target refused is not a closed finding (2026-11-07)
+
+`scripts/fuzz_file_issues.py` writes the triage pipeline into every finding issue, and the sentence
+at its end read "Close this issue when the seeds replay clean." (jt) and the seed-reach work both
+show what that credits: of the 259 seeds the six reaching targets walk, ten replay clean under
+`-runs=0` while their target refuses the input and never reaches an assertion. For those ten the
+sentence is satisfied without a single promise being asked - so an issue whose inputs later became
+unreachable, by a ruling or by a reader change, could be closed on a refusal.
+
+The criterion now names both conditions: the seeds replay clean *and* `.ci/seed-reach.txt` names
+none of them.
+`tests/test_fuzz_file_issues.py::test_the_closure_criterion_demands_that_the_seed_reaches` renders a
+body through the module and demands the reach clause; deleting it reddens that one test and leaves
+the other sixteen green, and the file came back byte-identical with 17 passed after.
+
+The two issues that are open on this criterion today are #732 (`edit_yaml`, three inputs) and #733
+(`yaml_roundtrip`, two). Measured against the tree they were filed for: all five are archived under
+`fuzz/seeds/<target>/former-crash-*.seed`, none of the five appears in the ten unreachable lines,
+and each replayed with `-runs=0` against its own target built in WSL on nightly at `rc=0` -
+`1987191c`, `430f4f0e`, `439f5d2c`, `6a9b6538`, `718abefa`. So both issues satisfy the strengthened
+sentence, reach included, and closing them is a public action for the maintainer rather than a claim
+made here.
+
+`QUALITY_MATRIX.md`'s fuzz row carried the same over-claim in its "owns" column - "a historical
+crash cannot regress (PR tier replays seeds with `-runs=0`)" - which is exactly the inference the
+ten unreachable lines deny. The row now says what the replay is: the promise becomes a reached
+assertion only when `seed_reach.rs` says so, and the registered `seed-unreachable:*` holes are where
+the difference is measured.
