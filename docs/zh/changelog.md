@@ -101,6 +101,14 @@ status: new
   `Scalar { style: Plain, tag: None, fidelity: None }`。把原文放进节点的 `fidelity` 槽、总是规范化，
   还是做成按次参数，是尚未拍板的决定，连同实测记在 `docs/dev/quality-ledger.md` (je)。
 
+- **合并链的注释槽冲突已由具名测试钉住** — 合并源里只含另一个 `<<` 的 `<<`，读法取决于外层注释是否贴
+  着那一行：`<<: #a` 配 `  <<: ":!"` 得出一层，`# a` 摆在 `<<:` 上方得出两层，而这是同一棵树。两种写
+  法都一轮沉降，所以沉降预言机与属性层都看不见它。
+  `test_note_slot_currently_changes_merge_consumption` 记下当前的两个答案，并写明规则选定后该收敛哪
+  一条断言；这里没有改变任何行为。两条既有规则在此相互冲突 ——`collect_inline_pairs` 会把源里的合并键
+  一并交出，而 v0.16.0 的"无贡献 ⇒ 普通键"规则把它们保留，`is_merge_key` 又称注释只是元数据、不是身
+  份——所以哪种读法正确仍是待决问题，实测记在 `docs/dev/quality-ledger.md` (jg)。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

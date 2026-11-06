@@ -1492,4 +1492,33 @@ mod tests {
         let out = crate::serializer::to_yaml(&root);
         let _ = parse(&out, YamlSchema::Core);
     }
+
+    /// A note's slot currently decides whether a chained merge key is consumed.
+    ///
+    /// Two shipped rules disagree for a merge source whose only pair is itself a `<<`:
+    /// `collect_inline_pairs` contributes every pair of an inline source, merge keys included,
+    /// which consumes the outer entry and yields one level; the "an alias-free `<<` that yields
+    /// nothing is an ordinary key" rule keeps both levels. Which of the two wins is an open
+    /// decision, so this pins the current answer for both spellings of the same content rather
+    /// than endorsing one. Both spellings settle in a single round, so the settlement oracle - and
+    /// therefore the fuzz tier - cannot see the difference; only the two texts compared here can.
+    ///
+    /// When the decision lands, collapse this to one expectation and assert the other spelling
+    /// reaches it - `is_merge_key` already states that a comment or an anchor is metadata, not
+    /// identity, so the two readings are not supposed to differ at all.
+    #[test]
+    fn test_note_slot_currently_changes_merge_consumption() {
+        let inline = parse("<<: #a\n  <<: \":!\"\n", YamlSchema::Core).unwrap();
+        let standalone = parse("# a\n<<:\n  <<: \":!\"\n", YamlSchema::Core).unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&standalone),
+            "# a\n<<:\n  <<: \":!\"\n",
+            "the standalone spelling no longer keeps both merge levels"
+        );
+        assert_eq!(
+            crate::serializer::to_yaml(&inline),
+            "# a\n<<: \":!\"\n",
+            "the inline spelling no longer collapses one merge level"
+        );
+    }
 }

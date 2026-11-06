@@ -121,6 +121,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   canonicalizing always, or making it per call is an open decision, recorded with its measurements
   in `docs/dev/quality-ledger.md` (je).
 
+- **The merge-chain note collision is pinned by a named test** — a `<<` whose merge source holds
+  nothing but another `<<` reads two different ways depending on whether the outer note rides its
+  line: `<<: #a` over `  <<: ":!"` yields one level, `# a` above `<<:` yields two, for the same
+  tree. Both spellings settle in one round, so neither the settlement oracle nor a property tier
+  could see it. `test_note_slot_currently_changes_merge_consumption` records both current answers
+  and names the assertion to collapse once the rule is chosen; no behavior changed here. Two shipped
+  rules collide in it — `collect_inline_pairs` contributes a source's merge keys while the v0.16.0
+  "yields nothing, so an ordinary key" rule keeps them, and `is_merge_key` states that a comment is
+  metadata, not identity — so which reading is correct is an open decision, written up with its
+  measurements in `docs/dev/quality-ledger.md` (jg).
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

@@ -12718,3 +12718,51 @@ remaining 7 differ by 4 to 9,698 instructions on 30 to 390 million, in both dire
 reader-only edit cannot reach a writer or a TOML scenario, and floors stale downward are the
 recorded signature of a host that is not the enforcing image, so the movement is the box; the `ir`
 job that runs on the enforcing image is what judges this section's change.
+
+### (jg) A note's slot decides whether a chained merge key is consumed (2026-11-06)
+
+Same content, two spellings, two values. Both documents describe one tree - a `<<` whose merge
+source is a mapping holding nothing but another `<<` - and differ only in whether the outer note
+rides its own line or sits above it:
+
+```yaml
+<<: #a
+  <<: ":!"
+```
+
+```yaml
+# a
+<<:
+  <<: ":!"
+```
+
+The first emits `# a` and then `<<: ":!"` - one merge level gone. The second emits `# a`, `<<:`, and
+the indented `<<: ":!"` - both levels kept.
+
+Both forms settle in a single round, which is why the fuzz tier never flagged this: the settlement
+oracle compares emission against re-emission, and nothing here compares the *tree* against itself
+across a spelling that is supposed to mean the same thing. This is the mechanism behind the four
+remaining `yaml_roundtrip` inputs - `860ec5b7`, `a3dded4d`, `d360e9fd`, `f3a2f8cf` - whose round-two
+text is exactly the inline-note spelling.
+
+Why it is a decision and not a patch: two shipped rules give opposite answers for a source whose
+only pair is itself a `<<`. `collect_inline_pairs` contributes every pair of an inline source, merge
+keys included, which consumes the outer entry (one level). The rule quoted since v0.16.0 - "an
+alias-free `<<` that yields nothing is an ordinary key" - keeps both levels. A third statement in
+the same file argues the collision away: `is_merge_key` says "a comment or an anchor is metadata,
+not identity", and on that reading the two spellings should never have differed at all.
+
+Two claims of mine were measured away on the way here and are recorded so they are not repeated. The
+first was that the surviving `<<` sat deeper in the tree while the pass missed the root: per-level
+counts give `root_resolve=1` and `deep_resolve=2` - the root entry survives *both* passes, and the
+difference between the rounds is what the writer emits for a kept chain. The second was that moving
+a note between the inline slot and a standalone line is enough to flip consumption at one level:
+five single-level forms, note inline, standalone or absent, consume identically. It takes the
+two-level chain.
+
+`test_note_slot_currently_changes_merge_consumption` in
+`crates/pyrs-yaml-core/src/parser/yaml/merge.rs` pins both current answers and names the assertion
+to collapse when the decision lands, so the collision cannot be resolved by accident. Measured on
+this tree: 30 merge tests pass, 487 in the crate, `cargo nextest run --all` 903 passed,
+`prek run --all-files` clean. No behavior changed here - the finding is the deliverable, and the
+four inputs stay open on #733 until the rule is chosen.
