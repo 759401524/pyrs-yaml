@@ -19,11 +19,12 @@
 //! - the emission is a *fixed point*: re-parsing it and serializing again gives the same bytes. An
 //!   edit whose text needs a second round to settle is the `(ds)`/`(dq)` species, caught per document
 //!   now rather than in a hand-written case;
-//! - `set` reads back the text it wrote at its path, `rename` finds the old name gone and the new one
-//!   present, `delete` and `move` find either the removed key unresolvable or - for a sequence item,
-//!   whose index is a position the next item shifts into - one item fewer in the parent, `insert` and
-//!   `append` find exactly one more item holding the written text at its index, `sort-keys` finds the
-//!   mapping's keys in the order the engine sorts them, and `set-comment` is held to the structural
+//! - `set` reads back the text it wrote at its path; `rename` finds one pair fewer answering the name
+//!   it left and the new name answering; `move` finds one pair fewer answering its source path;
+//!   `delete` - asked with the `all` policy - finds nothing answering the path it deleted; a sequence
+//!   item is a position the next item shifts into, so its parent holds one item fewer; `insert` and
+//!   `append` find exactly one more item holding the written text at its index; `sort-keys` finds the
+//!   mapping's keys in the order the engine sorts them; and `set-comment` is held to the structural
 //!   claims only - see the boundary below;
 //! - the settled tree is also what the other spokes write. Each of `to_toml`, `to_json_text`,
 //!   `to_jsonc_text` and `to_json5_text` is handed that tree, and its text must re-read in its own
@@ -31,7 +32,7 @@
 //!   claims about a *reader's* tree; this is the composition the CLI's TOML/JSON output and
 //!   `doc.to_toml()` reach after an edit, which no tier had asked about.
 //!
-//! Three claims are narrower than they look, and each was narrowed by a measurement rather than by
+//! Four claims are narrower than they look, and each was narrowed by a measurement rather than by
 //! taste. Sorting is asked only where the verb has work to do: `sort_keys_path` answers "ok" for a
 //! path naming a scalar and changes nothing, which is a question about a refusal the CLI would show,
 //! not about emitted text. A note is followed only onto the line it was written on: asked for on a
@@ -44,7 +45,14 @@
 //! refuses a style a text cannot carry (a
 //! block scalar cannot hold a trailing space) and that fallback is correct, so for style, flow, tag
 //! and anchor the claim here is only re-parse and settle, while `prop_style_setting_roundtrip` asks
-//! the equality question on trees where the answer is determined.
+//! the equality question on trees where the answer is determined. The fourth is what an identity
+//! claim can ask at all: a path resolves through the lookup's identity pass, but a key text the
+//! document spells twice - the siblings told apart only by a tag - is answered after the edit by
+//! whichever pair still spells it, through the spelling pass. So `rename` and `move` are held to a
+//! count, not to the old name being gone: measured on the 19-byte `!base k: 1` beside `k: 2`, the
+//! rename wrote `k0: 2`, the emission settled in one round, and `[Key("k")]` still read the tagged
+//! pair that was never its target - the same asymmetry `(iv)`'s default delete documents as the
+//! engine's answer.
 //!
 #![no_main]
 
@@ -57,9 +65,9 @@ use pyrs_schema::types::Schema;
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::{Comment, CustomNode, ScalarStyle, Tag};
 use pyrs_yaml_core::editing::plan::{
-    OnDuplicate, append_path, delete_path_with_policy, insert_path, move_path, rename_path,
-    set_anchor_path, set_comment_path, set_flow_style_path, set_path, set_scalar_style_path,
-    set_tag_path, sort_keys_path,
+    OnDuplicate, append_path, delete_path_with_policy, duplicate_fold_count, insert_path,
+    move_path, rename_path, set_anchor_path, set_comment_path, set_flow_style_path, set_path,
+    set_scalar_style_path, set_tag_path, sort_keys_path,
 };
 use pyrs_yaml_core::editing::{Segment, navigate};
 use pyrs_yaml_core::parser::parse;
@@ -82,10 +90,13 @@ enum Effect {
     Carries(Path, String),
     /// The key is not in the document any more.
     Missing(Path),
+    /// `move`: one pair fewer answers this path than answered it before, because a key text the
+    /// document spells twice keeps the sibling the move did not act on.
+    Diminished { path: Path, from: usize },
     /// A sequence item was removed: its parent holds one item fewer than before.
     Shrank { path: Path, len: usize },
-    /// `rename`: the old name is gone and the new one resolves.
-    Renamed { old: Path, new: Path },
+    /// `rename`: the name it left is answered by one pair fewer, and the new name resolves.
+    Renamed { old: Path, from: usize, new: Path },
     /// `insert` / `append`: the sequence holds the written text at `at`.
     Grew { path: Path, at: usize, text: String },
     /// `sort-keys`: the scalar keys of this mapping are nondecreasing.
@@ -122,6 +133,17 @@ impl Effect {
                     );
                 }
             }
+            Effect::Diminished { path, from } => {
+                let left = duplicate_fold_count(tree, path);
+                if left + 1 != *from {
+                    fail(
+                        "a move did not take exactly one pair off its source path",
+                        format!("{path:?} answers {left} pairs, was {from}"),
+                        emitted,
+                        input,
+                    );
+                }
+            }
             Effect::Shrank { path, len } => match navigate(tree, path) {
                 Ok(CustomNode::Sequence { items, .. }) => {
                     if items.len() + 1 != *len {
@@ -146,11 +168,12 @@ impl Effect {
                     input,
                 ),
             },
-            Effect::Renamed { old, new } => {
-                if navigate(tree, old).is_ok() {
+            Effect::Renamed { old, from, new } => {
+                let left = duplicate_fold_count(tree, old);
+                if left + 1 != *from {
                     fail(
-                        "a renamed key kept its old name",
-                        format!("{old:?}"),
+                        "a rename did not take exactly one pair off the name it left",
+                        format!("{old:?} answers {left} pairs, was {from}"),
                         emitted,
                         input,
                     );
@@ -340,13 +363,36 @@ fn sequence_len(node: &CustomNode, path: &Path) -> Option<usize> {
 /// `list:\n  - 1\n  - 2J\n`, deleting `$.list[0]` re-reads index 0 as `2J`, which is the right answer -
 /// so for a sequence the claim is the one the text really makes: one item fewer than before.
 fn removal_effect(node: &CustomNode, path: &Path) -> Effect {
-    if matches!(path.last(), Some(Segment::Index(_))) {
-        let parent = path[..path.len() - 1].to_vec();
-        if let Some(len) = sequence_len(node, &parent) {
-            return Effect::Shrank { path: parent, len };
-        }
+    sequence_shortening(node, path).unwrap_or_else(|| Effect::Missing(path.clone()))
+}
+
+/// What moving the pair `path` resolves to owes the re-read document, asked before the tree changes.
+///
+/// The index half is a removal's. The key half is a count rather than an absence: `move_path`
+/// relocates the one pair the lookup's identity pass resolves, and where the document spells that
+/// key text twice the sibling goes on answering the source path through the spelling pass -
+/// measured on `!base k: 1` beside `k: 2`, where moving `$.k` emitted `b: [2]` and `[Key("k")]`
+/// still read the tagged pair that was never its target.
+///
+/// `collect` hands back only paths that name a node, so a key at the end of `path` always has one
+/// pair answering it and `from` is never zero; only the index shape reaches
+/// `sequence_shortening`, where the count is not asked.
+fn relocation_effect(node: &CustomNode, path: &Path) -> Effect {
+    let from = duplicate_fold_count(node, path);
+    sequence_shortening(node, path).unwrap_or_else(|| Effect::Diminished {
+        path: path.clone(),
+        from,
+    })
+}
+
+/// The claim both removal verbs share when `path` names a position: an index is a place the next
+/// item shifts into, so the parent sequence holds one item fewer.
+fn sequence_shortening(node: &CustomNode, path: &Path) -> Option<Effect> {
+    if !matches!(path.last(), Some(Segment::Index(_))) {
+        return None;
     }
-    Effect::Missing(path.clone())
+    let parent = path[..path.len() - 1].to_vec();
+    sequence_len(node, &parent).map(|len| Effect::Shrank { path: parent, len })
 }
 
 /// Whether one path names a node that contains everything the other names.
@@ -427,8 +473,14 @@ fuzz_target!(|data: &[u8]| {
                         Err("the new name is already taken".to_string())
                     } else {
                         let old = path.clone();
-                        rename_path(&mut node, &path, &new_key, &text, None)
-                            .map(|_| Effect::Renamed { old, new: renamed })
+                        let from = duplicate_fold_count(&before, &path);
+                        rename_path(&mut node, &path, &new_key, &text, None).map(|_| {
+                            Effect::Renamed {
+                                old,
+                                from,
+                                new: renamed,
+                            }
+                        })
                     }
                 }
             }
@@ -473,7 +525,7 @@ fuzz_target!(|data: &[u8]| {
                     Err("the move would eat its own source".to_string())
                 } else {
                     move_path(&mut node, &path, &dst, &text, None)
-                        .map(|_| removal_effect(&before, &path))
+                        .map(|_| relocation_effect(&before, &path))
                 }
             }
             6 => {

@@ -38,6 +38,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by `scripts/check_doc_metadata.py` (165 pages carry metadata the generator can read) and by a
   strict four-locale build.
 
+#### Internal
+
+- **`edit_yaml` counts what a name answers instead of asking whether the name died** — a rename or a
+  move acts on the one pair the lookup's identity pass resolves, and where the document spells that
+  key text twice the sibling goes on answering the name through the pass the lookup falls back to:
+  "the old name is gone" is not a claim the emission makes. That was the open class of the three
+  remaining 2026-11-02 `edit_yaml` findings (issue #732), and `!base k: 1` beside `k: 2` reproduces
+  it in 19 bytes. The tier now asks `duplicate_fold_count` — the sibling counter the `on_duplicate`
+  policy already uses — for exactly one pair fewer under the name each verb left, and `move` states
+  that claim for itself instead of inheriting `delete`'s `all` guarantee. Asking "no pair moved"
+  instead reddens 15 of the corpus's 45 `edit_yaml` seeds, so the count carries well past the two
+  reductions written for it; the engine answer is pinned by
+  `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
+  inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
+  matrix reads 907 Rust `#[test]` over 242 seeds.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
