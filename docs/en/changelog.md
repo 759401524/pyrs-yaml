@@ -59,7 +59,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drew this (`crash-aa8a0447`, `crash-95b66309`) leave the failing set, `yaml_roundtrip` 9 to 7 with
   `edit_yaml` unchanged at 14, and both are archived as seeds — corpus 284 to 286, `seed_reach`
   still 11 unreachable of the 242 seeds its four round-trip targets then held (the gate now walks
-  six targets and reports 15 of 259).
+  six targets and reports 14 of 259).
 
 #### Changed
 
@@ -93,28 +93,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   writer promise it was filed for is never asked, and the corpus total still counts the file.
   `crates/pyrs-yaml-core/tests/seed_reach.rs` asks each target its own engine call and reddens when
   `.ci/seed-reach.txt` and the measurement disagree in either direction; over the 259 seeds in those
-  six directories it measures 15 unreachable, and `scripts/quality_matrix.py` derives a
+  six directories it measures 14 unreachable, and `scripts/quality_matrix.py` derives a
   `seed-unreachable:<target>` hole for every target the list names — five now, all registered with
-  the state that removes them. `parse_json` and `parse_toml` joined that population after this
-  entry was first written: `parse_json.rs:36` and `parse_toml.rs:57` `continue` past a refusal
-  with every assertion behind them, the shape the four round-trip targets have rather than the
-  "asserts on the refusal itself" the exclusion claimed — and that claim had also sold the remedy
-  short, since moving a refused seed into `fuzz/seeds/parse_toml/` relocates the blind spot rather
-  than closing it. The inputs stay in the corpus: 5 of the 15 answer `max depth exceeded
-  (max=1000)`, which is PR #694's own postcondition, so they protect that refusal and are credited
-  with nothing beyond it. `edit_yaml` is measured one precondition short of its harness on purpose —
-  the target also wants a NUL separator, a complete two-byte record, a non-empty path list and one
-  verb that answers ok — and the gap is sized rather than assumed: replayed against the target
-  instrumented to panic at each precondition, 62 of its 62 seeds reached an assertion, so the weaker
-  predicate and the real one agree on today's corpus
-  (`docs/dev/quality-ledger.md` (jm)).
+  the state that removes them. `parse_json` and `parse_toml` joined that population after this entry
+  was first written: `parse_json.rs:36` and `parse_toml.rs:57` `continue` past a refusal with every
+  assertion behind them, the shape the four round-trip targets have rather than the "asserts on the
+  refusal itself" the exclusion claimed — and that claim had also sold the remedy short, since
+  moving a refused seed into `fuzz/seeds/parse_toml/` relocates the blind spot rather than closing
+  it. The inputs stay in the corpus: 5 of the 14 answer `max depth exceeded (max=1000)`, which is
+  PR #694's own postcondition, so they protect that refusal and are credited with nothing beyond it.
+  One registry line has since been re-mined out: `shape-literal-and-folded` was `l = |`, illegal in
+  both profiles, and rewritten as a multi-line literal string beside a basic one it parses, replays
+  clean under `-runs=0` and reaches the writer - so `seed-unreachable:toml_roundtrip` now names two
+  seeds of three (ledger (jo)). `edit_yaml` is measured one precondition short of its harness on
+  purpose — the target also wants a NUL separator, a complete two-byte record, a non-empty path list
+  and one verb that answers ok — and the gap is sized rather than assumed: replayed against the
+  target instrumented to panic at each precondition, 62 of its 62 seeds reached an assertion, so the
+  weaker predicate and the real one agree on today's corpus (`docs/dev/quality-ledger.md` (jm)).
 
 - **Twenty-three inputs fuzz found and nothing kept are now in the corpus** — the 2026-11-02 and
   2026-11-03 findings that replay clean today (15 `edit_yaml`, 8 `yaml_roundtrip`, 45 to 234 bytes)
   were never archived, and an absent seed protects nothing: the matrix counts files, so the gap was
   invisible rather than measured. Each was filed verbatim under
   `fuzz/seeds/<target>/former-crash-<short>.seed` and re-asked of its own target's engine —
-  `seed_reach` lists none of the twenty-three among its 15 unreachable of 259 walked, so all of
+  `seed_reach` lists none of the twenty-three among its 14 unreachable of 259 walked, so all of
   them reach the assertion they were archived for instead of passing on a refusal, and the replay
   tier runs 198 of 198 with zero artifacts. The 23 findings that still fail stay open on their
   issues, including the
@@ -162,7 +164,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 s own
   target (`json_roundtrip` `continue`s when no dialect accepts the text) and by the JSON corpus gate
   that re-asks every seed, so nothing asserted the rule while the corpus still counted the file.
-  Auditing all 15 unreachable registry lines for what defends their class left this as the only
+  Auditing the 15 registry lines then unreachable for what defends their class left this as the only
   naked one: the 5 depth-guard inputs are asserted by the typed `MaxDepthExceeded` refusal PR #694
   shipped, the CR-break and reserved-indicator classes by named tests in
   `settles_in_one_round.rs`, the TOML multi-line shapes by four reader and writer tests, and the BOM
