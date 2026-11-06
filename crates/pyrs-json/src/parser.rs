@@ -2902,6 +2902,40 @@ mod tests {
         }
     }
 
+    /// A document whose only content is comments has no value to read, in any dialect.
+    ///
+    /// `strict_rejections` asks the empty document under strict JSON alone, and the corpus input for
+    /// the comment-only shape (`fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`) is
+    /// refused before that target reaches its round-trip assertion, so nothing asked this rule any
+    /// more - `.ci/seed-reach.txt` names that seed. The dialects that carry comments are the ones
+    /// where skipping whitespace and comments can be confused with having found a value, so the
+    /// claim is paired: skipping must not manufacture a value, while a comment *before* a value must
+    /// still read. The second half is what keeps the first half from passing by rejecting comments
+    /// outright.
+    #[test]
+    fn comment_only_documents_are_refused_by_every_dialect() {
+        for bad in ["// nothing here", "// c", "/* x */", "# hash\n// c\n"] {
+            for (dialect, result) in [
+                ("json", from_json(bad)),
+                ("jsonc", from_jsonc(bad)),
+                ("json5", from_json5(bad)),
+            ] {
+                assert!(
+                    result.is_err(),
+                    "{dialect} must not read a value from {bad:?}"
+                );
+            }
+        }
+        for good in ["// c\nnull", "/* c */ null", "// c\n{\"a\": 1}"] {
+            assert!(from_jsonc(good).is_ok(), "jsonc must read {good:?}");
+            assert!(from_json5(good).is_ok(), "json5 must read {good:?}");
+            assert!(
+                from_json(good).is_err(),
+                "strict JSON has no comments, so {good:?} must be refused"
+            );
+        }
+    }
+
     #[test]
     fn json5_double_quoted_line_continuation_and_quote_escape() {
         // PR #127: JSON5 allows a backslash-newline line continuation and

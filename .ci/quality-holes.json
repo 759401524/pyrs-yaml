@@ -16,7 +16,7 @@
   {
    "id": "seed-unreachable:json_roundtrip",
    "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line, which happens when the seed named there is re-mined into a document one dialect accepts; moving it to `fuzz/seeds/parse_json/` is not an exit, because that target gates its writer promises on a successful read too - measured, its own seed is unreachable there. `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
+   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line. The named input is comment-only, so no dialect can be made to accept it without it ceasing to be comment-only - re-mining is not the exit here. The exit is the rule being asserted where it is reached: `comment_only_documents_are_refused_by_every_dialect` in `crates/pyrs-json/src/parser.rs` pairs the refusal with the accepted comment-plus-value form, and `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the list and the measurement disagree",
    "why": "the target `continue`s when all three JSON dialects refuse, so the one seed named there replays clean while the round-trip invariant it was archived for is never asked of it"
   },
   {

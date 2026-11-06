@@ -12869,3 +12869,105 @@ that had not changed. `uv run maturin develop --release` was the answer - the al
 the file's timestamp to satisfy a gate, would have been the gate measuring the wrong thing twice.
 Green after the rebuild: `uv run pytest tests/ -q` 4759 passed and 11 skipped;
 `cargo nextest run --all` 904 passed; `prek run --all-files` clean.
+
+### (jk) What actually defends each unreachable seed's class (2026-11-06)
+
+Counting unreachable seeds says what the corpus no longer asks. It does not say whether the claim
+stands undefended, and only the second question can be acted on. So each class behind the 15
+registry lines was looked for by name, in the suites that reach their own assertions:
+
+- 5 lines (`toml_roundtrip` 2, `parse_toml` 3) - dotted-key paths past the depth budget. Defended:
+  `inline_dotted_key_beyond_budget_errors_instead_of_overflowing` names crash-2a5ea394 and asserts
+  the typed refusal under both gates, and `crates/pyrs-toml/src/parser.rs` carries 8
+  `ParseError::MaxDepthExceeded` assertions in total.
+- 5 lines (`yaml_roundtrip`) - documents refused as duplicate null keys. The refusal is the policy
+  itself; the writer shape those inputs were filed for is now asked end to end by the (ji) test.
+- 1 line (`yaml_roundtrip`, `cr-only-break-note-ownership`) - a lone CR as a line break for note
+  ownership. Defended by `a_note_after_a_cr_only_break_annotates_the_item_that_follows`
+  (`crates/pyrs-yaml-core/tests/settles_in_one_round.rs:135`).
+- 1 line (`yaml_roundtrip`, `special-keys`) - a reserved leading indicator. Defended by (ji); that
+  gap is the reason (ji) exists.
+- 1 line (`toml_roundtrip`, `shape-literal-and-folded`) - multi-line literal and basic strings.
+  Defended by `the_last_three_quotes_of_a_run_close_a_literal_multiline_string`,
+  `a_literal_multiline_string_cannot_hold_three_apostrophes`,
+  `a_basic_multiline_string_cannot_hold_three_quotes` and the writer's
+  `to_toml_preserves_multiline_string_shape`.
+- 1 line (`parse_json`, `former-crash-comment-feff`) - a BOM beside a comment at end of input.
+  Defended in both directions: `from_json` refuses a BOM before `{}` (`parser.rs:3007`), JSON5
+  reads it as whitespace (`parser.rs:2993`), and the code-point table at 3263 includes U+FEFF.
+- 1 line (`json_roundtrip`, `shape-comment-only-document`) - a document whose only content is a
+  comment. Defended by nothing. `strict_rejections` asks the empty document under strict JSON only,
+  and the JSON corpus gate `crates/pyrs-json/tests/corpus_notes.rs:149` skips refusals with the same
+  `continue` the fuzz target does, so no assertion anywhere asked the comment-only case.
+
+Two hypotheses died by measurement before anything was duplicated: the leading-indicator set already
+had a differential walk over every code point (recorded in (ji)), and the BOM boundary already had
+assertions on both sides.
+
+`comment_only_documents_are_refused_by_every_dialect` in `crates/pyrs-json/src/parser.rs` closes the
+one real gap, and pairs its claim instead of asserting one direction: four comment-only inputs must
+be refused by all three dialects, while the same comment machinery in front of a value must read in
+the two comment dialects and still be refused by strict JSON. Without the second half the first half
+would also pass for a parser that had simply stopped accepting comments. Measured on this tree:
+4 refusals x 3 dialects hold, and 3 value-preceded shapes x 2 dialects parse while all 3 are refused
+by strict JSON.
+
+No mutation was run for this one, and that is stated rather than papered over: the regression the
+guard catches is a behaviour change - a refusal turning into a value - not a deletable clause, s
+o the
+discriminating evidence is the paired contrast, which the two halves answer differently.
+
+Measured: `cargo test -p pyrs-json --lib` 109 passed (108 before),
+`quality_matrix.py --write-rows` moves the unit row 917 -> 918 Rust `#[test]`, and
+`check_changelog_coupling.py --paths` demanded the release note because the changeset moves
+`crates/**` - filed in all five mirrors.
+
+### (jl) The claim that `--fix` damages CJK was stale, and the check that replaced it is measured (2026-11-06)
+
+The sentence repeated in the last two sessions - `check_doc_wrapping.py --fix` glues Hangul and
+splits katakana, so localized pages must be wrapped by hand - traces to a comment in a scratch file
+(`target/rewrap_ko.py`, since deleted), not to the tool. Reading the tool says otherwise:
+`join_lines` asks each boundary whether a space there is an artifact and glues only where it is not,
+and `_is_hangul` exists precisely so Korean breaks fall on word spaces. The current file even
+documents both historical defects it was written against.
+
+Measured rather than argued. Real paragraphs of the three localized changelogs were joined into
+over-long lines and run through the function `fix()` actually writes with; the fixer preserved the
+text modulo whitespace, kept every backtick, cut no Korean word, left zero residue by the checker's
+own count, and was idempotent - 28 of 28 samples clean on the first pass, 3 of 3 pages under the
+shipped test.
+
+Two traps in measuring it, both worth writing down because each produced a wrong verdict first.
+
+- `spacing_artifacts` returns one finding per **line** together with the number of gaps in it.
+  Counting findings compares line counts, not typography: a joined paragraph hides five gaps behind
+  one finding, and the same text re-flowed over three lines reports three, which reads as the fixer
+  creating residue when it only moved it. Summing the counts is the measurement.
+- Asking "artifacts may not increase" is the wrong question, because the probe itself writes the
+  gaps: joining lines with a space is exactly what the joiner exists to undo. The strong claim is
+  available and true - a pass leaves zero residue - so that is what is asserted.
+- Choosing the entry point matters: `wrap_text` only re-flows width, so testing through it reports
+  residue the shipped `--fix` path (`format_text`, line 666) does strip. An earlier probe run using
+  `wrap_text` looked like a tool bug for that reason alone.
+
+The guard is `test_reflowing_the_shipped_localized_pages_changes_only_line_breaks` in
+`tests/test_doc_wrapping_gate.py`, parametrized over the three pages, with its block count asserted
+before the loop so a page whose prose moved costs a refusal rather than an empty pass. Sensitivity
+was priced by mutation, restoring the tool byte-for-byte afterwards: neutralizing `strip_residue`
+reddens the `docs/ja` and `docs/zh` cases, and making `_is_hangul` answer `False` reddens the
+`docs/ko` case together with the pre-existing synthetic `test_korean_wraps_only_at_spaces` - so the
+Korean-word rule was already guarded, and a third case written for it during this session was
+deleted again because it did not redden under that mutation and would have been decoration.
+
+A fourth trap, and the one that nearly wrote a false finding into this file: the first mutation run
+was a Bash heredoc, whose wrapper ate the doubled backslashes in the anchor, so
+`original.replace(needle, ...)` matched nothing and the "mutant" that reported 37 of 37 passed was
+the unmutated tool. The conclusion drawn from it - that the Korean guard was insensitive - was wrong
+in both directions, and only an `assert needle in original` added when the script was moved into a
+file revealed it. A mutation probe that cannot fail is not evidence; it has to assert that it
+mutated.
+
+Measured: 3 passed for the new test, `restored -> GREEN` with `byte-identical after restore: True`,
+`quality_matrix.py --write-rows` moves the unit row to 2,169 Python test functions, and
+`check_changelog_coupling.py --paths` demanded the note (trigger path `tests/**`), filed in five
+mirrors.

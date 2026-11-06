@@ -142,6 +142,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   message. Deleting `b'?'` does not, and that is a boundary rather than a gap: `?x` is a legal plain
   scalar to our own reader, so that member is interop conformance, not our round-trip contract.
 
+- **A comment-only JSON document is now refused by name, in all three dialects** — the corpus input
+  that pinned it (`fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`) is skipped by it
+s own
+  target (`json_roundtrip` `continue`s when no dialect accepts the text) and by the JSON corpus gate
+  that re-asks every seed, so nothing asserted the rule while the corpus still counted the file.
+  Auditing all 15 unreachable registry lines for what defends their class left this as the only
+  naked one: the 5 depth-guard inputs are asserted by the typed `MaxDepthExceeded` refusal PR #694
+  shipped, the CR-break and reserved-indicator classes by named tests in
+  `settles_in_one_round.rs`, the TOML multi-line shapes by four reader and writer tests, and the BOM
+  boundary in both directions. `comment_only_documents_are_refused_by_every_dialect` pairs the
+  claim — `// nothing here`, `// c`, `/* x */` and `# hash` then `// c` are refused by JSON, JSONC
+  and JSON5, while the same comment before a value reads in the two comment dialects and stays
+  refused by strict JSON (measured: 12 refusals, 6 acceptances). The other 14 lines keep their
+  registry entries: they record lost corpus credit, not lost defence.
+
+- **The doc wrapper's CJK safety is measured on the shipped pages, not only on injected ones** —
+  `--fix` reflows prose to 100 display columns and its typography rules were fired by synthetic
+  injections in `tests/test_doc_wrapping_gate.py`, while nothing asked the same question of the
+  11,000 lines that ship. The claim carried from earlier sessions — that `--fix` glues Hangul and
+  splits katakana, so localized pages must be wrapped by hand — traced to a comment in a scratch
+  file, not to the tool: `join_lines` asks each boundary whether a space there is residue and glues
+  only where it is not, and `_is_hangul` exists so Korean breaks land on word spaces.
+  `test_reflowing_the_shipped_localized_pages_changes_only_line_breaks` joins real paragraphs of the
+  three localized changelogs into over-long lines, runs the function `fix()` writes with, and holds
+  five invariants: text preserved modulo whitespace, backticks preserved, no Korean word cut, zero
+  residue after the pass by the checker's own summed count, and a second pass that moves nothing.
+  3 of 3 pages pass; neutralizing `strip_residue` reddens two, letting Hangul break reddens a third,
+  the tool restored byte-for-byte after. Getting the measurement right took two traps out: the
+  checker reports one finding per *line* with a gap count inside it, so comparing `len()` measures
+  lines rather than typography.
+
 ## [v0.19.0] — 2026-11-04
 
 <details markdown="1">
