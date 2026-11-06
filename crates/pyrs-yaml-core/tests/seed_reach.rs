@@ -1,11 +1,17 @@
 //! Every committed seed must reach the claim its target asserts.
 //!
-//! Each round-trip target opens with a typed refusal as a pass: `yaml_roundtrip` and `edit_yaml`
-//! `return` when `parse` refuses, `json_roundtrip` `continue`s when all three JSON dialects refuse,
-//! `toml_roundtrip` when both TOML gates refuse. A seed whose document is refused there replays clean
-//! under `-runs=0` while proving only that the refusal still happens - it cannot bring back the
-//! placement or ownership defect it was archived for, yet the corpus total still counts it and the
-//! matrix row still credits the target.
+//! Each target in `SKIP_ON_REFUSAL` opens its body with a typed refusal as a pass: `yaml_roundtrip`
+//! and `edit_yaml` `return` when `parse` refuses, `json_roundtrip` and `parse_json` `continue` when
+//! all three JSON dialects refuse, `toml_roundtrip` and `parse_toml` when both TOML gates refuse.
+//! Every assertion in those six files sits behind that guard, so a seed whose document is refused
+//! there replays clean under `-runs=0` with the writer promise it was filed for never asked of it,
+//! while the corpus total still counts it and the matrix row still credits the target.
+//!
+//! A refusal is not the same thing as no protection, and this gate does not claim it is: five of the
+//! registered lines answer `max depth exceeded (max=1000)`, which is the TOML depth guard's own
+//! postcondition. What the registry denies is the stronger credit — that the input keeps the writer
+//! or placement defect from coming back — and the inputs stay filed because the refusal they pin is
+//! a behaviour worth keeping.
 //!
 //! This asks each target's own question of its own seeds - the same engine calls, including both TOML
 //! gates, which no Python surface offers - and refuses when the set of unreachable seeds differs
@@ -26,14 +32,21 @@ use std::path::{Path, PathBuf};
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
 
-/// The targets that skip their whole body on a typed refusal. `json_events_replay` asserts on the
-/// refusal pair itself and the `parse_*` targets exist to parse or refuse, so every seed there does
-/// reach a claim.
-const SKIP_ON_REFUSAL: [&str; 4] = [
+/// The targets that skip their whole body on a typed refusal.
+///
+/// `json_events_replay` is absent on purpose: its `(Err, Err)` arm asserts that the two walks refuse
+/// with the same message, so a refusal is the claim it makes. `parse_yaml` and `parse_schema` hold
+/// their result in `let _ =`, which leaves "no panic on any input" as the assertion every seed does
+/// reach. `parse_json` and `parse_toml` are not like those: both loop over the dialects (or the two
+/// TOML gates) and `continue` when a parse refuses, so a seed no dialect accepts runs no writer and
+/// asserts nothing - the same hole the round-trip targets have, which is why they are listed here.
+const SKIP_ON_REFUSAL: [&str; 6] = [
     "yaml_roundtrip",
     "edit_yaml",
     "json_roundtrip",
     "toml_roundtrip",
+    "parse_json",
+    "parse_toml",
 ];
 
 fn reaches(target: &str, document: &[u8]) -> bool {
@@ -42,23 +55,25 @@ fn reaches(target: &str, document: &[u8]) -> bool {
     };
     match target {
         "yaml_roundtrip" | "edit_yaml" => parse(text, Schema::Core).is_ok(),
-        "json_roundtrip" => {
+        "json_roundtrip" | "parse_json" => {
             pyrs_json::from_json(text).is_ok()
                 || pyrs_json::from_jsonc(text).is_ok()
                 || pyrs_json::from_json5(text).is_ok()
         }
-        "toml_roundtrip" => {
+        "toml_roundtrip" | "parse_toml" => {
             pyrs_toml::from_toml(text).is_ok() || pyrs_toml::from_toml_v1_0(text).is_ok()
         }
         _ => true,
     }
 }
 
-fn seeds_of(dir: &Path) -> Vec<(String, Vec<u8>)> {
+/// The seeds of one target's directory, each paired with the bytes that target's own harness hands
+/// to the engine call guarding its assertions - `None` when the harness returns before ever parsing.
+fn seeds_of(target: &str, dir: &Path) -> Vec<(String, Option<Vec<u8>>)> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
-    let mut out: Vec<(String, Vec<u8>)> = entries
+    let mut out: Vec<(String, Option<Vec<u8>>)> = entries
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
@@ -67,8 +82,18 @@ fn seeds_of(dir: &Path) -> Vec<(String, Vec<u8>)> {
             }
             let name = path.file_name()?.to_string_lossy().to_string();
             let raw = fs::read(&path).ok()?;
-            // An `edit_yaml` seed is `document NUL script`; the document is what the target parses.
-            let document = raw.split(|byte| *byte == 0).next().unwrap_or(&[]).to_vec();
+            // Only `edit_yaml` stores `document NUL script`: its harness parses up to that NUL and
+            // returns at `edit_yaml.rs:418` when the separator is absent, so a seed without one
+            // reaches no assertion however well its document parses. The other five targets are
+            // handed the whole byte string, and splitting theirs would measure a shorter input than
+            // the assertion ever sees.
+            let document = if target == "edit_yaml" {
+                raw.iter()
+                    .position(|byte| *byte == 0)
+                    .map(|split| raw[..split].to_vec())
+            } else {
+                Some(raw)
+            };
             Some((name, document))
         })
         .collect();
@@ -80,7 +105,7 @@ fn registry_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.ci/seed-reach.txt")
 }
 
-/// The unreachable seeds per target, and how many seeds the walk found in the four targets at all -
+/// The unreachable seeds per target, and how many seeds the walk found in the six targets at all -
 /// the second number is what keeps the first one honest, because a walk that found nothing would
 /// otherwise report the same empty blind spot as a corpus that has none.
 fn measure() -> (BTreeMap<String, Vec<String>>, usize) {
@@ -88,10 +113,11 @@ fn measure() -> (BTreeMap<String, Vec<String>>, usize) {
     let mut blind: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut walked = 0usize;
     for target in SKIP_ON_REFUSAL {
-        let seeds = seeds_of(&root.join(target));
+        let seeds = seeds_of(target, &root.join(target));
         walked += seeds.len();
         for (name, document) in seeds {
-            if !reaches(target, &document) {
+            let reached = document.is_some_and(|bytes| reaches(target, &bytes));
+            if !reached {
                 blind.entry(target.to_string()).or_default().push(name);
             }
         }
@@ -103,12 +129,13 @@ fn measure() -> (BTreeMap<String, Vec<String>>, usize) {
 fn render(map: &BTreeMap<String, Vec<String>>) -> String {
     let mut out = String::new();
     for line in [
-        "Seeds that reach NO assertion, measured by `crates/pyrs-yaml-core/tests/seed_reach.rs`",
-        "against the engine call each round-trip target opens with. A typed refusal is a pass in",
-        "those targets, so replaying one of these inputs proves the refusal still happens and",
-        "nothing about the defect the seed was archived for. The list is a measured state: it",
-        "shrinks when an input is re-mined into a document that parses, and a new line appears the",
-        "moment one stops reaching. Regenerate with",
+        "Seeds that reach NO assertion, measured by `crates/pyrs-yaml-core/tests/seed_reach.rs` against",
+        "the engine call each of the six targets opens with, where a typed refusal is a pass. Replaying",
+        "one of these inputs runs no writer and asks no round-trip promise. That is not no protection:",
+        "five lines answer `max depth exceeded (max=1000)`, the TOML depth guard's own postcondition,",
+        "and stay filed because the refusal they pin is worth keeping. What the list denies is the",
+        "stronger credit - that the archived defect cannot come back. A line drops when an input is",
+        "re-mined into a document that parses, and appears the moment one stops reaching. Regenerate:",
         "  SEED_REACH_UPDATE=1 cargo test -p pyrs-yaml-core --test seed_reach",
     ] {
         out.push_str(&format!("# {line}\n"));
@@ -239,7 +266,7 @@ fn the_renderer_and_the_registry_reader_agree() {
     // count the matrix quotes from the file.
     assert_eq!(
         written.lines().filter(|line| line.starts_with('#')).count(),
-        7,
+        8,
         "the header changed shape; the gate's own line filter reads it"
     );
 }

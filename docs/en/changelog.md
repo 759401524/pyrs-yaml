@@ -58,7 +58,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a content line that merely starts with `>` on the normal path. Measured: the two fuzz inputs that
   drew this (`crash-aa8a0447`, `crash-95b66309`) leave the failing set, `yaml_roundtrip` 9 to 7 with
   `edit_yaml` unchanged at 14, and both are archived as seeds — corpus 284 to 286, `seed_reach`
-  still 11 unreachable of 242 walked.
+  still 11 unreachable of the 242 seeds its four round-trip targets then held (the gate now walks
+  six targets and reports 15 of 259).
 
 #### Changed
 
@@ -85,28 +86,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
   matrix reads 907 Rust `#[test]` over 242 seeds.
 
-- **A seed its target refuses is now counted instead of credited** — every round-trip fuzz target
-  opens with a typed refusal as a pass (`parse(Schema::Core)`, the three JSON dialects, both TOML
-  gates), so an archived input the reader refuses replays clean under `-runs=0` with the invariant
-  it was filed for never asked of it, while the corpus total still counted the file. Measured over
-  the 217 seeds under those four targets: 11 never reach — 7 in `yaml_roundtrip` (five of them
-  because a later ruling made a duplicate-keyed document a refusal), 3 in `toml_roundtrip`, 1 in
-  `json_roundtrip`.
-  `crates/pyrs-yaml-core/tests/seed_reach.rs` asks each target's own engine call and reddens when
-  `.ci/seed-reach.txt` and the measurement disagree in either direction; `scripts/quality_matrix.py`
-  derives `seed-unreachable:json_roundtrip`, `seed-unreachable:toml_roundtrip` and
-  `seed-unreachable:yaml_roundtrip` from that list, and all three are registered with the state
-  that removes each. The inputs stay in the corpus — they pin refusals that were themselves defects,
-  so the blind spot is written down rather than the corpus quietly trimmed.
+- **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
+  body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,
+  `json_roundtrip` and `parse_json` on the three JSON dialects, `toml_roundtrip` and `parse_toml` on
+  both TOML gates), so an archived input the reader refuses replays clean under `-runs=0` while the
+  writer promise it was filed for is never asked, and the corpus total still counts the file.
+  `crates/pyrs-yaml-core/tests/seed_reach.rs` asks each target its own engine call and reddens when
+  `.ci/seed-reach.txt` and the measurement disagree in either direction; over the 259 seeds in those
+  six directories it measures 15 unreachable, and `scripts/quality_matrix.py` derives a
+  `seed-unreachable:<target>` hole for every target the list names — five now, all registered with
+  the state that removes them. `parse_json` and `parse_toml` joined that population after this
+  entry was first written: `parse_json.rs:36` and `parse_toml.rs:57` `continue` past a refusal
+  with every assertion behind them, the shape the four round-trip targets have rather than the
+  "asserts on the refusal itself" the exclusion claimed — and that claim had also sold the remedy
+  short, since moving a refused seed into `fuzz/seeds/parse_toml/` relocates the blind spot rather
+  than closing it. The inputs stay in the corpus: 5 of the 15 answer `max depth exceeded
+  (max=1000)`, which is PR #694's own postcondition, so they protect that refusal and are credited
+  with nothing beyond it.
 
 - **Twenty-three inputs fuzz found and nothing kept are now in the corpus** — the 2026-11-02 and
   2026-11-03 findings that replay clean today (15 `edit_yaml`, 8 `yaml_roundtrip`, 45 to 234 bytes)
   were never archived, and an absent seed protects nothing: the matrix counts files, so the gap was
   invisible rather than measured. Each was filed verbatim under
   `fuzz/seeds/<target>/former-crash-<short>.seed` and re-asked of its own target's engine —
-  `seed_reach` still reports 11 unreachable of 240 walked, so all twenty-three reach the assertion
-  they were archived for instead of passing on a refusal, and the replay tier runs 198 of 198 with
-  zero artifacts. The 23 findings that still fail stay open on their issues, including the
+  `seed_reach` lists none of the twenty-three among its 15 unreachable of 259 walked, so all of
+  them reach the assertion they were archived for instead of passing on a refusal, and the replay
+  tier runs 198 of 198 with zero artifacts. The 23 findings that still fail stay open on their
+  issues, including the
   `edit_yaml` container-note shape that needs a placement ruling.
 
 - **A number's source spelling now has a named limit in the export spokes** — a tree reaching
@@ -131,6 +137,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "yields nothing, so an ordinary key" rule keeps them, and `is_merge_key` states that a comment is
   metadata, not identity — so which reading is correct is an open decision, written up with its
   measurements in `docs/dev/quality-ledger.md` (jg).
+
+- **The writer's reserved-indicator rule is now asked end to end, not only decided** —
+  `serializer.rs::leading_indicator` answers whether a text can open a plain token, and
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` pins that decision against an
+  independent restatement of all 17 characters. Nothing asked the consequence: that a scalar whose
+  text begins with one of them is emitted so that it re-reads as the same text, on the key side and
+  the value side, in one round — the claim `fuzz/seeds/yaml_roundtrip/special-keys.seed` used to
+  stand for and no longer carries, since its bare `@literal` makes the whole document a refusal
+  (`.ci/seed-reach.txt` names it).
+  `a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip` walks 17 × 2 sides: 34
+  of 34 hold today, and the test is priced by mutation — deleting `b'@'`, `b'*'`, `b'|'`, `b'>'` or
+  the backtick alternative from the rule reddens it, naming the emitted text and the reader's
+  message. Deleting `b'?'` does not, and that is a boundary rather than a gap: `?x` is a legal plain
+  scalar to our own reader, so that member is interop conformance, not our round-trip contract.
 
 ### [v0.19.0] — 2026-11-04
 
