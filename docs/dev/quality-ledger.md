@@ -13253,3 +13253,98 @@ after (jp) flagged 109 "simplified-only glyphs" on the Japanese page, and the se
 is two characters - 内 and 合, both ordinary Japanese kanji. A glyph blocklist has to be curated
 per character, not per block; the one real find in that exchange, 续 for 続, was a single code
 point, and it is the only one the tripwire should name.
+
+### (jr) Who can see the 255-1000 band, and what now pins it (2026-11-07)
+
+The fix in (jq) covered four call sites, so the first question was whether a fifth exists. Swept
+through the shipped binding: 27 conversion-shaped public callables, each fed a 1000-deep document in
+three shapes (dotted-key TOML, nested JSON, block YAML). Result: zero `PanicException` escapes.
+`from_toml` answers `YamlMaxDepthError`, `to_toml` answers `YamlSerializeError`, the JSON family
+answers `YamlParseError` at the read. The same sweep found the shapes that *do* answer cleanly,
+which is the part a single-case fix cannot show.
+
+The edit path is the one that grows a tree rather than reading one, and it behaves: `set` refuses to
+extend past depth 999 with the typed `edit failed: max depth exceeded (max=1000)`, and all six
+exports then succeed on the 999-level tree - `source` and `to_yaml` at 1,000,100 bytes, the three
+JSON spokes at 2,005,008, `to_dict` an object. That is where the (jq) decision bites hardest,
+because the text those exports return is refused by `parse` at line 257 with
+`recursion limit exceeded`: the ordinary `to_yaml()` path can hand back a document the library
+cannot read, and it does so without saying anything. The disagreement is therefore not a conversion
+curiosity - it is the default round-trip property, broken in a band nobody walks.
+
+Nobody walks it, specifically. `arb_custom_node` is `prop_recursive(6, 128, 8)`, so the property
+tier tops out near six levels; the round-trip fuzz targets re-read each format with that format's
+own reader, and TOML's budget is 1000, so granit's 255 never fires there; and `yaml_roundtrip`'s
+inputs are YAML text that a 255-level reader already accepted. Three tiers, none of them able to see
+256 through 1000 - which is why this went to a named test rather than a claim.
+
+Two guards landed. `crates/pyrs-yaml-core/tests/depth_budgets.rs` pins the three measured facts -
+254 levels round-trips in one, 300 emits and then `parse` refuses it, and the writer answers in type
+at its cap - each with the inversion its comment promises when the ruling changes the number.
+`tests/test_binding_serializer_gate.py` reads the binding's own sources up to each file's
+`#[cfg(test)]` and refuses any production call of `serializer::to_yaml(`, with a positive anchor
+counting the helper's uses so the rule cannot pass by measuring nothing. All three edges of that
+anchor were priced on the shipped text: the floor is five - the helper's own `fn` line plus the four
+conversions that call it - so an extra infallible call reddens the scan alone and a helper left
+unused reddens the anchor alone (1 failed / 2 passed each way), while replacing one conversion's
+call reddens both (2 failed / 1 passed). A single site drifting back is therefore not a lower count
+nobody reads. Restored byte-identical, 3 passed.
+
+What the (jq) decision costs to *state* also differs, which is why the number is not one place. 68
+lines spell `max_depth` together with `1000`: 10 of them are signature defaults in the shipped stub,
+46 sit in the four `docs/<locale>/api/reference.md` (9 / 13 / 12 / 12 for en / zh / ja / ko), 8 in
+the four `api/yaml-instance.md` (2 each) and 4 in `README.md` beside its Chinese twin. Raising
+granit's limit to 1000 edits none of them - the sentence simply becomes true - while lowering the
+advertised budgets to 255 means regenerating the stub through maturin and re-editing those 58 prose
+lines, with `scripts/check_doc_signatures.py` and `tests/test_api_doc_signatures.py` reading each
+typed signature back against the shipped object. Making the four conversions refuse instead touches
+no document at all.
+
+One cost worth recording because it changed the design: the first version of the Rust test built a
+999-level chain and overflowed the test thread's stack in a debug build (`STATUS_STACK_OVERFLOW`,
+0xc00000fd) - the shape (ih) already documents for TOML. A guard that kills the harness is worse
+than no guard, so the cap is now asserted through `SerializeOptions::max_depth = 50` on a 60-level
+tree, and the 999-level number is quoted from the live release-build measurement in Python instead
+of reproduced in Rust.
+
+### (js) The 255 is a container count, and granit has two of them (2026-11-07)
+
+(jq) named `block_nesting_limit` because a 300-line block chain was the sample in hand. Reading the
+crate's own defaults says the sentence was incomplete rather than wrong: `Options::default()`
+carries `flow_nesting_limit: 255` at `granit-parser-2.0.0/src/options.rs:102` beside
+`block_nesting_limit: 255` at `:103`, and this repository asks granit through the default-options
+constructor at three places - `integration/granit.rs:19`, `integration/granit.rs:36` and
+`parser/mod.rs:364` - so both limits have been in force all along and neither is set anywhere.
+
+The unit is the container, measured by bisection against the shipped release extension. Flow
+`{a: …}` and flow `[… ]` each answer `recursion limit exceeded` between 255 and 256 levels, while
+`[{a: …}]` - two containers per level - answers between 127 and 128. The writer counts the same
+unit: under `max_depth = 40` the alternating shape refuses at 20 levels (40 containers) and emits at
+19 (38), where counting levels would still have 20 of the 40 in hand. The Python door shows the same
+rule again: `from_json` of the alternating document emits 996,007 bytes at 499 levels (998
+containers) and answers `max depth exceeded (max=1000)` at 500. The two sides of the pipeline have
+therefore never disagreed about what to count, only about how far to allow it - 255 against 1000 -
+and what the writer emits while the reader refuses is 256 through 999 containers, in any spelling,
+which an alternating document reaches at 128 levels.
+
+That moves two lines of the open decision. Remedy 1 is a two-field change, not one: raising only
+`block_nesting_limit` would leave flow documents refused at 255 containers, a new incoherence rather
+than the one being closed - and the seam is already public, since
+`granit_parser::Parser::new_from_str_with_options` is what all three places above would call. Remedy
+2's narrowing is shape-dependent, which the earlier "a 300-deep TOML document would be refused at
+the read" phrasing hid: 255 containers stop an alternating document at 128 levels, so accepted input
+shrinks fourfold for the shapes that spend two containers per level.
+
+`the_reader_stops_at_255_containers_whichever_style_spells_them` and
+`the_writer_counts_containers_not_the_lines_that_spell_them` in
+`crates/pyrs-yaml-core/tests/depth_budgets.rs` now pin the four reader edges and the two writer
+edges, so the counting rule is a run rather than a paragraph.
+`tests/test_max_depth.py::test_every_budget_counts_containers_so_the_shapes_cross_at_their_own_depth`
+carries the same rule to the Python door, where 499 alternating levels export and 500 answer
+`max depth exceeded (max=1000)`.
+
+One boundary stayed unasserted, and it is a boundary rather than a gap: no route a caller can
+reach builds a tree of 1000 containers, so the JSON5 and TOML writers' own budgets were never
+asked. The YAML reader stops at 255, the JSON reader emits through 999 and refuses at 1000, the
+TOML reader accepts 1000 but the writer refuses it, and `set` will not grow a tree past 999 - so
+a 1000-container tree exists only in the tests that construct one directly in Rust.

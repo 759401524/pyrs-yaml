@@ -147,6 +147,22 @@ def test_resolve_tags_with_custom_handler_deep_tree():
         pyrs_yaml.clear_type_handlers()
 
 
+def _alternating_json(levels: int) -> str:
+    """`[{"a": [{"a": ... 1 ...}]}]` - two containers for every level it spends."""
+    return '[{"a": ' * levels + "1" + "}]" * levels
+
+
+def test_every_budget_counts_containers_so_the_shapes_cross_at_their_own_depth():
+    # The cap is 1000 containers, not 1000 levels: 499 levels spends 998 and exports, 500 spends
+    # 1000 and the reader refuses. The exported text is then refused by the YAML reader at granit's
+    # 255 containers - a document 128 levels deep already cannot be read back.
+    assert pyrs_yaml.from_json(_alternating_json(499)), "998 containers is inside the budget"
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.from_json(_alternating_json(500))
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.parse(pyrs_yaml.from_json(_alternating_json(128)))
+
+
 # ── TOML depth guard ────────────────────────────────────────────────────────
 # The TOML parser previously had NO nesting budget (unlike JSON's
 # DEFAULT_MAX_DEPTH and YAML's parse max_depth): a deeply nested array or
