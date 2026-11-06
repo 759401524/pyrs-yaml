@@ -59,6 +59,18 @@ status: new
   `yaml_roundtrip` は 9 から 7、`edit_yaml` は 14 のまま。2 件とも種子として登録し、コーパスは 284
   から 286、`seed_reach` はその四つの往復目標が当時保持していた 242 件のうち 11 件が届きません
   （この門は現在六つの目標を歩き、259 件のうち 12 件を報告します）。
+- **深さ 1000 の TOML 文書は、Rust パニックでなく型あるエラーで変換されます** — `from_toml` はドット
+  区切り鍵の列を深さちょうど 1000 まで読みます（読み手の予算がその値です）。そこで YAML 書き手にテキ
+  スト形を求めると、同じ数で拒否されます。その拒否はかつて `serializer::to_yaml` の `expect` に落
+  ち、Python には `PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))` として
+  届いていました。`Exception` ではないので、言語中のあらゆる `except Exception` を素通りします。四つ
+  の変換（`from_json`、`from_jsonc`、`from_json5`、`from_toml`）はいまや一つの失敗しうる経路を共有
+  し、既存の `max-depth-exceeded` 鍵で `YamlMaxDepthError` を返します。JSON の三方言は読み手が一段手
+  前で止まるため、この症状を出しませんでした。実測：深さ 999 では四つとも 1,000,001 バイトを出力し続
+  け、`tests/test_max_depth.py` の新規 3 件が境界を固定します — helper を `to_yaml` に戻すと 1 件が
+  まさにそのパニックで赤くなります。これが直さないもの：YAML 読み手は granit 既定の
+  `block_nesting_limit` 255 で動いており、ライブラリがうたう他の深さ予算はすべて 1000 なので、255 よ
+  り深い変換は自家の読み手が拒否するテキストを返したままです（`docs/dev/quality-ledger.md` (jq)）。
 
 #### 変更
 

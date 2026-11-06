@@ -59,6 +59,19 @@ status: new
   집합에서 빠지고 `yaml_roundtrip`은 9에서 7, `edit_yaml`은 14로 그대로이며, 둘 다 씨말로
   등록했습니다 — 코퍼스 284에서 286, `seed_reach`는 그 네 왕복 대상이 당시 지니던 242개 걸음 중
   11개만 단언에 닿지 않습니다(이 문은 이제 여섯 대상을 걸어 259개 중 12개를 보고합니다).
+- **깊이 1000인 TOML 문서는 Rust 패닉이 아니라 타입 있는 오류로 변환됩니다** — `from_toml`은 점 구분
+  키 줄을 깊이 정확히 1000까지 읽습니다(읽는 쪽의 허용 한도가 그 값입니다). 이어 YAML 쓰는 쪽에
+  텍스트 형태를 요구하면 같은 숫자에서 거부됩니다. 그 거부는 예전 `serializer::to_yaml`의 `expect`에
+  떨어져서, Python에는 `PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))`로
+  보였습니다. `Exception`이 아니므로 언어 안의 모든 `except Exception`을 그대로 통과했습니다. 네
+  변환(`from_json`, `from_jsonc`, `from_json5`, `from_toml`)은 이제 실패 가능한 한 경로를 함께 쓰며,
+  이미 있는 `max-depth-exceeded` 열쇠로 `YamlMaxDepthError`를 답합니다; JSON 세 방언은 읽는 쪽이 한
+  단계 앞에서 서므로 이 증상이 나지 않았습니다. 실측: 깊이 999에서 넷 모두 1,000,001바이트를 여전히
+  내놓고, `tests/test_max_depth.py`의 새 3건이 경계를 고정합니다 — helper를 `to_yaml`로 되돌리면 한
+  건이 그 패닉으로 빨개집니다. 이것이 고치지 않은 것: YAML 읽는 쪽은 granit 기본
+  `block_nesting_limit` 255로 돌아갑니다. 그런데 이 라이브러리가 밝히는 다른 깊이 예산은 모두
+  1000입니다. 그래서 255보다 깊은 변환은 여전히 우리 쪽 읽는 사람이 거부하는 텍스트를 돌려줍니다
+  (`docs/dev/quality-ledger.md` (jq)).
 
 #### 변경
 
