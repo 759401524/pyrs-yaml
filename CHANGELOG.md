@@ -61,8 +61,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stops one level earlier. Measured: depth 999 still emits 1,000,001 bytes through all four, and
   three new `tests/test_max_depth.py` cases pin the boundary — routing the helper back through
   `to_yaml` reddens one with exactly that panic. What this does not fix: the YAML reader runs
-  granit's default `block_nesting_limit` of 255 while every other depth budget the library
-  advertises is 1000, so a conversion deeper than 255 still hands back text its own reader refuses
+  granit's two default nesting limits of 255 (`block_nesting_limit` and `flow_nesting_limit`,
+  both counted per container) while every other depth budget the library advertises is 1000, so a
+  conversion past the 255th container still hands back text its own reader refuses
   (`docs/dev/quality-ledger.md` (jq)).
 
 ### Changed
@@ -88,7 +89,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 907 Rust `#[test]` over 242 seeds.
+  matrix reads 923 Rust `#[test]` over 286 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,
@@ -212,6 +213,21 @@ s own
   13,083 ledger lines and one changelog line, proved break-only by text modulo whitespace and by
   backtick, heading and table-row counts; 19 lines stay excused at 101 to 153 columns, each one
   span.
+
+- **The 256-1000 depth band got named guards, because no tier could see it** — behind the conversion
+  fix, the same sweep measured the rest: 27 conversion-shaped callables against 1000-deep documents
+  answer with typed errors and no `PanicException` at all, while a tree grown by `set` refuses to
+  pass depth 999 and then exports 1,000,100 bytes of YAML that this library's own reader refuses at
+  line 257 (`recursion limit exceeded`). Nothing in the suite could have found that: the property
+  generator is `prop_recursive(6, 128, 8)`, the round-trip fuzz targets re-read with each format's
+  own 1000-level budget, and YAML fuzz inputs have already passed granit's 255, which counts
+  containers in either style. Two guards now pin the band —
+  `crates/pyrs-yaml-core/tests/depth_budgets.rs` (254 levels round-trips in one pass, 300 emits and
+  then refuses at the read, the writer answers in type at its own cap, and the reader stops at 255
+  containers whichever style spells them) and `tests/test_binding_serializer_gate.py` (no production
+  binding path may call the infallible `serializer::to_yaml`, with a use-count check so an empty
+  scan cannot read as a pass); each was priced by mutation, one red test each. Whether the budgets
+  should agree is still an open decision (`docs/dev/quality-ledger.md` (jr)).
 
 ## [v0.19.0] — 2026-11-04
 

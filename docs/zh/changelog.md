@@ -60,7 +60,8 @@ status: new
   JSON 三种方言从没现出这个症状，因为它们的读取器早一层就停。实测：深度 999 时四者仍各自产出
   1,000,001 字节，`tests/test_max_depth.py` 新增三条用例钉住边界——把 helper 改回走 `to_yaml`，
   其中一条就会以那个 panic 变红。这条没修的还在：YAML 读取器跑的是 granit 默认的
-  `block_nesting_limit` 255，而库里其他所有深度预算都宣称 1000，所以比 255 更深的转换仍会交回自家
+  `block_nesting_limit` 与 `flow_nesting_limit` 两道 255 默认限制上（都按容器计数），而库里其他
+  所有深度预算都宣称 1000，所以越过第 255 个容器的转换仍会交回自家
   读取器拒绝的文本（`docs/dev/quality-ledger.md` (jq)）。
 
 #### 变更
@@ -82,7 +83,7 @@ status: new
   和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
   的范围远宽于为它写下的两条最小输入。引擎的答案由
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 907 条 Rust `#[test]`、242 个种子。
+  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 923 条 Rust `#[test]`、286 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
   （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三
@@ -180,6 +181,18 @@ status: new
   情形，所以两半依旧相互一致——被报告的行，必然是 `--fix` 能缩短的行。重排把账本从 13,024 行变为
   13,083 行、变更日志动了一行，并以"去空白后正文一致、反引号数/标题数/表格行数一致"证明只动了断行；
   仍以豁免留下的有 19 行，宽 101 到 153 列，每行都是一个词元。
+
+- **256 到 1000 这段深度有了具名守卫，因为没有任何一层能看见它** — 转换修复背后的同一次走查把其余部
+  分也量了出来：27 个转换形状的公开入口对 1000 层文档一律以类型化错误回答，没有一个
+  `PanicException`；而用 `set` 长起来的树在深度 999 处被类型化拒绝，随后它仍导出 1,000,100 字节
+  YAML，自家读取器在第 257 行以 `recursion limit exceeded` 拒读。套件里本来没有任何一层能发现这件
+  事：property 生成器是 `prop_recursive(6, 128, 8)`，往返 fuzz 目标用各格式自己的 1000 层预算回读，
+  而 YAML fuzz 输入早已通过 granit 的 255——它按容器计数，两种风格都一样。现在两道守卫钉住这段区间：
+  `crates/pyrs-yaml-core/tests/depth_budgets.rs`（254 层一轮往返、300 层能产出但读回被拒、写器在自己
+  的上限处以类型回答，并且读取器不论哪种风格都在第 255 个容器处停下）与
+  `tests/test_binding_serializer_gate.py`（绑定生产路径不得调用必然成功的 `serializer::to_yaml`，并
+  用使用次数校验避免空扫描被当成通过）。两者都以突变定价，各翻红一条。两个预算是否应当统一，仍是待裁
+  定事项（`docs/dev/quality-ledger.md` (jr)）。
 
 ### [v0.19.0] — 2026-11-04
 
