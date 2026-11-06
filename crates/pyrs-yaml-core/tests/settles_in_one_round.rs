@@ -1043,3 +1043,24 @@ fn a_fold_that_drops_the_only_preceding_definition_emits_text_its_reader_accepts
         "the accepted emission did not settle in one round\nfirst:\n{emitted}\nsecond:\n{again}"
     );
 }
+
+/// libFuzzer `yaml_roundtrip` crash-aa8a0447 and crash-95b66309: a content-less block scalar with
+/// a note line in front of it.
+///
+/// The reader finds a block header by backing up from the content to the last non-blank line. With
+/// no content line at all that backup stopped on the note, found no sigil there and answered Clip,
+/// so the author's `+` survived the first emission and not the next. The pair that isolates it is
+/// the same document with and without the note: `">+4\r#"` settled while
+/// `" #Irrr\n>+4\r#"` did not. The scan now falls back to the sigil's own line, and only after the
+/// backup finds no header above it.
+#[test]
+fn a_content_less_block_scalar_keeps_its_header_under_a_note_line() {
+    for src in [" #Irrr\n>+4\r#", "#\"sq\r>+8\r#/:  ~~"] {
+        let one = emit(src);
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}

@@ -245,6 +245,29 @@ pub fn detect_block_header(yaml: &str, content_start: usize) -> BlockHeader {
         }
     }
 
+    // Nothing above the content held a sigil, so the backup stopped on some other line. That is a
+    // content-less block scalar whose own line *is* the header, which is what a note in front of it
+    // produces: measured on `" #Irrr\n>+4\r#"`, the backup ended on `# Irrr`, no sigil was found
+    // there, and the default answered Clip - so the author's `+` survived one emission and not the
+    // next, while the same document without the note (`">+4\r#"`) settled. Tried only after the scan
+    // above, this leaves a content line that merely begins with a sigil (`"a: |\n  > x"`) on the
+    // normal path, because there the header was found on the line before it and already returned.
+    if matches!(bytes.get(content_start), Some(b'|') | Some(b'>')) {
+        let mut prior = content_start;
+        while prior > 0 && matches!(bytes[prior - 1], b' ' | b'\t') {
+            prior -= 1;
+        }
+        if prior == 0 || matches!(bytes[prior - 1], b'\n' | b'\r') {
+            let mut line_end = content_start + 1;
+            while line_end < bytes.len() && !matches!(bytes[line_end], b'\n' | b'\r') {
+                line_end += 1;
+            }
+            if let Some(header) = parse_block_header_tail(bytes, content_start + 1, line_end) {
+                return header;
+            }
+        }
+    }
+
     BlockHeader::default()
 }
 
