@@ -163,7 +163,9 @@ def build_body(finding: TargetFindings, run_url: str) -> str:
         FENCE,
         "",
         f"Pipeline: minimize -> regression test in the owning crate -> seed under `fuzz/seeds/{target}/`"
-        " -> fix. Close this issue when the seeds replay clean.",
+        " -> fix. Close this issue when the seeds replay clean AND `.ci/seed-reach.txt` names none "
+        "of them: a target that refuses its input replays clean while asking no promise, which is "
+        "the credit `crates/pyrs-yaml-core/tests/seed_reach.rs` exists to withhold.",
         "",
     ]
     return "\n".join(parts)

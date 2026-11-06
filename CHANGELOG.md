@@ -235,6 +235,18 @@ s own
   scan cannot read as a pass); each was priced by mutation, one red test each. Whether the budgets
   should agree is still an open decision (`docs/dev/quality-ledger.md` (jr)).
 
+- **A fuzz finding now closes on a reached assertion, not on a refusal** — the report step
+  wrote "close this issue when the seeds replay clean", and ten of the 259 seeds its six reaching
+  targets walk replay clean *because* their target refuses the input, so an issue could be closed
+  with no promise ever asked. The sentence now demands both halves, and
+  `tests/test_fuzz_file_issues.py::test_the_closure_criterion_demands_that_the_seed_reaches` keeps
+  it there: dropping the reach clause reddens that one test and leaves the other sixteen green (17
+  passed once restored). Measured against the strengthened criterion the two findings open today
+  both satisfy it - #732's three `edit_yaml` inputs and #733's two `yaml_roundtrip` inputs are all
+  archived as seeds, none appears among the ten unreachable lines, and each replayed at `rc=0` under
+  `-runs=0` against its own target. `QUALITY_MATRIX.md`'s fuzz row stated the weaker claim and now
+  states the qualified one (`docs/dev/quality-ledger.md` (ju)).
+
 ## [v0.19.0] — 2026-11-04
 
 <details markdown="1">

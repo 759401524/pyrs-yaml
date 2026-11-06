@@ -197,6 +197,16 @@ status: new
   用使用次数校验避免空扫描被当成通过）。两者都以突变定价，各翻红一条。两个预算是否应当统一，仍是待裁
   定事项（`docs/dev/quality-ledger.md` (jr)）。
 
+- **fuzz 发现现在只在抵达断言后才算关闭，而不是在被拒绝之后** — 报告步骤写的是“种子回放干净就关闭本
+  issue”，而它六个会抵达的目标所走查的 259 个种子里，有十个正是因为目标拒绝输入才回放干净，于是一个
+  issue 可以在没有任何承诺被问过的情况下关闭。这句话现在同时要求两半，
+  `tests/test_fuzz_file_issues.py::test_the_closure_criterion_demands_that_the_seed_reaches` 把它钉
+  在那里：删掉抵达那一半只会翻红这一条，其余 16 条仍绿（还原后 17 条通过）。按强化后的标准再问一遍，
+  今天还开着的两项发现都满足它 — #732 的三个 `edit_yaml` 输入与 #733 的两个 `yaml_roundtrip` 输入都
+  已作为种子入库，十条不可达行里都没有它们，且各自在自己目标下以 `-runs=0` 回放 `rc=0`。
+  `QUALITY_MATRIX.md` 的 fuzz 行原本说的是较弱的那句，现在是有条件的那句
+  （`docs/dev/quality-ledger.md` (ju)）。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
