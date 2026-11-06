@@ -865,7 +865,8 @@ things — the CI job can honestly report the former, and only this ledger can h
 
 Chasing the Linux-only `pbt::tests::prop_mapping_order_preserved` failure into a deterministic repro
 led to running the property suite harder than its default:
-`PROPTEST_CASES=20000 cargo nextest run -p pyrs-yaml-core --lib -E "test(~fmt_pbt::)" --no-fail-fast` fails **three** properties —
+`PROPTEST_CASES=20000 cargo nextest run -p pyrs-yaml-core --lib -E "test(~fmt_pbt::)" --no-fail-fast`
+fails **three** properties —
 
 - `fmt_pbt::prop_json_writers_are_fixed_points`
 - `fmt_pbt::prop_json5_writer_is_fixed_point`
@@ -5246,7 +5247,12 @@ sentence saying the *writer* is not where the check goes, and a test that stops 
 it there on a hunch.
 
 So the ruling is the third option, executable on both sides of the tier split.
-`TestKeyIdentityAcrossSpellings::test_two_spellings_of_one_key_fold_at_the_boundary_not_in_the_writer` is the caller-visible promise. `the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one` pins the unsupervised shape: a hand-built `NodeMap` still emits two lines, and the reader is the one that refuses them as a duplicate key or answers with one entry fewer. Whoever folds or reports at emission has to edit that test and say what moved the price.
+`TestKeyIdentityAcrossSpellings::test_two_spellings_of_one_key_fold_at_the_boundary_not_in_the_writer`
+is the caller-visible promise.
+`the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one` pins the unsupervised shape:
+a hand-built `NodeMap` still emits two lines, and the reader is the one that refuses them as a
+duplicate key or answers with one entry fewer. Whoever folds or reports at emission has to edit that
+test and say what moved the price.
 
 Measured after: 618 Rust tests, and no code path changed - the additions are `#[cfg(test)]` and
 documentation - so the instruction-count floor was left alone rather than re-claimed. The open-item
@@ -8537,7 +8543,14 @@ exclusion is edited away. Falsified by pointing the rule at a different action, 
 
 **Why this pull request also owes a release note.** Its first version touched no changelog, and CI's
 `Hygiene` job said so:
-`changelog coupling violated ... 1 trigger path(s) (first: tests/test_msrv_gate.py), and none of 5 changelogs`. The local run had reported OK, and the reason is worth keeping: `check_changelog_coupling.py --base <sha>` asks Git what is *committed* above the base (`git diff --name-only <base>...HEAD`), and in a colocated `jj` workspace the change under edit is not what Git's `HEAD` names, so the list came back empty and the gate printed `listed no files, nothing to couple` - a success that measured nothing. `--paths`, fed from `jj diff --summary`, is the route that judges the change here, and it is what the entry was written against: dropping the five changelogs from that list reproduces CI's refusal, exit 1.
+`changelog coupling violated ... 1 trigger path(s) (first: tests/test_msrv_gate.py), and none of 5 changelogs`.
+The local run had reported OK, and the reason is worth keeping:
+`check_changelog_coupling.py --base <sha>` asks Git what is *committed* above the base
+(`git diff --name-only <base>...HEAD`), and in a colocated `jj` workspace the change under edit is
+not what Git's `HEAD` names, so the list came back empty and the gate printed
+`listed no files, nothing to couple` - a success that measured nothing. `--paths`, fed from
+`jj diff --summary`, is the route that judges the change here, and it is what the entry was written
+against: dropping the five changelogs from that list reproduces CI's refusal, exit 1.
 
 **Left open on purpose.** Moving the floor stays a human act: eight manifests declare `1.96`, the Ir
 baseline pins its own compiler (`rustc 1.97.1`) separately, and both are already guarded from their
@@ -9618,7 +9631,8 @@ Records: an `### Added` bullet in all five changelog mirrors, and this entry.
 The formatter does not protect an inline code span that crosses lines: it splits the span, and a
 line-initial `#` inside the fragment becomes a real ATX heading. `docs/dev/quality-ledger.md`
 carried five of those - `## lead n`, `## inner`, `## &&*`, `## &:`, which…` and `##
-&`. Both… - inside the (dm) and (ds) entries, found while repairing the same damage in PR #646's own `(gs)` entry, where the note line `# A` had become a heading in the ledger.
+&`. Both… - inside the (dm) and (ds) entries, found while repairing the same damage in PR #646's own `(gs)` entry, where the note line `#
+A` had become a heading in the ledger.
 
 Both sites are re-presented as fenced blocks, which the formatter leaves alone. The two fuzz inputs
 are quoted from `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` rather than from the broken
@@ -9783,7 +9797,11 @@ note each crossed - and deleting `features.rate_limit` takes its standalone comm
 `tree.comment().is_none()`, which asks the **root** node's slot; no fixture here puts a note on the
 root. `(gw)`'s claim that the counter shows a comment-free document was therefore too wide, and is
 corrected in that entry. What pins the premises is
-`crates/pyrs-yaml-core/tests/ir_fixtures.rs::the_metadata_edit_fixture_reaches_every_carriage_branch`: one assertion per branch, one that the edited document re-parses so the alias is not dangling, one that the note existed *before* the delete so the widening check cannot pass vacuously, and one control that reddens if `MEDIUM_YAML` is ever decorated - which would leave the pair with nothing to contrast.
+`crates/pyrs-yaml-core/tests/ir_fixtures.rs::the_metadata_edit_fixture_reaches_every_carriage_branch`:
+one assertion per branch, one that the edited document re-parses so the alias is not dangling, one
+that the note existed *before* the delete so the widening check cannot pass vacuously, and one
+control that reddens if `MEDIUM_YAML` is ever decorated - which would leave the pair with nothing to
+contrast.
 
 Two mutations, both on the fixture rather than the engine, each reddening by its own name: deleting
 the inline note takes down "edit_set_metadata lost the carried note", and deleting the standalone
@@ -9842,7 +9860,14 @@ the standalone note still arrives on its own line, and the output is already a f
 loss is a layout choice the author wrote, and a second round cannot be blamed for it.
 
 Registered as `engine:entry-blank-lines` rather than fixed, with the repro
-`tests/test_roundtrip.py::TestBlankLineFidelity::test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point` naming it in `.ci/known-residuals.json`, a row in `QUALITY_MATRIX.md`'s Known residuals table and a bullet in `docs/dev/boundaries.md`. The reason is the same one the serialize floors keep teaching: the reader has no field for "empty lines before me" and the writer emits one break per item, so restoring the layout means per-container state carried through the serialization, and `docs/dev/perf.md` measures what adding a field to that pass costs on every `serialize_*` floor. A declined change with a pinned behaviour and a priced reason is the honest record; silently flattening the layout one more release longer would not be.
+`tests/test_roundtrip.py::TestBlankLineFidelity::test_entry_blank_lines_are_dropped_and_the_round_is_a_fixed_point`
+naming it in `.ci/known-residuals.json`, a row in `QUALITY_MATRIX.md`'s Known residuals table and a
+bullet in `docs/dev/boundaries.md`. The reason is the same one the serialize floors keep teaching:
+the reader has no field for "empty lines before me" and the writer emits one break per item, so
+restoring the layout means per-container state carried through the serialization, and
+`docs/dev/perf.md` measures what adding a field to that pass costs on every `serialize_*` floor. A
+declined change with a pinned behaviour and a priced reason is the honest record; silently
+flattening the layout one more release longer would not be.
 
 What this does not claim: that the choice is right for every caller. The exit criterion is written
 so that *closing* the residual - reproducing the blank at all eight positions - reddens the
@@ -9865,7 +9890,12 @@ on the cheapest possible answer: no note anywhere.
 `NOTE_FLOW_YAML` is the fixture `serialize_note_flow` already writes, so the pair costs the suite no
 new document and no new harness verb - `Work::Parse` and `Work::Stream` already existed, and the two
 rows differ only in which of the two readers resolves the same eleven notes.
-`tests/ir_fixtures.rs` ::`the_note_flow_fixture_reaches_both_readers_and_the_other_read_fixtures_do_not` pins the premise from both ends: eleven `#` runs in the text, eleven `StreamEventType::Comment` events through `parse_stream`, equal emission counts through the tree route and the event route, the document a fixed point, and zero for each of the six fixtures the existing rows use - so if one of those is ever decorated, the contrast that makes these two rows mean anything goes red rather than quietly eroding.
+`tests/ir_fixtures.rs` ::`the_note_flow_fixture_reaches_both_readers_and_the_other_read_fixtures_do_not`
+pins the premise from both ends: eleven `#` runs in the text, eleven `StreamEventType::Comment`
+events through `parse_stream`, equal emission counts through the tree route and the event route, the
+document a fixed point, and zero for each of the six fixtures the existing rows use - so if one of
+those is ever decorated, the contrast that makes these two rows mean anything goes red rather than
+quietly eroding.
 
 Refresh run 86 wrote the floors on this head: `parse_notes` 701,017,318 and `stream_notes`
 579,067,612, `rustc 1.97.1` on `github-runner ubuntu24, image 20261023.334.3`, engine harness binary
@@ -10108,7 +10138,12 @@ floor is the open half of this seam.
 Reproduction is pinned twice, at both tiers, so the shape cannot come back as a random draw: the
 Rust tests build the tree from YAML source (`crates/pyrs-yaml-core/src/integration/json_family.rs`)
 and from hand-made nodes (`crates/pyrs-toml/src/writer.rs`), the Python test
-`tests/test_cross_format_tags.py::test_two_keys_the_reader_keeps_apart_are_refused_before_a_projection_overwrites_one` drives the shipped surface and also asserts the two things this change must NOT do - a tag that does not collide still projects, and an anchor was never a second key. The seed `16b4a97ca3115ecd9db10190e1011152ad03ac4adc071ec35866819a861a72dd` went into `crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt`, and the property passes there because `prop_toml_writer_is_fixed_point` treats a refusal as an acceptable answer.
+`tests/test_cross_format_tags.py::test_two_keys_the_reader_keeps_apart_are_refused_before_a_projection_overwrites_one`
+drives the shipped surface and also asserts the two things this change must NOT do - a tag that does
+not collide still projects, and an anchor was never a second key. The seed
+`16b4a97ca3115ecd9db10190e1011152ad03ac4adc071ec35866819a861a72dd` went into
+`crates/pyrs-yaml-core/proptest-regressions/fmt_pbt.txt`, and the property passes there because
+`prop_toml_writer_is_fixed_point` treats a refusal as an acceptable answer.
 
 Readings: `cargo nextest run -p pyrs-toml -p pyrs-json -p pyrs-yaml-core` - 647 passed, 0 failed,
 which includes the pinned replay; `uv run pytest tests/test_cross_format_tags.py` - 48 passed on a
@@ -10430,7 +10465,12 @@ the file does not key. The second of those reads its pair out of the file instea
 constant, so it cannot go vacuous without saying so.
 
 Readings: `python scripts/check_ir_floor_quotes.py` —
-`OK: 13 marked floor reading(s) across 1 page(s) equal the committed baseline (51 scenarios, 7 keyed by image in 2 row(s), 4 of them quoted from a row)`; against the page before it was re-marked the same command refused it four times, once per keyed mark. `uv run pytest tests/test_ir_floor_quote_gate.py` — 22 passed. Four mutations of the checker, each deleting one branch of the new rule, reddened exactly the owning test (one of them three, because comparing a keyed mark against the flat column breaks the positive control as well as the two refusals), and the file came back byte-for-byte at sha256 `8b58a754e095e683`.
+`OK: 13 marked floor reading(s) across 1 page(s) equal the committed baseline (51 scenarios, 7 keyed by image in 2 row(s), 4 of them quoted from a row)`;
+against the page before it was re-marked the same command refused it four times, once per keyed
+mark. `uv run pytest tests/test_ir_floor_quote_gate.py` — 22 passed. Four mutations of the checker,
+each deleting one branch of the new rule, reddened exactly the owning test (one of them three,
+because comparing a keyed mark against the flat column breaks the positive control as well as the
+two refusals), and the file came back byte-for-byte at sha256 `8b58a754e095e683`.
 
 Two refreshes went out on this trunk after `(hk)` and neither touched the debt it named: run
 `40641008163` and run `40650772937` both landed on `20261023.334.3`, the enforcing image, and left
@@ -10951,7 +10991,21 @@ for the reason that function records: a note layout does not belong in the one r
 every node passes through.
 
 Five tests, each answering a different question, plus two that name the exemption below.
-`crates/pyrs-toml/src/writer.rs::a_note_above_the_first_key_of_a_table_written_inline_is_written_inside_it` and `a_note_above_the_first_item_of_an_array_written_inline_is_written_inside_it` build the nodes and assert the exact bytes plus the fixed point — on the previous head the first failed with `nested = {inner = 1}` and the second with `arr = [1, 2]`, the note gone rather than moved. `the_legacy_own_line_note_on_an_inline_table_is_written_inside_it_too` covers the second slot, the one `set_comment` writes and `leading_comments` leaves empty. `tests/test_toml_writer_suite.py::test_a_note_above_a_nested_key_travels_the_route_into_the_inline_table` and `test_a_note_above_the_first_item_of_an_array_travels_the_route_inside_it` drive the shipped route from YAML text through the hub, so a hub that stopped handing the note over reddens there and not only inside the crate; the first also asks a parser the project does not own to say which side of 1.0 each text is on, and that ask is now keyed by reader and version rather than assumed, because the assumption was wrong on two bands at once (below). `crates/pyrs-yaml-core/tests/ir_fixtures.rs` now expects all six of `DIALECT_NOTES_YAML`'s notes and the fixed point, and keeps the pair's other half asserted absent: an own-line note after a file's last key still reaches no AST slot, because the parser hands it back as the second value of its pair.
+`crates/pyrs-toml/src/writer.rs::a_note_above_the_first_key_of_a_table_written_inline_is_written_inside_it`
+and `a_note_above_the_first_item_of_an_array_written_inline_is_written_inside_it` build the nodes
+and assert the exact bytes plus the fixed point — on the previous head the first failed with
+`nested = {inner = 1}` and the second with `arr = [1, 2]`, the note gone rather than moved.
+`the_legacy_own_line_note_on_an_inline_table_is_written_inside_it_too` covers the second slot, the
+one `set_comment` writes and `leading_comments` leaves empty.
+`tests/test_toml_writer_suite.py::test_a_note_above_a_nested_key_travels_the_route_into_the_inline_table`
+and `test_a_note_above_the_first_item_of_an_array_travels_the_route_inside_it` drive the shipped
+route from YAML text through the hub, so a hub that stopped handing the note over reddens there and
+not only inside the crate; the first also asks a parser the project does not own to say which side
+of 1.0 each text is on, and that ask is now keyed by reader and version rather than assumed, because
+the assumption was wrong on two bands at once (below). `crates/pyrs-yaml-core/tests/ir_fixtures.rs`
+now expects all six of `DIALECT_NOTES_YAML`'s notes and the fixed point, and keeps the pair's other
+half asserted absent: an own-line note after a file's last key still reaches no AST slot, because
+the parser hands it back as the second value of its pair.
 
 The first CI verdict on this change reddened two legs and both were the change's fault, which is the
 tier doing the job the paragraph above credits it. `prop_toml_writer_is_fixed_point` at 20,000 cases
@@ -12657,7 +12711,12 @@ value is exactly what the fidelity rule exists to avoid.
 Why the writer cannot simply ask the resolution: a JSON5 number and a YAML string that happens to be
 spelled like one arrive as the same node. Measured on this tree, the two readings of that text both
 give
-`Scalar { value: "0Xeeeeeeeeeeeeeeeeeeeeeeee4e6", style: Plain, chomping: Clip, meta: NodeMeta { comment: None, decor: None, fidelity: None } }` - the only field that differs is `source_range`, `None` from `from_json5` and `Some(3..32)` from `parse`, and that is an accident of which reader ran, not a statement about the value: an edited tree carries no range either. Gating the echo on `YamlType::Int | YamlType::Float` fixes the YAML-shaped case and breaks the JSON5-shaped one, in the opposite direction: a document's number would come back out as a string. So the honest options are three, and none is a writer-local edit:
+`Scalar { value: "0Xeeeeeeeeeeeeeeeeeeeeeeee4e6", style: Plain, chomping: Clip, meta: NodeMeta { comment: None, decor: None, fidelity: None } }` -
+the only field that differs is `source_range`, `None` from `from_json5` and `Some(3..32)` from
+`parse`, and that is an accident of which reader ran, not a statement about the value: an edited
+tree carries no range either. Gating the echo on `YamlType::Int | YamlType::Float` fixes the
+YAML-shaped case and breaks the JSON5-shaped one, in the opposite direction: a document's number
+would come back out as a string. So the honest options are three, and none is a writer-local edit:
 
 1. fill the `fidelity` slot the node already carries with the source text when a reader takes a
   number token, and echo only when it is present - fidelity preserved both ways, one read-side
@@ -13022,3 +13081,47 @@ The harness was restored from the pre-instrumentation backup and verified (`grep
 puts the old sources' bytes back but not the old build, and `tests/test_extension_freshness.py` is
 mtime-keyed, so a byte-identical restore without a rebuild reddens for a reason that has nothing to
 do with the change.
+
+### (jn) The width gate excused every line whose first token overflowed, and 18 such lines were in the tree (2026-11-07)
+
+`offenders` and `_wrap_line` were coupled on purpose - the gate must not reject what the formatter
+writes - but they were coupled on the wrong question. The exemption asked `_has_break_inside(body,
+room)`: would *some* legal cut leave the first piece inside the room. A line that opens with a code
+span wider than the limit answers no to that however much ordinary prose follows it, and
+`_wrap_line`'s `cut is None` branch then appended the entire remainder to that line and returned.
+Each half agreed with the other; the pages did not.
+
+Measured on this tree before the change: 18 prose lines past 100 display columns that the hook did
+not report, on 7 of the 11 governed pages. The widest is a `docs/dev/quality-ledger.md` paragraph of
+1,410 columns with 169 legal break points, and `--fix` answered it with the same 1,410-column line
+and reported the file clean - so the drift could not be repaired by the tool that exists to repair
+it. The rule is about `git diff` readability rather than rendering: HTML wraps a paragraph where it
+likes, which is exactly why no reader ever complained and the blind spot survived.
+
+The remedy is in the fixer, not in the limit. `_wrap_line` now emits the unavoidable leading token
+and keeps going with the break points behind it; `offenders` excuses only a line with no legal break
+at all, whose overflow really is physical. The two halves still agree, because anything the check
+reports is something the fix shortens - and `test_the_gate_is_satisfiable_by_its_own_fix` is the
+reason the narrow question was chosen originally: a line no tool can fix is a gate people route
+around. Moving the fixer rather than widening the exemption keeps both properties.
+
+Consequences measured, not assumed.
+
+- Reflow: `docs/dev/quality-ledger.md` 13,024 to 13,083 lines and `docs/zh/changelog.md` 1,722 to
+  1,723. Both proved break-only - text modulo whitespace identical, backticks 18,414 and 3,858
+  unchanged, headings 267 and 110 unchanged, table rows 157 unchanged. What stays excused is 19
+  lines of 101 to 153 columns, each one single token: five GitHub-link lines in the changelog
+  mirrors and fourteen quoted paths or commands, the widest a `Scalar { value: "0Xee…", style: … }`
+  dump.
+- Sensitivity: reverting the fixer branch alone reddens
+  `test_a_line_opening_with_an_over_long_span_still_wraps_its_prose`, and so does reverting the
+  exemption alone - 1 failed, 38 passed each time, with the tool restored byte-identical afterwards
+  and 39 passed. A tree-wide test accompanies them,
+  `test_every_over_long_line_in_a_governed_page_is_uncuttable`: it walks the shipped pages and fails
+  on any over-limit line that still has a legal cut, so the shape cannot come back while the hook
+  stays green.
+- A stale restatement went with it. The exemption test said the four changelog lines "open with a
+  101-127 column code span … and then continue in prose"; measured, those lines are single
+  GitHub-link tokens with nothing after them, so that test now asserts the span alone and the
+  span-plus-prose shape moved to the new one. The docstring was written from the fixer's old
+  behavior, not from the tree - which is how it survived a change that made it false.

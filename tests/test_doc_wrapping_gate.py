@@ -132,20 +132,25 @@ def test_korean_word_spacing_is_never_residue(checker):
 def test_a_line_no_formatter_can_fix_is_excluded_not_reported(checker):
     """The exemption is the fixer's capability, measured rather than asserted.
 
-    Four lines in the changelogs open with a 101-127 column code span (a `cargo build --target
-    thumbv7em-none-eabi ...` invocation) and then continue in prose. Every legal cut leaves the
-    first piece over budget, so `--fix` emits them unchanged - which means a rule that reported
-    them could never go green and would train people to bypass a gate. Splitting the span is not an
-    option: it would corrupt the command that makes the line long.
+    Splitting a code span or a link would corrupt the text that makes the line long, so a line that
+    *is* one atomic token has no legal cut and `--fix` emits it unchanged - and a rule that reported
+    such lines could never go green, which trains people to bypass a gate. Measured on this tree: 19
+    lines sit in that class, 101 to 153 display columns, five of them the GitHub-link line in a
+    changelog mirror and thirteen of them a ledger line whose whole content is one quoted path.
+
+    What this predicate used to excuse, and must not, is an atomic opener *followed by prose*. It
+    asked whether some cut would leave the first piece within the room - a question no such line can
+    answer yes to - while `_wrap_line` dumped the whole remainder on the same line and called it
+    done, so the two halves agreed with each other and missed the tree. Ledger (jn); the shape with a
+    tail is asserted in `test_a_line_opening_with_an_over_long_span_still_wraps_its_prose`.
     """
     span = (
         "`cargo build --locked --no-default-features --target thumbv7em-none-eabi "
         "-p pyrs-ast -p pyrs-schema -p pyrs-json`"
     )
-    line = span + " is green locally, which is the gate that job runs."
     assert checker.display_width(span) > checker.MAX_WIDTH, checker.display_width(span)
-    assert checker.offenders([line], "page.md") == [], line
-    assert checker.format_text(line) == line
+    assert checker.offenders([span], "page.md") == [], span
+    assert checker.format_text(span) == span
 
 
 def test_the_gate_is_satisfiable_by_its_own_fix(checker):
@@ -154,6 +159,13 @@ def test_the_gate_is_satisfiable_by_its_own_fix(checker):
     The failure this pins was measured on the way here: the check asked for "some legal break
     exists" while the fixer needed "some legal break fits", so four lines stayed reported forever
     and every re-flowed page came back red after `--fix` had already touched them.
+
+    The halves now ask the *same* question, and it is the fixer that moved: `offenders` excuses only
+    a line with no legal break at all, and `_wrap_line` cuts at the first break even when the token
+    opening the line overflows - so every line the check reports is a line the fix can shorten.
+    Reverting either half on its own reddens
+    `test_a_line_opening_with_an_over_long_span_still_wraps_its_prose`; measured both ways, 1 failed
+    and 38 passed each time.
     """
     text = "\n".join(
         [
@@ -470,6 +482,54 @@ def test_an_unbreakable_token_overflows_without_being_reported(checker):
     line = "x" * 160
     assert checker.wrap_text(line) == line
     assert checker.offenders([line], "page.md") == []
+
+
+def test_a_line_opening_with_an_over_long_span_still_wraps_its_prose(checker):
+    """An atomic span excuses the *span*, never the paragraph sitting behind it.
+
+    The exemption asked whether some legal cut would leave the first piece inside the room. For a line
+    that opens with a span wider than the limit the answer is no however much ordinary prose follows,
+    and `_wrap_line` - finding no fitting cut - dumped the whole remainder on one line and returned.
+    Both halves then agreed with each other and missed the tree: measured on this repository, 18 lines
+    across seven governed pages were invisible to the hook, the widest a ledger paragraph of 1,410
+    columns with 169 legal break points, which `--fix` left byte-identical and reported idempotent.
+
+    Reverting either half reddens this: the `offenders` assertion is the check's side, and `out[0]`
+    with one over-long piece is the fixer's.
+    """
+    span = "`RUSTUP_TOOLCHAIN=nightly CARGO_TARGET_DIR=$HOME/pyrs-fuzz-target cargo fuzz build edit_yaml --debug`"
+    tail = (
+        " in WSL, and each seed was then replayed in its own process so that one panic could not abort"
+        " the batch, which is the only reason the count below is a classification at all."
+    )
+    line = span + " " + tail
+    assert checker.display_width(span) > checker.MAX_WIDTH, "the probe needs an unbreakable opener"
+    assert checker.offenders([line], "page.md"), "the gate still excuses a line it could cut"
+    out = checker.format_text(line).split("\n")
+    assert out[0] == span, out[0]
+    over = [piece for piece in out if checker.display_width(piece) > checker.MAX_WIDTH]
+    assert over == [span], f"pieces overflow that a legal cut would have saved: {over}"
+    assert "".join(out).count("`") == line.count("`"), "a span was split"
+    assert checker.format_text("\n".join(out)) == "\n".join(out), "the pass does not converge"
+
+
+def test_every_over_long_line_in_a_governed_page_is_uncuttable(checker):
+    """The concession the width rule makes, counted on the shipped text rather than an injection.
+
+    What it concedes is one atomic span - text the fixer must not split. Anything else past 100
+    columns is a line the hook stopped looking at, and that is how the 18 lines above sat in the tree
+    with the gate green on every push.
+    """
+    hidden = []
+    for rel in GOVERNED:
+        lines = (REPO_ROOT / rel).read_text(encoding="utf-8").split("\n")
+        meta = checker.front_matter(lines)
+        for number, line, in_fence in checker._scan_list(lines):
+            if number in meta or in_fence or not line.strip() or checker.is_skipped(line):
+                continue
+            if checker.display_width(line) > checker.MAX_WIDTH and checker._break_points(line.strip()):
+                hidden.append(f"{rel}:{number} ({checker.display_width(line)} cols)")
+    assert hidden == [], f"cuttable lines the width rule does not see: {hidden}"
 
 
 def test_the_hook_is_wired(checker):

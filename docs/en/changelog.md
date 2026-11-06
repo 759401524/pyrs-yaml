@@ -188,6 +188,18 @@ s own
   checker reports one finding per *line* with a gap count inside it, so comparing `len()` measures
   lines rather than typography.
 
+- **The prose-width gate now sees the lines it used to excuse** — the exemption asked whether some
+  legal cut would leave a line's *first* piece inside 100 display columns, so a line opening with a
+  wider code span or link answered no however much prose followed it, and `_wrap_line` then put the
+  whole remainder on that same line and called it done. Measured here: 18 unreported lines past the
+  limit on seven of the eleven governed pages, the widest a 1,410-column ledger paragraph with 169
+  legal breaks that `--fix` returned unchanged. The fixer now emits the unavoidable token and wraps
+  what follows, and the check concedes only a line that *is* one atomic token — so the two halves
+  still agree, and anything reported is something the fix shortens. The reflow moved 13,024 to
+  13,083 ledger lines and one changelog line, proved break-only by text modulo whitespace and by
+  backtick, heading and table-row counts; 19 lines stay excused at 101 to 153 columns, each one
+  span.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

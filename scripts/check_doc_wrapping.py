@@ -250,15 +250,20 @@ def join_lines(body: list) -> str:
     return out
 
 
-def _has_break_inside(line: str, room: int) -> bool:
-    """Whether *some* legal cut of `line` would leave the first piece within `room` columns.
+def _has_break_inside(line: str) -> bool:
+    """Whether `line` holds any legal cut at all, which is what makes it repairable.
 
     This is the fixer's own capability expressed as a predicate, and the check has to use it:
-    `_wrap_line` gives up and emits the line unchanged when no cut fits, so a rule that reported
-    such a line would be red forever, and `--fix` would appear to do nothing to it. That is exactly
-    what the four overlong-code-span lines in the changelogs were before this predicate existed.
+    `_wrap_line` gives up only on a line with no legal break, so reporting such a line would be red
+    forever and `--fix` would appear to do nothing to it - which is exactly the shape of the four
+    overlong code-span lines in the changelogs, each one atomic token with nothing after it.
+
+    It used to ask a narrower question - whether some cut would leave the *first* piece within the
+    room - and that excuse travelled too far: a line opening with a 101-column span answers no to
+    it however much ordinary prose follows, so 18 lines across seven governed pages, one of them
+    1,410 columns with 169 legal breaks, passed the hook unmeasured. Ledger (jn).
     """
-    return any(display_width(line[:point].rstrip()) <= room for point in _break_points(line))
+    return bool(_break_points(line))
 
 
 def _break_points(line: str) -> list:
@@ -353,8 +358,21 @@ def _wrap_line(body: str, indent: str, width: int, cont: str | None = None) -> l
                 break
             cut = point
         if cut is None:
-            out.append(prefix + tail)
-            return out
+            # The piece cannot be made to fit: the token that opens it is wider than `room` on its
+            # own. Emit that token - overflow beats splitting an atomic span - and then keep going,
+            # because the text behind it still has legal cuts of its own. Returning here instead
+            # dumped the whole remainder on one line: a ledger paragraph with 169 legal breaks left
+            # the first one at column 1,410, and `offenders` excused it as unrepairable because the
+            # fixer had just proved it could not be repaired.
+            first = min((point for point in points if point > start), default=None)
+            if first is None:
+                out.append(prefix + tail)
+                return out
+            out.append(prefix + body[start:first].rstrip())
+            start = first
+            while start < len(body) and body[start] == " ":
+                start += 1
+            continue
         out.append(prefix + body[start:cut].rstrip())
         start = cut
         while start < len(body) and body[start] == " ":
@@ -448,10 +466,12 @@ def offenders(lines: list, name: str = "") -> list:
     """Lines wider than the convention that a re-flow could bring inside it.
 
     Fence state comes from `scan`, the shared pass, so the gate cannot disagree with `--fix` about
-    which lines are code. One exemption scopes the rule: a line whose shortest legal cut is itself
-    over the limit cannot be repaired without splitting an atomic span, so it is left alone rather
-    than reported. Everything else over 100 display columns belongs here - measured, because
-    `rumdl fmt` preserves author line breaks and excuses none of them.
+    which lines are code. One exemption scopes the rule: a line with no legal break point at all is
+    a single atomic span, so its overflow is physical and reporting it would be noise. A line that
+    merely *opens* with an over-long span is not exempt - its tail is cuttable, and `--fix` cuts it -
+    which is the half this predicate used to excuse. Everything else over 100 display columns
+    belongs here - measured, because `rumdl fmt` preserves author line breaks and excuses none of
+    them.
     """
     out = []
     meta = front_matter(lines)
@@ -462,10 +482,8 @@ def offenders(lines: list, name: str = "") -> list:
         if width <= MAX_WIDTH:
             continue
         body = line.strip()
-        indent = re.match(r"^\s*", line).group(0)
-        room = MAX_WIDTH - display_width(indent)
-        if not _has_break_inside(body, room):
-            continue  # no cut fits: overflow is physical here, so reporting it would be noise
+        if not _has_break_inside(body):
+            continue  # one atomic token: overflow is physical here, so reporting it would be noise
         out.append((name, number, width, body[:60]))
     return out
 
