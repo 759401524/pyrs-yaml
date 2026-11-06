@@ -12,5 +12,24 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": []
+ "holes": [
+  {
+   "id": "seed-unreachable:json_roundtrip",
+   "opened": "2026-11-06",
+   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line, which happens when the seed named there is re-mined into a document one dialect accepts or moved to `fuzz/seeds/parse_json/`, whose target asserts on refusals; `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
+   "why": "the target `continue`s when all three JSON dialects refuse, so the one seed named there replays clean while the round-trip invariant it was archived for is never asked of it"
+  },
+  {
+   "id": "seed-unreachable:toml_roundtrip",
+   "opened": "2026-11-06",
+   "exit": "`.ci/seed-reach.txt` carries no `toml_roundtrip` line, reached by re-mining each named input into a document one TOML gate parses or moving it to `fuzz/seeds/parse_toml/`, where the refusal is the thing under test; the same `seed_reach` test holds the list and the measurement together",
+   "why": "the target skips its body when both the 1.1 and the 1.0 gate refuse, so the three seeds named there prove the refusal still stands and nothing about the note placement they were filed for"
+  },
+  {
+   "id": "seed-unreachable:yaml_roundtrip",
+   "opened": "2026-11-06",
+   "exit": "`.ci/seed-reach.txt` carries no `yaml_roundtrip` line, reached either by re-mining each named input into a document `parse(Schema::Core)` accepts or by moving it to a target that asserts on the refusal (`parse_yaml`, or `edit_yaml` once its script reaches the verbs); five of the seven became unreachable because a later ruling made the engine refuse duplicate-keyed documents, which is why they are registered rather than deleted",
+   "why": "`let Ok(node) = parse(text, Schema::Core) else { return }` is the target's first line, so a refused seed never reaches the idempotence assertion, yet the corpus total and the `former-crash-*` count still credit it as regression protection"
+  }
+ ]
 }

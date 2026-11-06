@@ -65,6 +65,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
   matrix reads 907 Rust `#[test]` over 242 seeds.
 
+- **A seed its target refuses is now counted instead of credited** — every round-trip fuzz target
+  opens with a typed refusal as a pass (`parse(Schema::Core)`, the three JSON dialects, both TOML
+  gates), so an archived input the reader refuses replays clean under `-runs=0` with the invariant
+  it was filed for never asked of it, while the corpus total still counted the file. Measured over
+  the 217 seeds under those four targets: 11 never reach — 7 in `yaml_roundtrip` (five of them
+  because a later ruling made a duplicate-keyed document a refusal), 3 in `toml_roundtrip`, 1 in
+  `json_roundtrip`.
+  `crates/pyrs-yaml-core/tests/seed_reach.rs` asks each target's own engine call and reddens when
+  `.ci/seed-reach.txt` and the measurement disagree in either direction; `scripts/quality_matrix.py`
+  derives `seed-unreachable:json_roundtrip`, `seed-unreachable:toml_roundtrip` and
+  `seed-unreachable:yaml_roundtrip` from that list, and all three are registered with the state
+  that removes each. The inputs stay in the corpus — they pin refusals that were themselves defects,
+  so the blind spot is written down rather than the corpus quietly trimmed.
+
 ## [v0.19.0] — 2026-11-04
 
 <details markdown="1">

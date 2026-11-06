@@ -74,6 +74,20 @@ status: new
   固定します。三つの入力と二つの最小入力をその語庫に加え、語庫は `-runs=0` で緑に再生され、
   マトリクスは Rust の `#[test]` 907 件と種子 242 件を読みます。
 
+- **目標が拒否する種子は、保護として信用されず計上されるようになりました** — 往復する fuzz
+  目標はいずれも型ある拒否を通過として扱います（`parse(Schema::Core)`、三つの JSON 方言、
+  TOML の二つの門）。だから読み手が拒否する保存入力は `-runs=0` で緑に再生され、その入力を
+  登録した理由である不変条件は一度も問われないまま、コーパスの総数だけがファイルを数えて
+  いました。その四つの目標下の保存種子 217 件で実測：11 件が断言に届きません — `yaml_roundtrip`
+  7 件（うち 5 件は後年の裁定で重複鍵の文書が拒否になったため）、`toml_roundtrip` 3 件、
+  `json_roundtrip` 1 件。
+  `crates/pyrs-yaml-core/tests/seed_reach.rs` は各目標自身のエンジン呼び出しを問い、
+  `.ci/seed-reach.txt` と実測がどちらの方向にも食い違えば赤になります。
+  `scripts/quality_matrix.py` はその一覧から `seed-unreachable:json_roundtrip`、
+  `seed-unreachable:toml_roundtrip`、`seed-unreachable:yaml_roundtrip` を導出し、三件はいずれも
+  解除条件付きで登録済みです。入力はコーパスに残します — それらが釘付けにした拒否自体が
+  かつての欠陥だったため、コーパスをこっそり減らすのではなく盲点を文書に書きます。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">

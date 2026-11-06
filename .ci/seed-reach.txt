@@ -1,0 +1,18 @@
+# Seeds that reach NO assertion, measured by `crates/pyrs-yaml-core/tests/seed_reach.rs`
+# against the engine call each round-trip target opens with. A typed refusal is a pass in
+# those targets, so replaying one of these inputs proves the refusal still happens and
+# nothing about the defect the seed was archived for. The list is a measured state: it
+# shrinks when an input is re-mined into a document that parses, and a new line appears the
+# moment one stops reaching. Regenerate with
+#   SEED_REACH_UPDATE=1 cargo test -p pyrs-yaml-core --test seed_reach
+json_roundtrip shape-comment-only-document.seed
+toml_roundtrip former-crash-2a5ea394.seed
+toml_roundtrip former-crash-7a3aac52.seed
+toml_roundtrip shape-literal-and-folded.seed
+yaml_roundtrip cr-only-break-note-ownership.seed
+yaml_roundtrip former-crash-3ff42607.seed
+yaml_roundtrip former-crash-41c6594b.seed
+yaml_roundtrip former-crash-4bf6ee37.seed
+yaml_roundtrip former-crash-b88f1b4f.seed
+yaml_roundtrip former-crash-f59d4ae3.seed
+yaml_roundtrip special-keys.seed
