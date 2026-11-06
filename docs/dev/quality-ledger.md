@@ -12464,3 +12464,65 @@ and the only rows past the 0.50 % line are `load_toml_medium` +1.86 % and
 for byte on the parent tree. `quality_matrix.py --write-rows` moves 907 -> 908 Rust
 `#[test]`, 242 -> 244 seeds and 148 -> 150 `former-crash-*`; the two settled inputs join
 `fuzz/seeds/edit_yaml/former-crash-92f3fc65.seed` and `former-crash-e392c402.seed`.
+
+### (jb) A note lifted off a nested marker landed in the gap under the enclosing header (2026-11-06)
+
+libFuzzer `yaml_roundtrip` crash-543366c4 (45 bytes, issue #733) reddened the fixed-point assertion
+with two emissions that differ only by where one note line sits:
+
+```text
+&&~ !y5kg: \n# *b\n?\n  "z#<A": &: "1:&&z"  # *b\n:\n  ~\n
+```
+
+against the same document with `# *b` hoisted to the first line. `hoist_marker_note` brings a note
+that rides an inner marker up to the marker's own level, which is where the reader reports it, and
+the lifted line was then appended at the writer's tail - here the gap under the enclosing pair's
+header line `&&~ !y5kg: `. granit spans a node through the break that ends its header line, so the
+re-read filed that note one owner higher and the second emission moved it above the header.
+
+Attributed by ablation, not by reading. With the gap walk removed from `write_hoisted_note_line`
+and everything else kept, 17 of the inputs issues #732 and #733 name fail again, and exactly one
+Rust test reddens - `a_hoisted_marker_note_does_not_land_in_the_header_gap`, 26 passed / 1 failed -
+and it fails with the fuzz strings verbatim. The same ablation is what prices the row below. The
+rule is taken after `close_pending_tag_line` because that close moves the tail the offset is read
+from.
+
+Measured over the audited set (every input both issues name, batch by batch, one download per
+(run, artifact) and replayed with `-runs=0`): 36 failing / 38 clean without the lift, 19 failing /
+55 clean with it. The 17 ids that flip are `022acf67 1d9ba17c 1f3f3e3e 227ca62a 2b367bcf 3183afea
+4c140875 5bc5e74b 543366c4 62bf642d 82a949f7 8942b489 93c6f597 b8eef03c cf356e3a f12fa275
+fdb622b3`. Three of them (`227ca62a`, `4c140875`, `5bc5e74b`) come from the 2026-11-06 05:11 batch,
+whose artifacts could not be downloaded when `(iz)` and `(ja)` quoted a 30-failing set over 68
+measured inputs; the pair quoted here is the re-measured one, and the smallest flipped input is
+`crash-227ca62a` at 44 bytes. All 17 join `fuzz/seeds/yaml_roundtrip`, which replays 128 of 128
+clean, and `edit_yaml` stays 47 of 47. The 19 that stay open are 11 `edit_yaml` (`18f3b55d`,
+`ade71439`, `32aeadbf`, `d161db83`, `3291d29b`, `34f72801`, `beb3428d`, `a87ef583`, `1fca240a`,
+`a29d8850`, `ca754e54`) and 8 `yaml_roundtrip` (`a3dded4d`, `860ec5b7`, `c99139f6`, `d360e9fd`,
+`f3a2f8cf`, `aa8a0447`, `9a64506b`, `6d0caaa2`).
+
+Boundary, stated because the walk is asked at the tail: `header_gap_start` measures the body's
+indent from the line it starts, and at the tail no line starts yet, so it measures zero and only a
+flush-left header is crossed. All 17 inputs have that shape. An indented header keeps the gap
+spelling it has today; closing that gap means threading the enclosing header's offset down to
+`write_scalar`, which is where the hoisted write happens - `write_container_node` holds that offset
+as `inherited_header` and `take`s it before reaching here, so the scan is the cheapest form
+available at this call site.
+
+Ir price, read on this WSL host under the baseline's pinned `rustc 1.97.1` with all 55 scenarios:
+`serialize_note_flow` +1.10 % (59,343,982 -> 59,993,983) is the only engine row past the 0.50 %
+line, and its siblings hold - `serialize_small` +0.13 %, `serialize_medium` -0.01 %,
+`serialize_block` -0.02 %, `serialize_block_scalars` +0.05 %, `serialize_anchors` +0.02 % - while
+the two `load_toml_*` rows keep their +1.86 % / +2.99 % host-versus-image pair unchanged from
+`(iz)` and `(ja)`. Two readings split the movement: the same tree with the gap walk dropped reads
++0.14 % (59,429,919), so the lift itself is the +0.96 %, and the first shape of the patch - indent
+as its own `String`, line built with `format!` - read +5.16 % (62,404,360) before the note line was
+assembled in one buffer from the header's own bytes. The row is reported, not re-baselined here;
+naming `serialize_note_flow` in the refresh workflow's `accept_drift` input is the decision this
+section does not make.
+
+Measured: `cargo nextest run --all` 896 passed / 0 skipped, `uv run pytest tests/ -q` 4,730 passed /
+11 skipped / 119 deselected in 156.18 s (the 17 seeds add 17 `test_reader_parity` cases and no test
+function), `fuzz/seeds/yaml_roundtrip` replayed one by one `clean=128 failing=0 total=128` and
+`fuzz/seeds/edit_yaml` `clean=47 failing=0 total=47`. `quality_matrix.py --write-rows` moves 908 ->
+909 Rust `#[test]`, 244 -> 261 seeds and 150 -> 167 `former-crash-*`, and `yaml_roundtrip` becomes
+the fullest target at 128.

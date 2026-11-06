@@ -28,6 +28,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   come back identical in one round, `fuzz/seeds/edit_yaml` replays 47 of 47 clean and
   `cargo nextest run --all` 895 passed. The batch's third input is a different placement — an inline
   note the reader homes one node up — and stays open as issue #732.
+- **A note lifted off a nested `?` marker no longer lands in a header's gap** — `hoist_marker_note`
+  brings a note that rides an inner marker up to the marker's level, which is where the reader
+  reports it, and the lifted line was then appended at the writer's tail. Where that marker sits in
+  the value of a pair headed `&a !tag:`, the tail is the gap under the header; granit spans the node
+  through the break that ends that line, so the re-read filed the note one owner higher and the
+  second emission lifted it above the header. The gap rule `note_line_above` already applies is now
+  the rule for that write too, taken after the pending tag-only line is closed. Replaying every
+  input issues #732 and #733 name moves 17 `yaml_roundtrip` inputs from `serialization not
+  idempotent` to a fixed point (44 bytes the smallest) and the audited set from 36 failing to 19;
+  `yaml_roundtrip` replays 128 of 128 seeds, `edit_yaml` 47 of 47, and `cargo nextest run --all`
+  896 passed. The other 19 stay open on those issues.
 
 ### Changed
 

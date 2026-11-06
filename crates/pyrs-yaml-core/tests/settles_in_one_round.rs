@@ -290,6 +290,29 @@ fn a_note_in_the_gap_under_a_tag_header_settles_in_one_round() {
     );
 }
 
+/// libFuzzer `yaml_roundtrip` crash-543366c4 and its siblings in the same batch: a note hoisted off
+/// a nested marker lands in the gap under the enclosing pair's own header line.
+///
+/// `hoist_marker_note` brings a note that rides an inner marker up to the marker's level, which is
+/// where the reader reports it. The lifted note was then appended at the writer's tail - the gap
+/// below `&&~ !y5kg: ` - and granit spans a node through the break that ends its header line, so the
+/// re-read files that note one level higher and the second emission lifts it above the header.
+#[test]
+fn a_hoisted_marker_note_does_not_land_in_the_header_gap() {
+    let src = "!y5%6bg: &&~\n?\t\n\n z#<A : #*b\n  &: 1:&&z #*b\n\t";
+    let one = emit(src);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert_eq!(
+        one.matches("# ").count(),
+        2,
+        "two notes are carried in, and a placement may not fold one away: {one:?}"
+    );
+}
+
 /// libFuzzer `edit_yaml` crash-a58caa38: an edit that empties a block sequence leaves its flag behind.
 ///
 /// An empty container has no block form, so the writer always spells it `[]` on the key's line - the
