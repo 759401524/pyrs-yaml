@@ -49,7 +49,8 @@ status: new
   从引擎写出的文本里消失了。标头扫描现在改为回落到 sigil 自己那一行，而且只在上面的回退找不到标头时
   才用，所以只是以 `>` 开头的正文行仍走原来的路径。实测：引出该问题的两条 fuzz 输入
   （`crash-aa8a0447`、`crash-95b66309`）已离开失败集合，`yaml_roundtrip` 从 9 降到 7，而 `edit_yaml`
-  仍为 14；两条都已归档为种子 — 语料 284 到 286，`seed_reach` 依旧报出走查 242 条中 11 条不可达。
+  仍为 14；两条都已归档为种子 — 语料 284 到 286，`seed_reach` 依旧在那四个往返目标的 242 个种子上
+  报出 11 条不可达（这道门现在走查六个目标，报出 259 条里的 15 条）。
 
 #### 变更
 
@@ -72,23 +73,27 @@ status: new
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
   最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 907 条 Rust `#[test]`、242 个种子。
 
-- **被目标拒绝的种子现在被计数，不再被算作保护** — 每个往返 fuzz 目标都以"类型化拒绝即通过"开场
-  （`parse(Schema::Core)`、三种 JSON 方言、TOML 的两道门），所以一份读者拒绝的归档输入在
-  `-runs=0` 下干净回放，而它当初被归档时所要防的那条不变量根本没被问过——语料总数却依旧把这个
-  文件算在内。在那四个目标下的 217 个种子上实测：11 条从未到达断言——`yaml_roundtrip` 7 条（其中
-  5 条是因为后来的裁定把带重复键的文档判成拒绝）、`toml_roundtrip` 3 条、
-  `json_roundtrip` 1 条。
-  `crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
-  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；`scripts/quality_matrix.py` 从那份清单导出
-  `seed-unreachable:json_roundtrip`、`seed-unreachable:toml_roundtrip` 与
-  `seed-unreachable:yaml_roundtrip` 三个 id，三条都已登记并写明各自移除它的条件。这些输入留在
-  语料里——它们钉住的拒绝本身就是曾经的缺陷，所以这里写下的是盲区，而不是悄悄削减语料。
+- **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
+  （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json`
+  看三种 JSON 方言，`toml_roundtrip` 与 `parse_toml` 看 TOML 的两道门），所以一份读者拒绝的归档
+  输入在 `-runs=0` 下干净回放，而它当初被归档时所要防的那条写侧承诺根本没被问过——语料总数却依旧
+  把这个文件算在内。`crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
+  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；在这六个目录的 259 个种子上它量出
+  15 条不可达，而 `scripts/quality_matrix.py` 为清单点名的每个目标导出一个
+  `seed-unreachable:<target>` id——现在是五条，五条都已登记并写明各自移除它的条件。
+  `parse_json` 与 `parse_toml` 是在本条写下之后才加入这个总体的：`parse_json.rs:36` 与
+  `parse_toml.rs:57` 遇到拒绝就 `continue`，全部断言都在它们身后，这正是四个往返目标的形状，
+  而不是那句排除理由所说的“它们断言的就是拒绝本身”——同一句话还把出路说错了：把一份被拒绝的
+  种子挪进 `fuzz/seeds/parse_toml/` 只是把盲区搬走，并没有关掉它。这些输入留在语料里：15 条中
+  有 5 条答的是 `max depth exceeded (max=1000)`，那正是 PR #694 自己的后置条件，所以它们防的是
+  那道拒绝，其余一概不算。
 
 - **fuzz 找到、而什么都没留下的 23 条输入现已进入语料** — 今天回放干净的 2026-11-02 与
   2026-11-03 那批发现（15 条 `edit_yaml`、8 条 `yaml_roundtrip`，45 到 234 字节）从未被归档，
   而一份不存在的种子什么都保护不了：矩阵按文件计数，所以那道缺口是看不见，而不是没被测出。每条
   都按原字节登记到 `fuzz/seeds/<target>/former-crash-<short>.seed`，再向它自己目标的引擎重新发问
-  ——`seed_reach` 仍然报出走查 240 条里 11 条不可达，所以这 23 条都抵达了归档它的那条断言，而不是
+  ——`seed_reach` 报出 259 条走查里 15 条不可达，而这 23 条都不在其中，所以它们都抵达了归档它的那
+  条断言，而不是
   靠一次拒绝通过；回放层跑满 198 条中的 198 条，产物为零。仍在失败的 23 条继续挂在各自 issue 上，
   其中包括需要注释归属裁定的 `edit_yaml` 容器 note 形态。
 
@@ -108,6 +113,20 @@ status: new
   一条断言；这里没有改变任何行为。两条既有规则在此相互冲突 ——`collect_inline_pairs` 会把源里的合并键
   一并交出，而 v0.16.0 的"无贡献 ⇒ 普通键"规则把它们保留，`is_merge_key` 又称注释只是元数据、不是身
   份——所以哪种读法正确仍是待决问题，实测记在 `docs/dev/quality-ledger.md` (jg)。
+
+- **写入端的保留首字符规则现在被端到端地问，而不再只问判定** —
+  `serializer.rs::leading_indicator` 回答一段文本能否起头成 plain token，而
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` 已拿一份对这 17 个字符的独立重述
+  逐码位钉住了该判定。没人问过它的后果：以一个这类字符开头的标量，写出去之后要在键侧和值侧都按原文
+  读回来，并且一轮就收敛——那正是 `fuzz/seeds/yaml_roundtrip/special-keys.seed` 过去替我们守着的
+  主张；由于其中裸写的 `@literal` 让整份文档成了语法拒绝，那条种子已不再抵达断言
+  （`.ci/seed-reach.txt` 点了它的名）。先实测再落笔：17 个字符 × 两侧 = 34 次往返，全部保住原文。
+  `a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip` 把它落成了测试：它在
+  内存里构造节点，而不是解析带引号的源文，因为 `DoubleQuoted` 标量只能证明写器守得住别人递给它的
+  引号。突变定价：从规则中逐个删去 `@`、`*`、`|`、`>` 与反引号，这条测试都变红并报出发射的文本；
+  删去 `?` 不变红，因为 `?x` 对我们自己的读者就是合法的 plain 标量——那一成员是为与其他解析器互通
+  而存在，并非我们的往返契约，这就是这条防线的边界。实测：`--test settles_in_one_round` 29 passed
+  （此前 28），突变脚本末行读作 `restored -> GREEN`，且 `byte-identical after restore: True`。
 
 ### [v0.19.0] — 2026-11-04
 

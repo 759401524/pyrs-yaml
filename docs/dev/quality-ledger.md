@@ -12557,8 +12557,9 @@ archived for. Nothing measured that before: `fuzz_seed_inventory()` counts files
 file is a file.
 
 Measured over the 217 seeds under those four targets (261 in the whole corpus; the 44 under
-`parse_yaml`, `parse_json`, `parse_toml`, `parse_schema` and `json_events_replay` are out of the
-population by design, because those targets assert on the refusal itself), asking each target's own
+`parse_yaml`, `parse_schema` and `json_events_replay` are out of the population by design, because
+no assertion in those three is gated on a successful read - (jh) corrects this section for having
+put `parse_json` and `parse_toml` in that group), asking each target's own
 engine call: **11 never reach** -
 7 in `yaml_roundtrip`, 3 in `toml_roundtrip`, 1 in `json_roundtrip`, 0 in `edit_yaml`. Five of the
 seven (`former-crash-3ff42607`, `41c6594b`, `4bf6ee37`, `b88f1b4f`, `f59d4ae3`) became unreachable
@@ -12766,3 +12767,105 @@ to collapse when the decision lands, so the collision cannot be resolved by acci
 this tree: 30 merge tests pass, 487 in the crate, `cargo nextest run --all` 903 passed,
 `prek run --all-files` clean. No behavior changed here - the finding is the deliverable, and the
 four inputs stay open on #733 until the rule is chosen.
+
+### (jh) Two of the five fuzz targets left out of the seed-reach walk were left out on a claim that does not hold (2026-11-06)
+
+(jc) excluded five targets from the unreachable-seed population and justified all five with a clause
+its own section no longer carries - "those targets assert on the refusal itself". The harnesses say
+three of the five, not five.
+`parse_yaml` is two `let _ = parse(...)` calls and `parse_schema` one, so nothing in them is gated;
+`json_events_replay` answers `(Err, Err)` with an `assert_eq!` on the two messages at
+`fuzz/fuzz_targets/json_events_replay.rs:82`, which is a refusal being the claim. `parse_json.rs:36`
+and `parse_toml.rs:57` are `let Some(node) = parsed else { continue }` and
+`let Ok(node) = parsed else { continue }` with every writer promise behind them - the shape the four
+round-trip targets already had, and the reason they belong in the walk.
+
+Adding both to `SKIP_ON_REFUSAL` moves the measurement from 11 unreachable of 242 seeds walked to
+**15 of 259** (the two corpora hold 7 and 10 files; the whole corpus is 286), and the four new
+lines are 1 `parse_json` and 3 `parse_toml` inputs. Two sentences that shipped with (jc) die here,
+and they were the same piece of advice: that a refused seed could be *moved* to
+`fuzz/seeds/parse_json/` or `fuzz/seeds/parse_toml/` "where the refusal is the thing under test".
+It is not, so relocation carried the blind spot instead of closing it - which is exactly what the
+widened walk measured on those two directories. Both `exit` fields, the `toml_roundtrip` `why` in
+`.ci/quality-holes.json` and their `QUALITY_MATRIX.md` mirrors now say what was measured.
+
+The walk also splits the registry in two, and the split is the part worth keeping. Five of the 15
+lines answer `max depth exceeded (max=1000)` - 3 in `parse_toml`, 2 in `toml_roundtrip` - and that
+refusal *is* PR #694's postcondition, so those inputs still guard the behaviour they were filed for
+while reaching none of the target's writer promises. The other ten are refused as syntax or by the
+duplicate-key ruling and reach no assertion at all. The registry header states both halves now,
+instead of the blanket "nothing about the defect the seed was archived for" that over-claimed on the
+first reading; `the_renderer_and_the_registry_reader_agree` pins that header at 8 lines, so editing
+it is a deliberate act rather than a side effect.
+
+Widening the walk also exposed a second fidelity gap, in what the walk feeds the engine. `seeds_of`
+had split every seed at the first NUL because `edit_yaml` stores `document NUL script`; the other
+five harnesses receive the whole byte string, so a JSON or TOML seed carrying a NUL would have been
+measured on less input than its assertions ever see. The split is now applied to `edit_yaml` alone,
+and that branch mirrors `edit_yaml.rs:418`, which returns before parsing when the separator is
+missing — a seed without one reaches nothing however well its document parses. Measured on today's
+corpus the change is neutral: no seed outside `fuzz/seeds/edit_yaml/` holds a NUL, all 62
+`edit_yaml` seeds carry a non-empty script, and the walk prints the same 15 of 259 before and after.
+
+Measured on this tree: `cargo test -p pyrs-yaml-core --test seed_reach` 3 passed, printing
+`unreachable seeds measured: 15 of 259 walked`; `uv run pytest tests/test_quality_matrix.py
+tests/test_seed_reach.py` 67 passed; `python scripts/check_hole_claims.py` reports 5 measured holes
+across the 7 files that name them; `python scripts/quality_matrix.py --check-rows` OK;
+`prek run --all-files` clean, `cargo nextest run --all` 903 passed, `uv run pytest tests/ -q` 4759
+passed and 11 skipped. No engine source changed — the deliverable is the gate and the corrections to
+the sentences that shipped around it.
+
+### (ji) The reserved-indicator rule was decided by test, but never asked end to end (2026-11-06)
+
+`serializer::leading_indicator` is one byte test over 17 characters, and it is already pinned
+differentially: `needs_double_quoted_agrees_with_the_scan_for_every_code_point` walks `0..0x10000`
+in the leading and embedded positions against `reference_needs_double_quoted`, an independent
+restatement of the same set. So the first hypothesis written here - that no test names the set - was
+wrong, and was dropped before a second test could duplicate a covered decision. What the predicate
+test cannot see is the consequence: `to_yaml` choosing to quote is not the same claim as the emitted
+document re-reading as the same text, on the key side as well as the value side.
+
+The corpus input that used to stand for that consequence is
+`fuzz/seeds/yaml_roundtrip/special-keys.seed`: its `- @literal` line makes the whole document a
+syntax refusal now that `@` cannot open a plain token, so the seed replays clean without reaching
+the round-trip assertion - one of the 15 lines in `.ci/seed-reach.txt`. Measured with a throwaway
+probe before anything was written down, because a persisted number needs a live command output:
+17 characters times 2 sides = 34 round trips, every one preserving the text.
+
+`a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip` in
+`crates/pyrs-yaml-core/tests/settles_in_one_round.rs` ships that probe. It builds the node in memory
+instead of parsing quoted source, because a `DoubleQuoted` scalar would only prove the writer can
+keep a quoting it was handed. Per case it asks three things: our reader accepts the emission, the
+second `to_yaml` equals the first, and the character still sits where it was in the value or the key
+it landed on.
+
+Priced by mutation - one alternative deleted from the rule at a time, then the file restored from a
+byte-level backup and re-verified:
+
+| deleted alternative | verdict | what the failure names |
+| --- | --- | --- |
+| the at-sign | RED | emitted `"@x: v"`, refused: unexpected character at char 0 |
+| the asterisk | RED | emitted `"*x: v"`, refused: found unknown anchor at char 0 |
+| the vertical bar | RED | emitted `"|x: v"`, refused while scanning a block scalar |
+| the greater-than | RED | emitted `">x: v"`, the same block-scalar refusal |
+| the backtick | RED | emitted a backtick-led key, refused: unexpected character |
+| the question mark | GREEN | `?x` is a legal plain scalar to our own reader |
+
+The green row is a boundary rather than a gap: that member exists for interop with parsers that
+read `?` before a non-space differently, so our own round trip cannot detect its loss - which is
+worth stating because it bounds what the new test defends. A count of `#[test]` would not have
+noticed any of this; the defence changed shape, not size by more than one.
+
+Measured on this tree: `cargo test -p pyrs-yaml-core --test settles_in_one_round` 29 passed (28
+before), the mutation sweep's final line reads `restored -> GREEN` with
+`byte-identical after restore: True`, `cargo clippy --all --all-targets -- -D warnings` clean, and
+`check_changelog_coupling.py --paths` demanded the release note because the changeset moves
+`crates/**` - filed in all five mirrors.
+
+One gate broke on the way and was answered, not explained away. `tests/test_extension_freshness.py`
+reddened after the mutation sweep even though the restore verified byte-for-byte equality: that gate
+keys on mtime, and writing the file back bumps it, so the loaded `.pyd` looked older than a source
+that had not changed. `uv run maturin develop --release` was the answer - the alternative, touching
+the file's timestamp to satisfy a gate, would have been the gate measuring the wrong thing twice.
+Green after the rebuild: `uv run pytest tests/ -q` 4759 passed and 11 skipped;
+`cargo nextest run --all` 904 passed; `prek run --all-files` clean.

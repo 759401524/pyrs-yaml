@@ -59,7 +59,13 @@ def test_the_gaps_counted_from_the_registry_match_its_lines():
     assert counts == dict(Counter(target for target, _seed in entries)), (
         "the per-target counts the matrix quotes are not the lines the registry carries"
     )
-    assert set(counts) == {"yaml_roundtrip", "toml_roundtrip", "json_roundtrip"}, counts
+    assert set(counts) == {
+        "yaml_roundtrip",
+        "toml_roundtrip",
+        "json_roundtrip",
+        "parse_json",
+        "parse_toml",
+    }, counts
     assert sum(counts.values()) == len(entries), "a line without a count is a line nobody reads"
 
 

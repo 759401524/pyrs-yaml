@@ -7,6 +7,7 @@
 //! quality-ledger (ds) carries the mechanism and the two remedies that were measured away before the
 //! one that holds.
 
+use pyrs_yaml_core::ast::{CustomNode, NodeMap};
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::serializer::{NotePlacement, SerializeOptions, to_yaml, to_yaml_with_options};
@@ -1062,5 +1063,71 @@ fn a_content_less_block_scalar_keeps_its_header_under_a_note_line() {
             again, one,
             "not a fixed point in one round: {one:?} -> {again:?}"
         );
+    }
+}
+
+/// The writer's reserved-indicator set is `serializer::leading_indicator`, and the decision it
+/// drives is pinned differentially in `serializer.rs::tests` against an independent restatement.
+/// What nothing asked end to end is the claim the corpus used to stand for:
+/// `fuzz/seeds/yaml_roundtrip/special-keys.seed` carries a bare `@literal`, and since `@` cannot
+/// open a plain token the reader refuses the whole document, so the seed replays clean without ever
+/// reaching the target's assertion (`.ci/seed-reach.txt` names it). A node built in memory — not
+/// parsed from quoted source, which would merely preserve the quoting it was given — must be emitted
+/// so that it re-reads as the same text on either side of the pair, in one round.
+#[test]
+fn a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip() {
+    const INDICATORS: [char; 17] = [
+        '-', '{', '}', '[', ']', '*', '&', '!', '?', '%', '@', '`', '\'', '"', '|', '>', ',',
+    ];
+    let scalar_text = |node: &CustomNode| match node {
+        CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+        other => panic!("expected a scalar, got {other:?}"),
+    };
+
+    for ch in INDICATORS {
+        let text = format!("{ch}x");
+        for (side, key_side) in [("key", true), ("value", false)] {
+            let mut pairs = NodeMap::default();
+            let (key, value) = if key_side {
+                (
+                    CustomNode::plain_scalar(text.as_str()),
+                    CustomNode::plain_scalar("v"),
+                )
+            } else {
+                (
+                    CustomNode::plain_scalar("k"),
+                    CustomNode::plain_scalar(text.as_str()),
+                )
+            };
+            pairs.insert(key, value);
+            let node = CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            };
+
+            let one = to_yaml(&node);
+            let again = parse(&one, Schema::Core).unwrap_or_else(|e| {
+                panic!("{text:?} on the {side} side emitted {one:?}, which our reader refuses: {e}")
+            });
+            assert_eq!(
+                to_yaml(&again),
+                one,
+                "{text:?} on the {side} side is not a fixed point in one round: {one:?}"
+            );
+
+            let CustomNode::Mapping { pairs, .. } = &again else {
+                panic!("expected a mapping, got {one:?}");
+            };
+            let (got_key, got_value) = pairs
+                .iter()
+                .next()
+                .unwrap_or_else(|| panic!("expected one pair, got {one:?}"));
+            let got = scalar_text(if key_side { got_key } else { got_value });
+            assert_eq!(
+                got, text,
+                "{text:?} on the {side} side re-read as {got:?} from {one:?}"
+            );
+        }
     }
 }

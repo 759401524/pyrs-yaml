@@ -16,19 +16,31 @@
   {
    "id": "seed-unreachable:json_roundtrip",
    "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line, which happens when the seed named there is re-mined into a document one dialect accepts or moved to `fuzz/seeds/parse_json/`, whose target asserts on refusals; `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
+   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line, which happens when the seed named there is re-mined into a document one dialect accepts; moving it to `fuzz/seeds/parse_json/` is not an exit, because that target gates its writer promises on a successful read too - measured, its own seed is unreachable there. `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
    "why": "the target `continue`s when all three JSON dialects refuse, so the one seed named there replays clean while the round-trip invariant it was archived for is never asked of it"
+  },
+  {
+   "id": "seed-unreachable:parse_json",
+   "opened": "2026-11-06",
+   "exit": "`.ci/seed-reach.txt` carries no `parse_json` line, which happens when the seed named there is re-mined into a document one JSON dialect accepts - the only way any of the three writer promises in `fuzz/fuzz_targets/parse_json.rs` is reachable at all; `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
+   "why": "every assertion in the target sits behind `let Some(node) = parsed else { continue }` over the three dialects, so the one seed named there runs no writer and asks no dialect promise, while the corpus total still counts the file"
+  },
+  {
+   "id": "seed-unreachable:parse_toml",
+   "opened": "2026-11-06",
+   "exit": "`.ci/seed-reach.txt` carries no `parse_toml` line. All three named seeds answer `max depth exceeded (max=1000)`, so the exit is a shallower input that still reaches the writer, or the guard's own claim moving to a test that asserts it; relocating the seeds closes nothing, because every target that reads TOML gates its assertions on a successful read",
+   "why": "the target skips its whole body when both the 1.1 and the 1.0 gate refuse, so these three prove the guard still rejects and nothing about the two writer promises the file asserts - a weaker protection than the `former-crash-*` name the corpus credits them for"
   },
   {
    "id": "seed-unreachable:toml_roundtrip",
    "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `toml_roundtrip` line, reached by re-mining each named input into a document one TOML gate parses or moving it to `fuzz/seeds/parse_toml/`, where the refusal is the thing under test; the same `seed_reach` test holds the list and the measurement together",
-   "why": "the target skips its body when both the 1.1 and the 1.0 gate refuse, so the three seeds named there prove the refusal still stands and nothing about the note placement they were filed for"
+   "exit": "`.ci/seed-reach.txt` carries no `toml_roundtrip` line, reached by re-mining each named input into a document one gate parses; relocating one to `fuzz/seeds/parse_toml/` is not an exit, because that target gates both of its writer promises on a successful read too - measured, its three seeds are unreachable there. `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the list and the measurement disagree",
+   "why": "the target skips its whole body when both the 1.1 and the 1.0 gate refuse, so the three seeds named there run no writer: `former-crash-2a5ea394` and `former-crash-7a3aac52` answer `max depth exceeded (max=1000)` - the guard PR #694 added, which is the fix they were filed for, so they stay live protection for that refusal and none for the runaway output they recorded - while `shape-literal-and-folded` is refused as a syntax error and reaches nothing"
   },
   {
    "id": "seed-unreachable:yaml_roundtrip",
    "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `yaml_roundtrip` line, reached either by re-mining each named input into a document `parse(Schema::Core)` accepts or by moving it to a target that asserts on the refusal (`parse_yaml`, or `edit_yaml` once its script reaches the verbs); five of the seven became unreachable because a later ruling made the engine refuse duplicate-keyed documents, which is why they are registered rather than deleted",
+   "exit": "`.ci/seed-reach.txt` carries no `yaml_roundtrip` line, reached either by re-mining each named input into a document `parse(Schema::Core)` accepts or by moving it to `parse_yaml`, whose whole claim is the two `let _ =` calls, so a refusal satisfies it rather than skipping it. Five of the seven became unreachable because a later ruling made the engine refuse duplicate-keyed documents, which is why they are registered rather than deleted",
    "why": "`let Ok(node) = parse(text, Schema::Core) else { return }` is the target's first line, so a refused seed never reaches the idempotence assertion, yet the corpus total and the `former-crash-*` count still credit it as regression protection"
   }
  ]
