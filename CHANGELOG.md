@@ -92,7 +92,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   short, since moving a refused seed into `fuzz/seeds/parse_toml/` relocates the blind spot rather
   than closing it. The inputs stay in the corpus: 5 of the 15 answer `max depth exceeded
   (max=1000)`, which is PR #694's own postcondition, so they protect that refusal and are credited
-  with nothing beyond it.
+  with nothing beyond it. `edit_yaml` is measured one precondition short of its harness on purpose —
+  the target also wants a NUL separator, a complete two-byte record, a non-empty path list and one
+  verb that answers ok — and the gap is sized rather than assumed: replayed against the target
+  instrumented to panic at each precondition, 62 of its 62 seeds reached an assertion, so the weaker
+  predicate and the real one agree on today's corpus
+  (`docs/dev/quality-ledger.md` (jm)).
 
 - **Twenty-three inputs fuzz found and nothing kept are now in the corpus** — the 2026-11-02 and
   2026-11-03 findings that replay clean today (15 `edit_yaml`, 8 `yaml_roundtrip`, 45 to 234 bytes)

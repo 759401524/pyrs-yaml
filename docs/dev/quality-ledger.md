@@ -12971,3 +12971,54 @@ Measured: 3 passed for the new test, `restored -> GREEN` with `byte-identical af
 `quality_matrix.py --write-rows` moves the unit row to 2,169 Python test functions, and
 `check_changelog_coupling.py --paths` demanded the note (trigger path `tests/**`), filed in five
 mirrors.
+
+### (jm) The `edit_yaml` reach predicate is one precondition short, and the gap was measured (2026-11-07)
+
+`reaches("edit_yaml", document)` in `crates/pyrs-yaml-core/tests/seed_reach.rs` asks only whether
+the document parses. `fuzz/fuzz_targets/edit_yaml.rs` asks four more things before its first
+assertion: a NUL separator between document and script (line 418), at least one complete two-byte
+record (430-433), a non-empty path list (437), and one verb that answers ok (594). A seed that
+clears the parse and then fails any of those is counted reachable by the gate while the target
+asserts nothing - and the corpus credit for it is the thing the gate exists to refuse.
+
+Sizing the gap meant running the harness, not restating it. Mirroring `collect` and the verb
+dispatch into the gate would create a second copy of that logic, which drifts silently and only
+shows up when someone remembers to compare; so the target was instrumented instead - five `PROBE-`
+markers, one panic per precondition, plus `reached` and `refusals` counters - and built in WSL:
+
+```text
+RUSTUP_TOOLCHAIN=nightly CARGO_TARGET_DIR=$HOME/pyrs-fuzz-target \
+    cargo fuzz build edit_yaml --debug
+```
+
+Each of the 62 files in `fuzz/seeds/edit_yaml` was replayed in its own process with `-runs=0`; one
+process per seed is not paranoia, because a panic aborts a batch and a shared process would report
+one death and classify nothing. All 62 printed `REACHED` - 62 of 62 reach at least one assertion, so
+the weak predicate and the real one agree on today's corpus and no `seed-unreachable:edit_yaml` hole
+is registerable.
+
+Two hypotheses died in the same run, and both are worth writing because each looked like a
+strengthening that would have been committed.
+
+- Script-dead seeds: a script whose every verb refuses is invisible to the gate. Measured zero
+  today, so it stays a named risk with a named re-check method rather than a hole or a new
+  assertion.
+- Odd-length scripts: 26 of the 62 carry a script of odd byte length, so `chunks(2)` drops the
+  trailing byte
+  (`degenerate (<2 script bytes or no separator): 0 | odd-length script (tail record dropped): 26`,
+  `min script bytes: 2`). It reads like a defect in the corpus. It is not one - all 26 reached an
+  assertion because the earlier records answer ok, so a parity rule would flag inputs that do
+  exercise the verbs and would be a gate that pushes the corpus toward a shape the harness never
+  required.
+
+The shape of the second bullet is the reason the finding lands as prose: the cheap way to
+"strengthen" this gate was to add a predicate over the script bytes, and that predicate would
+have been wrong in the direction of reporting real protection as missing. The remaining exposure is
+therefore narrow and stated in the code comment - a future archive of a seed whose verbs all refuse
+would be counted reachable here, and the instrumented replay above is the procedure that catches it.
+
+The harness was restored from the pre-instrumentation backup and verified (`grep -c PROBE-` 0, empty
+`git diff --stat`), then the extension rebuilt with `uv run maturin develop --release`: the restore
+puts the old sources' bytes back but not the old build, and `tests/test_extension_freshness.py` is
+mtime-keyed, so a byte-identical restore without a rebuild reddens for a reason that has nothing to
+do with the change.
