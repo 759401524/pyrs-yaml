@@ -781,15 +781,23 @@ impl Serializer {
     /// `!s:`, `&a !tag`) at no deeper an indent is that header's body, and a note written between
     /// them is read as the header's. Nested chains are crossed because each header prefixes the
     /// line below it, and the lift stops at the first line a reader would not hoist over.
+    ///
+    /// A header that is the document's first line is still a header: the line above a body starts
+    /// at offset 0 when no earlier break exists, and asking for an earlier `\n` there gave up the
+    /// lift altogether - `!base:` over an unindented sequence left its first entry's note in that
+    /// gap, where granit reports it on the root, so the second emission hoisted it above the tag
+    /// line (libFuzzer `edit_yaml` crash-92f3fc65 and crash-e392c402).
     fn header_gap_start(&self, at: usize) -> usize {
         let body_indent = self.output[at..].find(|c: char| c != ' ').unwrap_or(0);
         let mut start = at;
         while start > 0 {
             let before = &self.output[..start];
-            let Some(break_before) = before[..before.len() - 1].rfind('\n') else {
-                break;
-            };
-            let previous = break_before + 1;
+            // `start` names a line, so the byte before it ends the line above. That line begins
+            // after the break which precedes this one, or at offset 0 when there is no earlier
+            // break and the header is the first thing the document wrote.
+            let previous = before[..before.len() - 1]
+                .rfind('\n')
+                .map_or(0, |break_before| break_before + 1);
             let line = self.output[previous..start].trim_end_matches([' ', '\n']);
             let indent = line.len() - line.trim_start_matches(' ').len();
             if indent > body_indent || !is_header_line(line) {

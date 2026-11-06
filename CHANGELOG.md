@@ -18,6 +18,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each, and `validate()`'s two dependencies are stated where users meet them: nothing this project
   ships installs `jsonschema`, and a schema passed as text is read by `json.loads` first, so a
   YAML-spelled schema raises `json.decoder.JSONDecodeError`.
+- **A note under a tag header that opens the document settles on the first emission** — a note that
+  cannot ride its line is written above the header the reader reports it on, and the walk that finds
+  that header asked for the break *before* the header line, so a header starting the document was
+  never crossed: the note stayed in the gap, where the re-read files it on the root, and the next
+  emission moved it above the header. `!base:` over an unindented sequence measured
+  `!base: ` / `# fuzz 47` / `- etss: &a0 !s: ~  # fuzz 47` against a second round that put the note
+  line first; crash-92f3fc65 and crash-e392c402 (81 and 82 bytes) and their 29-byte reduction now
+  come back identical in one round, `fuzz/seeds/edit_yaml` replays 47 of 47 clean and
+  `cargo nextest run --all` 895 passed. The batch's third input is a different placement — an inline
+  note the reader homes one node up — and stays open as issue #732.
 
 ### Changed
 
