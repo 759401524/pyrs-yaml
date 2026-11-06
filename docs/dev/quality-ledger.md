@@ -12592,3 +12592,43 @@ renderer/reader agreement, and the registry's header shape), `pytest tests/test_
 to `.ci/seed-reach.txt`. The gate prints its own population - 11 unreachable of 217 seeds walked -
 because a hard-coded corpus size would be a number nothing checks, and the corpus grows the moment
 another input is archived.
+
+### (jd) An input that passes today and was never archived leaves no protection (2026-11-06)
+
+The two open fuzz issues (#732 `edit_yaml`, #733 `yaml_roundtrip`) name 78 crash inputs between
+them. Sorting each by whether it still fails and whether a seed already carries it gave four
+buckets: **23 fail**, **32 are clean and seeded**, **23 are clean and unseeded**, **0 could not be
+fetched**. The third bucket is the one no tier sees - the input was found, its defect fixed, and
+nothing in the tree keeps asking the question, because the corpus counts files and an absent file is
+not a file.
+
+All 23 were archived verbatim as `fuzz/seeds/<target>/former-crash-<short>.seed`, byte for byte off
+the run artifact (15 `edit_yaml`, 8 `yaml_roundtrip`; 45 to 234 bytes). The walk that (jc) installed
+is what makes that claim mean something: re-measured over the enlarged corpus it reports **11
+unreachable of 240 walked** - the same 11 as before, so every one of the 23 newly filed inputs
+reaches the assertion it was archived for, rather than replaying clean because its target declined
+to run. The `-runs=0` exit code alone could not say that; it is the same exit code a refusal
+produces.
+
+`quality_matrix.py --write-rows` moves the fuzz row from 261 seeds to 284, `former-crash-*` from 167
+to 190, and the fullest target from 128 (`yaml_roundtrip`) to 136; `edit_yaml` goes 47 to 62. The
+registry `.ci/seed-reach.txt` did not move, which is the reading that separates this change from
+(jc): an archive is only worth making when the gate says the input is not blind. The two grown
+targets were then replayed seed by seed under `-runs=0` - 198 runs, 62 `edit_yaml` and 136
+`yaml_roundtrip`, zero artifacts - and the pass that produced that line reported 198 *failures* the
+first time. That was the probe, not the corpus: the loop ran as `bash <script>` with no login shell,
+so `cargo fuzz` never resolved and every invocation died before a harness started. A replay script
+that cannot tell "the seed crashed" from "the tool was not there" is the same defect this ledger has
+been writing up all week, so the script now replays one known-clean seed first and exits 2 with its
+own line if that fails.
+
+One probe defect was worth naming. `gh run download` ships the same input twice in one artifact
+(`artifacts/<target>/crash-<hash>` and `collected/<target>/crash-<hash>`), so the first pass read
+every id as ambiguous and refused. Uniqueness has to be asserted over the bytes of the matches, not
+over the paths, and the sizes quoted in the issue records are what caught the difference.
+
+Not covered: the 23 inputs in the first bucket still fail, and the container-note shape in
+`edit_yaml` - the container's own line-end note written into the last pair's trailing slot, which
+granit files that slot under the key, so round two lifts it above the marker-only header - is among
+them. That one is a placement ruling rather than an archiving task, and it stays open beside this
+section rather than closed by it.
