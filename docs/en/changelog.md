@@ -89,6 +89,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that removes each. The inputs stay in the corpus — they pin refusals that were themselves defects,
   so the blind spot is written down rather than the corpus quietly trimmed.
 
+- **Twenty-three inputs fuzz found and nothing kept are now in the corpus** — the 2026-11-02 and
+  2026-11-03 findings that replay clean today (15 `edit_yaml`, 8 `yaml_roundtrip`, 45 to 234 bytes)
+  were never archived, and an absent seed protects nothing: the matrix counts files, so the gap was
+  invisible rather than measured. Each was filed verbatim under
+  `fuzz/seeds/<target>/former-crash-<short>.seed` and re-asked of its own target's engine —
+  `seed_reach` still reports 11 unreachable of 240 walked, so all twenty-three reach the assertion
+  they were archived for instead of passing on a refusal, and the replay tier runs 198 of 198 with
+  zero artifacts. The 23 findings that still fail stay open on their issues, including the
+  `edit_yaml` container-note shape that needs a placement ruling.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
