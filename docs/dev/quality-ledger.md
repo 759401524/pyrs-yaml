@@ -12672,3 +12672,49 @@ is taken. Measured: the two spokes and the two `edit_yaml` inputs named here (`c
 but not yet attributed, so nothing is claimed about them. `cargo nextest run -p pyrs-yaml-core
 --test exports_settle` 2 passed, as a characterization of the state described here - the assertions
 say which way to invert them when the decision lands.
+
+### (jf) A note line above an empty block scalar stole its chomping indicator (2026-11-06)
+
+`detect_block_header` finds a block header by backing up from the content to the last non-blank
+line. A block scalar with no content line has nothing to back up from, so with a note in front of it
+the backup stopped on the note, scanned `# Irrr` for a sigil, found none, and returned the default -
+Clip. The author's indicator was therefore kept by the writer and lost by the reader, which makes
+the second emission differ from the first: `" #Irrr\n>+4\r#"` emitted `# Irrr\n>+\n` and re-emitted
+`# Irrr\n>\n`.
+
+The isolation is one byte of context. The same block scalar without the note line, `">+4\r#"`,
+emitted `>+\n` and re-emitted the same text, so it settled: the drift needed a note, not the
+indicator. Measured on the current build, both fuzz inputs that drew this - `crash-aa8a0447` (12
+bytes) and `crash-95b66309` (16 bytes) - left the failing set, and nothing else moved: the replay of
+the 78 cached artifacts went `yaml_roundtrip` fail 9 to 7 and `edit_yaml` stayed at 14.
+
+The fix is a fallback, not a rewrite, and the order is what keeps the older case honest: the sigil's
+own line is read as the header only after the backup above found no header at all. That is why
+`"a: |\n  > x"` still takes the normal path - its header is on the line before the content, so it is
+found and returned before the fallback is reached - and why
+`empty_block_body_writes_its_declared_chomping` in `crates/pyrs-yaml-core/src/serializer.rs`, which
+pins the writer's side of the same flag, stayed green.
+
+Attribution and gates: `a_content_less_block_scalar_keeps_its_header_under_a_note_line` in
+`crates/pyrs-yaml-core/tests/settles_in_one_round.rs` passes with the fallback and is the only test
+that reddens when it is withdrawn (27 passed, 1 failed); `cargo nextest run --all` 902 passed; the
+two fixed inputs were archived as `fuzz/seeds/yaml_roundtrip/former-crash-aa8a0447.seed` and
+`former-crash-95b66309.seed`, which moves the corpus 284 to 286 and the walked population 240 to 242
+while `seed_reach` still reports the same 11 unreachable - the two new seeds reach their assertion.
+
+Still open in the same field, with a different shape and deliberately not covered by this section:
+`crash-6d0caaa2` drifts the other way. Its block scalar is the value of a complex key
+(`? h7F&...:  |`), the first emission carries no indicator and the second gains `+`, so the flag is
+added rather than lost. Same field, opposite direction, another mechanism.
+
+Ir was judged by a control rather than by a single reading, because the first reading looked like a
+regression. `scripts/ir_gate.py` on this WSL host with the baseline's pinned compiler reports
+`serialize_small +19.92%`, `load_toml_medium +1.65%`, `load_toml_long_strings +2.98%` and two
+`FLOOR_STALE` rows 8-13% below their floors - and reports the same thing, byte for byte in those
+columns, when the fallback is removed and the parent tree's `scalar.rs` is put back (the same
+command run twice, once per tree, and diffed scenario by scenario - the logs themselves are
+gitignored scratch). Of the 17 scenarios the two runs share, 10 counts are identical and the
+remaining 7 differ by 4 to 9,698 instructions on 30 to 390 million, in both directions. A
+reader-only edit cannot reach a writer or a TOML scenario, and floors stale downward are the
+recorded signature of a host that is not the enforcing image, so the movement is the box; the `ir`
+job that runs on the enforcing image is what judges this section's change.

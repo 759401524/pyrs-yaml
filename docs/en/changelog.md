@@ -49,6 +49,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   idempotent` to a fixed point (44 bytes the smallest) and the audited set from 36 failing to 19;
   `yaml_roundtrip` replays 128 of 128 seeds, `edit_yaml` 47 of 47, and `cargo nextest run --all`
   896 passed. The other 19 stay open on those issues.
+- **A block scalar's chomping indicator survives a note line above it** — a block scalar with an
+  empty body was read through the line in front of it: the header search backs up from the content
+  to the last non-blank line, found the note instead of a header, answered Clip and dropped the
+  author's `+`. The document was not a fixed point in one round — `# Irrr` over `>+4` emitted `>+`
+  and then `>` — so the indicator disappeared from the text the engine wrote. The header scan now
+  falls back to the sigil's own line, and only after the backup above finds no header, which leaves
+  a content line that merely starts with `>` on the normal path. Measured: the two fuzz inputs that
+  drew this (`crash-aa8a0447`, `crash-95b66309`) leave the failing set, `yaml_roundtrip` 9 to 7 with
+  `edit_yaml` unchanged at 14, and both are archived as seeds — corpus 284 to 286, `seed_reach`
+  still 11 unreachable of 242 walked.
 
 #### Changed
 
