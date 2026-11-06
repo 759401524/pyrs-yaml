@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import random
 import re
 import sys
 
@@ -287,6 +288,92 @@ def test_korean_wraps_only_at_spaces(checker):
     assert len(pieces) > 1, pieces
     assert " ".join(piece.strip() for piece in pieces) == korean.strip(), pieces
     assert len(checker.offenders([korean], "page.md")) == 1, "Korean prose is prose too"
+
+
+LOCALIZED_PAGES = ["docs/ja/changelog.md", "docs/ko/changelog.md", "docs/zh/changelog.md"]
+_HANGUL_RANGE = "\uac00-\ud7a3"
+
+
+def _strip_space(text: str) -> str:
+    """The text with every run of whitespace removed - layout-blind identity."""
+    return re.sub(r"\s+", "", text)
+
+
+def _hangul_adjacencies(text: str) -> int:
+    """Pairs of Hangul syllables with nothing between them.
+
+    A whitespace-blind comparison cannot see a Korean word cut in half, because the cut is a newline
+    and newlines are whitespace: the count of *unseparated* syllables is what drops when a break
+    lands inside a word, which is the damage `test_korean_wraps_only_at_spaces` guards on synthetic
+    text and this helper guards on the shipped pages.
+    """
+    return len(re.findall(f"(?<=[{_HANGUL_RANGE}])(?=[{_HANGUL_RANGE}])", text))
+
+
+def _gap_total(checker, lines, page):
+    """The tool's own artifact measure, summed over the lines that carry it.
+
+    `spacing_artifacts` reports one finding per *line* together with a count of the gaps in it, so
+    `len()` of its result is a line count, not a gap count: a paragraph joined into one physical line
+    hides five gaps behind one finding, and the same text re-flowed over three lines reports three.
+    Summing the counts is the invariant; comparing lengths punishes the fixer for splitting.
+    """
+    return sum(count for _name, _number, count, _snippet in checker.spacing_artifacts(lines, page))
+
+
+@pytest.mark.parametrize("page", LOCALIZED_PAGES)
+def test_reflowing_the_shipped_localized_pages_changes_only_line_breaks(checker, page):
+    """The synthetic cases above prove the rules; this proves them against the text that ships.
+
+    Each sampled paragraph is joined into one over-long logical line - the condition that makes
+    `--fix` act at all - and the fixer's output is then compared with its input. Five invariants,
+    each a class a reader would notice and a diff would not: the text survives modulo whitespace;
+    every backtick survives, so no code span was opened or closed; no Korean word is cut; a full
+    pass leaves zero residue by the tool's own summed count (`_gap_total`, which is not the same
+    question as how many lines report it); and a second pass changes nothing.
+
+    Blocks, not lines, are what gets sampled: a paragraph needs two or more consecutive
+    continuation lines before there is anything to join, and sampling single lines would measure a
+    one-line "paragraph" that `format_text` barely touches. The block count is asserted before the
+    loop rather than after it, so a page whose prose moved costs a refusal instead of an empty pass.
+    """
+    lines = (REPO_ROOT / page).read_text(encoding="utf-8").split("\n")
+    fenced = {number - 1 for number, _, in_fence in checker._scan_list(lines) if in_fence}
+    candidate = sorted(
+        i
+        for i, ln in enumerate(lines)
+        if ln.startswith("  ") and ln.strip() and not ln.lstrip().startswith(("- ", "|", "```")) and i not in fenced
+    )
+    runs: list[list[int]] = []
+    for i in candidate:
+        if runs and i == runs[-1][1] + 1:
+            runs[-1][1] = i
+        else:
+            runs.append([i, i])
+    blocks = [(start, stop) for start, stop in runs if stop > start]
+    assert len(blocks) >= 8, f"{page} has only {len(blocks)} multi-line paragraphs: nothing was measured"
+    assert _gap_total(checker, lines, page) == 0, (
+        f"{page} ships with wrap residue; the probe's baseline would no longer be the tree's rule"
+    )
+
+    for start, stop in random.Random(11).sample(blocks, min(12, len(blocks))):
+        joined = " ".join(ln.strip() for ln in lines[start : stop + 1])
+        mutated = "\n".join([*lines[:start], joined, *lines[stop + 1 :]])
+        # `format_text`, not `wrap_text`: that is the function `fix()` writes with (line 666), so a
+        # probe of the other one would test a wrapper the hook never runs.
+        fixed = checker.format_text(mutated)
+        where = f"{page}:{start}-{stop} (joined to {checker.display_width(joined)} cols)"
+
+        assert _strip_space(fixed) == _strip_space(mutated), f"{where}: text changed, not just breaks"
+        assert fixed.count("`") == mutated.count("`"), f"{where}: a code span was opened or closed"
+        assert _hangul_adjacencies(fixed) == _hangul_adjacencies(mutated), f"{where}: a Korean word was cut"
+        assert _gap_total(checker, fixed.split("\n"), page) == 0, (
+            f"{where}: a reflow pass left the residue it is supposed to strip"
+        )
+        assert len(checker.offenders(fixed.split("\n"), page)) <= len(checker.offenders(mutated.split("\n"), page)), (
+            f"{where}: a repairable line became unrepairable"
+        )
+        assert checker.format_text(fixed) == fixed, f"{where}: a second pass still moved text"
 
 
 def test_a_space_inside_a_code_span_is_text_not_residue(checker):

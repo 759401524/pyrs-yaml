@@ -128,6 +128,30 @@ status: new
   而存在，并非我们的往返契约，这就是这条防线的边界。实测：`--test settles_in_one_round` 29 passed
   （此前 28），突变脚本末行读作 `restored -> GREEN`，且 `byte-identical after restore: True`。
 
+- **只含注释的 JSON 文档现在由三种方言各自具名拒绝** — 钉住这条的那份语料输入
+  `fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`，既被它自己的目标跳过（没有方言接受时
+  `json_roundtrip` 会 `continue`），也被逐条重问种子的 JSON 语料门跳过，于是规则无人断言，语料总数却
+  依旧把这个文件算在内。把 15 条不可达登记行逐个问“那一类由谁防守”，只剩这一条是裸的：5 条深度门输入
+  由 PR #694 落下的带类型 `MaxDepthExceeded` 拒绝断言，CR 换行与保留首字符两类由
+  `settles_in_one_round.rs` 里具名的测试断言，TOML 多行字符串由读写两侧四条测试断言，BOM 边界则两个
+  方向都有断言。`comment_only_documents_are_refused_by_every_dialect` 把主张配成对：
+  `// nothing here`、`// c`、`/* x */` 以及 `# hash` 再接 `// c` 必须被 JSON、JSONC、JSON5 三者
+拒绝，
+  而同样注释放在值之前必须在两种带注释的方言里读出、在严格 JSON 里仍被拒绝（实测：12 次拒绝、6 次
+  接受）。其余 14 条保留登记：它们记的是语料信用的丢失，不是防守的丢失。
+
+- **文档换行器的中日韩安全性现在用出厂页面来量，而不只用注入样本** — `--fix` 把正文重排到 100
+  显示列，保护排版的规则此前只在 `tests/test_doc_wrapping_gate.py` 里由人工注入触发，而真正出厂的
+  一万一千行没人同样问过。前几次会话里流传的那句"`--fix` 会把 Hangul 粘在一起、会把片假名拆开，
+  所以本地化页面只能手工折行"，追到底是一份临时脚本里的注释，而不是工具本身：`join_lines` 对每个
+  边界问"这里空一格算不算残渣"，只在不算的地方留空格；`_is_hangul` 的存在就是为了让韩语只在词间
+  断开。`test_reflowing_the_shipped_localized_pages_changes_only_line_breaks` 把三份本地化变更日志
+  的真实段落接成超长行，交给 `fix()` 实际写盘所用的函数，然后守住五条不变量：去空白后正文不变、
+  反引号数量不变、不切开韩语词、一轮之后按检查器自己累加的计数残渣为零、再来一轮什么都不动。
+  三页全过；把 `strip_residue` 变成空操作会让其中两页变红，放开 Hangul 断点会让第三页变红，脚本
+  结束后按字节还原。测量本身踩掉两个坑：检查器按**行**报一条并在内里带空格数，所以比 `len()` 量的
+  是行数而非排版。
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
