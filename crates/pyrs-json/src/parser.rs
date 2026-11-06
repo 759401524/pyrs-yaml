@@ -2904,14 +2904,15 @@ mod tests {
 
     /// A document whose only content is comments has no value to read, in any dialect.
     ///
-    /// `strict_rejections` asks the empty document under strict JSON alone, and the corpus input for
-    /// the comment-only shape (`fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`) is
-    /// refused before that target reaches its round-trip assertion, so nothing asked this rule any
-    /// more - `.ci/seed-reach.txt` names that seed. The dialects that carry comments are the ones
-    /// where skipping whitespace and comments can be confused with having found a value, so the
-    /// claim is paired: skipping must not manufacture a value, while a comment *before* a value must
-    /// still read. The second half is what keeps the first half from passing by rejecting comments
-    /// outright.
+    /// `strict_rejections` asks the empty document under strict JSON alone, and nothing else asked
+    /// this rule when the shape was registered: the corpus input for it was a comment and nothing
+    /// beside it, which every dialect refuses before the target reaches its round-trip assertion.
+    /// That seed now carries the second half of this pairing - a comment *before* a value, which
+    /// reads - so the corpus reaches the target and this test is what keeps the comment-only refusal
+    /// asked. The dialects that carry comments are the ones where skipping whitespace and comments
+    /// can be confused with having found a value, so the claim is paired: skipping must not
+    /// manufacture a value, while a comment before a value must still read. The second half is what
+    /// keeps the first half from passing by rejecting comments outright.
     #[test]
     fn comment_only_documents_are_refused_by_every_dialect() {
         for bad in ["// nothing here", "// c", "/* x */", "# hash\n// c\n"] {
