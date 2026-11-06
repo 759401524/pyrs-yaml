@@ -13348,3 +13348,55 @@ reach builds a tree of 1000 containers, so the JSON5 and TOML writers' own budge
 asked. The YAML reader stops at 255, the JSON reader emits through 999 and refuses at 1000, the
 TOML reader accepts 1000 but the writer refuses it, and `set` will not grow a tree past 999 - so
 a 1000-container tree exists only in the tests that construct one directly in Rust.
+
+### (jt) Two `seed-unreachable` holes closed by re-mining, not by re-wording (2026-11-07)
+
+`.ci/seed-reach.txt` measured 12 unreachable seeds over five registered ids. Two of the twelve were
+JSON inputs whose registered exit had already been written down, so both were re-mined to that exit
+rather than to a new one.
+
+`json_roundtrip`'s exit said re-mining was not the way - a comment-only input cannot be made to
+parse without ceasing to be comment-only - and named the rule's real home:
+`comment_only_documents_are_refused_by_every_dialect` in `crates/pyrs-json/src/parser.rs`, which
+asks the refusal over four comment-only literals and the acceptance over three comment-plus-value
+ones. The seed was widened to that second half - `// nothing here` (14 bytes) became `// nothing
+here\n1` (17 bytes) - so
+the corpus now reads the shape the target can actually act on, while the refusal stays asked by the
+literals that name it in the same file. That is why the id left the registry instead of being
+re-worded: both halves of its exit are now measured.
+
+`parse_json`'s exit was a re-mine, and its archived defect was named in the ledger as "a BOM beside
+a comment at end of input". The bytes were CR CR `{aMNaN/*0` plus a UTF-8 BOM (14 bytes): an
+unterminated comment inside an unterminated object with junk key bytes, so no dialect read it and
+the body behind `let Some(node) = parsed else { continue }` never ran. `{}/*0*/` plus the same BOM
+(10 bytes) keeps the adjacency - a complete block comment, then a BOM at the end - and gives up only
+what caused the refusal: the two CRs, the junk bytes, and the comment's missing terminator. The
+`parse_json` promise that matters here is `to_jsonc_text` writing a comment form its own readers
+take, which is now reached in both comment-carrying dialects.
+
+Three readings, in the order that makes each one checkable: the reach gate named both lines
+`STALE ENTRY (the seed now reaches the assertion)` before the list was regenerated; each input then
+replayed clean under `-runs=0` against its own target built in WSL on nightly (`RC_JSONRT=0`,
+`RC_PJSON=0`, 2 ms each, no artifact); and the bytes were read back with `od -c` after the hooks
+rather than before, because the LF hook classifies files and a seed that the hook rewrites is not
+the seed the fuzz replay saw.
+
+The list now carries ten lines over three ids: five of them answer `max depth exceeded (max=1000)` -
+three in `parse_toml`, two in `toml_roundtrip` - which is PR #694's own postcondition and stays
+filed, and five in `yaml_roundtrip` that became unreachable when a later ruling made duplicate-keyed
+documents a refusal. Those ten are the registered set, and `.ci/quality-holes.json` lost two entries
+rather than gaining two excuses.
+
+One cost nobody should miss: closing a hole re-states numbers in every live document that quotes
+them. Thirty-four sites across the five changelog mirrors moved from 12 to 10 or from five ids to
+three, and the Rust doc comment that had pointed at the seed file by name had to be rewritten to
+describe the pairing instead - the same class of drift the (jp) amendment recorded, found here by
+grepping the number rather than by a gate. No checker compares those prose counts, so the sweep is
+manual and the grep is the tool.
+
+The thirty-four prose sites were not the whole surface. `tests/test_seed_reach.py` asserted the set
+of targets the list represents as five literals, so it reddened the moment two holes closed - the
+gate working as designed, and the reason its expected set is now the three that remain, with a
+failure message that says how each direction of change should be read. A hardcoded membership is not
+a bug when membership is the thing being guarded; the failure mode would be a gate that still passed
+after the set it named had shrunk.

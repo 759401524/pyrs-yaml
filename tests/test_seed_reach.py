@@ -62,10 +62,13 @@ def test_the_gaps_counted_from_the_registry_match_its_lines():
     assert set(counts) == {
         "yaml_roundtrip",
         "toml_roundtrip",
-        "json_roundtrip",
-        "parse_json",
         "parse_toml",
-    }, counts
+    }, (
+        f"the registry now represents {sorted(counts)}, not the three targets whose inputs stay "
+        "unreachable - a target appearing here is a seed that stopped reaching an assertion, and a "
+        "target disappearing is the hole closing by re-mining, which is what took `json_roundtrip` "
+        "and `parse_json` out (ledger (jt))"
+    )
     assert sum(counts.values()) == len(entries), "a line without a count is a line nobody reads"
 
 

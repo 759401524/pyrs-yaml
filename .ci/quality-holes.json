@@ -14,18 +14,6 @@
   ],
  "holes": [
   {
-   "id": "seed-unreachable:json_roundtrip",
-   "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `json_roundtrip` line. The named input is comment-only, so no dialect can be made to accept it without it ceasing to be comment-only - re-mining is not the exit here. The exit is the rule being asserted where it is reached: `comment_only_documents_are_refused_by_every_dialect` in `crates/pyrs-json/src/parser.rs` pairs the refusal with the accepted comment-plus-value form, and `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the list and the measurement disagree",
-   "why": "the target `continue`s when all three JSON dialects refuse, so the one seed named there replays clean while the round-trip invariant it was archived for is never asked of it"
-  },
-  {
-   "id": "seed-unreachable:parse_json",
-   "opened": "2026-11-06",
-   "exit": "`.ci/seed-reach.txt` carries no `parse_json` line, which happens when the seed named there is re-mined into a document one JSON dialect accepts - the only way any of the three writer promises in `fuzz/fuzz_targets/parse_json.rs` is reachable at all; `cargo test -p pyrs-yaml-core --test seed_reach` is what reddens while the two disagree",
-   "why": "every assertion in the target sits behind `let Some(node) = parsed else { continue }` over the three dialects, so the one seed named there runs no writer and asks no dialect promise, while the corpus total still counts the file"
-  },
-  {
    "id": "seed-unreachable:parse_toml",
    "opened": "2026-11-06",
    "exit": "`.ci/seed-reach.txt` carries no `parse_toml` line. All three named seeds answer `max depth exceeded (max=1000)`, so the exit is a shallower input that still reaches the writer, or the guard's own claim moving to a test that asserts it; relocating the seeds closes nothing, because every target that reads TOML gates its assertions on a successful read",
