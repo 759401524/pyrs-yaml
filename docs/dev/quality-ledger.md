@@ -13202,3 +13202,54 @@ from a previous turn's line layout, and that turn's `--fix` reflow had moved the
 `count(old) == 1` assert caught it, so no file was left half-written. And a Japanese phrase came
 out with a simplified-only glyph (续) where 続 belongs, which the amendment now checks with a
 tripwire: Han in Korean, Hangul in Japanese or Chinese, and that glyph in Japanese.
+
+### (jq) A legal 1000-deep document panicked, and why the fix stops at 255 (2026-11-07)
+
+`from_toml` of `k.k.…k = 1` with a 1000-level chain read fine and then answered Python with
+`pyo3_runtime.PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))`, printed
+from `crates/pyrs-yaml-core/src/serializer.rs:89` - `to_yaml`'s `.expect()`. The window is exactly
+one value: the TOML reader accepts depth 1000 and refuses 1001 with the typed `max depth exceeded
+(max=1000)`, while the writer refuses at 1000. Measured on the same call: 999 emits 1,000,001
+bytes, 1000 panics, 1001 raises. A panic is the worst answer a library can give here - it is not an
+`Exception`, so it walks straight through every `except Exception`, prints to stderr, and in an
+embedded host it is the interpreter's problem rather than the caller's.
+
+Four binding call sites (`functions.rs` 642, 661, 743, 789 before the change) routed untrusted
+text through that infallible wrapper, so they now share one fallible helper that maps the writer's
+two answers onto the errors the rest of the binding already raises: `YamlMaxDepthError` under the
+existing `max-depth-exceeded` key, `YamlSerializeError` otherwise. No new exception type, no new
+message key, no change to which inputs are accepted - the depth-1000 document was never usable and
+still is not; it just says so in a type.
+
+Priced, and the pricing had its own false start. Three cases in `tests/test_max_depth.py` pin the
+boundary. The first mutation - reverting the four call sites - did not compile, because the helper
+and its two imports then read as unused; the script printed `BUILD FAILED (no test ran)` and
+declined to report a verdict, which is the outcome that keeps a mutation probe from becoming a
+rumour. The valid mutant kept the helper and let it delegate to `to_yaml`: one test reddened with
+precisely the `PanicException` text, 2 passed, and the file came back byte-identical with 3
+passed after a rebuild.
+
+What this does not fix, and cannot without a decision. The YAML reader runs granit's
+`ParserOptions::block_nesting_limit` at its default 255 (`granit-parser-2.0.0/src/options.rs:103`),
+a public field this repository never sets, while every depth budget the library advertises is 1000:
+`parse`'s parameter, the writer's cap, the JSON reader's, the TOML reader's. So the conversions
+still hand back text their own reader refuses - measured at the boundary: `from_json` of a
+256-deep document emits 66,050 bytes of YAML that `parse` answers `recursion limit exceeded`, while
+255 re-reads. Three shapes of remedy, each with a cost nobody has signed:
+
+- Raise `block_nesting_limit` to the advertised 1000. Coherent, and probably the cheapest to
+  explain, but it deletes the one guard that currently stops granit before deeper nesting, and
+  (with the #694 ruling that a 1 MiB thread already overflows on legal ~900-1000-deep trees) the
+  stack story has to be re-measured before it can be typed as safe.
+- Lower the advertised budgets to 255. Honest and uniform - a 300-deep TOML document would be
+  refused at the read instead of half-converted - but it narrows accepted input, so it is breaking
+  for anyone whose 256-1000-deep documents currently *read* (they just cannot round-trip).
+- Keep every budget, and make the four conversions refuse in type when their own emission would
+  cross granit's wall. Smallest blast radius, no accepted-input change, and the silent one-way
+  door becomes a call that answers; what it cannot do is make the deep document usable.
+
+One more lesson, from the amendment script rather than the engine: the purity tripwire I added
+after (jp) flagged 109 "simplified-only glyphs" on the Japanese page, and the set behind those 109
+is two characters - 内 and 合, both ordinary Japanese kanji. A glyph blocklist has to be curated
+per character, not per block; the one real find in that exchange, 续 for 続, was a single code
+point, and it is the only one the tripwire should name.

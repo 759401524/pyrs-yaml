@@ -200,3 +200,45 @@ def test_toml_extreme_depth_crash_canary():
     r = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, f"child crashed (stack overflow?): rc={r.returncode} {r.stderr[-200:]}"
     assert "REJECTED" in r.stdout
+
+
+# ── The conversion path's own depth boundary ────────────────────────────────
+# `from_toml` reads a dotted-key chain exactly 1000 deep - the reader's budget
+# accepts that - and then asks the YAML writer for its text form, which refuses
+# at the same number. The writer's answer used to land in `serializer::to_yaml`'s
+# `expect`, so the refusal arrived as a Rust panic: `pyo3_runtime.PanicException`,
+# which is not an `Exception` and so escapes every `except Exception` in the
+# language. The JSON dialects never showed the symptom because their reader stops
+# one level earlier.
+
+
+def _deep_toml_dotted(depth: int) -> str:
+    return ".".join(["k"] * depth) + " = 1\n"
+
+
+def test_conversion_under_the_writer_cap_still_emits_every_level():
+    emitted = pyrs_yaml.from_toml(_deep_toml_dotted(999))
+    assert len([line for line in emitted.splitlines() if line.strip()]) == 999
+
+
+def test_conversion_at_the_depth_cap_never_panics():
+    """Whatever answers here must be catchable, not a panic.
+
+    Which typed class answers is still a live decision - the reader's budget and
+    the writer's differ by one at this depth, ledger (jq) - but a panic is not a
+    candidate: a Rust panic is `BaseException`-only, prints to stderr, and the
+    pre-fix shape reached it from a legal document.
+    """
+    try:
+        pyrs_yaml.from_toml(_deep_toml_dotted(1000))
+    except Exception as error:
+        assert isinstance(error, (pyrs_yaml.YamlMaxDepthError, pyrs_yaml.YamlParseError)), type(error)
+    else:
+        pytest.fail("a 1000-deep TOML document converted without any refusal")
+
+
+def test_json_dialects_refuse_the_same_depth_at_the_read():
+    deep = '{"k":' * 1000 + "1" + "}" * 1000
+    for func in (pyrs_yaml.from_json, pyrs_yaml.from_jsonc, pyrs_yaml.from_json5):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            func(deep)

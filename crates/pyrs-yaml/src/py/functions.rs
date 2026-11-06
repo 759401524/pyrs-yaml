@@ -18,6 +18,7 @@ use crate::py::stream_iterator::StreamIterator;
 use crate::py::tag_registry;
 use crate::py::type_registry;
 
+use crate::YamlMaxDepthError;
 use crate::YamlParseError;
 use crate::YamlSerializeError;
 use crate::YamlTypeError;
@@ -629,6 +630,28 @@ pub(crate) fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
     direct_dump(py, &data)
 }
 
+/// The YAML text form of a node, with the writer's refusal surfaced as the typed error the rest of
+/// the binding raises. `serializer::to_yaml` answers with `expect`, so a tree the writer refuses
+/// reaches Python as a Rust panic: the TOML reader accepts depth 1000 and the writer refuses at 1000,
+/// which makes one legal depth panic on every cross-format conversion. Depth is data, not a bug, so it
+/// gets `YamlMaxDepthError` - the same key `parse` raises for a deep document.
+fn yaml_of_node(node: &crate::ast::CustomNode) -> PyResult<String> {
+    let options = crate::serializer::SerializeOptions::default();
+    crate::serializer::to_yaml_with_options(node, &options).map_err(|error| {
+        if error.to_string().contains("max depth exceeded") {
+            YamlMaxDepthError::new_err(format_i18n_error(
+                "max-depth-exceeded",
+                &[("max_depth", &options.max_depth.to_string())],
+            ))
+        } else {
+            YamlSerializeError::new_err(format_i18n_error(
+                "yaml-serialize-error",
+                &[("detail", &error.to_string())],
+            ))
+        }
+    })
+}
+
 #[pyfunction]
 #[pyo3(signature = (json_str: "str") -> "str")]
 /// Convert a JSON string to a YAML string.
@@ -639,7 +662,7 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
             &[("detail", &e.to_string())],
         ))
     })?;
-    Ok(crate::serializer::to_yaml(&node))
+    yaml_of_node(&node)
 }
 
 #[pyfunction]
@@ -658,7 +681,7 @@ pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
             &[("detail", &e.to_string())],
         ))
     })?;
-    Ok(crate::serializer::to_yaml(&node))
+    yaml_of_node(&node)
 }
 
 #[pyfunction]
@@ -740,7 +763,7 @@ pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
             &[("detail", &e.to_string())],
         ))
     })?;
-    Ok(crate::serializer::to_yaml(&node))
+    yaml_of_node(&node)
 }
 
 #[pyfunction]
@@ -786,7 +809,7 @@ pub(crate) fn from_toml(toml_str: &str) -> PyResult<String> {
             &[("detail", &e.to_string())],
         ))
     })?;
-    Ok(crate::serializer::to_yaml(&node))
+    yaml_of_node(&node)
 }
 
 #[pyfunction]

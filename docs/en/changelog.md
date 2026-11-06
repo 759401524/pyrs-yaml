@@ -60,6 +60,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `edit_yaml` unchanged at 14, and both are archived as seeds — corpus 284 to 286, `seed_reach`
   still 11 unreachable of the 242 seeds its four round-trip targets then held (the gate now walks
   six targets and reports 12 of 259).
+- **A 1000-deep TOML document converts with a typed error, not a Rust panic** — `from_toml` reads a
+  dotted-key chain exactly 1000 levels deep, because that is the reader's budget, and then asks the
+  YAML writer for the text form, which refuses at the same number. The refusal used to land in
+  `serializer::to_yaml`'s `expect`, so Python saw `PanicException: serialization failed:
+  MaxDepthExceeded(DepthError(1000))` — not an `Exception`, so it passed straight through every
+  `except Exception` in the language. The four conversions (`from_json`, `from_jsonc`,
+  `from_json5`, `from_toml`) now share one fallible path that answers `YamlMaxDepthError` under the
+  existing `max-depth-exceeded` key; the JSON dialects never showed the symptom because their reader
+  stops one level earlier. Measured: depth 999 still emits 1,000,001 bytes through all four, and
+  three new `tests/test_max_depth.py` cases pin the boundary — routing the helper back through
+  `to_yaml` reddens one with exactly that panic. What this does not fix: the YAML reader runs
+  granit's default `block_nesting_limit` of 255 while every other depth budget the library
+  advertises is 1000, so a conversion deeper than 255 still hands back text its own reader refuses
+  (`docs/dev/quality-ledger.md` (jq)).
 
 #### Changed
 

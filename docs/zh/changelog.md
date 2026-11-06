@@ -51,6 +51,17 @@ status: new
   （`crash-aa8a0447`、`crash-95b66309`）已离开失败集合，`yaml_roundtrip` 从 9 降到 7，而 `edit_yaml`
   仍为 14；两条都已归档为种子 — 语料 284 到 286，`seed_reach` 依旧在那四个往返目标的 242 个种子上
   报出 11 条不可达（这道门现在走查六个目标，报出 259 条里的 12 条）。
+- **一千层深的 TOML 文档现在抛类型化错误，不再抛 Rust panic** — `from_toml` 能读入点分键链恰好
+  1000 层深的文档（读取器的预算就是这个数），随后向 YAML 写器索要文本形态，而写器在同一个数上拒绝。
+  这份拒绝原先落在 `serializer::to_yaml` 的 `expect` 里，于是 Python 看到的是
+  `PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))`——它不是 `Exception`，
+  会径直穿过语言里所有 `except Exception`。四个转换函数（`from_json`、`from_jsonc`、`from_json5`、
+  `from_toml`）现在共用一条可失败路径，用已有的 `max-depth-exceeded` 键答 `YamlMaxDepthError`；
+  JSON 三种方言从没现出这个症状，因为它们的读取器早一层就停。实测：深度 999 时四者仍各自产出
+  1,000,001 字节，`tests/test_max_depth.py` 新增三条用例钉住边界——把 helper 改回走 `to_yaml`，
+  其中一条就会以那个 panic 变红。这条没修的还在：YAML 读取器跑的是 granit 默认的
+  `block_nesting_limit` 255，而库里其他所有深度预算都宣称 1000，所以比 255 更深的转换仍会交回自家
+  读取器拒绝的文本（`docs/dev/quality-ledger.md` (jq)）。
 
 #### 变更
 
