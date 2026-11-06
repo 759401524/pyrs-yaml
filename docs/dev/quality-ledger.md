@@ -13531,3 +13531,33 @@ govern this file, as that hook's own refusal showed, but it measures prose and s
 paragraph promoted to `## ` leaves the rule's sight; the ledger's order gate reads only the `(xx)`
 prefix, and `rumdl check` accepts a heading of any length. Reading the section after writing it is
 the cheapest defence available and the only one that ran.
+
+### (jw) An arm no archived input walks is a promise nobody keeps (2026-11-07)
+
+`fuzz/fuzz_targets/json_events_replay.rs:103-105` explains that a JSON5 non-finite value is a
+document the strict writer refuses for both trees, and carries `(Err(_), Err(_)) => {}` so that case
+passes without asserting anything. `to_json_text` is the strict mode (`writer.rs:77` passes
+`Mode::Json`), and `writer.rs:602-610` says the refusal is real for JSON and JSONC while JSON5 keeps
+the number. So the arm has a documented reason and, until today, no input: an instrumented replay of
+all 21 archived seeds printed `MK_WRITE <dialect> true true` for every document both walks accepted,
+which is the pair the arm is not.
+
+The method is the reusable part. Three `eprintln!` probes went into a scratch copy of the target -
+after the door match (both refuse / both accept / split), before the writer match (whether each tree
+writes), and after `stream_notes` (note counts by slot) - built once and replayed with `-runs=0`
+against the seeds copied outside the tree. The table also priced the claims that were already sound:
+the note-slot equality is reached non-vacuously by 12 seeds, with leading-owned and inline-owned
+notes both present, and the one-walk-accepts `SPLIT` line never appears, which is right because that
+arm reports a bug rather than a promise. `json_events_replay.rs:106` - the two trees differing in
+being writable - stays unwalkable by construction, since both trees come from the same document, so
+no credit is claimed for it.
+
+`{"a": Infinity}` is what the arm needed: 16 bytes, filed as `shape-json5-non-finite.seed`, and the
+probe said `MK_DOOR json5 BOTH_OK` then `MK_WRITE json5 false false` before it was archived. With it
+in the directory the pull-request tier replays 22 seeds as 23 runs at rc=0 and walks the refusal on
+every pull request. Two host facts made the reading trustworthy, and I got both wrong first:
+`-runs=0` counts the union of every corpus directory, so the project corpus has to be set aside or
+the number means nothing, and on `/mnt/d` cargo serves a stale executable until
+`release/<target>` is deleted, so a control run has to name the build it ran by its digest. The
+probe was never committed - the target was restored and `jj status` reported no changes - which is
+the shape this kind of measurement should leave behind.

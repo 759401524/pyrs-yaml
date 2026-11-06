@@ -95,7 +95,7 @@ status: new
   エンジンの答えは
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` とその隣の `move` のテストで
   固定します。三つの入力と二つの最小入力をその語庫に加え、語庫は `-runs=0` で緑に再生され、
-  マトリクスは Rust の `#[test]` 928 件と種子 287 件を読みます。
+  マトリクスは Rust の `#[test]` 928 件と種子 288 件を読みます。
 
 - **目標が拒否する種子は、保護として信用されず計上されるようになりました** — 六つの fuzz 目標はいず
   れも型ある拒否を通過として扱います（`yaml_roundtrip` と `edit_yaml` は `parse(Schema::Core)`、
@@ -262,6 +262,18 @@ status: new
   空。最も薄い二つの目標も同じく 14,786 回と 13,165 回で artifact がありません。PR 層は
   `-runs=0` で種子を
   再生するので、これはマージ関門です（`docs/dev/quality-ledger.md` (jv)）。
+
+- **JSON5 の非有限値が events 目標の拒否枝を通る** — `json_events_replay` は二通りの走査の答えの
+  一致を要求し、`fuzz/fuzz_targets/json_events_replay.rs:105` は `(Err(_), Err(_)) => {}` で
+  「両方の走査が受理し、厳格な writer は拒む」組を受けて立てています。アーカイブ済みの種子に
+  それを通す入力が一つもなく、21 件に印を付けて `-runs=0` で再生すると、両方が受理した文書は
+  すべて「書ける」と答えました。そこで `{"a": Infinity}` の 16 バイトを次の名前で登録し、
+  PR 層が毎回この拒否を実際に歩くようにしました。
+  `fuzz/seeds/json_events_replay/shape-json5-non-finite.seed` — 22 件で 23 回、`rc=0` です。
+  同じ計測は既に成立していた主張にも値をつけました — 注釈スロットの等式は 12 件の種子で
+  中身のある形で到達され、行を占有する型とインラインの型の両方が現れました。
+  `:106` の「二本の木が書きやすさで分かれる」枝は、二本の木が同じ文書から来るため構造上
+  歩けないものとして残します（`docs/dev/quality-ledger.md` (jw)）。
 
 ### [v0.19.0] — 2026-11-04
 
