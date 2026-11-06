@@ -828,6 +828,55 @@ impl Serializer {
         self.trailing_note_slot_open = false;
     }
 
+    /// Write a note lifted off a nested marker, at the line the re-read reports it on.
+    ///
+    /// `write_note_line` appends at the tail, which is right for a note that belongs to the node
+    /// about to start there. A hoisted note has no such guarantee: the tail can be the gap under the
+    /// enclosing pair's own header line (`&a !tag:`), and granit spans a node through the break that
+    /// ends that line, so the gap spelling re-reads one owner higher and the second emission lifts
+    /// it (libFuzzer `yaml_roundtrip` crash-543366c4). `header_gap_start` is the rule
+    /// `note_line_above` already applies, and it is reached here rather than at that function
+    /// because the pending tag-only line still has to be closed first, and the close moves the tail
+    /// the offset is read from. The tail keeps `write_note_line` itself, so `HeaderFirst` — which
+    /// wants the gap — and every hoist with no header above it pay what they paid before. Only the
+    /// flush-left header is crossed: the walk measures the body's indent from the line it starts,
+    /// and at the tail there is no line yet, so it measures zero. That is the shape the seventeen
+    /// inputs this closes have; an indented header keeps the gap spelling it has today.
+    fn write_hoisted_note_line(&mut self, indent_width: usize, text: &str) {
+        if note_text_to_write(text).is_empty() {
+            return;
+        }
+        self.close_pending_tag_line();
+        let tail = self.output.len();
+        let at = if self.note_first {
+            self.header_gap_start(tail)
+        } else {
+            tail
+        };
+        if at == tail {
+            self.write_note_line(indent_width, text);
+            return;
+        }
+        // Above a header the note takes that header's own column, read straight out of `output`:
+        // building the indent as its own `String` and the line with `format!` cost
+        // `serialize_note_flow` +5.16% against the +1.10% this path pays now, because its fixture
+        // carries marker notes and the scenario counts every temporary per note (see
+        // `push_note_text`, priced the same way).
+        let gap = &self.output[at..];
+        let indent_len = gap
+            .as_bytes()
+            .iter()
+            .position(|byte| *byte != b' ')
+            .unwrap_or(gap.len());
+        let mut line = String::with_capacity(indent_len + text.len() + 3);
+        line.push_str(&gap[..indent_len]);
+        line.push_str("# ");
+        push_note_text(&mut line, text);
+        line.push('\n');
+        self.insert_note_at(at, &line);
+        self.trailing_note_slot_open = false;
+    }
+
     /// True when the line just finished already carries a comment marker.
     ///
     /// The writer tracks slot ownership itself, so this only catches the shape it
@@ -1529,7 +1578,7 @@ impl Serializer {
                 key
             };
             for note in &hoisted {
-                self.write_note_line(indent_width, note.text.as_ref());
+                self.write_hoisted_note_line(indent_width, note.text.as_ref());
             }
             self.write_indent(indent_width);
             self.output.push('?');
