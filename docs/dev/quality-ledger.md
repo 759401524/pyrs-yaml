@@ -12544,6 +12544,7 @@ function), `fuzz/seeds/yaml_roundtrip` replayed one by one `clean=128 failing=0 
 `fuzz/seeds/edit_yaml` `clean=47 failing=0 total=47`. `quality_matrix.py --write-rows` moves 908 ->
 909 Rust `#[test]`, 244 -> 261 seeds and 150 -> 167 `former-crash-*`, and `yaml_roundtrip` becomes
 the fullest target at 128.
++++++++ wnlwloys 6165c51c "test(fuzz): archive 23 inputs that protect nothing" (rebase destination)
 
 ### (jc) A seed the target refuses replays clean and protects nothing (2026-11-06)
 
@@ -12632,3 +12633,42 @@ Not covered: the 23 inputs in the first bucket still fail, and the container-not
 granit files that slot under the key, so round two lifts it above the marker-only header - is among
 them. That one is a placement ruling rather than an archiving task, and it stays open beside this
 section rather than closed by it.
+
+### (je) A number's source spelling survives one export round, not two (2026-11-06)
+
+Two of the inputs issue #732 still reports fail the export spokes in different-looking ways that
+share one cause. `crates/pyrs-yaml-core/tests/exports_settle.rs` now names both, minimized to one
+key each: `to_json5_text` on `k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6` emits the bare token
+`{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`, while 26 hex digits overflow the integer range and
+`Schema::Core` resolves that text to a **string** - so the export changes the value's type; and
+`to_toml` on `k: +83e6` emits `k = +83e6`, which re-reads to the same f64 and re-writes as the
+canonical `k = 83e6`, so the spelling is what disappears. The TOML pair is a drift the settlement
+assertion sees; the JSON5 pair settles immediately and is therefore invisible to it, which is how a
+type change hid behind a passing fixed-point check.
+
+The mechanism is one sentence: the writers pass a number's text through (fidelity first - the rule
+`preserves_exponent_float_source_spelling` pins that deliberately), but no reader restores the text
+when it parses a number, so the second pass has only the value to write.
+`crates/pyrs-json/src/writer.rs` asks `is_json_number(value)` and `is_json5_number(value)` about the
+**text** before it reaches the resolution that would answer with a type, because answering with the
+value is exactly what the fidelity rule exists to avoid.
+
+Why the writer cannot simply ask the resolution: a JSON5 number and a YAML string that happens to be
+spelled like one arrive as the same node. Measured on this tree, the two readings of that text both
+give
+`Scalar { value: "0Xeeeeeeeeeeeeeeeeeeeeeeee4e6", style: Plain, chomping: Clip, meta: NodeMeta { comment: None, decor: None, fidelity: None } }` - the only field that differs is `source_range`, `None` from `from_json5` and `Some(3..32)` from `parse`, and that is an accident of which reader ran, not a statement about the value: an edited tree carries no range either. Gating the echo on `YamlType::Int | YamlType::Float` fixes the YAML-shaped case and breaks the JSON5-shaped one, in the opposite direction: a document's number would come back out as a string. So the honest options are three, and none is a writer-local edit:
+
+1. fill the `fidelity` slot the node already carries with the source text when a reader takes a
+  number token, and echo only when it is present - fidelity preserved both ways, one read-side
+  change per dialect, and `Node.fidelity` becomes load-bearing on the export path;
+2. canonicalize numbers on the first emission, which settles everything and gives up the source
+  spelling the fidelity rule was written to keep;
+3. make it per call, the way `duplicate_keys` and `note_placement` were made per call.
+
+Option 1 keeps both promises and is the recommendation, but it changes what the readers store on
+every number node, which is a design decision rather than a fix, and issue #732 stays open until one
+is taken. Measured: the two spokes and the two `edit_yaml` inputs named here (`crash-3291d29b`,
+`crash-d161db83`) out of the 23 that still fail; the 9 failing `yaml_roundtrip` inputs are captured
+but not yet attributed, so nothing is claimed about them. `cargo nextest run -p pyrs-yaml-core
+--test exports_settle` 2 passed, as a characterization of the state described here - the assertions
+say which way to invert them when the decision lands.

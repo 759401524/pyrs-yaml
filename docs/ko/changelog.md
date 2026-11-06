@@ -97,6 +97,18 @@ status: new
   단계는 198개 중 198개를 산물 없이 돌립니다. 여전히 실패하는 23개는 각 이슈에 남고,
   배치를 판결해야 할 `edit_yaml`의 컨테이너 주석 형태도 거기 포함됩니다.
 
+- **내보내기 경로에서 숫자 원문 표기의 한계에 이름을 붙였습니다** — `to_json5`나 `to_toml`에 닿은
+  트리는 첫 판에서 원문을 지키고 둘째 판에서 정규화했습니다.
+  `k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6`(16진수 26자리, core 스키마는 이것을 *문자열*로 판단합니다)을
+  `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`처럼 따옴표 없는 글자로 내보내서 값이 바뀌었고, `k: +83e6`은
+  `k = +83e6`을 쓰고 다음에 `k = 83e6`을 썼습니다.
+  `crates/pyrs-yaml-core/tests/exports_settle.rs`는 두 형태를 지금 상태 그대로 박아 둡니다. 어느
+  쪽도 스스로 답을 정할 수 없어서입니다. 실측으로 같은 트리에서 `from_json5`와 `parse`는
+  JSON5 숫자나 숫자로 보이기만 하는 YAML 문자열이나 모두
+  `Scalar { style: Plain, tag: None, fidelity: None }`를 돌려줍니다. 원문을 노드의 `fidelity` 칸에
+  넣을지, 항상 정규화할지, 호출마다 옵션으로 둘지는 아직 결정되지 않았고 실측과 함께
+  `docs/dev/quality-ledger.md` (je)에 적었습니다.
+
 ### [v0.19.0] — 2026-11-04
 
 <details markdown="1">
