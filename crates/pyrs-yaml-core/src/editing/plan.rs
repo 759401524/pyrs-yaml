@@ -676,7 +676,11 @@ pub enum OnDuplicate {
 /// the spelling it falls back to when the fold found nothing. Asking only the identity would miss
 /// the pair that carries a tag or an anchor of its own, which the writer still spells with the same
 /// key text - and that is exactly the sibling a re-read hands back to the deleted path.
-fn duplicate_fold_count(node: &CustomNode, segments: &[Segment<'_>]) -> usize {
+///
+/// The edit tier asks the same question of the tree it is about to change and of the text that came
+/// out: a rename or a move relocates one pair, so the count this returns is what its re-read has to
+/// come down to.
+pub fn duplicate_fold_count(node: &CustomNode, segments: &[Segment<'_>]) -> usize {
     let Some(Segment::Key(k)) = segments.last() else {
         return 0;
     };
@@ -1494,6 +1498,65 @@ mod tests {
         .expect_err("two pairs answer the path, so the target is ambiguous");
         assert_eq!(error, "duplicate-key-target");
         assert_eq!(to_yaml(&node), before, "refusing changes nothing");
+    }
+
+    /// The shape three `edit_yaml` findings reported (`crash-875d4542` and its two siblings), on the
+    /// smallest document that reaches it. Two pairs spell `0set` and a tag keeps them apart, so the
+    /// rename moves the pair the lookup's identity pass resolves and the sibling goes on answering
+    /// the name the rename left - through the spelling pass that same lookup falls back to. That is
+    /// the asymmetry `delete_one_leaves_the_sibling_that_still_answers_the_path` already pins for a
+    /// delete, so the tier's rename claim is a count, not an absence.
+    #[test]
+    fn rename_moves_one_pair_of_a_name_the_document_spells_twice() {
+        let source = "0set: 1\n!base 0set: 2\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        assert_eq!(duplicate_fold_count(&node, &segments("0set")), 2);
+        rename_path(&mut node, &segments("0set"), "k0", source, None)
+            .expect("renaming the pair the path resolves to is the caller's to make");
+        let emitted = to_yaml(&node);
+        assert_eq!(
+            emitted, "k0: 1\n!base 0set: 2\n",
+            "the sibling keeps its name and its place"
+        );
+        let again = parse(&emitted, Schema::Core).expect("the emission parses");
+        assert_eq!(
+            duplicate_fold_count(&again, &segments("0set")),
+            1,
+            "exactly one pair moved off the name the rename left"
+        );
+        assert!(
+            crate::editing::navigate(&again, &segments("0set")).is_ok(),
+            "and the pair that stayed is still reachable by that name"
+        );
+    }
+
+    /// The same asymmetry seen from the other verb: `move_path` writes the destination and then
+    /// performs the one-pair removal, so a document spelling the source name twice keeps a sibling
+    /// that the source path still resolves to. Measured on the 26-byte `edit_yaml` probe, where
+    /// moving `$.k` into `$.b[0]` left `[Key("k")]` reading the tagged pair's value.
+    #[test]
+    fn move_takes_one_pair_off_a_name_the_document_spells_twice() {
+        let source = "0set: 1\n!base 0set: 2\nlist: [9]\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        assert_eq!(duplicate_fold_count(&node, &segments("0set")), 2);
+        let dst = vec![
+            Segment::Key(Cow::Owned("list".to_string())),
+            Segment::Index(0),
+        ];
+        move_path(&mut node, &segments("0set"), &dst, source, None)
+            .expect("moving the pair the path resolves to is the caller's to make");
+        let emitted = to_yaml(&node);
+        let again = parse(&emitted, Schema::Core).expect("the emission parses");
+        assert_eq!(
+            duplicate_fold_count(&again, &segments("0set")),
+            1,
+            "one pair left the source name: {emitted:?}"
+        );
+        let moved = crate::editing::navigate(&again, &dst).expect("the destination holds the item");
+        assert!(
+            matches!(moved, CustomNode::Scalar { value, .. } if value.as_ref() == "1"),
+            "and it is the pair that was addressed, not the sibling: {emitted:?}"
+        );
     }
 
     /// The hole `preserve_metadata` cannot cover: the anchor is not on the node being replaced, it is

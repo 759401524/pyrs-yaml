@@ -12338,3 +12338,77 @@ two image builds twenty minutes apart, so the first two refresh runs measured on
 and wrote no new row while the enforcing leg on the head landed on `20261101.360.1` and exited 2 - a
 refusal to guess, not a measurement that failed. The third dispatch drew a `360.1` runner, and its
 artifact is the committed one, so the file now carries three image rows.
+
+### (iz) A rename and a move were asked whether a name died, not how many pairs answer it (2026-11-06)
+
+libFuzzer `edit_yaml` crash-875d4542, crash-95ddb3d9 and crash-fbc86ca3 (81 bytes each, the
+2026-11-02 batch, issue #732) report one claim, `a renamed key kept its old name`, with one detail,
+`[Key("0set")]`. They are the last three of that batch, and each panics at a rename step -
+`verb % 12 == 2`, steps 17, 1 and 14 of three sessions over one shared document - so the new name
+each wrote is visible in the emission it reports: `k0`, `k6`, `k3`.
+
+The emission is correct and the claim was not. Each reports a root mapping that spells `0set` twice,
+one pair under a tag, and names the *other* pair as the one that moved:
+
+```text
+&z !base: 0set: "-e))))))$) 1"
+&z k0: v0
+```
+
+`key_position` looks twice, the `key_identity` fold first and `same_spelling` second, and
+`key_identity` keeps a tag apart while an anchor is invisible to it. So `rename_path` acted on the
+untagged pair, and once that pair spelled `k0` the identity pass answered nothing and the spelling
+pass handed `[Key("0set")]` to the tagged sibling the verb never touched. The fixed-point assertion
+that runs before this check had already passed, so the tier was reporting a correct document.
+
+Reduced to the class rather than the batch, the shape costs 19 bytes: `!base k: 1` beside `k: 2`,
+`pick 0, verb 2`, emitting `!base k: 1` and `k0: 2`. The same document with `b: [1]` appended and
+`pick 0, verb 41` - a move of `$.k` into `$.b[0]` - emits `!base k: 1` and `b: [2]` and reddens
+`a deleted key is still in the document` with `[Key("k")] still reads Some("1")`, the tagged pair's
+value. The `move` arm was over-claiming in the same way, and the second reduction is how that was
+measured rather than inferred: nothing in #732 named it.
+
+What changed is the tier's oracle, not the engine. `duplicate_fold_count` - the sibling counter
+`(iv)` built for the `all` delete policy - is shared with the harness, and both identity claims
+became counts: `rename` asks the name it left to be answered by exactly one pair fewer (and the new
+name to resolve), `move` asks its source path the same, and `move` now states that through
+`relocation_effect` instead of borrowing `delete`'s `all` guarantee through `removal_effect`.
+`delete` keeps the absence claim because that arm asks the policy that makes it true.
+
+The counts are load-bearing by flip. Reading both claims as "no pair moved" (`left != from` for
+`left + 1 != from`) reddens 15 of the 45 `edit_yaml` seeds - the two reductions and thirteen entries
+the corpus already carried, including `anchor-and-alias-session` and `cr-only-break-region` - each
+with the counter in its own detail line, `[Key("k")] answers 1 pairs, was 2`. The other 30 stay
+green under the flip, so the claim reaches a third of this target's corpus, not only the entries
+written for it. Restoring the delta returns all 45 to green.
+
+Measured: `cargo nextest run --all` 894 passed / 0 skipped, `uv run pytest tests/ -q` 4,711
+passed / 11 skipped / 119 deselected in 170.51 s with no Python test added, `cargo clippy` clean in
+both its scopes, `cargo fmt --check` silent, and
+`fuzz/seeds/edit_yaml/*.seed` replayed one by one under `-runs=0` with
+`clean=45 failing=0 total=45`. The Ir floor was read on this WSL host under the baseline's
+pinned `rustc 1.97.1` and refused here: the five `edit_*` scenarios read -0.00 %, and the other
+readings the table kept sit inside the band (`to_python_anchors` +0.13 %, `safe_dump_small`
++0.26 %), while only `load_toml_medium` and `load_toml_long_strings` print
+`FAIL ... over baseline (tolerance 0.50%)`, at +1.86 % and +2.99 %. Those two are attributed rather
+than argued: reverting only `crates/pyrs-yaml-core/src/editing/plan.rs` to the parent tree's
+bytes (`0b157c9013f6b0d7` against this tree's `967d53286293d1a6`) and re-measuring them with
+`--only` on the same host and the same compiler returns +1.86 % and +2.99 % - the identical
+pair, which is the host-versus-image drift `(hy)` already names at +1.65 % / +2.98 %. The gate's
+own refusal is measured too: `--only load_toml_medium` returns 1. The two engine answers are
+pinned by `rename_moves_one_pair_of_a_name_the_document_spells_twice` and
+`move_takes_one_pair_off_a_name_the_document_spells_twice`, both over the `0set: 1` /
+`!base 0set: 2` fixture `(iv)` already uses, so the two verbs and the three delete policies are now
+judged on one document. `quality_matrix.py --write-rows` moves 905 -> 907 Rust `#[test]`, 237 -> 242
+seeds and 145 -> 148 `former-crash-*`; the three inputs and the two reductions join
+`fuzz/seeds/edit_yaml/` as `former-crash-875d4542`, `former-crash-95ddb3d9`,
+`former-crash-fbc86ca3`, `rename-name-spelled-twice` and `move-name-spelled-twice`.
+
+What it still cannot see: the count is taken inside the mapping the path's *parent* resolves to, so
+a name spelled twice two levels up is one subtree short of the question, and such a rename is judged
+against the resolved subtree rather than against every pair the text could hand back; `(iy)`'s
+boundary stands, because the targets parse with the default duplicate policy, so `first_wins`,
+`last_wins` and `error` documents never reach this oracle; and the asymmetry itself is asserted, not
+decided - `rename_path` still picks by identity where a caller reading `get()` would expect the
+first spelling, which is what `(iv)` left to the caller's `on_duplicate` and this triage had no
+ruling to widen.
