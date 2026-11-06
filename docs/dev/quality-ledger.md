@@ -13561,3 +13561,25 @@ the number means nothing, and on `/mnt/d` cargo serves a stale executable until
 `release/<target>` is deleted, so a control run has to name the build it ran by its digest. The
 probe was never committed - the target was restored and `jj status` reported no changes - which is
 the shape this kind of measurement should leave behind.
+
+### (jx) The arm probe returns two clean bills, and agrees with the reach gate unprompted (2026-11-07)
+
+(jw) fixed the method; applying it to the next two targets on the narrowest-conditions list found no
+gap. `json_roundtrip` asks its fixed point of six instantiations at once, three compact and three
+`(pretty)`, and the worry was that the pretty arms only ever saw what their compact twins saw. One
+marker set inside the `settled!` macro covers all six call sites, and replaying the 17 archived
+seeds printed `MK_WRITTEN` and `MK_REPARSED` 39 times for each of json and jsonc and 40 for each of
+json5, compact and pretty alike, with `MK_NOT_WRITTEN` once per json and jsonc pair: every
+instantiation is walked, and where a tree is unwritable the compact and pretty spellings refuse it
+together. `parse_toml` held the other narrow condition - the promise at `parse_toml.rs:68` asks only
+when the 1.0 gate accepts and `carries_note` answers false - and its 10 seeds printed
+`MK_10_ARM true true` five times, so five inputs do ask it.
+
+That last reading is worth taking twice. Three of the same seeds printed `MK_GATE <gate> false` for
+both gates, which is exactly the three `seed-unreachable:parse_toml` lines `.ci/seed-reach.txt`
+carries, arrived at by a marker probe that shares no code with
+`crates/pyrs-yaml-core/tests/seed_reach.rs`. Two independent measurements agreeing on which inputs
+ask nothing is what makes the register trustworthy rather than self-confirming. The targets still
+unprobed are `yaml_roundtrip`, `toml_roundtrip`, `edit_yaml`, `parse_json` and `parse_schema`, and
+the last of those has no assertion site to probe - its body is one `let _ =` over a door that opens
+with the YAML reader, so the only claim it makes is the one every input reaches.
