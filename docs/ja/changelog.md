@@ -95,7 +95,7 @@ status: new
   エンジンの答えは
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` とその隣の `move` のテストで
   固定します。三つの入力と二つの最小入力をその語庫に加え、語庫は `-runs=0` で緑に再生され、
-  マトリクスは Rust の `#[test]` 923 件と種子 286 件を読みます。
+  マトリクスは Rust の `#[test]` 928 件と種子 287 件を読みます。
 
 - **目標が拒否する種子は、保護として信用されず計上されるようになりました** — 六つの fuzz 目標はいず
   れも型ある拒否を通過として扱います（`yaml_roundtrip` と `edit_yaml` は `parse(Schema::Core)`、
@@ -245,6 +245,23 @@ status: new
   `edit_yaml` 3 件と #733 の `yaml_roundtrip` 2 件はすべて種子として保管済みで、届かない 10 行のどこ
   にもなく、各目標で `-runs=0` の再生が `rc=0` です。`QUALITY_MATRIX.md` の fuzz 行は弱い側の主張を
   書いており、今は条件付きの主張です（`docs/dev/quality-ledger.md` (ju)）。
+
+- **`parse_yaml` は YAML の二つの入口に同じ拒否を要求しました** — この目標は `parse` と `parse_all`
+  を `let _ =` で呼ぶだけで、「どの入力も parser を panic させない」だけが主張でした。ところが
+  `load_ast` 自身のコメントは、単文書入口とストリーム入口がズレないように共有ヘルパーが存在すると書
+  いています。いま要求するのは、ストリーム入口が拒否するなら両入口のメッセージが完全に一致すること、
+  高々 1 文書を読んだなら単文書入口も受理すること、2 文書以上なら
+  `ParseError::SingleDocumentExpected` で答えることです。
+  `crates/pyrs-yaml-core/tests/reader_door_agreement.rs` の 5 件の名前つき用例が各分岐を固定し、最初
+  の実行で初版の誤りを見つけました — 文言トークン `multi-document-input` はバインディング側の対応
+  （`py/mod.rs:51`）で、エンジン側の表示（`pyrs-ast/src/error.rs:55`）ではありません。出荷済みの
+  ファイル（sha `3165fb959464`）で実測：アーカイブ済みの YAML 入力 144 件を `-runs=0` で再生する
+  と 145 回で panic なし。期待する変体を間違えさせると 18 バイトの `---\na: 1\n---\nb: 2\n` で
+  クラッシュするが、その入力はこの変更までアーカイブに含まれていなかったため、初回の値踏みでは
+  出荷版にも突然変異版にもパニックが出なかった。発見層は 8 ジョブで計 88,704 回、artifact は
+  空。最も薄い二つの目標も同じく 14,786 回と 13,165 回で artifact がありません。PR 層は
+  `-runs=0` で種子を
+  再生するので、これはマージ関門です（`docs/dev/quality-ledger.md` (jv)）。
 
 ### [v0.19.0] — 2026-11-04
 

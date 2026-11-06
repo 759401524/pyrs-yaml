@@ -13429,3 +13429,105 @@ crash cannot regress (PR tier replays seeds with `-runs=0`)" - which is exactly 
 ten unreachable lines deny. The row now says what the replay is: the promise becomes a reached
 assertion only when `seed_reach.rs` says so, and the registered `seed-unreachable:*` holes are where
 the difference is measured.
+
+### (jv) `parse_yaml` had no oracle, and the shared contract it guards is written down (2026-11-07)
+
+`fuzz/fuzz_targets/parse_yaml.rs` called `parse` and `parse_all` as two `let _ =` statements. Its
+whole claim was "no input may panic the parser", which is a real claim and the one
+`scripts/fuzz_panics.py` samples at the Python layer without being able to guide - but it is a claim
+a refusal satisfies, and it says nothing about the contract the engine documents for itself.
+`crates/pyrs-yaml-core/src/parser/mod.rs:350-355` states that `load_ast` exists so that "the
+single-document and multi-document entry points can never drift". Nothing asked that.
+
+The target now asks it, in the three forms the shared helper allows. When the stream door refuses,
+the single door must refuse with the identical message. When the stream door accepts at most one
+document, the single door must accept. When it accepts two or more, the single door must answer the
+one documented boundary, `ParseError::SingleDocumentExpected`. Tree equality is deliberately not
+asserted: nodes carry source spans and whether the two doors' spans compare is a different claim
+with a different owner, `tests/test_yaml_readers_parity.py`, which is order-sensitive and cannot see
+the fast path.
+
+Measured, in the order that makes it checkable, on the file as shipped (sha `3165fb959464`). A
+deterministic replay of the archived inputs, copied out of the tree as two directories and passed as
+`-runs=0`, walked 144 files and did 145 runs with no panic - so every archived document in those two
+directories answers the new assertions, refused ones included, since a refusal is exactly the branch
+that compares the two messages - and `fuzz/seeds/parse_yaml` holds 6 files afterwards. A flat copy
+of both directories holds 140, four fewer than the two sum to, because four seeds share a basename
+across them.
+
+Two properties of `-runs=0` came out of re-measuring it, and both change what a number means. It
+counts the union of every corpus directory in the command, so the same 139-file copy reported 6,072
+runs on a host whose `fuzz/corpus/parse_yaml` holds 5,932 accumulated entries: the count is only
+comparable with the project corpus set aside. Setting it aside by renaming is itself a trap -
+`cargo fuzz` recreates `corpus/<target>` while it runs, so renaming the saved directory back onto
+the new one nests the two instead of replacing it; check the recreated directory is empty first.
+Because the pull-request tier replays seeds with `-runs=0` (`scripts/fuzz_rounds.sh:25`), the
+assertion is a merge gate, not a suggestion.
+
+The pricing says the branch is reached, not merely harmless - and it took a second attempt to say
+so. Replacing `Err(ParseError::SingleDocumentExpected { .. })` with
+`Err(ParseError::DuplicateKey(_))` and replaying the 143 inputs archived that day answered rc=0 with
+no panic: no committed seed carries a second document, so that corpus cannot tell the two builds
+apart. The crash the first pricing reported came from `fuzz/corpus/parse_yaml`, which `-runs=0`
+walks in the same pass - the union effect above. So `two-document-stream.seed`, the 18 bytes of
+`---\na: 1\n---\nb: 2\n`, joins the archive here. With it the mutated build panics at
+`parse_yaml.rs:63` on exactly that seed, exits 77, and leaves
+`crash-a8af052fb0ec2f495ed6a63e21ea95d7ef1ee057` in the artifact directory; the restored build
+replays the 144 inputs clean. Two builds, not one: on `/mnt/d` the control run reused the mutated
+executable until `release/parse_yaml` was deleted, and the digests that say which source ran are
+`b956d44fc03b` for the mutant and `020ebf2ef50d` for the shipped file. The artifact of a priced
+mutant is moved out of `fuzz/artifacts/`, not left there to be mistaken for a finding. Discovery
+then ran 8 jobs for 120 s on the same target and totalled 88,704 runs with no panic in any job log
+and no file in the artifact
+tree. The two thinnest targets were measured the same way first - `parse_schema` 14,786 runs,
+`parse_json` 13,165, both with an
+empty artifact directory - which is the weaker result, because neither gained an assertion in this
+change and a clean run there only says the sampler found nothing.
+
+One hazard that has to be written down because it is invisible until it is expensive: passing
+`fuzz/seeds/<target>` as a libFuzzer corpus argument makes the runner merge its own findings back
+into that directory. Seven thousand nine hundred and forty-four generated files appeared under
+`fuzz/seeds/` before `jj status` named them, because `.gitignore` covers `fuzz/corpus/` and
+`fuzz/artifacts/` and cannot cover `fuzz/seeds/` - seeds are tracked by design. `jj restore
+fuzz/seeds` removed all 7,944 and the reach gate still measured 10 of 259 afterwards, so nothing
+committed was lost; the clean way to replay is to copy the seeds out first, which is the measurement
+above.
+
+Three restatements had to move with it, because each describes the old target in the present tense.
+`QUALITY_MATRIX.md`'s `seed-unreachable:yaml_roundtrip` exit offered "moving the input to
+`parse_yaml`" as a way out and justified it by saying the target's `let _ =` calls make no-panic the
+whole claim - that sentence is now false, so the cell says what the target asks today, including
+what it still cannot ask. `crates/pyrs-yaml-core/tests/seed_reach.rs` kept `parse_yaml` out of
+`SKIP_ON_REFUSAL` because it held its result in `let _ =`; the exclusion stands for the opposite
+reason now - the body asks something on both arms, so no seed replays it blind - and the doc says
+that instead. The measurement did not move: six targets, 259 seeds walked, 10 lines. The dated line
+in (jb) that called the target ungated stays as it was written, because that was the tree at the
+time.
+
+The named tests earned their place at once, by correcting the oracle. The fuzz target first
+asked that the single door's message contain `multi-document-input`, because that is the token the
+Python surface shows; the 144-run replay passed it, since no archived input carries a second
+document. `reader_door_agreement.rs` fed one a stream and the assertion was wrong at once: the token
+is the binding's, not the engine's - `crates/pyrs-ast/src/error.rs:55` renders
+`ParseError::SingleDocumentExpected`, and `crates/pyrs-yaml/src/py/mod.rs:51` is what turns that
+into the reason key a caller greps. The fuzz target now matches the variant, which is the contract
+the engine owns, and the two layers are named where each begins. "The corpus replays clean" is not
+evidence that an assertion has teeth; one input nobody had archived was.
+
+A fifth case came from asking whether the oracle could cry wolf. If a stream's second document does
+not parse, the single door might answer the arity refusal while the stream door answers a syntax
+defect - two honest messages the message-equality assertion would read as drift. Measured at the
+Python doors first (`parse` against `parse_all_docs`, four inputs), then pinned in Rust: the scanner
+fails on the broken document before the stream ever reaches its second start marker, so both doors
+report the same syntax error and the arity refusal never appears, while `a: 1\n---\n\tbad\n` is
+the opposite case - a well-formed second document, where only arity separates the doors and the
+single one must answer `SingleDocumentExpected`. Each is a named test, so the ordering is now an
+assertion rather than an assumption the fuzz target relies on.
+
+The scripted edits here are worth a line themselves, because one of them arrived damaged. A
+paragraph whose `\n` escapes had already expanded inside the writing script landed as a `## `
+heading with a blank line cut through its middle, and nothing reddened. The prose-width gate does
+govern this file, as that hook's own refusal showed, but it measures prose and skips headings, so a
+paragraph promoted to `## ` leaves the rule's sight; the ledger's order gate reads only the `(xx)`
+prefix, and `rumdl check` accepts a heading of any length. Reading the section after writing it is
+the cheapest defence available and the only one that ran.

@@ -83,7 +83,7 @@ status: new
   和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
   的范围远宽于为它写下的两条最小输入。引擎的答案由
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 923 条 Rust `#[test]`、286 个种子。
+  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 928 条 Rust `#[test]`、287 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
   （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三
@@ -206,6 +206,19 @@ status: new
   已作为种子入库，十条不可达行里都没有它们，且各自在自己目标下以 `-runs=0` 回放 `rc=0`。
   `QUALITY_MATRIX.md` 的 fuzz 行原本说的是较弱的那句，现在是有条件的那句
   （`docs/dev/quality-ledger.md` (ju)）。
+
+- **`parse_yaml` 现在要求 YAML 的两个入口以同样的方式拒绝** — 该目标此前用两条 `let _ =` 调用
+  `parse` 与 `parse_all`，所以它唯一的断言是"任何输入都不许 panic"，而 `load_ast` 自己的注释写明共享
+  辅助函数存在的理由正是单文档入口与流式入口不会漂移。现在断言的是：流式入口拒绝时，两个入口必须给出
+  完全相同的消息；最多读出一个文档时单文档入口必须接受；两个或以上时必须回答
+  `ParseError::SingleDocumentExpected`。`crates/pyrs-yaml-core/tests/reader_door_agreement.rs` 里的
+  五个具名用例钉住每个分支，而它们第一次运行就抓出了首版的错误 — 散文式词元 `multi-document-input`
+  是绑定层的映射（`py/mod.rs:51`），不是引擎的渲染（`pyrs-ast/src/error.rs:55`）。对已交付文件实测
+  （sha `3165fb959464`）：144 个已归档 YAML 输入回放为 145 次运行、无 panic；把期望改成错误的变体
+  后，18 字节的 `---\na: 1\n---\nb: 2\n` 就让它崩溃 — 这个输入在本条变更之前并不在归档里，所以
+  这条断言的第一轮定价在交付版与突变版两个构建上都干净回放。发现层 8 个作业共 88,704 次运行、
+  artifact 目录为空，两个最稀疏的目标也同样得到 14,786 与 13,165 次运行且无 artifact。由于 PR 层就是
+  以 `-runs=0` 回放种子，这条断言现在是合并门禁（`docs/dev/quality-ledger.md` (jv)）。
 
 ### [v0.19.0] — 2026-11-04
 
