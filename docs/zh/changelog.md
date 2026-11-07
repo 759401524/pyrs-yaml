@@ -63,6 +63,13 @@ status: new
   `block_nesting_limit` 与 `flow_nesting_limit` 两道 255 默认限制上（都按容器计数），而库里其他
   所有深度预算都宣称 1000，所以越过第 255 个容器的转换仍会交回自家
   读取器拒绝的文本（`docs/dev/quality-ledger.md` (jq)）。
+- **schema `type` 的拒绝消息只列 5 个拼写，实际接受 9 个** — `YamlTypeKind::from_name` 除 5 个
+  规范名外还接受 `boolean`、`integer`、`double`、`string`，所以写 `type: integer` 的人本就被
+  服务了，而写 `type: number` 的人却被告知有效集是 `null, bool, int, float, str`，只能去找一个
+  从来不缺的同义词。拒绝消息现在补上 `(aliases accepted: boolean, integer, double, string)`；
+  接受的集合不变，指南里那张 5 行的表也照原样留着，等裁定这些别名算表面能力还是意外
+  （`docs/dev/quality-ledger.md` (jz)）。实测：`register_schema` 接受全部四个别名并拒绝 `number`
+  与 `Int`；新增的具名测试同时钉住消息里的别名清单与四个拼写的可接受性，抹掉任一半都会变红。
 
 #### 变更
 
@@ -83,7 +90,7 @@ status: new
   和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
   的范围远宽于为它写下的两条最小输入。引擎的答案由
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 928 条 Rust `#[test]`、288 个种子。
+  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 929 条 Rust `#[test]`、288 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
   （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三

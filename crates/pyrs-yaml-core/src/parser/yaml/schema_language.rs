@@ -292,7 +292,8 @@ fn rule_from_node(node: &CustomNode) -> Result<Rule, ParseError> {
                 if target.is_none() {
                     return Err(ParseError::Syntax {
                         message: format!(
-                            "invalid schema type '{}'. Valid: null, bool, int, float, str",
+                            "invalid schema type '{}'. Valid: null, bool, int, float, str \
+                             (aliases accepted: boolean, integer, double, string)",
                             ty
                         ),
                         line: 0,
@@ -464,5 +465,24 @@ rules:
             message.contains("Valid: null, bool, int, float, str"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn the_type_refusal_names_every_spelling_it_accepts() {
+        // `from_name` answers to nine spellings, not five. A refusal that lists only the canonical
+        // five sends an author who typed `type: integer` searching for a synonym that was never
+        // missing, so the message and the accepted set are pinned to each other here.
+        let message = parse_schema_yaml("rules:\n  - pattern: x\n    type: number\n")
+            .err()
+            .expect("an unknown type name is refused")
+            .to_string();
+        assert!(
+            message.contains("boolean, integer, double, string"),
+            "{message}"
+        );
+        for alias in ["boolean", "integer", "double", "string"] {
+            let yaml = format!("rules:\n  - pattern: x\n    type: {alias}\n");
+            assert!(parse_schema_yaml(&yaml).is_ok(), "{alias} must be accepted");
+        }
     }
 }

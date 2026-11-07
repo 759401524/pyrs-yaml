@@ -13608,3 +13608,26 @@ each precondition and replaying every seed in its own process reached an asserti
 `crate::parser::parse(yaml, Schema::Core)?` (`schema_language.rs:201`), which is also why a
 cross-door agreement oracle there would have been decoration: the `?` guarantees the invariant
 structurally. Its real gap is corpus depth, one seed against a fullest target's 138.
+
+### (jz) The refusal named five spellings; the door took nine (2026-11-07)
+
+The same reach question asked of a diagnostic instead of an assertion: does what the schema language
+tells an author match what it accepts? `YamlTypeKind::from_name` (`schema_language.rs:41-50`) maps
+nine spellings onto five kinds - `bool`/`boolean`, `int`/`integer`, `float`/`double`,
+`str`/`string` - while the refusal at `:295` listed only the five canonical names. Measured through
+the live binding: `integer`, `boolean`, `double` and `string` all register, `number` and `Int` are
+refused, so the accepted set is closed and merely mis-reported. The change is to the message, which
+now appends `(aliases accepted: boolean, integer, double, string)`; the existing
+`a_pattern_still_resolves_only_scalar_text` keeps its five-name prefix assertion, and the new
+`the_type_refusal_names_every_spelling_it_accepts` pins both the alias list and the four spellings,
+so the diagnostic and the accepted set cannot drift apart in either direction.
+
+Two readings from the same probe are decisions rather than defects. `extends: cored` is accepted and
+resolves to no base at all - `true`, `1e3` and `null` come back as strings, byte for byte what
+`extends: failsafe` answers - while *omitting* `extends` keeps the documented Core default. The
+comment at `:210-215` says the written default exists so a misspelling must not silently get Core:
+true, but it silently gets nothing. And `docs/en/guides/custom-schema.md:28` states the valid set as
+five names above a five-row table, mirrored in three locales; documenting the aliases there is a
+choice about what is surface, and removing them from `from_name` would break any schema already
+written with `type: string`. Neither was chosen here, which is why the message says "aliases
+accepted" rather than adding them to "Valid".

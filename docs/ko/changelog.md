@@ -73,6 +73,15 @@ status: new
   그런데 이 라이브러리가 밝히는 다른 깊이 예산은 모두 1000입니다. 그래서 255번째 컨테이너를 넘는
   변환은 여전히 우리 쪽 읽는 사람이 거부하는 텍스트를 돌려줍니다
   (`docs/dev/quality-ledger.md` (jq)).
+- **schema `type` 거부 메시지는 5개 표기만 적고 실제로는 9개를 받아들였다** —
+  `YamlTypeKind::from_name`은 5개의 정식 이름 외에 `boolean`, `integer`, `double`, `string`도
+  통과시키므로 `type: integer`를 쓴 사람은 이미 처리됐는데, `type: number`를 쓴 사람에게는 유효
+  집합이 `null, bool, int, float, str`라고 알려 없어 없지 않은 동의어를 찾게 됐습니다. 거부 메시지는
+  이제 `(aliases accepted: boolean, integer, double, string)`을 덧붙입니다. 허용 집합은 그대로이고,
+  가이드의 5행 표는 별칭이 기능인지 실수인지 판단이 정해질 때까지 그대로 둡니다
+  (`docs/dev/quality-ledger.md` (jz)). 실측: `register_schema`는 네 별칭을 모두 받아들이고
+  `number`와 `Int`는 거부합니다. 새 이름 붙은 사례는 메시지의 별칭 목록과 네 표기의 허용을 함께
+  고정하므로 둘 중 하나를 지우면 이 실행은 빨갛게 됩니다.
 
 #### 변경
 
@@ -96,7 +105,7 @@ status: new
   수가 짊어지는 범위는 그 둘을 위해 쓰인 두 최소 입력보다 훨씬 넓습니다. 엔진의 답은
   `rename_moves_one_pair_of_a_name_the_document_spells_twice`와 그 옆의 `move` 테스트로
   고정했습니다. 세 입력과 두 최소 입력을 그 코퍼스에 넣었고, 코퍼스는 `-runs=0`에서 초록으로
-  재생되며, 매트릭스는 Rust `#[test]` 928개와 시드 288개를 읽습니다.
+  재생되며, 매트릭스는 Rust `#[test]` 929개와 시드 288개를 읽습니다.
 
 - **대상이 거부한 시드는 보호로 계산되지 않고 세어 넣습니다** — 여섯 fuzz 대상은 모두 타입이 있는
   거부를 통과로 취급합니다(`yaml_roundtrip`과 `edit_yaml`은 `parse(Schema::Core)`,
