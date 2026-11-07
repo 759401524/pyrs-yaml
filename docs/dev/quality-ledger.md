@@ -13785,3 +13785,29 @@ Nothing is a non-reproducible historical reading or a locale-template claim, so 
 surface needs no exclude list - the coverage set is the whole quoted surface.
 A subset-only gate must say so rather than imply the whole page is verified;
 that clause is the design note for #116.
+
+### (kf) The Ir same-host control, re-measured on the current stack (2026-11-07)
+
+Measured 2026-11-07 with the baseline's pinned toolchain, `RUSTUP_TOOLCHAIN=1.97.1` taken from
+`.ci/ir-baseline.json`'s `toolchain`; the default stable 1.99.0 is not the baseline's build
+with valgrind, on the current stack.
+`origin/main` has not moved since the earlier control, so its same-tree numbers remain
+the reference; those differences were every ≤ 682 instructions out of 3.5 M to 144 M, under 0.0005%.
+
+This stack run exits 1 with two FAILs, both TOML:
+
+scenario baseline        now        delta
+load_toml_medium 142,479,902    145,124,695 +1.86%
+load_toml_long_strings        135,524,897    139,573,881 +2.99%
+
+The three scenarios the earlier control reported red read at the flat floor this run:
+(`serialize_small`, `documents_short_strings`, `documents_long_strings`), and did not fail, so the
+set moved run to run - 2 reds this time vs the earlier session's 5.
+That variation, plus the two TOML scenarios sitting in the old image's floor cell this box is known,
+is the host-keyed reading, not the queue. The two changes here are doc-only in the engine.
+
+Proposed mitigation, still pending the user's call before changing verdict output:
+when a scenario fails on the flat table and the host names no image, print the nearest image row
+and its delta next to the FAIL, keeping the exit code unchanged; and add `serialize_small` and the
+two `documents_*` scenarios to the refresh workflow's image table,
+so a local reading stops producing FLOOR_STALE on an untouched trunk.
