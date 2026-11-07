@@ -13631,3 +13631,68 @@ five names above a five-row table, mirrored in three locales; documenting the al
 choice about what is surface, and removing them from `from_name` would break any schema already
 written with `type: string`. Neither was chosen here, which is why the message says "aliases
 accepted" rather than adding them to "Valid".
+
+### (kb) A grammar walk is only finished when the site list is derived, not typed from memory (2026-11-07)
+
+One target's gap was never an oracle. `parse_schema` asks only "no panic" and held a single seed, so
+new inputs buy no assertion credit - what they buy is the discovery tier's starting shapes and a
+corpus that records which branches the grammar has. The first pass filed nine inputs and wrote
+"one per branch of `parse_schema_yaml`", which was the sentence a nine-row table cannot support:
+enumerating the door's refusal sites from the code found thirteen, so the walk was five sites short.
+
+The derivation is the part worth keeping. Over `schema_language.rs:200-318`, `scalar_str(` matches
+six lines - five call sites and the definition - and `ParseError::Syntax` matches seven, of which
+one is `scalar_str`'s own body at `:264` (the single source of `expected scalar`, reachable from all
+five call sites); the door's `crate::parser::parse(yaml, Schema::Core)?` at `:201` and `Rule::new`
+at `:317` add the last two, and 5 + 6 + 1 + 1 is the thirteen. Five inputs joined the corpus: the
+syntax pass-through, and the four `scalar_str` shapes that had no representative - a non-scalar
+top-level key, and non-scalar `extends:`, `pattern:` and `type:` values. The one file named
+`shape-non-scalar-key.seed` was renamed to `shape-rule-key-non-scalar.seed` because the message it
+proves belongs to five sites, and its name has to say which.
+
+| site | input | measured answer |
+| --- | --- | --- |
+| `:201` the YAML door refuses first | `rules: [broken` | `unclosed bracket '[' at char 7 line 1 column 8` |
+| `:203` root is not a mapping | a two-item sequence | `schema must be a mapping` |
+| `:220` a top-level key is not a scalar | `[a]: b` | `expected scalar` |
+| `:223` an `extends:` value is not a scalar | `extends: [core]` | `expected scalar` |
+| `:231` `rules:` is not a sequence | `rules: nope` | `'rules' must be a sequence` |
+| `:276` a rule is not a mapping | `rules:` then `- nope` | `each rule must be a mapping with 'pattern' and 'type'` |
+| `:284` a rule key is not a scalar | `[a]: x` as a rule | `expected scalar` |
+| `:287` a `pattern:` value is not a scalar | `pattern: [x]` | `expected scalar` |
+| `:290` a `type:` value is not a scalar | `type: [int]` | `expected scalar` |
+| `:293` unknown type name | `type: number` | `invalid schema type 'number' …` (see (jz)) |
+| `:307` rule without `pattern` | one rule carrying only `type` | `rule missing 'pattern'` |
+| `:312` rule without `type` | one rule carrying only `pattern` | `rule missing 'type'` |
+| `:317` pattern that will not compile | `pattern: '[unclosed'` | `invalid schema pattern …` |
+
+Each answer above is the shipped extension's own reply, read from the file that carries it - fifteen
+invocations of `register_schema`, thirteen `YamlParseError` and two acceptances, no `PanicException`
+among them. `rules-grammar.seed` and `shape-type-alias-string.seed` are the two accepted inputs; the
+grammar's other accept arms - the four recognised `extends:` names, the ignored unknown keys, the
+null `extends:` that falls back to Core - resolve rather than refuse, so they are not refusal sites
+and this corpus does not claim to hold them. What an unknown `extends:` name resolves to is still
+the open question (jz) measured, and a seed would not answer it: the target accepts every
+`extends:` spelling either way.
+
+One row's rendering is a defect the walk surfaced and did not cause. The `:201` pass-through is the
+only site whose text arrives with the prefix twice - the schema door answers
+`Schema parse error: YAML parse error: YAML parse error: unclosed bracket …`. Two constructions add
+the same words: `parser/mod.rs:368` writes `format!("YAML parse error: {}", e)` into the variant's
+`message`, and `pyrs-ast/src/error.rs:32` is `#[error("YAML parse error: {message}")]`. The YAML
+door never renders the variant - `py/mod.rs:57` destructures `message` and hands that to the i18n
+template - so `parse()` on the same bytes shows the prefix once, while `register_schema`
+(`py/functions.rs:1048`) formats the whole error with `{}` and pays for both. Nothing in the tree
+pins either spelling, so no gate would notice the doubling being kept or fixed; repairing it belongs
+to the error surface, not to this corpus, so it is recorded here as a measured open item rather than
+quietly repaired.
+
+The directory holds 15 files, and the replay was measured against those files alone: a direct
+`-runs=0` invocation of the built target (`sha256` prefix `e214b062ed11`) printed `Done 17 runs`,
+returned 0 with its own exit code and left the artifact tree empty. A direct invocation never unions
+`fuzz/corpus/<target>`, so the (jw) trap does not apply here - the project corpus (11,301 entries)
+was never moved and reads 11,301 afterwards. The seventeen is fifteen inputs plus libFuzzer's two,
+the same offset the ten-file run reported as twelve. The matrix now reads 302 seeds and still names
+the thinnest target as `parse_yaml` at 6, which is the five named cases' shapes plus the arity
+counterexample (jv) filed. No new protection is claimed here: `seed_reach` does not walk this
+target, and a target that refuses nothing has no unreachable seeds to register.

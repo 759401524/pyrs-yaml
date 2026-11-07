@@ -109,7 +109,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 929 Rust `#[test]` over 288 seeds.
+  matrix reads 929 Rust `#[test]` over 302 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,
@@ -296,6 +296,18 @@ s own
   leading- and inline-owned notes both present — and left the asymmetric-writability arm at `:106`
   named as unwalkable by construction, since both trees come from one document
   (`docs/dev/quality-ledger.md` (jw)).
+
+- **`parse_schema`'s corpus walks the grammar now** — the target holds one claim (no panic on any
+  input) and held one seed, so new inputs buy no assertion credit; what they buy is the discovery
+  tier's starting shapes and a record of which refusals exist. Fourteen inputs joined
+  `fuzz/seeds/parse_schema/`, one per refusal site — thirteen, derived from the door's own code —
+  plus one accepted alias type, each measured through the shipped extension first: a non-mapping
+  root, the YAML pass-through, the five non-scalar positions, a `rules:` that is not a sequence,
+  a rule that is not a mapping, an unknown `type:` name, a rule without `pattern`, one without
+  `type`, and a pattern that will not compile. The directory holds 15 and a direct `-runs=0`
+  replay of those files alone reads `Done 17 runs` at rc=0 with an empty artifact tree; the
+  matrix reads 302 seeds and its thinnest target is now `parse_yaml` at 6
+  (`docs/dev/quality-ledger.md` (kb)).
 
 ### [v0.19.0] — 2026-11-04
 

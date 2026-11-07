@@ -1,0 +1,3 @@
+rules:
+  - pattern: '^[0-9]+$'
+    type: string
