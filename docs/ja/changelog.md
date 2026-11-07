@@ -72,6 +72,15 @@ status: new
   `block_nesting_limit` と `flow_nesting_limit` の 255 で動いており（どちらも容器単位で数えます）、
   ライブラリがうたう他の深さ予算はすべて 1000 なので、255 容器を超えた変換は自家の読み手が拒否する
   テキストを返したままです（`docs/dev/quality-ledger.md` (jq)）。
+- **schema の `type` 拒否は 5 つの綴りだけ挙げ、実際は 9 つを通していた** —
+  `YamlTypeKind::from_name` は 5 つの正式名のほか `boolean`、`integer`、`double`、`string` も
+  通すため、`type: integer` と書いた人は既に処理されていたのに、`type: number` の人には有効な
+  集合が `null, bool, int, float, str` だと伝えて、欠けていない同義語を探させていました。拒否
+  メッセージは `(aliases accepted: boolean, integer, double, string)` を添えるようになりました。
+  受け入れる集合は変えておらず、ガイドの 5 行表は別名が仕様か偶然かの裁定を待つままです
+  （`docs/dev/quality-ledger.md` (jz)）。実測：`register_schema` は四つの別名をすべて受理し、
+  `number` と `Int` は拒否します。新しい名前付き用例はメッセージ中の別名一覧と四つの綴りの受理
+  の両方を固定するので、どちらかを消すとこの実行は赤くなります。
 
 #### 変更
 
@@ -95,7 +104,7 @@ status: new
   エンジンの答えは
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` とその隣の `move` のテストで
   固定します。三つの入力と二つの最小入力をその語庫に加え、語庫は `-runs=0` で緑に再生され、
-  マトリクスは Rust の `#[test]` 928 件と種子 288 件を読みます。
+  マトリクスは Rust の `#[test]` 929 件と種子 288 件を読みます。
 
 - **目標が拒否する種子は、保護として信用されず計上されるようになりました** — 六つの fuzz 目標はいず
   れも型ある拒否を通過として扱います（`yaml_roundtrip` と `edit_yaml` は `parse(Schema::Core)`、

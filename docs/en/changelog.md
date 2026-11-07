@@ -75,6 +75,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   both counted per container) while every other depth budget the library advertises is 1000, so a
   conversion past the 255th container still hands back text its own reader refuses
   (`docs/dev/quality-ledger.md` (jq)).
+- **The schema `type` refusal named five spellings and accepted nine** — `YamlTypeKind::from_name`
+  answers to `boolean`, `integer`, `double` and `string` as well as the five canonical names, so an
+  author who typed `type: integer` was served, while one who typed `type: number` was told the
+  valid set was `null, bool, int, float, str` and sent looking for a synonym that had never been
+  missing. The refusal now appends `(aliases accepted: boolean, integer, double, string)`; the
+  accepted set is unchanged, and the guide's five-row table is left as it is pending a ruling on
+  whether the aliases are surface or accident (`docs/dev/quality-ledger.md` (jz)). Measured:
+  `register_schema` accepts all four aliases and refuses `number` and `Int`; the new named test
+  asserts both the alias list in the message and the four spellings as accepted, so dropping either
+  half reddens the run.
 
 #### Changed
 
@@ -99,7 +109,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 928 Rust `#[test]` over 288 seeds.
+  matrix reads 929 Rust `#[test]` over 288 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,

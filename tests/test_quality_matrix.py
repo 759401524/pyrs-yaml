@@ -1270,7 +1270,9 @@ def test_the_derived_table_is_not_vacuous(measured):
     # it: it shares `pyrs-yaml-core` with the YAML engine, so a crate-wide count would read as
     # defended by hundreds of tests that never mention it.
     rule = rows["Schema rule language"]
-    assert rule["unit"] == 11, rule
+    # Twelve since the refusal-alias test joined that module; the count is the cell, so a new unit
+    # test in the declaring file has to move it or the row would credit work the file never did.
+    assert rule["unit"] == 12, rule
     assert rule["property_rust"] == 1, rule
     assert rule["fuzz_parse"] == ["parse_schema"], rule
     assert not rule["fuzz_round_trip"], rule
