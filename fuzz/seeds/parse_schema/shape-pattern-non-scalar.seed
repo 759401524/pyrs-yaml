@@ -1,0 +1,3 @@
+rules:
+  - pattern: [x]
+    type: int
