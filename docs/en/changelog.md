@@ -19,6 +19,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A refusal names the format that refused it** — `ParseError::Syntax` is built by the YAML, JSON,
+  TOML and schema readers alike, and its `Display` prefixed every message with `YAML parse error:`.
+  A TOML refusal therefore read `YAML parse error: TOML parse error: unterminated array …`, the four
+  JSON doors called a JSON refusal a YAML one, a schema grammar refusal was labelled a YAML parse
+  error although the YAML parsed, and `register_schema` carried the prefix twice on a YAML
+  pass-through. The label now belongs to whoever writes the message. Measured over 53 door answers
+  before and after: the 36 YAML ones are byte-identical and 16 change, each a JSON, TOML or schema
+  door losing a label that was never its own (`docs/dev/quality-ledger.md` (kc)).
 - **The editing pages named three refusals that do not happen** — a write through an alias was
   documented as raising `cannot-edit-alias`, and `set()` as answering `anchor-is-referenced`;
   measured on the shipped build, `set`, `delete` and `rename` all rewrite `use: *x`, and no `set`
@@ -109,7 +117,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reductions written for it; the engine answer is pinned by
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` and the move beside it. The three
   inputs and the two reductions join that corpus, which replays clean under `-runs=0`, and the
-  matrix reads 929 Rust `#[test]` over 302 seeds.
+  matrix reads 931 Rust `#[test]` over 302 seeds.
 
 - **A seed its target refuses is now counted instead of credited** — six fuzz targets open their
   body with a typed refusal as a pass (`yaml_roundtrip` and `edit_yaml` on `parse(Schema::Core)`,

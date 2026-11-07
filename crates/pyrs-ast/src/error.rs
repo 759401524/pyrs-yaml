@@ -25,11 +25,15 @@ pub enum NavigateError {
     NotContainer,
 }
 
-/// YAML parse failures, carrying source position where available.
+/// Parse failures from any reader in the family, carrying source position where available.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ParseError {
     /// Generic syntax error with a source position (0-indexed line/column).
-    #[error("YAML parse error: {message}")]
+    ///
+    /// `message` is the whole refusal text. The YAML, JSON, TOML and schema readers all build
+    /// this variant, so a format label added here would name the wrong format for three of
+    /// them; each reader puts its own label in the message, or its door adds one.
+    #[error("{message}")]
     Syntax {
         /// Human-readable error message.
         message: String,
@@ -61,7 +65,10 @@ pub enum ParseError {
     },
 }
 
-/// YAML serialization failures.
+/// Serialization failures from any writer in the family.
+///
+/// The variants carry no format label; the binding adds each writer's own
+/// `json-`/`toml-`/`yaml-serialize-error` key before rendering this error.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum SerializeError {
     /// Recursion depth exceeded the configured maximum.
@@ -134,4 +141,36 @@ pub enum EditError {
     /// Serialization failed while producing edit text.
     #[error(transparent)]
     Serialize(#[from] SerializeError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn syntax_display_adds_no_format_label() {
+        let error = ParseError::Syntax {
+            message: String::from("expected a JSON value at line 1 column 10"),
+            line: 0,
+            col: 0,
+        };
+        assert_eq!(
+            error.to_string(),
+            "expected a JSON value at line 1 column 10"
+        );
+    }
+
+    #[test]
+    fn a_message_naming_its_own_format_is_not_relabelled() {
+        let error = ParseError::Syntax {
+            message: String::from("TOML parse error: unterminated array at line 2 column 1"),
+            line: 1,
+            col: 0,
+        };
+        assert_eq!(
+            error.to_string(),
+            "TOML parse error: unterminated array at line 2 column 1"
+        );
+    }
 }

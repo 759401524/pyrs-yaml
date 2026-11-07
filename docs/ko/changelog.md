@@ -17,6 +17,14 @@ status: new
 
 #### 수정
 
+- **거부는 거부한 쪽 형식을 이름으로 밝힙니다** — `ParseError::Syntax`는 YAML·JSON·TOML·schema
+  읽기 모두가 구축하는데, 그 `Display`는 모든 메시지에 `YAML parse error:`를 붙였습니다. 그래서
+  TOML 거부는 `YAML parse error: TOML parse error: unterminated array …`로 읽히고, 네 JSON
+  관문은 JSON 거부를 YAML 것이라 불렀으며, schema 문법 거부는 YAML이 파싱됐는데도 YAML 파싱
+  오류로 이름 붙었고, `register_schema`는 YAML 전달에서 접두사를 두 번 실었습니다. 라벨은 이제
+  메시지를 쓰는 쪽 것입니다. 앞뒤로 관문 응답 53건을 측정하면 YAML 쪽 36건은 바이트 단위로
+  동일하고 16건이 바뀌며, 모두 JSON·TOML·schema 관문이 자기 것이 아닌 라벨을 내려놓은 것입니다
+  (`docs/dev/quality-ledger.md` (kc)).
 - **편집 페이지는 일어나지 않는 세 거부를 적었습니다** — 별칭을 통한 쓰기는 `cannot-edit-alias`를
   발생시키고 `set()`은 `anchor-is-referenced`에 답한다고 문서에 적혀 있었습니다. 배포된 빌드에서
   측정하면 `set`·`delete`·`rename`은 모두 `use: *x`를 다시 쓰고, `cannot-edit-alias`에 닿는 `set`
@@ -105,7 +113,7 @@ status: new
   수가 짊어지는 범위는 그 둘을 위해 쓰인 두 최소 입력보다 훨씬 넓습니다. 엔진의 답은
   `rename_moves_one_pair_of_a_name_the_document_spells_twice`와 그 옆의 `move` 테스트로
   고정했습니다. 세 입력과 두 최소 입력을 그 코퍼스에 넣었고, 코퍼스는 `-runs=0`에서 초록으로
-  재생되며, 매트릭스는 Rust `#[test]` 929개와 시드 302개를 읽습니다.
+  재생되며, 매트릭스는 Rust `#[test]` 931개와 시드 302개를 읽습니다.
 
 - **대상이 거부한 시드는 보호로 계산되지 않고 세어 넣습니다** — 여섯 fuzz 대상은 모두 타입이 있는
   거부를 통과로 취급합니다(`yaml_roundtrip`과 `edit_yaml`은 `parse(Schema::Core)`,
