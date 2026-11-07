@@ -13696,3 +13696,92 @@ the same offset the ten-file run reported as twelve. The matrix now reads 302 se
 the thinnest target as `parse_yaml` at 6, which is the five named cases' shapes plus the arity
 counterexample (jv) filed. No new protection is claimed here: `seed_reach` does not walk this
 target, and a target that refuses nothing has no unreachable seeds to register.
+
+### (kc) The shared refusal type named YAML for four readers (2026-11-07)
+
+(kb) recorded a doubled prefix on `register_schema` and filed it as that door's defect. Asking the
+same question of every door widened it: four readers construct `ParseError::Syntax` - 8 sites in
+`parser/yaml/schema_language.rs`, 5 in `pyrs-json` (`documents.rs` 3, `parser.rs` 2), 3 on the YAML
+side (`parser/mod.rs` 2, `parser/stream.rs` 1) and 2 in `pyrs-toml/src/parser.rs` - while its
+derive read `#[error("YAML parse error: {message}")]`. Any door that rendered the variant through
+`Display` therefore announced YAML no matter which reader had refused. The token occurs 46 times
+outside this change's own two tests; the other 28 are `matches!` patterns and destructurings, which
+build nothing.
+
+| door | before | after |
+| --- | --- | --- |
+| `load_toml("a = [1,")` | `YAML parse error: TOML parse error: unterminated array …` | `TOML parse error: unterminated array …` |
+| `load_json('{"a": [1,}')` | `YAML parse error: expected a JSON value …` | `expected a JSON value …` |
+| `register_schema` on `rules: nope` | `Schema parse error: YAML parse error: 'rules' must be a sequence` | `Schema parse error: 'rules' must be a sequence` |
+| `register_schema` on `rules: [broken` | the prefix twice | the prefix once |
+| `parse` on `rules: [broken` | `YAML parse error: unclosed bracket …` | unchanged, byte for byte |
+
+The remedy is one line: `Display` renders `{message}` bare, and the label belongs to whoever writes
+the message. That is safe for YAML precisely because the YAML side never renders the variant -
+`py/mod.rs:57` destructures `message` - and all three of its construction sites
+(`parser/mod.rs:368`, `:1673`, `parser/stream.rs:654`) already put the label in the field. The
+change moves nothing on the YAML path and removes a foreign label everywhere else.
+
+Measured, not argued: the same 53 answers were captured from the shipped extension before and after
+the rebuild. 37 are byte-identical - all 36 YAML-door answers among them - and 16 change, every one
+a JSON, JSON5, JSONC, TOML or schema door. The two Rust tests in `pyrs-ast/src/error.rs` were run
+against the unfixed derive first and both failed with the YAML label on the left; eight Python
+cases in `tests/test_errors.py::TestRefusalNamesItsOwnFormat` now pin each door's own label, the
+absence of a foreign one, and the single prefix on the schema pass-through.
+
+One boundary is deliberate: the JSON doors now answer with no format label at all
+(`expected a JSON value at line 1 column 10`), because their messages never carried one and the text
+names JSON itself. TOML keeps the label its own construction sites embed. Adding a
+`JSON parse error:` prefix would be a new spelling rather than a repair, and is not claimed here.
+
+The four `guides/formats.md` pages quoted three of those JSON answers with the old label; all 12
+lines now carry the measured text. `QUALITY_MATRIX.md:794` also quotes a `YAML parse error:` JSON
+refusal, but that is a record of one past probe run and its suffix belongs to the harness's other
+arm (`ir_gate.rs:254` vs `:260`), so it was already unrepeatable before this change and is left as
+history rather than rewritten here.
+
+Closing #115 with evidence, not a ruling: re-read the bench's refusal arms against this quote.
+The only occurrence of the quoted tail is `ir_gate.rs:254`, the `Ok(other)` arm's suffix, and the
+`Err(error)` arm at `:258-261` ends with a different suffix. No arm prints the quoted string, and
+change 22 removed the prefix in it. So it is a dated record, left as history rather than rewritten
+here.
+
+### (kd) The shared `SerializeError` was documented as YAML-only (2026-11-07)
+
+`crates/pyrs-ast/src/error.rs:68` documented `SerializeError` as "YAML serialization failures",
+while the type is the write-side error of the JSON and TOML writers: `pyrs-json/src/writer.rs`
+returns it from `to_json_text`, `to_json_text_pretty`, `to_jsonc_text`, `to_jsonc_text_pretty`,
+`to_json5_text`, `to_json5_text_pretty` and `key_text`, and
+`pyrs-toml/src/writer.rs:36` returns it from
+`to_toml` with reason keys such as `toml-requires-table-root`, `toml-timestamp-malformed`,
+`toml-tag-text-mismatch` and `toml-unsupported-node`. Same defect class as (kc):
+a shared type in the `no_std` foundation crate named one of its readers.
+
+Measured, not argued: unlike `ParseError`, no `SerializeError` variant embeds a format label
+(`MaxDepthExceeded` is transparent, `Internal` is `internal-error: {0}`, and
+`UnsupportedValue` is the bare reason key), and the binding already routes each write
+through its own key - `json-serialize-error`, `toml-serialize-error` and
+`yaml-serialize-error`. So no caller sees a wrong format name;
+only the Rust doc comment was inaccurate. The sibling shared types were audited:
+`EditError` and `NavigateError` are only used by the YAML-side editing path and keep their wording
+accurately, and `DepthError` / `PathError` are neutral.
+
+The fix is that doc line plus a note recording why no label belongs; code untouched. Gates:
+`cargo fmt` and `prek run --all-files`; a doc-only change, so the Rust and
+Python suites are unaffected.
+
+### (ke) The refusal-example surface docs quote is 16 lines, all reproducible (2026-11-07)
+
+Measured 2026-11-07 while sizing the example-execution gate proposed against this tree (#116):
+
+repo-wide in `docs/`, lines matching `^\s*#\s*pyrs_yaml\.` inside ```python fences are 16:
+12 in `guides/formats.md`, 3 per locale, one per JSON Lines refusal,
+already corrected under change 22;
+4 in `features.md`, one per locale, a success-output example.
+
+Verified live by running the call above each one: the four features examples answer the quoted text
+(`'second'`, `duplicate key: key`), and the JSON Lines refusals answer the text change 22 carried.
+Nothing is a non-reproducible historical reading or a locale-template claim, so a gate on this
+surface needs no exclude list - the coverage set is the whole quoted surface.
+A subset-only gate must say so rather than imply the whole page is verified;
+that clause is the design note for #116.

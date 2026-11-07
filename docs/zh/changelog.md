@@ -19,6 +19,13 @@ status: new
 
 #### 修复
 
+- **拒绝现在报出拒绝它的那个格式** — `ParseError::Syntax` 由 YAML、JSON、TOML 与 schema 四个读取器
+  共同构造，而它的 `Display` 给每条消息都加上 `YAML parse error:` 前缀。于是一条 TOML 拒绝读作
+  `YAML parse error: TOML parse error: unterminated array …`，四个 JSON 门把 JSON 的拒绝叫作 YAML
+  的，schema 语法拒绝在 YAML 已经解析成功的情况下仍被标成 YAML 解析错误，而 `register_schema`
+  透传 YAML 拒绝时把前缀带了两遍。标签现在归写消息的那一方所有。前后各测 53 条门的回答：36 条
+  YAML 的逐字不变，16 条改变，每一条都是 JSON、TOML 或 schema 门脱掉一个本不属于它的标签
+  （`docs/dev/quality-ledger.md` (kc)）。
 - **编辑那几页点名了三种根本不会发生的拒绝** — 穿过别名的一次写入曾被写成会抛 `cannot-edit-alias`，
   而 `set()` 曾被写成会回 `anchor-is-referenced`；在发布的构建上实测，`set`、`delete` 与 `rename` 都
   会改写 `use: *x`，而没有任何一条 `set` 路由能到达 `cannot-edit-alias` — 那个令牌住在 delete、
@@ -90,7 +97,7 @@ status: new
   和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
   的范围远宽于为它写下的两条最小输入。引擎的答案由
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 929 条 Rust `#[test]`、302 个种子。
+  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 931 条 Rust `#[test]`、302 个种子。
 
 - **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
   （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三

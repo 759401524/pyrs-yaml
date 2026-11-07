@@ -17,6 +17,15 @@ status: new
 
 #### 修正
 
+- **拒否は、拒否した側の形式を名乗ります** — `ParseError::Syntax` は YAML・JSON・TOML・schema の
+  どの読み手も構築するのに、その `Display` はすべてのメッセージに `YAML parse error:` を付けて
+  いました。そのため TOML の拒否は
+  `YAML parse error: TOML parse error: unterminated array …` と読め、四つの JSON 入口は JSON の
+  拒否を YAML のものと呼び、schema 文法の拒否は YAML が解析できたあとなのに YAML 解析エラーと
+  名乗り、`register_schema` は YAML の受け渡しで接頭辞を二重に運んでいました。ラベルはメッセージを
+  書く側のものになりました。前後で入口の応答 53 件を実測すると、YAML の 36 件はバイト単位で同一、
+  16 件が変化し、そのいずれも JSON・TOML・schema の入口が自分のものでないラベルを手放したものです
+  （`docs/dev/quality-ledger.md` (kc)）。
 - **編集のページは起こらない三つの拒否を名乗っていました** — エイリアスを経由する書き込みは
   `cannot-edit-alias` を投げ、`set()` は `anchor-is-referenced` に答えると文書化されていました。出荷
   済みのビルドで実測すると `set`・`delete`・`rename` はいずれも `use: *x` を書き換え、
@@ -104,7 +113,7 @@ status: new
   エンジンの答えは
   `rename_moves_one_pair_of_a_name_the_document_spells_twice` とその隣の `move` のテストで
   固定します。三つの入力と二つの最小入力をその語庫に加え、語庫は `-runs=0` で緑に再生され、
-  マトリクスは Rust の `#[test]` 929 件と種子 302 件を読みます。
+  マトリクスは Rust の `#[test]` 931 件と種子 302 件を読みます。
 
 - **目標が拒否する種子は、保護として信用されず計上されるようになりました** — 六つの fuzz 目標はいず
   れも型ある拒否を通過として扱います（`yaml_roundtrip` と `edit_yaml` は `parse(Schema::Core)`、

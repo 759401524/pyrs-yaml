@@ -59,14 +59,14 @@ again reports the same record rather than the one after it.
 
 ```python title="What a refused line says"
 list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
-# pyrs_yaml.YamlParseError: YAML parse error: a blank line carries no document in
+# pyrs_yaml.YamlParseError: a blank line carries no document in
 # a line-delimited JSON stream at line 2 column 1
 
 next(pyrs_yaml.load_json_lines("// note\n"))
-# pyrs_yaml.YamlParseError: YAML parse error: expected a JSON value at line 1 column 1
+# pyrs_yaml.YamlParseError: expected a JSON value at line 1 column 1
 
 next(pyrs_yaml.load_json_lines('{"a": 1,\n'))
-# pyrs_yaml.YamlParseError: YAML parse error: expected a quoted object key at line 1 column 9
+# pyrs_yaml.YamlParseError: expected a quoted object key at line 1 column 9
 ```
 
 A blank line is refused wherever it sits, including the extra one a file ends

@@ -58,14 +58,14 @@ list(pyrs_yaml.load_json_lines('{"a": 1}\n{"b": 2}\n'))
 
 ```python title="拒否された行が伝える内容"
 list(pyrs_yaml.load_json_lines('{"a": 1}\n\n'))
-# pyrs_yaml.YamlParseError: YAML parse error: a blank line carries no document in
+# pyrs_yaml.YamlParseError: a blank line carries no document in
 # a line-delimited JSON stream at line 2 column 1
 
 next(pyrs_yaml.load_json_lines("// note\n"))
-# pyrs_yaml.YamlParseError: YAML parse error: expected a JSON value at line 1 column 1
+# pyrs_yaml.YamlParseError: expected a JSON value at line 1 column 1
 
 next(pyrs_yaml.load_json_lines('{"a": 1,\n'))
-# pyrs_yaml.YamlParseError: YAML parse error: expected a quoted object key at line 1 column 9
+# pyrs_yaml.YamlParseError: expected a quoted object key at line 1 column 9
 ```
 
 空行は、どこにある場合でも拒否されます — ファイルの末尾に余分に付く 1 行も含みます。

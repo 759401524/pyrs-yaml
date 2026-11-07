@@ -128,3 +128,49 @@ d: 4
         for bad in (123, None, {"a": 1}):
             with pytest.raises(pyrs_yaml.YamlTypeError):
                 pyrs_yaml.parse(bad)
+
+
+class TestRefusalNamesItsOwnFormat:
+    """ParseError::Syntax is built by four readers, so its Display must not name one of them."""
+
+    def test_yaml_doors_keep_exactly_one_yaml_label(self):
+        doors = (
+            pyrs_yaml.parse,
+            pyrs_yaml.safe_load,
+            lambda text: list(pyrs_yaml.parse_stream(text)),
+            lambda text: list(pyrs_yaml.parse_all_docs(text)),
+        )
+        for door in doors:
+            with pytest.raises(pyrs_yaml.YamlParseError) as caught:
+                door("rules: [broken\n")
+            message = str(caught.value)
+            assert message.startswith("YAML parse error: "), message
+            assert message.count("YAML parse error:") == 1, message
+
+    def test_toml_doors_name_toml_only(self):
+        for door in (pyrs_yaml.load_toml, pyrs_yaml.from_toml):
+            with pytest.raises(pyrs_yaml.YamlParseError) as caught:
+                door("a = [1,\n")
+            message = str(caught.value)
+            assert message.startswith("TOML parse error: "), message
+            assert "YAML parse error" not in message, message
+
+    @pytest.mark.parametrize("door", ["load_json", "load_json5", "load_jsonc", "from_json"])
+    def test_json_doors_do_not_name_yaml(self, door):
+        with pytest.raises(pyrs_yaml.YamlParseError) as caught:
+            getattr(pyrs_yaml, door)('{"a": [1,}')
+        assert "YAML parse error" not in str(caught.value)
+
+    def test_a_schema_grammar_refusal_is_not_a_yaml_refusal(self):
+        with pytest.raises(pyrs_yaml.YamlParseError) as caught:
+            pyrs_yaml.register_schema("label_grammar", "rules: nope\n")
+        message = str(caught.value)
+        assert message.startswith("Schema parse error: "), message
+        assert "YAML parse error" not in message, message
+
+    def test_the_schema_door_passes_a_yaml_refusal_through_once(self):
+        with pytest.raises(pyrs_yaml.YamlParseError) as caught:
+            pyrs_yaml.register_schema("label_syntax", "rules: [broken\n")
+        message = str(caught.value)
+        assert message.startswith("Schema parse error: YAML parse error: "), message
+        assert message.count("YAML parse error:") == 1, message
