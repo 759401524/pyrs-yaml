@@ -13579,7 +13579,32 @@ That last reading is worth taking twice. Three of the same seeds printed `MK_GAT
 both gates, which is exactly the three `seed-unreachable:parse_toml` lines `.ci/seed-reach.txt`
 carries, arrived at by a marker probe that shares no code with
 `crates/pyrs-yaml-core/tests/seed_reach.rs`. Two independent measurements agreeing on which inputs
-ask nothing is what makes the register trustworthy rather than self-confirming. The targets still
-unprobed are `yaml_roundtrip`, `toml_roundtrip`, `edit_yaml`, `parse_json` and `parse_schema`, and
-the last of those has no assertion site to probe - its body is one `let _ =` over a door that opens
-with the YAML reader, so the only claim it makes is the one every input reaches.
+ask nothing is what makes the register trustworthy rather than self-confirming. The targets this
+reading left for a later pass were `yaml_roundtrip`, `toml_roundtrip`, `edit_yaml`, `parse_json` and
+`parse_schema`; (jy) takes them up, and the last of those has no assertion site to probe - its body
+is one `let _ =` over a door that opens with the YAML reader, so the only claim it makes is the one
+every input reaches.
+
+### (jy) Every target now has an answer to "which input can fail you" (2026-11-07)
+
+Five targets have been marker-probed and every answer is on the record. `parse_yaml` (jv) and
+`json_events_replay` (jw) had arms no archived input reached, and now have seeds that reach them;
+`json_roundtrip` and `parse_toml` (jx) came back clean, and so did `parse_json`. It is the last of
+the multi-armed shapes - one block per writer at `parse_json.rs:37`, `:44` and `:54` - and its 7
+seeds produced 12 accepted trees, every one of which entered all three arms: `MK_ARM_STRICT`,
+`MK_ARM_JSONC` and `MK_ARM_JSON5` each counted 12. No archived input exercises a writer refusal
+here, which is not a gap: the refusals sit in `if let` with no `else`, so there is no promise behind
+them to price.
+
+The other four needed reasoning rather than another build, and naming which is which is what keeps
+the audit honest. `yaml_roundtrip` and `toml_roundtrip` hold exactly one assertion each, reached
+when the writer succeeds and the re-read parses - the very question
+`crates/pyrs-yaml-core/tests/seed_reach.rs` already asks of them, whose registered five and two
+lines are precisely the inputs that never get there. A marker pass would be a second owner for one
+fact. `edit_yaml` arms are keyed to the fuzzer's own byte picks (which verb, whether the path names
+a sequence) rather than to the document, and that question was answered once in (jm): instrumenting
+each precondition and replaying every seed in its own process reached an assertion in 62 of 62.
+`parse_schema` has no assertion to reach - one `let _ =` over a door whose first statement is
+`crate::parser::parse(yaml, Schema::Core)?` (`schema_language.rs:201`), which is also why a
+cross-door agreement oracle there would have been decoration: the `?` guarantees the invariant
+structurally. Its real gap is corpus depth, one seed against a fullest target's 138.
