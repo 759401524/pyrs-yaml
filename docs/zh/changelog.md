@@ -19,6 +19,11 @@ status: new
 
 #### 修复
 
+- **JSON5 导出保留解析器读作文本的数字拼写** — 超出解析器整数解析范围的十六进制长串会被解析为
+  文本，中枢写器又给它加引号，于是一次 `from_json5` → `to_json5` 往返把 JSON5 数字变成了字符串。
+  `write_plain` 现在在文本拼出该出口自身文法的数字 token 时原样透传——JSON 文法，以及 JSON5 模式
+  下的十六进制、裸点与前置 `+` 形式——并先问 JSON 文法，常见拼写只付一次扫描
+  （`docs/dev/quality-ledger.md` (lh)、(li)）。
 - **未知的 `extends` 名被拒绝，而不是静默退化为无基础 schema** — `extends: cored` 过去会注册一个
   完全没有基础的 schema：所有标量保持文本，`type: int` 拒绝 `port: 80`，却没有任何信息指出拼写
   错误。读取器现在回答 `unknown schema 'cored' in extends` 并列出合法集合。内联字典入口把
@@ -86,6 +91,16 @@ status: new
   接受的集合不变，指南里那张 5 行的表也照原样留着，等裁定这些别名算表面能力还是意外
   （`docs/dev/quality-ledger.md` (jz)）。实测：`register_schema` 接受全部四个别名并拒绝 `number`
   与 `Int`；新增的具名测试同时钉住消息里的别名清单与四个拼写的可接受性，抹掉任一半都会变红。
+- **空合并源视为普通键，而不是被合并的条目** — 两处 shipped 规则对“只含 `<<:` 且无产出”的映射
+  给出相反答案：一条规则把“不产出内容的合并键”当作合并内容贡献（从而消费外层 `<<`），另一条把
+  这类源当作普通键。同一文件里的其他陈述（尤其 `is_merge_key`，它把注释或锚当作元数据而非
+  身份）使“注释所在行位置”成了唯一决定拼写走哪条读法的东西——`860ec5b7`、`a3dded4d`、`d360e9fd`
+  与 `f3a2f8cf` 在同一种拼写下测得两个层级、另一种拼写下只测到一个。`collect_inline_pairs`
+  现在跳过“键是合并键且其源为 null、标量或别名”的 pair，于是空合并源没有可解析的身份、不贡献
+  任何东西：同一条链状形状的两种拼写都保留全部两个 merge 层级，(jg) 那条钉住两种答案的断言被
+  收成一个，断言另一条拼写也能到达它（`docs/dev/quality-ledger.md` (jg)、(lj)）。实测：30 条
+  merge 测试、500 条 `pyrs-yaml-core` 测试、`cargo nextest run --all` 919 条全过，clippy 两处范围
+  干净，`prek run --all-files` 干净。
 
 #### 变更
 
