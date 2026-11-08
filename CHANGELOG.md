@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A JSON5 export keeps a number spelling the resolver reads as text** — a hex run longer than the
+  resolver's integer parse resolves to text, and the hub writer quoted it, so one `from_json5` →
+  `to_json5` round turned a JSON5 number into a string. `write_plain` now passes text through when
+  it spells a number token in the spoke's own grammar — JSON's, plus JSON5's hex, bare-dot and
+  leading-`+` forms under JSON5 mode — and asks the JSON grammar first so the common spellings
+  cost one walk (`docs/dev/quality-ledger.md` (lh), (li)).
 - **An unknown `extends` name is refused instead of degrading to no base** — `extends: cored` used
   to register a schema with no base at all: every scalar stayed text, `type: int` refused
   `port: 80`, and nothing named the typo. The reader now answers

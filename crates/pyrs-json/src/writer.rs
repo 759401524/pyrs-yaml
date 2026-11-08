@@ -564,16 +564,10 @@ fn write_plain(
     // the JSON grammar, and the JSON5 grammar under JSON5 mode - pass it through unchanged so a
     // spelling the resolver refused (outside its parse, e.g. a hex run) survives a `from_json ->
     // to_json` round trip without an f64/i64 detour, and without the reader re-typing it.
-    if tag.is_none() && (is_json5_number(value) && mode.json5() || is_json_number(value)) {
-        out.push_str(value);
-        return Ok(());
-    }
-    // PR #121: under JSON5, the number spellings the JSON5 parser accepts
-    // and stores verbatim on a plain scalar (hexadecimal, leading/trailing
-    // dot, leading `+`) emit as-is — they are legal JSON5 bare tokens,
-    // unlike strict JSON which would have to quote them. `Infinity` / `NaN`
-    // are deliberately NOT in this set: see `is_json5_number`.
-    if tag.is_none() && mode.json5() && is_json5_number(value) {
+    // The JSON grammar is asked first: an ordinary number passes it in one walk, and a JSON5
+    // extension (hex, bare dot, leading `+`) fails it within a byte or two - asking `is_json5_number`
+    // first charged every strict-JSON scalar a second, discarded walk (+5% Ir, CI on b0dbbb4b).
+    if tag.is_none() && (is_json_number(value) || mode.json5() && is_json5_number(value)) {
         out.push_str(value);
         return Ok(());
     }
