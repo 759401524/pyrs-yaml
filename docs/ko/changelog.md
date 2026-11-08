@@ -17,6 +17,12 @@ status: new
 
 #### 수정
 
+- **알 수 없는 `extends` 이름은 기반 없음으로의 저하가 아니라 거부됩니다** — `extends: cored`는
+  이전에 기반이 전혀 없는 스키마를 등록했습니다: 모든 스칼라는 텍스트로 남고, `type: int`는
+  `port: 80`을 거부하면서도 아무것도 철자 오류를 지적하지 않았습니다. 읽기는 이제
+  `unknown schema 'cored' in extends`와 알려진 스키마 목록으로 답합니다. 인라인 딕셔너리 관문은
+  `extends`를 같은 텍스트에 기록하므로, 하나의 거부가 두 관문을 모두 덮습니다
+  (`docs/dev/quality-ledger.md` (kh)).
 - **스키마 텍스트 관문은 딕셔너리 관문처럼 빈 `rules`를 거부합니다** — `register_schema`와
   `load_schema`는 `rules: []`, `rules` 키 누락, 오타 `rule:`을 받아들여 아무 변환도 하지 않고
   진단도 없는 스키마를 등록했습니다. 인라인 딕셔너리 관문은 같은 형태를 거부했습니다. 이제

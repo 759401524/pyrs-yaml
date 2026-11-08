@@ -28,6 +28,8 @@ Core 스키마는 `0xFF`를 `int(255)`로, `2026-08-11`을 `int(2026)`으로,
 `type`(`null`, `bool`, `int`, `float`, `str` 중 하나)을 가집니다.
 `rules`는 필수이며 비어 있을 수 없습니다. 텍스트 등록(`register_schema`)과
 인라인 딕셔너리 등록 모두 `rules`가 없거나 빈 스키마를 거부합니다.
+`extends`는 내장 스키마(`failsafe`, `json`, `core`, `yaml1.1`) 또는 등록된 스키마
+이름이어야 하며, 알 수 없는 이름은 알려진 스키마 목록과 함께 거부됩니다.
 
 ```yaml
 # hex_schema.yaml

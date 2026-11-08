@@ -13834,3 +13834,142 @@ Surface moved with the fix: the Rust row `test_no_rules_falls_through` became
 `shape-extends-non-scalar.seed` now carries a real rule so it still reaches the extends
 refusal it was filed for. The four locale `custom-schema.md` pages state `rules` is required
 and non-empty.
+
+### (kh) An unknown extends name is refused, not degraded (2026-11-08)
+
+Ruling 2026-11-08: refuse an `extends` name that is neither a built-in nor registered, with the
+message naming the valid set. The two excluded branches and why: keeping the silent no-base
+degradation leaves `extends: cored` registering a schema that resolves every scalar to text
+with no diagnostic, and falling back to Core would let a typo silently change resolution
+against the author's declared base.
+
+Measured before the fix on the release build: `extends: cored` parsed Ok and resolved `80` to
+`Str("80")` - no base at all, so a rule `type: int` refused `port: 80` while `type: str`
+accepted it. The registry preloads the four built-ins (`core`, `failsafe`, `json`, `yaml1.1`)
+and `names()` also carries custom registrations, so the refusal lists exactly the set a lookup
+would consult.
+
+Surface moved with the fix: `parse_extends` returns `Result` and answers
+`unknown schema '<name>' in extends; known schemas: <sorted names>`; the default-extends
+comment is rewritten because the fall-through it guarded is gone. The Rust row
+`an_extends_name_nobody_knows_is_not_silently_replaced_by_the_default` became
+`an_extends_name_nobody_knows_is_refused_with_the_known_set` (the known set is checked name by
+name because other tests in the binary register into the same global registry), plus a new
+positive row `a_registered_custom_name_is_a_valid_extends`. `tests/test_schema_language.py`
+asks the typo at both doors - the dict door writes `extends` into the same text, so one
+refusal covers both. `fuzz/seeds/parse_schema` gained `shape-extends-unknown.seed` for the new
+refusal site. The four locale `custom-schema.md` pages state `extends` must name a built-in or
+registered schema.
+
+### (ki) The depth-budget mismatch is ruled the already-landed C (2026-11-08)
+
+Ruling 2026-11-08: granit's `block_nesting_limit` defaults to 255 - a public field
+this repository never sets, named at `granit-parser-2.0.0/src/options.rs:103`, while
+every depth budget the library advertises is 1000.
+(jq) left three remedy shapes, each with a cost nobody had signed, so this ruling picks one.
+
+Chosen: C - keep every budget, and make the four conversions refuse in type when their own
+emission would cross granit's wall. Smallest blast radius, no accepted-input change, and the
+silent one-way door becomes a call that answers.
+
+A (raise the granit limit to 1000) is excluded: it deletes the guard that currently stops granit
+before deeper nesting, and (jr) records the stack story - a legal ~900-1000-deep document overflows
+a 1 MiB thread - so it cannot be typed safe without re-measuring the stack, which is the cheaper
+path. B (lower the advertised budgets to 255) is excluded: it narrows accepted input and breaks the
+256-1000-deep documents that currently read, and (js) and (jr) pin that band with named guards, so
+it contradicts the pinned band rather than saving anything.
+
+Measured before the ruling on the release build, in (jq): `from_json` of a 256-deep document emits
+YAML that `parse` answers `recursion limit exceeded` while 255 re-reads. The four binding call
+sites map that refusal into `YamlMaxDepthError` under the existing `max-depth-exceeded` key - no
+new exception type, message key, or accepted-input change - which is the landed shape of C. The
+ruling names it here so the ledger stops carrying the three costed options open.
+
+### (kj) The live tier counts live only in the matrix, not in release-note prose (2026-11-08)
+
+Ruling 2026-11-08 (task #112): drop the live tier counts from the release notes
+prose. Verified, not edited: the only markdown carrying a live tier inventory is
+QUALITY_MATRIX.md's `unit / integration` and `fuzz` rows - the single measured
+surface the counting gate reads via `--check-rows` and `--write-rows` maintains.
+Every other prose page (changelog, performance, contributing, ROADMAP) names no
+live tier count, and the one historical changelog line that mentions "tier
+counts" describes the measurement fix itself rather than live numbers. So no
+prose copy exists to drop; the ruling closes by the audit rather than by editing
+prose.
+
+Why the matrix is where they belong: a prose copy would duplicate a number that
+changes with every test or seed change and would go stale silently, the same
+failure class #116 guards against for the refusal-example quote.
+
+Measured before the ruling: a repo-wide grep for live tier markers (`931 Rust`,
+`2,18x test functions`, `30x seeds`) over the markdown trees returns the matrix
+rows only. No code or changelog mirror moved - docs/dev is exempt from the
+changelog coupling gate, so the ruling is a ledger entry alone.
+
+### (kl) The Ir same-host mitigation: part one landed, part two deferred (2026-11-08)
+
+Ruling 2026-11-08 (task #111): the (kf) re-measure stands - the set of reds moved 5 to 2, and the
+two remaining reds are host-keyed (the TOML scenarios sit in the old image's floor cell on this box;
+the other three read at the flat floor this run), so the reading is the host's, not the queue's. The
+recorded framing is host-keyed, and the same-tree numbers remain the reference.
+
+Mitigation chosen, from (kf)'s proposal, and now signed by this ruling: part one landed - when a
+scenario fails on the flat table and the host names no image, the script names the nearest image
+row and its delta next to the `FAIL`, keeping the exit code and the verdict itself unchanged
+(`scripts/ir_gate.py`, the `nearest_image_row` helper, printed beside the non-`FLOOR_STALE`
+failures). `tests/test_ir_gate_nearest_image.py` holds the choice: the nearest row is by
+smallest below-fraction, and a name absent from every image floor or with a zero base names nothing.
+
+Deferred: part two of the proposed mitigation - adding `serialize_small` and the two `documents_*`
+scenarios to the refresh workflow's image table - is out of scope. It is the same dressing only an
+image measurement can support: filing a floor for a scenario the current image never measured would
+invent numbers, which the gate's own rules forbid, and the table is read as given. That dispatch is
+the workflow's job, so the script reads whatever table it is handed.
+
+Gates: the new unit tests pass; prek run --all-files covers the script's ruff and no baseline or CI
+workflow moved. No code other than the script, its helper and its tests, and this ledger entry.
+
+### (km) The refusal-example docs quote: no gate reads it, accepted (2026-11-08)
+
+Ruling 2026-11-08 (task #116): no gate reads the refusal-example docs quote, and those 12 lines went
+stale silently. The measurement and design note that bound this ruling exist already - (ke) measured
+the surface: 16 lines in `docs/`, 12 in `guides/formats.md` and 3 per locale, 4 in `features.md` and
+one per locale, all reproducible against a live call, and a subset-only gate must say that it is a
+subset rather than implying the whole page is verified - that clause is the design note for this
+ruling.
+
+Chosen: accept the surface as quoted, no gate added. Reasons: a gate would have to read those
+fences, locate the calls they quote, run them and compare the answers - a new surface plus its own
+harness, whose cost is not the gap it guards; the documented boundary is already stated in (ke).
+What remains open is not a defect but a scheduled risk, which the recording preserves as a named
+fact instead of letting a stale quote look correct.
+
+Measured before the ruling on the release build: `from_json` answers the quoted text for the four
+features examples, and the JSON Lines refusals answer the text change 22 carried, per (ke). No
+code, script, or changelog mirror moved; docs/dev is exempt from the changelog coupling gate.
+
+### (lh) The export spokes' number spelling: the hub writer asks both grammars (2026-11-08)
+
+Ruling 2026-11-08 (task #91): the two export-spoke failures measured in (je) share one cause and
+were given the remedy that closes the type half.
+`crates/pyrs-yaml-core/tests/exports_settle.rs` names both, minimized to one key each:
+a JSON5 hex run 26 digits long resolves to a string outside the
+resolver's integer parse, so one trip through the hub changed the value's type; a TOML leading `+`
+float only lost its spelling. The compact JSON spoke already asked the JSON grammar before storing
+plain, but the hub's `write_plain` passed the text through under that grammar only.
+
+Mitigation chosen, from (kf)'s proposal, and now signed by this ruling: part one landed - when a
+scenario fails on the flat table and the host names no image, the script names the nearest image
+row and its delta next to the `FAIL`, keeping the exit code and the verdict itself unchanged
+(`scripts/ir_gate.py`, the `nearest_image_row` helper, printed beside the non-`FLOOR_STALE`
+failures). `tests/test_ir_gate_nearest_image.py` holds the choice: the nearest row is by
+smallest below-fraction, and a name absent from every image floor or with a zero base names nothing.
+
+Deferred: part two of the proposed mitigation - adding `serialize_small` and the two `documents_*`
+scenarios to the refresh workflow's image table - is out of scope. It is the same dressing only an
+image measurement can support: filing a floor for a scenario the current image never measured would
+invent numbers, which the gate's own rules forbid, and the table is read as given. That dispatch is
+the workflow's job, so the script reads whatever table it is handed.
+
+Gates: the new unit tests pass; prek run --all-files covers the script's ruff and no baseline or CI
+workflow moved. No code other than the script, its helper and its tests, and this ledger entry.

@@ -560,11 +560,11 @@ fn write_plain(
     // source text through would emit the number 1.20 - losing both the type and the
     // trailing zero the document took care to write. The loader has honoured the tag since
     // #335; the bridge reading only the text is what made one AST answer two questions.
-    if tag.is_none() && is_json_number(value) {
-        // Fidelity first: when the text already spells a JSON number (`1e3`,
-        // `-0`, `1.0`), pass it through unchanged so large-precision integers
-        // and explicit signed-zero survive a `from_json → to_json` round trip
-        // without an f64/i64 detour.
+    // Fidelity first: when the text already spells a number token in this spoke's own grammar -
+    // the JSON grammar, and the JSON5 grammar under JSON5 mode - pass it through unchanged so a
+    // spelling the resolver refused (outside its parse, e.g. a hex run) survives a `from_json ->
+    // to_json` round trip without an f64/i64 detour, and without the reader re-typing it.
+    if tag.is_none() && (is_json5_number(value) && mode.json5() || is_json_number(value)) {
         out.push_str(value);
         return Ok(());
     }

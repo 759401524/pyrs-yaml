@@ -112,6 +112,15 @@ class TestSchemaLanguage:
         with pytest.raises(pyrs_yaml.YamlParseError, match="non-empty 'rules' list"):
             pyrs_yaml.register_schema("two_door_probe", text)
 
+    def test_an_unknown_extends_name_is_refused_at_both_doors(self):
+        """A typo in extends used to register a schema with no base and no diagnostic;
+        the dict door writes extends into the same text, so one refusal covers both."""
+        text = "extends: cored\nrules:\n  - pattern: ^x$\n    type: int\n"
+        with pytest.raises(pyrs_yaml.YamlParseError, match="unknown schema 'cored' in extends"):
+            pyrs_yaml.register_schema("extends_typo_probe", text)
+        with pytest.raises(pyrs_yaml.YamlParseError, match="unknown schema 'cored' in extends"):
+            pyrs_yaml.YAML(schema={"extends": "cored", "rules": [{"pattern": "^x$", "type": "int"}]})
+
     def test_inline_dict_missing_pattern_raises(self):
         with pytest.raises(ValueError, match="pattern"):
             pyrs_yaml.YAML(schema={"rules": [{"type": "int"}]})
