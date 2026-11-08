@@ -13958,18 +13958,38 @@ resolver's integer parse, so one trip through the hub changed the value's type; 
 float only lost its spelling. The compact JSON spoke already asked the JSON grammar before storing
 plain, but the hub's `write_plain` passed the text through under that grammar only.
 
-Mitigation chosen, from (kf)'s proposal, and now signed by this ruling: part one landed - when a
-scenario fails on the flat table and the host names no image, the script names the nearest image
-row and its delta next to the `FAIL`, keeping the exit code and the verdict itself unchanged
-(`scripts/ir_gate.py`, the `nearest_image_row` helper, printed beside the non-`FLOOR_STALE`
-failures). `tests/test_ir_gate_nearest_image.py` holds the choice: the nearest row is by
-smallest below-fraction, and a name absent from every image floor or with a zero base names nothing.
+Chosen branch: extend the pass-through guard to ask the spoke's own grammar - `is_json5_number`
+under JSON5 mode as well as `is_json_number` under JSON mode - so text the resolver refused no
+longer leaves as a re-typed number. Minimal blast radius: no accepted-input change, no reader
+change, no emission change in the tested corpus (the same bare tokens the JSON5 fast path already
+emitted).
 
-Deferred: part two of the proposed mitigation - adding `serialize_small` and the two `documents_*`
-scenarios to the refresh workflow's image table - is out of scope. It is the same dressing only an
-image measurement can support: filing a floor for a scenario the current image never measured would
-invent numbers, which the gate's own rules forbid, and the table is read as given. That dispatch is
-the workflow's job, so the script reads whatever table it is handed.
+Excluded: re-reading the TOML source text to keep the spelling would change two-way export
+semantics beyond the number rule, and (je) pins the spelling-fidelity rule as intentional; asking
+the resolver for a bound at the projection instead of the writer would put a bound question back
+on the hot path the guard already protects against.
 
-Gates: the new unit tests pass; prek run --all-files covers the script's ruff and no baseline or CI
-workflow moved. No code other than the script, its helper and its tests, and this ledger entry.
+Gates: nextest 919 passed, pyrs-json 114 passed, `exports_settle` pins each shape, clippy both
+scopes clean, full prek. The CI price of this guard and its correction are measured in (li).
+
+### (li) The export guard's Ir price: ask the JSON grammar first (2026-11-08)
+
+The (lh) guard reddened the stack's CI: `Instruction-count baseline` failed eight JSON write
+scenarios on the enforcing image - `to_json_medium` +5.04%, `to_json5_medium` +5.71%, the set
++2.22% to +5.71% against the 0.50% tolerance - and the matrix fan-in refused with it. The cause
+is the guard's question order: `is_json5_number(value) && mode.json5()` evaluates the grammar
+walk before the mode check, so every untagged scalar in strict JSON and JSONC paid a second,
+discarded walk, and JSON5 mode asked both grammars of every ordinary number.
+
+Chosen: ask `is_json_number` first and gate `is_json5_number` behind `mode.json5()`; an ordinary
+number passes the JSON grammar in one walk and a JSON5 extension fails it within a byte or two.
+The second JSON5 pass-through branch became subsumed and was deleted. No accepted-input or
+emission change: the union of the two guards is the same set.
+
+Measured after the fix, same WSL host, pinned toolchain, `--report-only`: all eight scenarios
+back at the floor - `to_json_medium` 17,707,497 against a 17,707,506 baseline, the widest move
++0.0004% (`to_json5_medium`), spread 0.000-0.001%. The enforcing image re-judges on the pushed
+head. Gates: 614 nextest passed across pyrs-json and pyrs-yaml-core, clippy both scopes clean.
+
+Also corrected here: (lh) had carried two paragraphs copied from (kl) - the Ir mitigation text -
+in place of its own chosen/excluded record; the entry now states the (lh) ruling itself.

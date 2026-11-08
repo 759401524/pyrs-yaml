@@ -19,6 +19,11 @@ status: new
 
 #### 修复
 
+- **JSON5 导出保留解析器读作文本的数字拼写** — 超出解析器整数解析范围的十六进制长串会被解析为
+  文本，中枢写器又给它加引号，于是一次 `from_json5` → `to_json5` 往返把 JSON5 数字变成了字符串。
+  `write_plain` 现在在文本拼出该出口自身文法的数字 token 时原样透传——JSON 文法，以及 JSON5 模式
+  下的十六进制、裸点与前置 `+` 形式——并先问 JSON 文法，常见拼写只付一次扫描
+  （`docs/dev/quality-ledger.md` (lh)、(li)）。
 - **未知的 `extends` 名被拒绝，而不是静默退化为无基础 schema** — `extends: cored` 过去会注册一个
   完全没有基础的 schema：所有标量保持文本，`type: int` 拒绝 `port: 80`，却没有任何信息指出拼写
   错误。读取器现在回答 `unknown schema 'cored' in extends` 并列出合法集合。内联字典入口把
