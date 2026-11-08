@@ -17,6 +17,12 @@ status: new
 
 #### 修正
 
+- **スキーマのテキスト入口は辞書入口と同じく空の `rules` を拒否します** — `register_schema` と
+  `load_schema` は `rules: []`、`rules` キーの欠落、打ち間違いの `rule:` を受け付け、型変換を
+  一切行わず診断も出さないスキーマを登録していました。インライン辞書入口は同じ形を拒否して
+  いました。テキスト入口は三つの形すべてに `schema must contain a non-empty 'rules' list` と
+  返すようになりました。スキーマ言語は検証ではなく型変換を行うため、この拒否が回復するのは
+  診断であって検証ゲートではありません（`docs/dev/quality-ledger.md` (kg)）。
 - **拒否は、拒否した側の形式を名乗ります** — `ParseError::Syntax` は YAML・JSON・TOML・schema の
   どの読み手も構築するのに、その `Display` はすべてのメッセージに `YAML parse error:` を付けて
   いました。そのため TOML の拒否は

@@ -189,6 +189,9 @@ fn parse_int(value: &str) -> Option<i64> {
 
 /// Parse a schema YAML document into a [`RuleResolver`].
 ///
+/// `rules` must be present and non-empty, the same contract the inline-dict door enforces
+/// before it writes this text.
+///
 /// Expected structure:
 /// ```yaml
 /// name: myapp
@@ -215,6 +218,7 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
     // `$.port: expected int but got Str("5")`.
     let mut extends: Option<Schema> = Some(Schema::Core);
     let mut rules: Vec<Rule> = Vec::new();
+    let mut saw_rules = false;
 
     for (key, value) in pairs {
         let key_str = scalar_str(key)?;
@@ -224,6 +228,7 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
                 extends = parse_extends(ext_name.as_deref().unwrap_or("core"));
             }
             Some("rules") => {
+                saw_rules = true;
                 let rule_nodes = match value {
                     CustomNode::Sequence { items, .. } => items,
                     _ => {
@@ -240,6 +245,17 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
             }
             _ => {} // ignore unknown top-level keys (name, version, ...)
         }
+    }
+
+    // The inline-dict door refuses an absent or empty `rules` before it writes the schema text;
+    // this door reads that text, so the same contract belongs here too - a misspelled `rule:`
+    // otherwise registers a schema that performs no coercion and says nothing about it.
+    if !saw_rules || rules.is_empty() {
+        return Err(ParseError::Syntax {
+            message: "schema must contain a non-empty 'rules' list".to_string(),
+            line: 0,
+            col: 0,
+        });
     }
 
     Ok(RuleResolver::new(rules, extends))
@@ -415,10 +431,21 @@ rules:
     }
 
     #[test]
-    fn test_no_rules_falls_through() {
-        let yaml = "name: empty\nextends: core\nrules: []\n";
-        let resolver = parse_schema_yaml(yaml).expect("parse schema");
-        assert_eq!(resolve(&resolver, "42"), YamlType::Int(42));
+    fn an_empty_or_absent_rules_list_is_refused_like_the_dict_door() {
+        // The inline-dict door answers `ValueError: schema dict must contain a non-empty 'rules'
+        // list`; the text door reads what that door would have written, so it owes the same
+        // refusal. A misspelled `rule:` leaves no rules at all and used to register silently.
+        for yaml in [
+            "name: empty\nextends: core\nrules: []\n",
+            "name: absent\nextends: core\n",
+            "name: typo\nextends: core\nrule:\n  - pattern: ^x$\n    type: int\n",
+        ] {
+            let message = parse_schema_yaml(yaml)
+                .err()
+                .expect("an empty or absent rules list is refused")
+                .to_string();
+            assert_eq!(message, "schema must contain a non-empty 'rules' list");
+        }
     }
 
     #[test]
@@ -443,7 +470,7 @@ rules:
 
     #[test]
     fn an_extends_name_nobody_knows_is_not_silently_replaced_by_the_default() {
-        let yaml = "name: typo\nextends: cored\nrules: []\n";
+        let yaml = "name: typo\nextends: cored\nrules:\n  - pattern: ^x$\n    type: int\n";
         let resolver = parse_schema_yaml(yaml).expect("parse schema");
         // The recorded boundary: a declared base this engine cannot find leaves no fallback, which
         // resolves every scalar as its own text. Refusing the name outright is a decision about a

@@ -1,2 +1,4 @@
 extends: [core]
-rules: []
+rules:
+  - pattern: ^x$
+    type: int

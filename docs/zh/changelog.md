@@ -19,6 +19,11 @@ status: new
 
 #### 修复
 
+- **schema 文本入口与字典入口一样拒绝空的 `rules` 列表** — `register_schema` 与 `load_schema`
+  过去接受 `rules: []`、缺失 `rules` 以及拼错的 `rule:`，注册出一个不做任何强转、也不给诊断的
+  schema，而内联字典入口拒绝同样的形状。文本入口现在对三种形状统一回答
+  `schema must contain a non-empty 'rules' list`。schema 语言做的是强转而非校验，
+  所以这条拒绝恢复的是诊断，不是校验门（`docs/dev/quality-ledger.md` (kg)）。
 - **拒绝现在报出拒绝它的那个格式** — `ParseError::Syntax` 由 YAML、JSON、TOML 与 schema 四个读取器
   共同构造，而它的 `Display` 给每条消息都加上 `YAML parse error:` 前缀。于是一条 TOML 拒绝读作
   `YAML parse error: TOML parse error: unterminated array …`，四个 JSON 门把 JSON 的拒绝叫作 YAML

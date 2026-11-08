@@ -13811,3 +13811,26 @@ when a scenario fails on the flat table and the host names no image, print the n
 and its delta next to the FAIL, keeping the exit code unchanged; and add `serialize_small` and the
 two `documents_*` scenarios to the refresh workflow's image table,
 so a local reading stops producing FLOOR_STALE on an untouched trunk.
+
+### (kg) The schema text door refuses what the dict door refuses (2026-11-08)
+
+Ruling 2026-11-08: port the dict door's non-empty `rules` refusal to the text door. The two
+excluded branches and why: documenting the permissiveness leaves the two doors answering the
+same intent differently, and a per-call flag adds a global switch for one low-frequency shape.
+
+Measured before the fix on the release build: `register_schema` answered Ok for `rules: []`,
+for a document with no `rules` key, and for the typo `rule:`; `YAML(schema={...})` refused the
+empty shapes with `ValueError: schema dict must contain a non-empty 'rules' list`. Controls
+keep the consequence narrow: the schema language coerces matching scalars and leaves the rest
+to `extends`, so an empty rule list disabled no validation - it performed no coercion,
+silently. The fix adds the refusal after the key walk in `parse_schema_yaml`, message
+`schema must contain a non-empty 'rules' list`, which the binding renders under its own
+`Schema parse error:` label.
+
+Surface moved with the fix: the Rust row `test_no_rules_falls_through` became
+`an_empty_or_absent_rules_list_is_refused_like_the_dict_door` (three shapes, exact message);
+`tests/test_schema_language.py` asks the same three shapes at the Python door;
+`fuzz/seeds/parse_schema` gained three seeds for the new refusal sites, and
+`shape-extends-non-scalar.seed` now carries a real rule so it still reaches the extends
+refusal it was filed for. The four locale `custom-schema.md` pages state `rules` is required
+and non-empty.
