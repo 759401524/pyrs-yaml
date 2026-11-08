@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The schema text door refuses an empty `rules` list like the dict door** — `register_schema` and
+  `load_schema` accepted `rules: []`, a missing `rules` key and the typo `rule:`, registering a
+  schema that performs no coercion and says nothing, while the inline-dict door refused the same
+  shapes. The text door now answers `schema must contain a non-empty 'rules' list` for all three.
+  The schema language coerces rather than validates, so the refusal restores a diagnostic, not a
+  validation gate (`docs/dev/quality-ledger.md` (kg)).
 - **A refusal names the format that refused it** — `ParseError::Syntax` is built by the YAML, JSON,
   TOML and schema readers alike, and its `Display` prefixed every message with `YAML parse error:`.
   A TOML refusal therefore read `YAML parse error: TOML parse error: unterminated array …`, the four

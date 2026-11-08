@@ -95,6 +95,23 @@ class TestSchemaLanguage:
         with pytest.raises(ValueError, match="rules"):
             pyrs_yaml.YAML(schema={"rules": []})
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param("extends: core\nrules: []\n", id="empty-rules"),
+            pytest.param("name: absent\nextends: core\n", id="missing-rules"),
+            pytest.param(
+                "extends: core\nrule:\n  - pattern: ^x$\n    type: int\n",
+                id="rules-key-typo",
+            ),
+        ],
+    )
+    def test_text_door_refuses_an_empty_rules_list_like_the_dict_door(self, text):
+        """Both doors owe the same contract: the dict door refuses before it writes the text,
+        so the text door must refuse what a misspelled or empty definition produces."""
+        with pytest.raises(pyrs_yaml.YamlParseError, match="non-empty 'rules' list"):
+            pyrs_yaml.register_schema("two_door_probe", text)
+
     def test_inline_dict_missing_pattern_raises(self):
         with pytest.raises(ValueError, match="pattern"):
             pyrs_yaml.YAML(schema={"rules": [{"type": "int"}]})

@@ -40,7 +40,9 @@ rules:
 **`extends`** — 可选的基础 schema。规则优先匹配；若无匹配则回退到 `extends` 指定的 schema。
 默认值：`core`。
 
-**`rules`** — 有序列表。首个匹配的 pattern 决定类型。支持的类型：
+**`rules`** — 必填、非空的有序列表。首个匹配的 pattern 决定类型。
+文本入口（`register_schema`）与内联字典入口都会拒绝 `rules` 缺失或为空的 schema。
+支持的类型：
 
 | `type` | Python 结果 | 示例 |
 |--------|------------|------|

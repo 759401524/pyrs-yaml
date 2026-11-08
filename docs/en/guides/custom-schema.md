@@ -41,7 +41,9 @@ rules:
 **`extends`** — Optional base schema. Rules are checked first; if none
 match, the `extends` schema handles resolution. Default: `core`.
 
-**`rules`** — Ordered list. The first matching pattern determines the type.
+**`rules`** — Required, non-empty ordered list. The first matching pattern
+determines the type. Both the text door (`register_schema`) and the inline-dict
+door refuse a schema whose `rules` is absent or empty.
 Supported types and their values:
 
 | `type` | Python result | Example |

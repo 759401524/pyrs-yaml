@@ -17,6 +17,12 @@ status: new
 
 #### 수정
 
+- **스키마 텍스트 관문은 딕셔너리 관문처럼 빈 `rules`를 거부합니다** — `register_schema`와
+  `load_schema`는 `rules: []`, `rules` 키 누락, 오타 `rule:`을 받아들여 아무 변환도 하지 않고
+  진단도 없는 스키마를 등록했습니다. 인라인 딕셔너리 관문은 같은 형태를 거부했습니다. 이제
+  텍스트 관문은 세 형태 모두에 `schema must contain a non-empty 'rules' list`로 답합니다.
+  스키마 언어는 검증이 아니라 변환을 수행하므로, 이 거부가 되살리는 것은 진단이지 검증
+  게이트가 아닙니다 (`docs/dev/quality-ledger.md` (kg)).
 - **거부는 거부한 쪽 형식을 이름으로 밝힙니다** — `ParseError::Syntax`는 YAML·JSON·TOML·schema
   읽기 모두가 구축하는데, 그 `Display`는 모든 메시지에 `YAML parse error:`를 붙였습니다. 그래서
   TOML 거부는 `YAML parse error: TOML parse error: unterminated array …`로 읽히고, 네 JSON
