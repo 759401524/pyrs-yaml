@@ -39,7 +39,9 @@ rules:
 ```
 
 **`extends`** — Optional base schema. Rules are checked first; if none
-match, the `extends` schema handles resolution. Default: `core`.
+match, the `extends` schema handles resolution. Default: `core`. The name must
+be a built-in (`failsafe`, `json`, `core`, `yaml1.1`) or a registered schema;
+an unknown name is refused with the known set listed in the error.
 
 **`rules`** — Required, non-empty ordered list. The first matching pattern
 determines the type. Both the text door (`register_schema`) and the inline-dict

@@ -210,10 +210,10 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
         });
     };
 
-    // The documented default. Written as the initial value rather than as a fall-through in
-    // `parse_extends`, because that arm also answers a name the registry does not know, and an
-    // author who typed `extends: cored` must not silently get Core - left as it was, a schema with
-    // no `extends` key resolved every scalar to a string, so `type: int` refused `port: 80` and
+    // The documented default, written as the initial value: a schema with no `extends` key resolves
+    // against Core. A name that is present but unknown is refused in `parse_extends` rather than
+    // falling through to this default - left as it was, `extends: cored` registered a schema with no
+    // base, which resolved every scalar to a string, so `type: int` refused `port: 80` and
     // `type: str` accepted it. Measured on the trunk of 2026-10-18 in the error text itself:
     // `$.port: expected int but got Str("5")`.
     let mut extends: Option<Schema> = Some(Schema::Core);
@@ -225,7 +225,7 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
         match key_str.as_deref() {
             Some("extends") => {
                 let ext_name = scalar_str(value)?;
-                extends = parse_extends(ext_name.as_deref().unwrap_or("core"));
+                extends = Some(parse_extends(ext_name.as_deref().unwrap_or("core"))?);
             }
             Some("rules") => {
                 saw_rules = true;
@@ -261,15 +261,27 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
     Ok(RuleResolver::new(rules, extends))
 }
 
-/// Parse the `extends` schema name into a Schema.
-fn parse_extends(name: &str) -> Option<Schema> {
-    match name.to_lowercase().as_str() {
+/// Parse the `extends` schema name into a Schema, refusing a name nobody knows.
+fn parse_extends(name: &str) -> Result<Schema, ParseError> {
+    let known = match name.to_lowercase().as_str() {
         "failsafe" => Some(Schema::Failsafe),
         "json" => Some(Schema::Json),
         "core" => Some(Schema::Core),
         "yaml1.1" | "yaml11" => Some(Schema::Yaml1_1),
         other => crate::parser::yaml::registry::get(other),
-    }
+    };
+    known.ok_or_else(|| {
+        let mut names = crate::parser::yaml::registry::names();
+        names.sort();
+        ParseError::Syntax {
+            message: format!(
+                "unknown schema '{name}' in extends; known schemas: {}",
+                names.join(", ")
+            ),
+            line: 0,
+            col: 0,
+        }
+    })
 }
 
 /// Extract a scalar string from a node.
@@ -469,14 +481,34 @@ rules:
     }
 
     #[test]
-    fn an_extends_name_nobody_knows_is_not_silently_replaced_by_the_default() {
+    fn an_extends_name_nobody_knows_is_refused_with_the_known_set() {
         let yaml = "name: typo\nextends: cored\nrules:\n  - pattern: ^x$\n    type: int\n";
-        let resolver = parse_schema_yaml(yaml).expect("parse schema");
-        // The recorded boundary: a declared base this engine cannot find leaves no fallback, which
-        // resolves every scalar as its own text. Refusing the name outright is a decision about a
-        // public error surface and is not made here; the point of this row is that the default above
-        // cannot be reached by a typo.
-        assert_eq!(resolve(&resolver, "80"), YamlType::Str(Cow::Borrowed("80")));
+        let message = parse_schema_yaml(yaml)
+            .err()
+            .expect("an unknown extends name is refused")
+            .to_string();
+        assert!(
+            message.contains("unknown schema 'cored' in extends"),
+            "{message}"
+        );
+        // The registry preloads the four built-ins; the message names them so the author can see
+        // the typo against the valid set. Checked one by one because other tests in this binary
+        // register custom names into the same global registry, and the sorted list carries them.
+        assert!(message.contains("known schemas: "), "{message}");
+        for name in ["core", "failsafe", "json", "yaml1.1"] {
+            assert!(message.contains(name), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_registered_custom_name_is_a_valid_extends() {
+        crate::parser::yaml::registry::register(
+            "extends_base_probe",
+            crate::parser::yaml::registry::CoreResolver,
+        );
+        let yaml = "extends: extends_base_probe\nrules:\n  - pattern: ^x$\n    type: int\n";
+        let resolver = parse_schema_yaml(yaml).expect("a registered name extends");
+        assert_eq!(resolve(&resolver, "80"), YamlType::Int(80));
     }
 
     #[test]

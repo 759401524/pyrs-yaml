@@ -1,0 +1,4 @@
+extends: cored
+rules:
+  - pattern: ^x$
+    type: int

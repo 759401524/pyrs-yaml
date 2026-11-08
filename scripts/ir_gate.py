@@ -546,6 +546,25 @@ def binary_pairing(recorded: dict[str, str] | None, current: dict[str, str]) -> 
     return lines
 
 
+def nearest_image_row(floors: dict[str, dict[str, int]], name: str, value: int) -> tuple[str, int, float] | None:
+    """The image row whose floor for `name` is closest to this run's measured number.
+
+    A local reading has no host verdict to be compared against, so when a scenario fails on the
+    flat table this names the image row nearest in below-fraction - the verdict the row would have
+    refused under - without changing the exit code or adding an image to the baseline. Returns the
+    key, its floor and the below fraction, or None when the name is absent from every image floor.
+    """
+    best: tuple[str, int, float] | None = None
+    for key, row in floors.items():
+        base = row.get(name)
+        if base is None or base <= 0:
+            continue
+        below = (base - value) / base
+        if best is None or below < best[2]:
+            best = (key, base, below)
+    return best
+
+
 def floor_staleness(
     baseline: dict[str, int], measured: dict[str, int]
 ) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
@@ -884,6 +903,25 @@ def main() -> int:
 
     if failures:
         print("\n" + "\n".join(f"FAIL  {f}" for f in failures))
+        if not on_image and floors:
+            # The host is not on a runner image, so the flat table carries no verdict the reading
+            # was rejected against: name the nearest image row next to the failure - the verdict it
+            # would have refused - and leave the exit code and the verdict itself unchanged.
+            for f in failures:
+                if f.startswith("FLOOR_STALE"):
+                    continue
+                match = re.match(r"^([A-Za-z0-9_.]+):", f)
+                if not match:
+                    continue
+                name = match.group(1)
+                nearest = nearest_image_row(floors, name, measured.get(name))
+                if nearest is None:
+                    continue
+                key, base, below = nearest
+                print(
+                    f"\n  nearest image row: {key} - {name} is {below:.2%} below that row's floor"
+                    f" ({base:,} this tree {measured.get(name, 0):,})"
+                )
         if stale:
             print(
                 "\nA stale floor is refreshed on the enforcing image, not on this host:\n"

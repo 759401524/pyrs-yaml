@@ -19,6 +19,10 @@ status: new
 
 #### 修复
 
+- **未知的 `extends` 名被拒绝，而不是静默退化为无基础 schema** — `extends: cored` 过去会注册一个
+  完全没有基础的 schema：所有标量保持文本，`type: int` 拒绝 `port: 80`，却没有任何信息指出拼写
+  错误。读取器现在回答 `unknown schema 'cored' in extends` 并列出合法集合。内联字典入口把
+  `extends` 写进同一段文本，因此一处拒绝覆盖两个入口（`docs/dev/quality-ledger.md` (kh)）。
 - **schema 文本入口与字典入口一样拒绝空的 `rules` 列表** — `register_schema` 与 `load_schema`
   过去接受 `rules: []`、缺失 `rules` 以及拼错的 `rule:`，注册出一个不做任何强转、也不给诊断的
   schema，而内联字典入口拒绝同样的形状。文本入口现在对三种形状统一回答

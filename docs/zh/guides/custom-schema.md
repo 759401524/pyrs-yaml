@@ -38,7 +38,8 @@ rules:
 ```
 
 **`extends`** — 可选的基础 schema。规则优先匹配；若无匹配则回退到 `extends` 指定的 schema。
-默认值：`core`。
+默认值：`core`。名称必须是内置 schema（`failsafe`、`json`、`core`、`yaml1.1`）或已注册的
+schema；未知名会被拒绝，错误信息列出合法集合。
 
 **`rules`** — 必填、非空的有序列表。首个匹配的 pattern 决定类型。
 文本入口（`register_schema`）与内联字典入口都会拒绝 `rules` 缺失或为空的 schema。

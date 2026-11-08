@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An unknown `extends` name is refused instead of degrading to no base** — `extends: cored` used
+  to register a schema with no base at all: every scalar stayed text, `type: int` refused
+  `port: 80`, and nothing named the typo. The reader now answers
+  `unknown schema 'cored' in extends` with the known set listed. The inline-dict door writes
+  `extends` into the same text, so one refusal covers both doors (
+  `docs/dev/quality-ledger.md` (kh)).
 - **The schema text door refuses an empty `rules` list like the dict door** — `register_schema` and
   `load_schema` accepted `rules: []`, a missing `rules` key and the typo `rule:`, registering a
   schema that performs no coercion and says nothing, while the inline-dict door refused the same
