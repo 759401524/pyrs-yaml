@@ -586,6 +586,20 @@ fn collect_inline_pairs(
     orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     for (key, value) in source {
+        // An empty merge source - the pair is itself a `<<` whose source yields
+        // nothing, or a `<<` with no body at all - is an ordinary key under the
+        // (lj) ruling, not a merge entry: it carries no identity to resolve, and
+        // contributing it as merged content is what made the note's line slot decide
+        // whether a spelling kept a level or not (recorded in (jg); seeds 860ec5b7,
+        // a3dded4d, d360e9fd, f3a2f8cf). Treat it like any other pair of the source.
+        if is_merge_key(key)
+            && matches!(
+                &value,
+                CustomNode::Null { .. } | CustomNode::Scalar { .. } | CustomNode::Alias { .. }
+            )
+        {
+            continue;
+        }
         if pairs.contains_key(key) {
             // The mapping owns this key, so the pair never reaches the tree and a
             // definition nested in it leaves with it.
@@ -1493,32 +1507,32 @@ mod tests {
         let _ = parse(&out, YamlSchema::Core);
     }
 
-    /// A note's slot currently decides whether a chained merge key is consumed.
+    /// A note's slot must not decide whether a chained merge key is consumed.
     ///
-    /// Two shipped rules disagree for a merge source whose only pair is itself a `<<`:
-    /// `collect_inline_pairs` contributes every pair of an inline source, merge keys included,
-    /// which consumes the outer entry and yields one level; the "an alias-free `<<` that yields
-    /// nothing is an ordinary key" rule keeps both levels. Which of the two wins is an open
-    /// decision, so this pins the current answer for both spellings of the same content rather
-    /// than endorsing one. Both spellings settle in a single round, so the settlement oracle - and
-    /// therefore the fuzz tier - cannot see the difference; only the two texts compared here can.
-    ///
-    /// When the decision lands, collapse this to one expectation and assert the other spelling
-    /// reaches it - `is_merge_key` already states that a comment or an anchor is metadata, not
-    /// identity, so the two readings are not supposed to differ at all.
+    /// Two shipped rules used to disagree for a merge source whose only pair is itself a `<<`:
+    /// `collect_inline_pairs` contributed every pair of an inline source, merge keys included,
+    /// which consumed the outer entry and yielded one level; the "an alias-free `<<` that yields
+    /// nothing is an ordinary key" rule keeps both levels. The (lj) ruling chose the second: an
+    /// empty merge source is an ordinary key, so both spellings keep both levels. Both spellings
+    /// settle in a single round, so the settlement oracle - and therefore the fuzz tier - cannot
+    /// see the difference; only the two texts compared here can.
     #[test]
-    fn test_note_slot_currently_changes_merge_consumption() {
+    fn test_note_slot_no_longer_changes_merge_consumption() {
         let inline = parse("<<: #a\n  <<: \":!\"\n", YamlSchema::Core).unwrap();
         let standalone = parse("# a\n<<:\n  <<: \":!\"\n", YamlSchema::Core).unwrap();
-        assert_eq!(
-            crate::serializer::to_yaml(&standalone),
-            "# a\n<<:\n  <<: \":!\"\n",
-            "the standalone spelling no longer keeps both merge levels"
-        );
-        assert_eq!(
-            crate::serializer::to_yaml(&inline),
-            "# a\n<<: \":!\"\n",
-            "the inline spelling no longer collapses one merge level"
-        );
+        let inline = crate::serializer::to_yaml(&inline);
+        let standalone = crate::serializer::to_yaml(&standalone);
+        for output in [&inline, &standalone] {
+            assert!(
+                output.contains("<<:\n  <<: \":!\"\n")
+                    || output.contains("<<:  # a\n  <<: \":!\"\n"),
+                "both spellings keep both merge levels: {output}",
+            );
+            assert_eq!(
+                output.matches("<<:").count(),
+                2,
+                "an empty merge source is an ordinary key: {output}",
+            );
+        }
     }
 }
