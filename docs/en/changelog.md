@@ -111,6 +111,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register_schema` accepts all four aliases and refuses `number` and `Int`; the new named test
   asserts both the alias list in the message and the four spellings as accepted, so dropping either
   half reddens the run.
+- **An empty merge source is an ordinary key, not a merged entry** — two shipped rules for a mapping
+  holding only `<<: <nothing>` disagreed on which levels survived: one rule contributes a merge key
+  that yields nothing as merged content (consuming the outer `<<`), the other reads such a source as
+  an ordinary key. The same file's other statements (notably `is_merge_key`, which treats a comment
+  or an anchor as metadata rather than identity) make the note's line slot the only thing deciding
+  the spelling — `860ec5b7`, `a3dded4d`, `d360e9fd` and `f3a2f8cf` measured two levels under one
+  spelling and one under another. `collect_inline_pairs` now skips a pair that is a merge key whose
+  source is null, a scalar or an alias, so an empty merge source carries no identity to resolve and
+  contributes nothing: both spellings of the chained shape keep both merge levels, and the (jg)
+  assertion that pinned the two answers is collapsed to one, asserting the other spelling reaches it
+  (`docs/dev/quality-ledger.md` (jg), (lj)). Measured: 30 merge tests, 500 `pyrs-yaml-core` tests,
+  919 across `cargo nextest run --all`, clippy both scopes clean, `prek run --all-files` clean.
 
 #### Changed
 

@@ -12825,7 +12825,9 @@ two-level chain.
 to collapse when the decision lands, so the collision cannot be resolved by accident. Measured on
 this tree: 30 merge tests pass, 487 in the crate, `cargo nextest run --all` 903 passed,
 `prek run --all-files` clean. No behavior changed here - the finding is the deliverable, and the
-four inputs stay open on #733 until the rule is chosen.
+four inputs stayed open on #733 until the rule was chosen: it landed as (lj) - an empty
+merge source is an ordinary key - and the assertion was collapsed to
+`test_note_slot_no_longer_changes_merge_consumption`.
 
 ### (jh) Two of the five fuzz targets left out of the seed-reach walk were left out on a claim that does not hold (2026-11-06)
 
@@ -13993,3 +13995,35 @@ head. Gates: 614 nextest passed across pyrs-json and pyrs-yaml-core, clippy both
 
 Also corrected here: (lh) had carried two paragraphs copied from (kl) - the Ir mitigation text -
 in place of its own chosen/excluded record; the entry now states the (lh) ruling itself.
+
+### (lj) An empty merge source (2026-11-08)
+
+- **An empty merge source is an ordinary key, not a merged entry** — two shipped rules quoted by
+  (jg)
+    - `collect_inline_pairs` contributing every pair of an inline source including merge keys, which
+      consumed the outer entry (one level), and the v0.16.0 rule that an alias-free `<<` yielding
+      nothing is an ordinary key - gave opposite answers, and the statements in the same file
+      (including `is_merge_key`, which treats a comment or an anchor as metadata rather than
+      identity) made the collision unfixable by making the note's line slot decide which reading a
+      spelling took (four inputs `860ec5b7`, `a3dded4d`, `d360e9fd`, `f3a2f8cf` measured two levels
+      under one spelling and one under another). Chosen: an empty merge source is an ordinary key
+      and never a merged entry. `collect_inline_pairs` now skips a pair that is a merge key whose
+      source is null, a scalar or an alias, so an empty merge source carries no identity to resolve
+      and contributes nothing: the merge entry stays, and both spellings of the chained shape keep
+      both merge levels (the (jg) assertion that pinned the two answers is collapsed to one,
+      asserting the other spelling reaches it; `docs/dev/quality-ledger.md` (jg), (lj)).
+
+Excluded: re-reading the source text to keep the spelling would change two-way export semantics
+beyond the merge rule, and the v0.16.0 rule is the one that matches `is_merge_key`'s metadata
+reading - so the inline-contribution was the thing being corrected.
+
+Gates: `test_note_slot_no_longer_changes_merge_consumption` (the (jg) assertion collapsed to a
+single expectation asserting the other spelling reaches it, with both spellings holding two `<<:`
+levels), 30 merge tests, 500 `pyrs-yaml-core` tests, 919 across `cargo nextest run --all`,
+`cargo clippy -p pyrs-yaml-core --all-targets -- -D warnings` clean, `prek run --all-files` clean.
+
+Measured after the change: the (jg) two-spelling assertion now holds for both spellings -
+`<<: #a
+  <<: ":!"` and `# a
+<<:
+  <<: ":!"` both emit two merge levels.
