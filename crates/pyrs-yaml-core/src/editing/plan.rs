@@ -77,6 +77,29 @@ pub fn set_path(
             return Err("anchor-is-referenced".to_string());
         }
     }
+    // The order half of the invariant the two guards above keep from the other side: they refuse a
+    // set that *drops* a definition some alias names, this refuses a set whose payload *carries* a
+    // use to a position above the definition it names. Measured on `s: 0\na: &x 1\nuse: *x`
+    // (libFuzzer `edit_yaml` crash-aaf32b09): moving `$.use` up to `$.s` emitted `s: *x` above the
+    // pair defining `&x`, and this library's own reader refused it with `found unknown anchor`. A
+    // definition inside the payload travels with it; one outside must already precede the
+    // destination. Asked only when the payload carries an alias, so a scalar set pays one match.
+    let mut carried = Vec::new();
+    aliases_in(&new_value, &mut carried);
+    if !carried.is_empty()
+        && let Ok(dst) = crate::editing::navigate(node, segments)
+    {
+        let mut internal = Vec::new();
+        anchors_in(&new_value, &mut internal);
+        let mut before = Vec::new();
+        anchors_before(node, dst, &mut before);
+        if carried
+            .iter()
+            .any(|name| !internal.contains(name) && !before.contains(name))
+        {
+            return Err("anchor-is-referenced".to_string());
+        }
+    }
     let offsets = resolve_line_offsets(line_offsets, source);
     let line_offsets: &[usize] = &offsets;
 
@@ -1091,6 +1114,57 @@ fn anchors_in(node: &CustomNode, into: &mut Vec<String>) {
     }
 }
 
+/// The alias names a subtree carries, the dual of [`anchors_in`]: a use rather than a definition.
+fn aliases_in(node: &CustomNode, into: &mut Vec<String>) {
+    match node {
+        CustomNode::Alias { name } => into.push(name.to_string()),
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                aliases_in(key, into);
+                aliases_in(value, into);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                aliases_in(item, into);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The anchor names defined strictly before `stop` in document order, never descending into it.
+///
+/// Returns once `stop` is reached, so the destination's own subtree - the text the set replaces -
+/// contributes nothing: a definition inside it leaves with the old value. A mapping key is visited
+/// before its value, so an anchor on the destination's key still counts as preceding the new value.
+fn anchors_before(node: &CustomNode, stop: &CustomNode, into: &mut Vec<String>) -> bool {
+    if core::ptr::eq(node, stop) {
+        return true;
+    }
+    if let Some(name) = node.anchor() {
+        into.push(name.to_string());
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                if anchors_before(key, stop, into) || anchors_before(value, stop, into) {
+                    return true;
+                }
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                if anchors_before(item, stop, into) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
 /// Set the anchor name on the node at `segments`.
 ///
 /// Renaming a name the document already refers to is refused, for the reason [`with_metadata_from`]
@@ -1609,6 +1683,56 @@ mod tests {
             .expect_err("the move would overwrite the anchor its own payload names");
         assert_eq!(error, "anchor-is-referenced");
         assert_eq!(to_yaml(&node), source);
+    }
+
+    /// The order half of the same invariant, found by `edit_yaml` crash-aaf32b09: the payload carries
+    /// an alias *use* whose definition stays behind, and the destination sits above it. Moving
+    /// `use: *x` up to `s:` emitted `s: *x` above the pair defining `&x`, text this library's own
+    /// reader refuses with `found unknown anchor`. The two guards above ask about a definition the
+    /// edit *drops*; this asks about a use the edit *lifts* past its definition.
+    #[test]
+    fn moving_an_alias_above_its_definition_is_refused() {
+        let source = "s: 0\na: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = move_path(&mut node, &segments("use"), &segments("s"), source, None)
+            .expect_err("the move would lift `*x` above the `&x` it names");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source, "a refusal must not touch the tree");
+    }
+
+    /// The guard is about order, not about carrying an alias at all: a destination that still sits
+    /// below the definition is the caller's to make, and the emission still reads back.
+    #[test]
+    fn moving_an_alias_to_a_position_after_its_definition_is_allowed() {
+        let source = "a: &x 1\nb: 0\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        move_path(&mut node, &segments("use"), &segments("b"), source, None)
+            .expect("`b` is below `&x`, so the moved use still follows its definition");
+        let emitted = to_yaml(&node);
+        parse(&emitted, Schema::Core).expect("the emission still parses");
+        assert_eq!(emitted, "a: &x 1\nb: *x\n");
+    }
+
+    /// A definition travelling inside the moved value needs nothing left behind: the use and its
+    /// anchor keep their order as a unit. Asked through `set_path` directly, so the delete half of
+    /// `move_path` (which over-refuses a self-contained anchored subtree) does not mask the branch.
+    #[test]
+    fn setting_a_value_that_carries_its_own_anchor_definition_is_allowed() {
+        let source = "a: 0\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let carried = parse("def: &x 1\nuse: *x\n", Schema::Core).expect("the payload parses");
+        set_path(
+            &mut node,
+            &segments("a"),
+            carried,
+            false,
+            source,
+            None,
+            false,
+        )
+        .expect("the payload defines `&x` above its own `*x`, so nothing is orphaned");
+        let emitted = to_yaml(&node);
+        parse(&emitted, Schema::Core).expect("the emission still parses");
     }
 
     /// The third door: removing the node that *defines* a referenced anchor orphans the alias.

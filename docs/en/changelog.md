@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A move that lifts an alias above its anchor is refused** — moving a subtree carrying `*x` to a
+  destination above the `&x` it names emitted text the reader refuses with `found unknown anchor`
+  (libFuzzer `edit_yaml` crash-aaf32b09). The set door now asks, when the payload carries an alias,
+  whether a definition precedes the destination: one inside the payload travels with it, one outside
+  must already sit above. Otherwise it answers `anchor-is-referenced` and leaves the document
+  unchanged (`docs/dev/quality-ledger.md` (ll)).
 - **A comment above an empty block scalar no longer drops its chomping** — a standalone comment
   whose text begins with `>` or `|` (e.g. `# >`) sat above an empty block scalar, and the header
   detector read the comment's sigil as the header, so `>+\n` re-read as `>\n` and a `Keep` indicator
