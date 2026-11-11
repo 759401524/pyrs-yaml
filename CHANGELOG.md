@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A comment above an empty block scalar no longer drops its chomping** — a standalone comment
+  whose text begins with `>` or `|` (e.g. `# >`) sat above an empty block scalar, and the header
+  detector read the comment's sigil as the header, so `>+\n` re-read as `>\n` and a `Keep` indicator
+  decayed to `Clip` on the second round. The detector now stops at a comment opener and reads the
+  real header, keeping the author's chomping a fixed point (`docs/dev/quality-ledger.md` (lk)).
 - **A JSON5 export keeps a number spelling the resolver reads as text** — a hex run longer than the
   resolver's integer parse resolves to text, and the hub writer quoted it, so one `from_json5` →
   `to_json5` round turned a JSON5 number into a string. `write_plain` now passes text through when

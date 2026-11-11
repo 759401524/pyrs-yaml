@@ -14027,3 +14027,30 @@ Measured after the change: the (jg) two-spelling assertion now holds for both sp
   <<: ":!"` and `# a
 <<:
   <<: ":!"` both emit two merge levels.
+
+### (lk) A comment sigil above an empty block scalar shadowed its chomping (2026-11-10)
+
+- **`detect_block_header` read a comment's `>`/`|` as the header** — an empty block scalar's granit
+  span starts on its own header sigil, so the byte backup walks past the header to the line above.
+  When that line is a standalone comment whose text begins with a block sigil (`# >`, `# |`), the
+  scan took the comment's sigil: its tail is empty, which `parse_block_header_tail` accepts as a
+  `Clip` header, and it returned before the content-start fallback that reads the real `>+`. The
+  author's `Keep` survived the first emission and decayed to `Clip` on the next, so
+  `# >\n>+\n` re-read as `# >\n>\n` (libFuzzer `yaml_roundtrip` crash-4886e2a5 `#>\r>+8\r#~c ` and
+  crash-ea1fdf7a `#>>#>>!y3%7\r>+8\r#`; both filed as `former-crash-4886e2a5.seed` /
+  `former-crash-ea1fdf7a.seed`). The line scan now stops at a `#` that opens a comment (line start
+  or after a blank), leaving the fallback to recover the indicator from the header's own line.
+
+Excluded: normalising every empty body to `Clip` would lose the declared chomping that
+`container_keys_differing_only_in_chomping_survive` relies on for key identity; the defect is the
+comment sigil being scanned at all, not the empty-body chomping rule.
+
+Gates: `detect_block_header_comment_sigil_above_empty_body` (Keep recovered for `# >`/`# |`, bare
+sigil stays Clip), 22 `scalar::` tests, `empty_block_header_reaches_a_fixed_point` and
+`container_keys_differing_only_in_chomping_survive` unchanged, 920 across `cargo nextest run --all`,
+`seed_reach` (both new seeds reach the assertion), `cargo clippy -p pyrs-yaml-core --all-targets
+-- -D warnings` clean.
+
+Measured after the change: both archived inputs are idempotent (`parse → to_yaml → parse → to_yaml`
+byte-identical); the four other `yaml_roundtrip` inputs from the same runs are a separate
+anchor/null-key drift family and are untouched by this change.
