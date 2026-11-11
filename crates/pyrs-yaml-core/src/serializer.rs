@@ -208,6 +208,12 @@ struct Serializer {
     /// `NotePlacement::NoteFirst`, taken from the options: whether a note line that would land
     /// inside a header's gap is lifted above that header.
     note_first: bool,
+    /// Whether the line just finished is an alias value's. An alias carries no metadata, so a
+    /// note left in its trailing slot is re-read onto the pair's *key*, whose writer lifts it
+    /// above the enclosing header; a container note riding that slot inline therefore costs a
+    /// round (libFuzzer `edit_yaml` crash-35c8809a). Set by the alias writer, cleared by the pair
+    /// and item writers before their value, so it names the last value the block wrote.
+    tail_slot_is_alias: bool,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -427,6 +433,7 @@ impl Serializer {
             block_header_break: None,
             enclosing_header_start: None,
             note_first: matches!(options.note_placement, NotePlacement::NoteFirst),
+            tail_slot_is_alias: false,
         }
     }
 
@@ -1397,6 +1404,15 @@ impl Serializer {
                     } else {
                         self.note_line_above_last_pair(&c.text);
                     }
+                } else if self.tail_slot_is_alias && (wrote_header || inherited_header.is_some()) {
+                    // The block ended on an alias value's line. An alias has no metadata, so a
+                    // note riding its trailing slot is re-read onto the pair's key, and the key's
+                    // writer lifts it above the header (`note_line_above` measures the gap from the
+                    // pair's line start, crossing the indented `&a` line that the tail-based scan
+                    // here cannot). Riding the slot inline therefore costs a round; above the
+                    // header is where the re-read files it, so the first emission writes it there
+                    // (libFuzzer `edit_yaml` crash-35c8809a / crash-e26004a5).
+                    self.note_line_above(inherited_header.unwrap_or(body_start), &c.text);
                 } else if self.trailing_note_slot_open
                     && self.output.ends_with('\n')
                     && !self.tail_line_has_note()
@@ -1463,6 +1479,7 @@ impl Serializer {
         self.output.push('*');
         self.output.push_str(name);
         self.trailing_note_slot_open = true;
+        self.tail_slot_is_alias = true;
         self.output.push('\n');
         Ok(())
     }
@@ -1526,6 +1543,7 @@ impl Serializer {
         // the resulting `~: ! # b` / `~` line pair was text this reader refuses (crash-76e05a78).
         let mut key_line_start = own_line_start;
         self.block_header_break = None;
+        self.tail_slot_is_alias = false;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
         // ("simple key expected ':'"), and ruamel.yaml's scanner raises on it from 0.19 while
@@ -1770,6 +1788,7 @@ impl Serializer {
         // keep above its own dash targets the outermost header of the chain. A later item is not
         // that line and is passed no target.
         self.pair_line_start = self.output.len();
+        self.tail_slot_is_alias = false;
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
         // normalised view — and a note-free item is the common case.
