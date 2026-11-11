@@ -14086,3 +14086,41 @@ other `edit_yaml` inputs from the same runs still fail the settle assertion and 
 Ir price of the guard on the set door is `edit_set_nested` +0.19% and `edit_set_metadata` +0.16%
 (pinned `rustc 1.97.1`, within the 0.5% tolerance); the payload is a scalar in both, so the alias
 scan short-circuits and the cost is the call site alone.
+
+### (lm) A container note riding an alias tail cost a round (2026-11-11)
+
+- **The container-note path rode the note inline on an alias value's trailing slot** — `set_comment`
+  on a mapping writes an inline note, and `write_container_node` rides it on the last pair line's
+  trailing slot. When that pair's value is an alias (`*x`) the alias carries no `NodeMeta`, so
+  granit re-files the trailing note onto the pair's *key*. Round two's key-note branch
+  (`note_line_above` → `header_gap_start`) measures the gap from the pair line's start, crossing the
+  indented `&a2` header to hoist the note above it; the container-note path measures from the tail
+  and does not cross an indented header. The two disagree, so the note moved on the second round
+  (libFuzzer `edit_yaml` crash-35c8809a and crash-e26004a5; both filed as
+  `former-crash-35c8809a.seed` / `former-crash-e26004a5.seed`). A `tail_slot_is_alias` flag — set by
+  the alias writer, cleared by the pair and item writers before their value — now makes the
+  container-note path hoist above the header on the first emission when the block ended on an alias
+  value under a header, the position the re-read settles it in.
+
+Excluded: hoisting every container note above the header would move notes that already settle
+inline; the defect is the alias tail specifically, where the re-read files the note on the key and
+the key's writer crosses the indented header. The flag names only that shape, and the ruled
+`NoteFirst` default is unchanged — this is a convergence fix within it, not a new placement ruling.
+
+Gates: `a_container_note_over_an_alias_tail_settles_above_the_header` (withdrawing the branch
+reddens it with the exact drift: round one `k: *x  # fuzz 239`, round two hoists `# fuzz 239` above
+`&a2`), 924 across `cargo nextest run --all`, `seed_reach` 3/3 (both new seeds reach the settle
+assertion), `cargo clippy --all --all-targets -- -D warnings` and the narrow
+`--bench ir_gate --features ir-gate` scope clean, `python scripts/quality_matrix.py --check-rows` OK
+after `--write-rows` (937 Rust tests, 311 seeds, 197 `former-crash-*`), five changelog mirrors at
+parity.
+
+Measured after the change: both archived inputs replay clean (the `edit_yaml` binary exits 0). The
+Ir cost is one instruction per iteration on `serialize_small` and ~23 on `serialize_note_flow`
+(+0.08%, inside the 0.5% tolerance). A local `serialize_small` reading of +19.98% is host-keyed, not
+this change: the parent tree without the fix reads +19.92% on the same WSL host and pinned toolchain
+(3,575,197 against the runner-image floor 2,981,393), while `serialize_note_flow` hits its floor
+verbatim on the parent (+0.00%) — the flat-table floor for the tiny malloc-dominated scenario does
+not describe this host, and the enforcing image decides. The other three `edit_yaml` shapes from the
+same batch (crash-92e7b87c nested leading-note hoist, crash-12c96086, crash-e3294ab5) are separate
+mechanisms and are untouched; crash-aaf32b09 is a reader refusal, a different class.

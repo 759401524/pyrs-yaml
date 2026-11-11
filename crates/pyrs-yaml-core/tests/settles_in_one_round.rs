@@ -1131,3 +1131,42 @@ fn a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip() {
         }
     }
 }
+
+/// libFuzzer `edit_yaml` crash-35c8809a / crash-e26004a5: a container note whose block ends on an
+/// alias value's line.
+///
+/// `set_comment` on the mapping attaches an inline note to the container. The block's last pair
+/// value is an alias, which carries no `NodeMeta`, so a note riding that pair's trailing slot is
+/// re-read onto the pair's *key* - and the key's writer lifts it above the enclosing `&a2` header
+/// (`note_line_above` measures the gap from the pair's line start, crossing the indented header
+/// that the container path's tail-based scan cannot). Riding the slot inline therefore cost a
+/// round. The container path now asks whether the block ended on an alias and, under a header,
+/// writes the note above it on the first emission - the position the re-read files it under.
+#[test]
+fn a_container_note_over_an_alias_tail_settles_above_the_header() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::set_comment_path;
+
+    let src = "- &x v\n- &a2\n  k: *x\n";
+    let container = [Segment::Index(1)];
+    let note = Comment {
+        text: "fuzz 239".into(),
+        standalone: false,
+    };
+
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    set_comment_path(&mut node, &container, note, src, None).expect("the container note is set");
+
+    let one = to_yaml(&node);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert_eq!(
+        one.matches("# ").count(),
+        1,
+        "the note survives the placement, and no round may invent or fold one: {one:?}"
+    );
+}

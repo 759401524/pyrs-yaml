@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A container note over an alias tail settles on the first emission** — a note attached to a
+  mapping whose last value is an alias (`*x`) rode that pair's trailing slot, but an alias carries
+  no metadata, so the re-read filed the note on the pair's *key*, whose writer lifts it above the
+  enclosing `&a` header. The note moved on the second round. The writer now hoists it above the
+  header on the first emission when the block ends on an alias value, the position the re-read
+  settles it in (`docs/dev/quality-ledger.md` (lm)).
 - **A move that lifts an alias above its anchor is refused** — moving a subtree carrying `*x` to a
   destination above the `&x` it names emitted text the reader refuses with `found unknown anchor`
   (libFuzzer `edit_yaml` crash-aaf32b09). The set door now asks, when the payload carries an alias,
