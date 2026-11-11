@@ -236,6 +236,15 @@ pub fn detect_block_header(yaml: &str, content_start: usize) -> BlockHeader {
     // `|` (0x7C) and `>` (0x3E) are ASCII and never occur inside a multi-byte
     // UTF-8 sequence, so a byte scan locates every candidate sigil safely.
     for idx in line_start..end {
+        // A `#` at the line start or after a blank opens a comment: every byte
+        // after it (including a `|`/`>`) is comment text, not a header. Stop the
+        // scan so a comment like `# >` above an empty block scalar is not read as
+        // the header — its empty tail would validate as Clip and shadow the real
+        // `>+` on the next line, which the content-start fallback below recovers
+        // (libFuzzer `yaml_roundtrip` crash-4886e2a5 / crash-ea1fdf7a).
+        if bytes[idx] == b'#' && (idx == line_start || matches!(bytes[idx - 1], b' ' | b'\t')) {
+            break;
+        }
         if bytes[idx] == b'|' || bytes[idx] == b'>' {
             // The first sigil whose tail reaches the line end (or a comment) as
             // a valid header is the block header — at most one can qualify.
@@ -477,5 +486,26 @@ mod tests {
         let s = "key: value";
         let h = detect_block_header(s, s.find("value").unwrap());
         assert_eq!(h, BlockHeader::default());
+    }
+
+    #[test]
+    fn detect_block_header_comment_sigil_above_empty_body() {
+        // crash-4886e2a5 / crash-ea1fdf7a: a standalone comment whose text begins
+        // with a block sigil (`# >`, `# |`) sits above an empty block scalar. The
+        // empty body's span starts on the real header sigil; the backup lands on
+        // the comment line, whose `>`/`|` has an empty tail and would validate as
+        // Clip — shadowing the real `+`. The comment opens with `#`, so the scan
+        // stops and the content-start fallback reads the author's Keep.
+        let s = "# >\n>+\n";
+        let h = detect_block_header(s, s.rfind('>').unwrap());
+        assert_eq!(h.chomping, Chomping::Keep);
+        let s = "# |\n|+\n";
+        let h = detect_block_header(s, s.rfind('|').unwrap());
+        assert_eq!(h.chomping, Chomping::Keep);
+        // A bare sigil with no `+` stays Clip — the fix recovers the indicator,
+        // it does not invent one.
+        let s = "# >\n>\n";
+        let h = detect_block_header(s, s.rfind('>').unwrap());
+        assert_eq!(h.chomping, Chomping::Clip);
     }
 }
