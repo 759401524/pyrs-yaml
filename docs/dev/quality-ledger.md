@@ -14054,3 +14054,35 @@ sigil stays Clip), 22 `scalar::` tests, `empty_block_header_reaches_a_fixed_poin
 Measured after the change: both archived inputs are idempotent (`parse → to_yaml → parse → to_yaml`
 byte-identical); the four other `yaml_roundtrip` inputs from the same runs are a separate
 anchor/null-key drift family and are untouched by this change.
+
+### (ll) A move that lifts an alias above its anchor definition is refused (2026-11-11)
+
+- **`set_path` carried a use past its definition** — the two `anchor-is-referenced` guards ask about
+  a definition the edit *drops*; nothing asked about a use the edit *lifts*. `move_path` clones the
+  source subtree and sets it at the destination, so moving `use: *x` up to `s:` on
+  `s: 0\na: &x 1\nuse: *x` emitted `s: *x` above the pair defining `&x`, text this library's own
+  reader refuses with `found unknown anchor` (libFuzzer `edit_yaml` crash-aaf32b09, filed as
+  `former-crash-aaf32b09.seed`). A third guard now asks, only when the payload carries an alias,
+  whether each use has a definition before the destination: `anchors_in` the payload (a definition
+  travelling inside it keeps its order) or `anchors_before` the destination in document order (a
+  definition outside must already sit above). Otherwise it answers `anchor-is-referenced` before any
+  mutation, so the tree is left as it was.
+
+Excluded: splicing the definition above the destination would let the move succeed, but the edit
+door's established answer to an order it cannot cheaply prove is refusal — the delete guard's
+over-refusal is the same call. A position-blind refusal of every external-alias move was rejected
+because it would also refuse a move to a destination still below the definition, which is the
+caller's to make.
+
+Gates: `moving_an_alias_above_its_definition_is_refused` (the repro, tree unchanged),
+`moving_an_alias_to_a_position_after_its_definition_is_allowed` and
+`setting_a_value_that_carries_its_own_anchor_definition_is_allowed` (the two shapes the guard must
+not over-refuse), 923 across `cargo nextest run --all`, `seed_reach` (the new seed reaches the
+assertion), `cargo clippy -p pyrs-yaml-core --all-targets -- -D warnings` clean.
+
+Measured after the change: the archived input replays clean under the rebuilt `edit_yaml` binary
+(`-runs=0`, exit 0 — the move is refused, a typed refusal being the harness's pass), while the five
+other `edit_yaml` inputs from the same runs still fail the settle assertion and are untouched. The
+Ir price of the guard on the set door is `edit_set_nested` +0.19% and `edit_set_metadata` +0.16%
+(pinned `rustc 1.97.1`, within the 0.5% tolerance); the payload is a scalar in both, so the alias
+scan short-circuits and the cost is the call site alone.
