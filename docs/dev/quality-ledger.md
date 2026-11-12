@@ -14233,3 +14233,57 @@ against that image's own row, not the flat table. The local run then crashed in 
 (`scripts/ir_gate.py:559`, `row.get` on an int): line 917 passes the resolved flat `floors` instead
 of `ref["image_floors"]`, reached only on a non-image host with a failure; CI (`on_image`) never
 calls it. That is a pre-existing gate-script defect, separate from this change and not fixed here.
+
+### (lp) An alias key in a compact sequence item is no longer spelled null (2026-11-12)
+
+- **the compact-form guard admitted an alias key, and the compact key writer spelled it `null`** — a
+  block mapping that is a sequence item takes the compact `- key: value` form when `is_compact_item`
+  returns true. That predicate's key guard excluded only `Mapping` and `Sequence` keys, not `Alias`.
+  The compact path `write_sequence_item` writes every key through
+  `write_scalar_for_key(key, false)`, whose `_ => null` catch-all spells an alias key as a literal
+  `null`; `write_mapping_pair` instead treats an alias key as an explicit-key marker and emits
+  `? *name`, because `*x: v` is refused by this engine's reader (`simple key expected ':'`). So a
+  compact sequence-item mapping holding an alias to a null key emitted `null: ~` beside the item's
+  own `~:` null key, and the re-read folded the two null keys into one under `Schema::Core`'s
+  duplicate-null-key collapse, dropping a pair — the first emission was not its own fixed point
+  (libFuzzer `yaml_roundtrip` crash-cd7fab01). The guard now excludes `Alias` as it already excludes
+  `Mapping` and `Sequence`, so the item takes the block-body form through `write_mapping_pair` and
+  the alias keeps its identity. `is_compact_item` is `pub` and shared with the splice layer
+  (`editing/region.rs`) and the serializer's two note-lift flow decisions, so the stricter guard
+  reaches all of them at once; `direct_dump.rs`'s `is_compact_mapping` mirror is separate and
+  unchanged, because it keys on `key_is_complex` and a Python dict key can never be a YAML alias.
+
+Excluded: the three other `yaml_roundtrip` inputs triaged into this class (04f90374, 0733f4ec,
+948c5dbf) already settle on main — class b/d closed them incidentally — so the live defect reduced
+to the one alias-key input; all four are archived as seeds beside the regression. The minimized
+26-byte reproducer `-\n ? &.?-\n-\n ? #[\n ? *.?-\n` emits
+`- &.?- ~: ~\n- \n  # [\n  ~: ~\n  ? *.?-\n  : ~\n` with the fix and settles; without it the first
+round emits `- &.?- ~: ~\n# [\n- ~: ~\n  null: ~\n` and the second folds it to
+`- &.?- ~: ~\n# [\n- null: ~\n`.
+
+Gates: `an_alias_key_in_a_compact_sequence_item_settles_in_one_round` (the minimized reproducer's
+exact emission and fixed point, plus the full archived seed keeping `? *.?-`), 929 across
+`cargo nextest run --all` (the new test at 922/929, `seed_reach` unchanged — all four seeds parse
+and reach the assertion), `cargo clippy --all --all-targets -- -D warnings` and the narrow `ir-gate`
+bench scope both clean. Mutation: removing the `Alias` arm from `is_compact_item`'s `!matches!`
+reddens the exact-emission assertion (left `- &.?- ~: ~\n# [\n- ~: ~\n  null: ~\n` vs right
+`- &.?- ~: ~\n- \n  # [\n  ~: ~\n  ? *.?-\n  : ~\n`, exit 100), the crate recompiling for both the
+red and the restored green (1 passed, exit 0).
+
+Measured after the change: the YAML writer hot path is within the 0.5% tolerance on pinned
+`rustc 1.97.1` — `serialize_medium` +0.15%, `serialize_block` +0.16%, `serialize_anchors` +0.13%,
+`serialize_note_flow` +0.13%, `serialize_block_scalars` +0.03%. The local WSL run FAILed six
+scenarios, but a same-host main control (a worktree at 5108ed14, the parent of this change, pinned
+`rustc 1.97.1`, a fresh target dir) reads every one identically, so none is this change:
+`serialize_small` +19.98% (main 3,577,199 vs this tree 3,577,212, +13 instructions of noise — its
+fixture is the flat `key: value\nname: test\n`, no sequence, so `is_compact_item` is never called;
+the move is baseline staleness from the three note-lift commits 114908a3 / 1662af4f / 5108ed14 that
+landed after the `20261101.360.1` refresh), `parse_inline_merge` +0.61% (main 362,922,968 vs
+362,921,958), `load_toml_medium` +1.65% / `load_toml_long_strings` +2.98% (host-keyed
+interpreter-counting drift on the flat table, identical on main, judged against the image's own row
+on the enforcing leg), and `documents_short_strings` −12.77% / `documents_long_strings` −8.22%
+`FLOOR_STALE` (identical on main, the glibc copy/malloc move that scenario-set growth produces,
+`docs/dev/perf.md`). The writer scenarios this change could touch differ from main by tens of
+instructions out of millions — the `Alias` arm is a cold guard the fixtures never take. The run then
+crashed in `nearest_image_row` (`scripts/ir_gate.py:559`, `row.get` on an int) on both trees: the
+pre-existing non-image-host defect (lo) records, separate from this change and not fixed here.
