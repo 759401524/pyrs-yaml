@@ -323,27 +323,33 @@ fn every_note_the_tree_files_is_reported_with_the_same_owner() {
     }
 }
 
-/// The notes the tree drops are the ones the ledger names.
+/// The tree's end-of-document note policy is the one the ledger names.
 ///
-/// The tree files one note per slot: a second trailing note has nowhere to go
-/// and is dropped, and an alias carries no slot, so the note the tree would
-/// have hung on it is re-homed onto the key that owns the pair. The stream
-/// reports every note the source has — the tree's own drops are the
-/// difference between the two, not a disagreement about a note both have.
+/// The tree conserves every trailing note: the first takes the root's inline
+/// slot (the one the writer hangs on the document's last line) and any extra
+/// rides the root's leading list. The second trailing note used to be dropped
+/// with the `mem::take`, which lost a genuine note whenever a stranded alias
+/// note preceded it (crash-e3294ab5); it is now conserved as a leading note. An
+/// alias still carries no slot, so the note the tree would have hung on it is
+/// re-homed onto the key that owns the pair. The stream reports every note the
+/// source has as preceding-inline; the tree's leading slot for the extras and
+/// the alias re-home are the recorded difference between the two walks, not a
+/// disagreement about a note both have.
 #[test]
 fn the_notes_the_tree_drops_are_the_documented_ones() {
-    // Two trailing notes: the tree keeps the first (the one the writer hangs
-    // on the document's last line) and drops the second.
+    // Two trailing notes: the tree keeps both — the first in the inline slot
+    // (the one the writer hangs on the document's last line), the second in the
+    // leading list. The second used to be dropped (crash-e3294ab5).
     let stacked = "a: 1\n# first\n# second\n";
     let tree = parse(stacked, Schema::Core).expect("the document parses");
     let mut kept = Vec::new();
     tree_notes(&tree, &mut kept);
     assert_eq!(
         kept.iter()
-            .map(|note| note.text.as_str())
+            .map(|note| (note.text.as_str(), note.leading))
             .collect::<Vec<_>>(),
-        vec!["first"],
-        "the tree keeps the first trailing note"
+        vec![("first", false), ("second", true)],
+        "the tree conserves both trailing notes: first inline, second leading"
     );
     let reported = stream_notes(
         &parse_stream(stacked).expect("the document streams"),

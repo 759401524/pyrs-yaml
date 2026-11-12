@@ -19,6 +19,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A trailing note after an alias-tailed sequence keeps its place** — a sequence ending in an alias
+  with an inline note (`- *x  # A`) has no slot for `A`, so the reader stranded it ahead of a
+  genuine column-0 trailing note (`# B`) and the end-of-document flush displaced `B` above the root,
+  so the editor's emission never settled in one round (libFuzzer `edit_yaml` crash-e3294ab5). The
+  alias tail's note now rides the sequence's own inline slot and any extra trailing note is
+  conserved as a leading note rather than dropped, so the emission is a fixed point
+  (`docs/dev/quality-ledger.md` (ln)).
 - **A container note over an alias tail settles on the first emission** — a note attached to a
   mapping whose last value is an alias (`*x`) rode that pair's trailing slot, but an alias carries
   no metadata, so the re-read filed the note on the pair's *key*, whose writer lifts it above the
