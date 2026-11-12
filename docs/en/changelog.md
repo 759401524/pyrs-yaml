@@ -19,6 +19,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **An alias key in a compact sequence item is no longer spelled `null`** — a block mapping that is
+  a sequence item takes the compact `- key: value` form, whose key writer spells any non-scalar
+  `null`, so an alias key `*x` came out as a literal `null:` beside the item's own null key. The
+  re-read folded the two null keys into one and dropped a pair, so the emission never settled in one
+  round (libFuzzer `yaml_roundtrip` crash-cd7fab01). The compact-form guard now excludes alias keys
+  as it already excludes mapping and sequence keys, so the item takes the block-body form where the
+  pair writer emits `? *x` and the alias keeps its identity (`docs/dev/quality-ledger.md` (lp)).
 - **A note in a nested block sequence keeps its line across rounds** — two slots relocated a comment
   so the editor's emission never settled in one round. The writer lifted a block-container item's
   leading note to the sequence marker one level too high, where the next read lifted it again

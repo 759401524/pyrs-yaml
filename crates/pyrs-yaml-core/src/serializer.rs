@@ -373,7 +373,19 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
             && meta.comment().is_none_or(|c| !c.standalone)
             && !pairs.is_empty()
             && pairs.iter().all(|(k, v)| {
-                !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+                // An alias key cannot share the dash line either: the compact path
+                // writes keys through `write_scalar_for_key`, whose catch-all spells
+                // any non-scalar `null`, so `*x` became a second null key that folded
+                // with a real one on re-read and dropped a pair. The block-body form
+                // routes it through `write_mapping_pair`, which emits `? *x` — the
+                // only spelling the reader accepts (libFuzzer `yaml_roundtrip`
+                // crash-cd7fab01).
+                !matches!(
+                    k,
+                    CustomNode::Mapping { .. }
+                        | CustomNode::Sequence { .. }
+                        | CustomNode::Alias { .. }
+                )
                     // A standalone note cannot share the `- key:` line: it
                     // would emit `# …` mid-line and strand the value. An empty
                     // container is the exception `write_mapping_pair` already

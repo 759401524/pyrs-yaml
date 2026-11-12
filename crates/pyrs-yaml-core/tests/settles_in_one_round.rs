@@ -1248,3 +1248,39 @@ fn a_nested_leading_note_settles_in_one_round() {
         "not a fixed point in one round: {emitted:?} -> {again:?}"
     );
 }
+
+/// libFuzzer `yaml_roundtrip` crash-cd7fab01, minimized to 26 bytes: an alias standing as a key in
+/// a block mapping that is a sequence item.
+///
+/// The compact `- key: value` form writes every key through `write_scalar_for_key`, whose catch-all
+/// spells any non-scalar `null`, so the alias key `*.?-` came out as a literal `null:` beside the
+/// item's own `~:` null key. The re-read folded the two null keys into one (the duplicate-null-key
+/// collapse) and dropped a pair, so the first emission was not its own fixed point:
+/// `- ~: ~\n  null: ~` came back as `- null: ~`. `is_compact_item` admitted the alias key because its
+/// guard excluded only mapping and sequence keys; an alias is not a simple key either (`*x: v` is
+/// refused by this engine's reader), so it now takes the block-body form, where `write_mapping_pair`
+/// emits `? *.?-` and the alias keeps its identity. The three other yaml_roundtrip inputs triaged
+/// into this class (04f90374, 0733f4ec, 948c5dbf) already settle on main — class b/d closed them —
+/// and are archived as seeds beside this one.
+#[test]
+fn an_alias_key_in_a_compact_sequence_item_settles_in_one_round() {
+    // Item 0 anchors a null key `&.?-`; item 1 holds that null key plus an alias to it. The compact
+    // form spelled the alias `null` and folded it into the `~` key on the next read.
+    let src = "-\n ? &.?-\n-\n ? #[\n ? *.?-\n";
+    let one = emit(src);
+    assert_eq!(
+        one, "- &.?- ~: ~\n- \n  # [\n  ~: ~\n  ? *.?-\n  : ~\n",
+        "the alias key takes the `? *name` block-body form, not a folded `null:`"
+    );
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+
+    // The full crash input, archived as a seed: the same alias-key fold across several items.
+    let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-cd7fab01.seed");
+    let full = std::str::from_utf8(raw).expect("seed is utf-8");
+    let one = emit(full);
+    assert!(
+        one.contains("? *.?-"),
+        "the alias key must survive as an explicit marker, not be spelled null: {one:?}"
+    );
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}
