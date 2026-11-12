@@ -1170,3 +1170,81 @@ fn a_container_note_over_an_alias_tail_settles_above_the_header() {
         "the note survives the placement, and no round may invent or fold one: {one:?}"
     );
 }
+
+/// libFuzzer `edit_yaml` crash-12c96086: a column-0 note between two block-sequence items, the
+/// first item's value a nested mapping whose `s:` is an empty tagged scalar `&a0 !s:`.
+///
+/// granit defers the empty scalar's event past the following comment line, so the reader used to
+/// drain the pending `# fuzz 47` onto that scalar as a *leading* note even though the note sits a
+/// line below it. The writer then hoisted the note above the `&a0 !s:` header. That hoisted form is
+/// itself a stable fixed point, so a round-trip equality check alone passes on the buggy tree - the
+/// guard must pin the note's *position*: it belongs at column 0 on the line before the next `- s:`
+/// item, not above the first item's header.
+///
+/// The signal is whether a sibling follows, not the break character: a CR spelling of the same
+/// document ingest to the same tree and must emit byte-for-byte the same. A reader guard keyed on
+/// LF alone passed the LF seed yet hoisted the note on the CR spelling, so the CR arm is pinned here.
+#[test]
+fn a_column_zero_note_between_items_settles_in_one_round() {
+    let lf = "- b- - s: &a0 !s:\n# fuzz 47\n- s: ~  # fuzz 47\n";
+    let one = emit(lf);
+    assert!(
+        one.contains("\n# fuzz 47\n- s: ~"),
+        "the note must ride the next item at column 0, not the empty scalar above it: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    let cr = lf.replace('\n', "\r");
+    assert_eq!(
+        emit(&cr),
+        one,
+        "a CR-only break must not change where the note lands: {one:?}"
+    );
+}
+
+/// libFuzzer `yaml_roundtrip` crash-7eb273bc / crash-9733643a: a note on the line after an empty
+/// tag-only value, with the document ending (`...`) right below it.
+///
+/// This is the doc-end arm of the same deferred-note decision as crash-12c96086 above: granit emits
+/// the empty scalar's event after the comment line beneath it, and here no sibling follows, so the
+/// note is the value's own leading note. A reader guard keyed on an LF break alone drained the CR
+/// seed correctly but left the LF spelling's note pending - the writer then homed it inline on the
+/// root, a different tree. A document differs from its CR/LF spelling only in how its lines break,
+/// so both must emit byte-for-byte the same; that equality is the fence.
+#[test]
+fn a_doc_end_note_after_an_empty_value_settles_in_one_round() {
+    for raw in [
+        include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-7eb273bc.seed"),
+        include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-9733643a.seed"),
+    ] {
+        let cr = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = emit(cr);
+        assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+        let lf = cr.replace('\r', "\n");
+        assert_eq!(
+            emit(&lf),
+            one,
+            "a CR-only break must not change where the note lands: {one:?}"
+        );
+    }
+    assert_eq!(
+        emit(": !\r#U\r... #-"),
+        "# -\n~:\n  # U\n  !\n",
+        "the below-note is the empty value's leading note at doc-end, not the root's inline slot"
+    );
+}
+
+/// libFuzzer `edit_yaml` crash-92e7b87c: a leading note inside a deeply nested block sequence,
+/// under an outer `&a0` header.
+#[test]
+fn a_nested_leading_note_settles_in_one_round() {
+    let emitted = "- \n  # fuzz 47\n  # fuzz 119\n  &a0 \n  - \n    - \n      # fuzz 47\n      - !base: \"-?ss\": !s: ~  # fuzz 119\n";
+    let again = emit(emitted);
+    assert_eq!(
+        again, emitted,
+        "not a fixed point in one round: {emitted:?} -> {again:?}"
+    );
+}

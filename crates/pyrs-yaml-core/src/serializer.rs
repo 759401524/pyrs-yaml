@@ -2790,7 +2790,22 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
                 return notes;
             }
             if let Some(first) = items.first_mut() {
-                notes.extend(take_leading_notes(first));
+                // A scalar or compact item writes its note above the `- `, and the reader
+                // reports that line on the sequence, so the note climbs to the marker and
+                // must be taken here (crash-1445c91a / crash-f1643b2d). An item that writes a
+                // block body on lines of its own keeps its leading stack in that body: the
+                // note lands below the item's `-`, the reader files it on the item, and
+                // lifting it here put it one level too high where the next read hoisted it
+                // again (libFuzzer `edit_yaml` crash-92e7b87c). The walk still descends - a
+                // deeper compact marker can carry a stack the reader reports at this level.
+                let body_below = !Serializer::is_empty_container(first)
+                    && match first {
+                        CustomNode::Mapping { .. } => !is_compact_item(first),
+                        _ => is_block_container(first),
+                    };
+                if !body_below {
+                    notes.extend(take_leading_notes(first));
+                }
                 notes.extend(hoist_marker_note(first));
             }
         }

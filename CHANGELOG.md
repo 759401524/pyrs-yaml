@@ -9,6 +9,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note in a nested block sequence keeps its line across rounds** — two slots relocated a comment
+  so the editor's emission never settled in one round. The writer lifted a block-container item's
+  leading note to the sequence marker one level too high, where the next read lifted it again
+  (libFuzzer `edit_yaml` crash-92e7b87c); it now leaves the note in the item's own body. And granit
+  defers an empty scalar's event past the comment line beneath it, so the reader slurped a note
+  sitting *below* the scalar as its leading note and the writer hoisted it above the scalar's header
+  (crash-12c96086); a below-note now rides the next sibling only when the scalar's line is complete
+  and a real node follows before the document ends, and otherwise stays the value's own leading note
+  (`docs/dev/quality-ledger.md` (lo)).
 - **A trailing note after an alias-tailed sequence keeps its place** — a sequence ending in an alias
   with an inline note (`- *x  # A`) has no slot for `A`, so the reader stranded it ahead of a
   genuine column-0 trailing note (`# B`) and the end-of-document flush displaced `B` above the root,

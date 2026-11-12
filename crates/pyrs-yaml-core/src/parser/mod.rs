@@ -764,9 +764,13 @@ struct AstReceiver<'a> {
     /// Current anchor ID to name mapping
     anchors: NodeMap<usize, String>,
     /// Standalone notes seen so far that have not met a node yet, in source
-    /// order. A list, not a slot: stacking any number of comment lines above one
-    /// key is ordinary, and overwriting here kept only the last of them.
-    pending_standalone_comment: Vec<Comment>,
+    /// order, each paired with the byte offset of its `#`. A list, not a slot:
+    /// stacking any number of comment lines above one key is ordinary, and
+    /// overwriting here kept only the last of them. The offset lets a scalar
+    /// drain only the notes that sit *above* it: granit defers an empty scalar's
+    /// event past the comment line that follows it, so without the position test
+    /// the scalar slurps a note that belongs to the next item (crash-12c96086).
+    pending_standalone_comment: Vec<(Comment, usize)>,
     /// Set once `DocumentEnd` has fired for the current document, and cleared by the
     /// next `DocumentStart`. A note reported after that point cannot be any node's
     /// trailing note — there is no node left to trail — so it must travel through the
@@ -1783,7 +1787,7 @@ impl<'a> AstReceiver<'a> {
     fn finish_document(mut self) -> CustomNode {
         let notes = core::mem::take(&mut self.pending_standalone_comment);
         let mut node = self.result.unwrap_or_else(CustomNode::plain_null);
-        for note in notes {
+        for (note, _) in notes {
             node.push_leading_comment(note);
         }
         // The guard is priced, not stylistic: entering the repair per document read +0.18% on the
@@ -1830,7 +1834,7 @@ impl<'a> AstReceiver<'a> {
         // unchanged, so the emission is a fixed point that keeps every note. Leading
         // the *first* note instead of homing it inline is what swapped two positions
         // every round (crash-11ced252), so the inline slot still wins for it.
-        let mut notes = notes.into_iter();
+        let mut notes = notes.into_iter().map(|(note, _)| note);
         if root.comment().is_none()
             && let Some(trailing) = notes.next()
         {
@@ -1862,9 +1866,27 @@ impl<'a> AstReceiver<'a> {
         // `9C9N` guard: a flow entry resuming under-indented is invalid.
         self.check_flow_continuation(&span);
 
-        let standalone = core::mem::take(&mut self.pending_standalone_comment);
-
         let range_start = range.start;
+        // granit defers an empty scalar's event past the comment line that follows
+        // it, so the pending stack can hold a note physically *below* the scalar.
+        // A note above the scalar always rides it; a note below rides the next
+        // sibling only when the scalar's own line is complete and a real node
+        // follows before the document ends (see `deferred_note_rides_next_sibling`).
+        // The comment-free scalar - every scalar of both Ir fixtures - takes the
+        // empty branch and pays one `is_empty`; the scan runs only when a note
+        // actually sits below the scalar.
+        let standalone = if self.pending_standalone_comment.is_empty() {
+            Vec::new()
+        } else {
+            let mut pending = core::mem::take(&mut self.pending_standalone_comment);
+            let above = pending.partition_point(|(_, off)| *off < range_start);
+            let keep_below =
+                above < pending.len() && self.deferred_note_rides_next_sibling(range_start);
+            let split = if keep_below { above } else { pending.len() };
+            self.pending_standalone_comment = pending.split_off(split);
+            pending.into_iter().map(|(note, _)| note).collect()
+        };
+
         let mut node = self.create_scalar(value, style, range);
 
         // PR #117b: standalone notes ride onto the dedicated
@@ -1896,6 +1918,59 @@ impl<'a> AstReceiver<'a> {
         }
 
         self.push_node(node);
+    }
+
+    /// Whether a note deferred *below* an empty scalar rides the next sibling.
+    ///
+    /// granit emits an empty scalar's event only after the comment line beneath it,
+    /// so that note is already pending when the scalar arrives. It belongs to the
+    /// scalar itself unless two things hold: the scalar's own line is complete
+    /// (only separation between its span and the break), and a real node follows
+    /// before the document ends. A mid-line empty scalar is an explicit-key marker
+    /// whose construct continues onto the next line, so its below-note stays with
+    /// it and the writer's spine lift hoists it (seeds c9031de4 / f8525a9e). An
+    /// end-of-line empty value hands the note to a following sibling
+    /// (crash-12c96086), but at doc-end - a col-0 `...`/`---` or EOF - there is no
+    /// sibling, so the note is the value's own leading note (crash-7eb273bc /
+    /// 9733643a). The break vocabulary is granit's own: CR breaks a line as LF does.
+    fn deferred_note_rides_next_sibling(&self, range_start: usize) -> bool {
+        let bytes = self.yaml_text.as_bytes();
+        let rest = &bytes[range_start..];
+        let end_of_line = match rest.iter().position(|&b| b == b'\n' || b == b'\r') {
+            Some(i) => rest[..i].iter().all(|&b| b == b' ' || b == b'\t'),
+            None => true,
+        };
+        if !end_of_line {
+            return false;
+        }
+        let mut i = range_start;
+        while i < bytes.len() {
+            let line_start = i;
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            let mut k = j;
+            while k < bytes.len() && bytes[k] != b'\n' && bytes[k] != b'\r' {
+                k += 1;
+            }
+            let next = if bytes.get(k) == Some(&b'\r') && bytes.get(k + 1) == Some(&b'\n') {
+                k + 2
+            } else {
+                (k + 1).min(bytes.len())
+            };
+            let blank = j >= bytes.len() || bytes[j] == b'\n' || bytes[j] == b'\r';
+            if !blank && bytes[j] != b'#' {
+                let marker = bytes[j..].starts_with(b"...") || bytes[j..].starts_with(b"---");
+                let boundary = matches!(
+                    bytes.get(j + 3).copied(),
+                    None | Some(b' ' | b'\t' | b'\r' | b'\n')
+                );
+                return !(j == line_start && marker && boundary);
+            }
+            i = next;
+        }
+        false
     }
 
     /// Where the node being anchored can begin: the end of everything the builder has already
@@ -1986,8 +2061,11 @@ impl<'a> AstReceiver<'a> {
 
         let tag_obj = tag.map(|t| convert_tag(&t));
 
-        // Own slot for this container; popped by the matching End event.
-        self.comment_stack.push(standalone);
+        // Own slot for this container; popped by the matching End event. A
+        // container's opening token is never deferred, so every pending note sits
+        // above it and rides along; only the offsets are dropped here.
+        self.comment_stack
+            .push(standalone.into_iter().map(|(note, _)| note).collect());
         Some((flow_style, start_byte, tag_obj))
     }
 
@@ -2229,25 +2307,31 @@ impl<'a> AstReceiver<'a> {
             }
             Arc::from(cleaned)
         };
+        let at = self.span_to_byte_range(&span).start;
         if is_standalone_placement(&placement) {
             // Append, never overwrite: a stack of comment lines above one key is
             // ordinary input, and a single slot here used to keep only the last
             // of them. See `stacked_comments_above_a_key_all_survive`.
-            self.pending_standalone_comment.push(Comment {
-                text,
-                standalone: true,
-            });
-        } else if placement == granit_parser::Placement::Right {
-            let at = self.span_to_byte_range(&span).start;
-            if !self.attach_inline_comment(Arc::clone(&text), at) {
-                // The note is not on the previous node's line, so it annotates a
-                // node that has not arrived yet: carry it forward as that node's
-                // leading note instead of binding it backwards.
-                self.pending_standalone_comment.push(Comment {
+            self.pending_standalone_comment.push((
+                Comment {
                     text,
                     standalone: true,
-                });
-            }
+                },
+                at,
+            ));
+        } else if placement == granit_parser::Placement::Right
+            && !self.attach_inline_comment(Arc::clone(&text), at)
+        {
+            // The note is not on the previous node's line, so it annotates a
+            // node that has not arrived yet: carry it forward as that node's
+            // leading note instead of binding it backwards.
+            self.pending_standalone_comment.push((
+                Comment {
+                    text,
+                    standalone: true,
+                },
+                at,
+            ));
         }
         // Placement is #[non_exhaustive]: other variants are ignored.
     }
