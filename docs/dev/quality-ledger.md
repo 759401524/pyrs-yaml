@@ -14167,3 +14167,69 @@ the parse hot path is `parse_medium` −0.02%, `parse_notes` +0.03%, `parse_anch
 field does not grow the `ParseState` enum (the `Mapping` variant dominates), so the cost is the
 attach call site alone. The writer-side container-note-over-alias-tail mechanism
 (crash-35c8809a/e26004a5) is separate and carried by #772 / ledger (lm); this change is reader-only.
+
+### (lo) A note in a nested block sequence keeps its line across rounds (2026-11-12)
+
+- **the writer lifted a block-container item's note one level too high** — `hoist_marker_note`'s
+  sequence arm took the first item's leading notes onto the marker unconditionally. A scalar or
+  compact item writes its note above the `- `, the reader reports that line on the sequence, so the
+  note must climb to the marker (crash-1445c91a / f1643b2d). An item that writes a block body on its
+  own lines keeps its leading stack in that body: the note lands below the item's `-`, the reader
+  files it on the item, and lifting it to the marker put it one level too high where the next read
+  hoisted it again (libFuzzer `edit_yaml` crash-92e7b87c). The arm now asks `body_below` — a
+  non-empty block container (a non-compact mapping, a block sequence or a block scalar) — and takes
+  the leading notes only when the body is *not* below; the walk still descends, so a deeper compact
+  marker can carry a stack the reader reports at this level.
+
+- **the reader slurped a note deferred below an empty scalar** — granit emits an empty scalar's
+  event only after the comment line beneath it, so `on_scalar_event` found that note already pending
+  and drained it onto the scalar as a *leading* note though it sits a line below; the writer then
+  hoisted it above the scalar's `&a0 !s:` header (libFuzzer `edit_yaml` crash-12c96086). The hoisted
+  form is itself a stable fixed point, so a round-trip equality check alone passes on the buggy tree
+  — the guard pins the note's *position*. `pending_standalone_comment` now carries each note's `#`
+  byte offset; a scalar drains only the notes above it (`partition_point`), and a below-note rides
+  the next sibling only when `deferred_note_rides_next_sibling` holds: the scalar's own line is
+  complete (only separation before its break) AND a real node follows before the document ends. A
+  mid-line empty scalar is an explicit-key marker whose construct continues, so its below-note stays
+  with it (seeds c9031de4 / f8525a9e); an end-of-line empty value hands the note to a following
+  sibling (crash-12c96086); at doc-end — a col-0 `...`/`---` or EOF — there is no sibling, so the
+  note is the value's own leading note (crash-7eb273bc / 9733643a). The break vocabulary is granit's
+  own: CR breaks a line as LF does.
+
+Excluded: a reader guard keyed on the LF break character alone passed the LF seed of crash-12c96086
+yet hoisted the note on the CR spelling, and drained the CR doc-end seeds correctly yet left the LF
+spelling's note pending (the writer then homed it inline on the root, a different tree). The signal
+is sibling-presence vs doc-end, not the break character; a document differs from its CR/LF spelling
+only in how its lines break, so both must emit byte-for-byte the same — that equality is the fence
+the two cross-spelling tests pin.
+
+Gates: `a_column_zero_note_between_items_settles_in_one_round` (crash-12c96086: the note rides the
+next `- s:` at column 0, `once == twice`, and the CR spelling emits identically),
+`a_doc_end_note_after_an_empty_value_settles_in_one_round` (crash-7eb273bc / 9733643a: both seeds
+settle and their LF spellings emit identically, plus the pinned `": !\r#U\r... #-"` →
+`"# -\n~:\n  # U\n  !\n"`), `a_nested_leading_note_settles_in_one_round` (crash-92e7b87c: the nested
+leading note is a fixed point), 928 across `cargo nextest run --all`,
+`cargo clippy --all --all-targets -- -D warnings` and the narrow `ir-gate` bench scope both clean.
+Mutation: replacing `deferred_note_rides_next_sibling`'s body with the LF-only key
+(`rest.starts_with(b"\n")`) reddens both cross-spelling tests — the sibling test on the CR hoist
+(`"- \n  b- - s:\n    # fuzz 47\n    &a0 !s:\n- s: ~  # fuzz 47\n"` vs the column-0 form), the
+doc-end test on its arm — the crate recompiling for both the red (exit 100) and the restored green
+(2 passed).
+
+Measured after the change: the YAML hot path is within the 0.5% tolerance on pinned `rustc 1.97.1` —
+`parse_notes` +0.43% (the comment-heavy fixture, the largest; a comment-free scalar takes the
+`is_empty` branch and pays one comparison, the scan runs only when a note sits below),
+`parse_medium` +0.13%, `parse_block` +0.18%, `parse_anchors` +0.09%, `serialize_note_flow` +0.13%,
+`serialize_block` +0.16%, `stream_medium` +0.00%. The local WSL run also FAILed `load_toml_medium`
++1.86% / `load_toml_long_strings` +2.99% on the flat table, but those are host-keyed
+interpreter-counting drift, not this change: the measured values (145,123,924 / 139,573,245) land
+within +0.15% / +0.08% of the `20261023.334.3` image row's floor (144,902,515 / 139,465,566) — the
+cell this WSL host's glibc/CPython occupies (`docs/dev/perf.md`) — while the flat floor is the
+`20261101.360.1` row (142,479,902 / 135,524,897). The pure-Rust TOML siblings (`from_toml_medium`,
+`to_toml_medium`) are exact (+0.00%) and the binding siblings (`load_json_medium` +0.15%,
+`to_python_medium` +0.09%) drift far less, so the TOML engine is untouched; this change is YAML
+reader/writer only and `load_toml` never calls it. On the enforcing image `load_toml` is judged
+against that image's own row, not the flat table. The local run then crashed in `nearest_image_row`
+(`scripts/ir_gate.py:559`, `row.get` on an int): line 917 passes the resolved flat `floors` instead
+of `ref["image_floors"]`, reached only on a non-image host with a failure; CI (`on_image`) never
+calls it. That is a pre-existing gate-script defect, separate from this change and not fixed here.
