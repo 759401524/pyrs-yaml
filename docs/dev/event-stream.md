@@ -562,9 +562,11 @@ the root's inline slot, so the old boolean answered "own line" for the stream an
 for the tree, and the two walks could not both be right about it.
 `every_note_the_tree_files_is_reported_with_the_same_owner` is the table of fourteen documents where
 the two walks must agree on the slot and on the direction, and
-`the_notes_the_tree_drops_are_the_documented_ones` names the notes the tree itself drops — a second
-trailing note, and the note an alias cannot hold — so the difference between the two walks is a
-recorded policy rather than a disagreement. The JSON and TOML producers carry the same two
+`the_notes_the_tree_drops_are_the_documented_ones` names the tree's end-of-document note policy: it
+conserves every trailing note — the first in the inline slot, any extra in the leading list (the
+second trailing note used to be dropped, closed by crash-e3294ab5) — and re-homes the note an alias
+cannot hold onto the key or sequence container that owns it, so the difference between the two walks
+is a recorded policy rather than a disagreement. The JSON and TOML producers carry the same two
 invariants in their own tiers.
 
 **Criterion three — rebuildability is demonstrated.**

@@ -14124,3 +14124,46 @@ verbatim on the parent (+0.00%) — the flat-table floor for the tiny malloc-dom
 not describe this host, and the enforcing image decides. The other three `edit_yaml` shapes from the
 same batch (crash-92e7b87c nested leading-note hoist, crash-12c96086, crash-e3294ab5) are separate
 mechanisms and are untouched; crash-aaf32b09 is a reader refusal, a different class.
+
+### (ln) A trailing note after an alias-tailed sequence keeps its place (2026-11-12)
+
+- **the reader stranded an alias-tail note ahead of a genuine trailing note** — a sequence ending in
+  an alias with an inline note (`- *x  # A`) has no `NodeMeta` slot for `A`. The writer prints a
+  container's inline note on its last leaf line when that line is free, and spills it to a trailing
+  column-0 line when the leaf already carries its own inline note; so the edit harness emits
+  seq-inline `A` on `- *x  # A` and root-inline `B` as a trailing `# B`. On re-parse the alias-tail
+  note `A` could not attach (the sequence case had no home for it), stranded in
+  `pending_standalone_comment` ahead of the genuine trailing note `B`; `flush_trailing_comment` then
+  homed `A` into the root inline slot and led `B`, relocating `B` from trailing to leading so the
+  emission never settled in one round (libFuzzer `edit_yaml` crash-e3294ab5, filed as
+  `former-crash-e3294ab5.seed`). The sequence case in `attach_inline_comment` now stashes the
+  alias-tail note in a new `ParseState::Sequence::inline_note` field, applied as the container's
+  inline comment in `on_sequence_end` — mirroring the mapping case re-homing an alias value's note
+  onto its key, but onto the sequence container. `flush_trailing_comment` keeps the first pending
+  note inline and leads any extra onto the root, so a genuine trailing note is conserved as a
+  leading note rather than dropped.
+
+Excluded: routing the alias-tail note through `comment_stack` would home it as *leading*
+(`on_sequence_end` flushes that stack to leading), but the writer prints it *inline* on the last
+item's line, so a separate inline field was required for the emission to be a fixed point. Dropping
+the extra trailing note — the pre-fix behaviour for the second note — was rejected because
+conservation is the documented policy (`the_notes_the_tree_drops_are_the_documented_ones`).
+
+Gates: `extra_trailing_notes_survive_the_eof_flush` (the repro: `once == twice` and each note count
+`== 1` over four source shapes, plus a fixed-point loop pinning the `B`-trailing emitted form
+byte-for-byte; mutating the alias-tail guard with `&& false` reddens it at `mod.rs:3837` with the
+relocation signature `"a: &x 0\nk:\n  - *x  # A\n# B\n" -> "# B\na: &x 0\nk:\n  - *x  # A\n"`, the
+crate recompiling for both the red and the restored green),
+`the_notes_the_tree_drops_are_the_documented_ones` (stacked notes keep the first inline, the rest
+leading), 925 across `cargo nextest run --all`, `seed_reach` (the new seed reaches the assertion;
+10 of 265 walked, `edit_yaml` 0 unreachable), `cargo clippy --all --all-targets -- -D warnings` and
+the narrow `ir-gate` bench scope both clean.
+
+Measured after the change: the archived input replays clean under the rebuilt `edit_yaml` binary
+(`-runs=0`, exit 0 — settles in one round), while crash-12c96086 from the same runs still fails the
+settle assertion (exit 77, a nested-header column-0 note claim) and is untouched. The Ir price on
+the parse hot path is `parse_medium` −0.02%, `parse_notes` +0.03%, `parse_anchors` −0.03%,
+`stream_medium` +0.00% (pinned `rustc 1.97.1`, within the 0.5% tolerance); the new `Option<Comment>`
+field does not grow the `ParseState` enum (the `Mapping` variant dominates), so the cost is the
+attach call site alone. The writer-side container-note-over-alias-tail mechanism
+(crash-35c8809a/e26004a5) is separate and carried by #772 / ledger (lm); this change is reader-only.

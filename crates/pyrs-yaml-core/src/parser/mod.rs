@@ -1108,6 +1108,12 @@ enum ParseState {
     /// Building a sequence
     Sequence {
         items: Vec<CustomNode>,
+        /// Inline note for the container itself, set when the last item is an
+        /// alias (which has no metadata slot). Kept apart from `comment_stack`
+        /// because that slot surfaces as *leading*; this one is the inline home
+        /// the writer prints on the last item's line, mirroring the mapping
+        /// case re-homing an alias value's note onto its key.
+        inline_note: Option<Comment>,
         anchor_id: usize,
         tag: Option<Tag>,
         flow_style: bool,
@@ -1369,11 +1375,28 @@ impl<'a> AstReceiver<'a> {
                         attached = true;
                     }
                 }
-                ParseState::Sequence { items, .. } => {
+                ParseState::Sequence {
+                    items, inline_note, ..
+                } => {
                     if !items.is_empty() {
                         attached = Self::set_scalar_comment(items.last_mut(), &comment);
                     }
                     if !attached
+                        && matches!(items.last(), Some(CustomNode::Alias { .. }))
+                        && inline_note.is_none()
+                    {
+                        // An alias has no metadata slot, so the note rides the
+                        // sequence container's inline slot — the position the
+                        // writer prints it from (the last item's line) and the
+                        // reader hands it back from. Without this home the note
+                        // stranded in `pending_standalone_comment` ahead of a
+                        // genuine trailing note and displaced it from the root
+                        // inline slot, relocating that note every round
+                        // (libFuzzer `edit_yaml` crash-e3294ab5). Mirrors the
+                        // mapping case re-homing an alias value's note onto its key.
+                        *inline_note = Some(comment);
+                        attached = true;
+                    } else if !attached
                         && items.is_empty()
                         && let Some(slot) = self.comment_stack.last_mut()
                     {
@@ -1796,19 +1819,28 @@ impl<'a> AstReceiver<'a> {
         let notes = core::mem::take(&mut self.pending_standalone_comment);
         // The writer hangs exactly one note on the document's last line; that is the
         // slot a re-read reports this shape from, so the first note goes back there
-        // exactly as before (crash-96fa252c) and any extra keeps its existing home
-        // rather than being re-homed. Leading them to the root instead made the two
-        // positions swap every round (crash-11ced252, 13 bytes), so a stacked note at
-        // end-of-stream is recorded as still unresolved rather than traded for a new
-        // drift.
-        let Some(trailing) = notes.first() else {
-            return;
-        };
-        if root.comment().is_none() {
+        // exactly as before (crash-96fa252c). Any *extra* note used to be dropped with
+        // the `mem::take`, which lost a genuine trailing note whenever the last line's
+        // own inline note could not attach and stranded ahead of it: a sequence ending
+        // in an alias (`- *x  # A`) has no metadata slot for `A`, so `A` lands in this
+        // pending stack before the column-0 trailing `# B`, and keeping only the first
+        // silently deleted `B` (libFuzzer `edit_yaml` crash-e3294ab5). The extras now
+        // ride the root as leading notes — the same home `finish_document` gives a
+        // pending note, and a position the writer prints and the reader hands back
+        // unchanged, so the emission is a fixed point that keeps every note. Leading
+        // the *first* note instead of homing it inline is what swapped two positions
+        // every round (crash-11ced252), so the inline slot still wins for it.
+        let mut notes = notes.into_iter();
+        if root.comment().is_none()
+            && let Some(trailing) = notes.next()
+        {
             root.set_comment(Comment {
-                text: trailing.text.clone(),
+                text: trailing.text,
                 standalone: false,
             });
+        }
+        for note in notes {
+            root.push_leading_comment(note);
         }
     }
 
@@ -2083,6 +2115,7 @@ impl<'a> AstReceiver<'a> {
         let guard = self.flow_guard(flow_style, &span);
         self.stack.push(ParseState::Sequence {
             items: Vec::new(),
+            inline_note: None,
             anchor_id,
             tag: tag_obj,
             flow_style,
@@ -2097,6 +2130,7 @@ impl<'a> AstReceiver<'a> {
     fn on_sequence_end(&mut self, span: Span) {
         if let Some(ParseState::Sequence {
             items,
+            inline_note,
             anchor_id,
             tag,
             flow_style,
@@ -2123,6 +2157,11 @@ impl<'a> AstReceiver<'a> {
             for comment in standalone {
                 let decor = meta.decor_mut();
                 decor.push_leading_comment(comment);
+            }
+            // An alias tail's inline note rides the container's inline slot, not
+            // the leading list above (crash-e3294ab5).
+            if let Some(note) = inline_note {
+                meta.set_comment(note);
             }
 
             let seq = CustomNode::Sequence {
@@ -3733,6 +3772,71 @@ mod tests {
                 "-o"
             };
             assert!(once.contains(key), "comment lost for {src:?}: {once:?}");
+        }
+    }
+
+    /// libFuzzer `edit_yaml` (crash-e3294ab5): a sequence whose last item is an
+    /// alias carrying an inline note (`- *x  # A`) has no metadata slot for `A`,
+    /// so the reader stranded `A` in `pending_standalone_comment` ahead of a
+    /// genuine column-0 trailing note (`# B`). `flush_trailing_comment` then homed
+    /// the first pending note (`A`) into the root inline slot and led `B`, so the
+    /// editor's emission — which carries `A` on the sequence and `B` trailing —
+    /// re-read with `B` relocated above the root and never settled in one round.
+    ///
+    /// Two homes close it. The alias tail's note now rides the *sequence's* inline
+    /// slot (`ParseState::Sequence::inline_note`), the position the writer prints
+    /// it from on the last item's line, mirroring the mapping case re-homing an
+    /// alias value's note onto its key. And any *extra* pending note at EOF rides
+    /// the root as a leading note rather than being dropped with the `mem::take`
+    /// (the stacked `# first` / `# second` case), while the inline slot still wins
+    /// for the first (crash-11ced252).
+    #[test]
+    fn extra_trailing_notes_survive_the_eof_flush() {
+        for (src, notes) in [
+            ("- &x 0\n- *x  # A\n# B\n", &["A", "B"][..]),
+            ("k:\n  - &x 0\n  - *x  # A\n# B\n", &["A", "B"][..]),
+            ("a: 1\n# first\n# second\n", &["first", "second"][..]),
+            // Control: a scalar tail attaches its own inline note, so only the
+            // trailing note reaches the flush and both survive unchanged.
+            ("- 1\n- 2  # A\n# B\n", &["A", "B"][..]),
+        ] {
+            let node =
+                parse(src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(
+                once, twice,
+                "trailing-note drift for {src:?}: {once:?} != {twice:?}"
+            );
+            // Each note survives exactly once — neither dropped nor duplicated.
+            for note in notes {
+                assert_eq!(
+                    once.matches(&format!("# {note}")).count(),
+                    1,
+                    "note {note:?} lost or doubled for {src:?}: {once:?}"
+                );
+            }
+        }
+
+        // The shape the editor actually emits: `A` on the alias's item line and a
+        // genuine `# B` trailing at column 0. The crash was that *this* form was
+        // not a fixed point — re-reading it relocated `B` above the root — so the
+        // settle-in-one-round assertion above (which starts from source, whose
+        // emission already leads `B`) could not see it. Pin the emitted form
+        // itself: parse then serialize must return it byte for byte.
+        for emitted in [
+            "a: &x 0\nk:\n  - *x  # A\n# B\n",
+            "k:\n  - &x 0\n  - *x  # A\n# B\n",
+        ] {
+            let node = parse(emitted, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{emitted:?} must parse: {e}"));
+            let again = crate::serializer::to_yaml(&node);
+            assert_eq!(
+                again, emitted,
+                "the editor's trailing-note emission must be a fixed point: {emitted:?} -> {again:?}"
+            );
         }
     }
 
