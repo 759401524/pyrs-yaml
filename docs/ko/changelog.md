@@ -163,6 +163,15 @@ status: new
 
 #### 내부
 
+- **두 엔진 형태가 Rust 1.100.0에서 넓어진 clippy를 만족합니다** — stable 1.100.0은
+  `needless_bool`과 `needless_range_loop`의 판정을 넓혀, 고정되지 않은 `@stable` `rust-lint`
+  작업이 1.99.1이 통과시키던 코드에서 빨개졌습니다. JSON5 숫자 쓰기 `is_json5_number`는 이제
+  끝의 불리언 식을 직접 반환하고 `if … { return true } false` 꼬리를 없앱니다. TOML 주석
+  스캐너 `take_comment`는 인덱스로 돌던 `for i in start..self.pos` 바이트 루프를
+  `self.s[start..self.pos].iter().position(...)`로 바꾸고, 절대 오프셋과 첫 위반만 기록해
+  유지하는 오류 성질을 지킵니다. 두 다시쓰기는 의미가 동등하며——주석 검사는 바이트마다의
+  경계 검사를 덜어냅니다——동작은 변하지 않습니다.
+
 - **`edit_yaml`은 이름이 사라졌는지를 묻는 대신 한 이름이 몇 짝에 답하는지 셉니다** — `rename`과
   `move`가 움직이는 쪽은 찾기기가 정체성 통과로 해석하는 그 한 짝입니다. 문서가 같은 키 텍스트를
   두 번 철자하면 형제 짝은 찾기기가 물러나는 철자 통과로 그 이름에 계속 답하므로, "옛 이름은

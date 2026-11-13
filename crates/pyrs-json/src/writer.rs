@@ -661,10 +661,7 @@ fn is_json5_number(text: &str) -> bool {
     // leading `+` on an otherwise-strict JSON number (e.g. `+7`, `+1.5`). The body must not carry a
     // sign of its own: the strip above makes `+-1` look like `-1`, which `is_json_number` accepts,
     // but no JSON5 reader takes a second sign (libFuzzer `json_roundtrip` crash-0a929a32).
-    if text.starts_with('+') && !body.starts_with(['+', '-']) && is_json_number(body) {
-        return true;
-    }
-    false
+    text.starts_with('+') && !body.starts_with(['+', '-']) && is_json_number(body)
 }
 
 /// The integer part JSON5's grammar accepts before a trailing dot: a lone `0`, or a digit other
