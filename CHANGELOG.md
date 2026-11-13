@@ -158,6 +158,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Internal
 
+- **Two engine shapes satisfy Rust 1.100.0's widened clippy** — stable 1.100.0 expanded
+  `needless_bool` and `needless_range_loop`, reddening the unpinned `@stable` `rust-lint` job on
+  code 1.99.1 accepted. The JSON5 number writer `is_json5_number` now returns its final boolean
+  expression directly instead of an `if … { return true } false` tail, and the TOML comment scanner
+  `take_comment` replaces its indexed `for i in start..self.pos` byte loop with
+  `self.s[start..self.pos].iter().position(...)`, keeping the absolute offset and the sticky
+  first-offense error. Both rewrites are semantically equivalent — the comment scan drops its
+  per-byte bounds check — and leave behavior unchanged.
+
 - **`edit_yaml` counts what a name answers instead of asking whether the name died** — a rename or a
   move acts on the one pair the lookup's identity pass resolves, and where the document spells that
   key text twice the sibling goes on answering the name through the pass the lookup falls back to:

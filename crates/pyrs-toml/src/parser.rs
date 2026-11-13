@@ -378,13 +378,10 @@ impl<'a> Parser<'a> {
         // tab, plus DEL U+007F). Record the first offense as a sticky error; the
         // multi-byte-safe byte test never flags a UTF-8 continuation byte.
         if self.pending_comment_err.is_none() {
-            let mut bad: Option<usize> = None;
-            for i in start..self.pos {
-                if Self::forbidden_control(self.s[i]) {
-                    bad = Some(i);
-                    break;
-                }
-            }
+            let bad = self.s[start..self.pos]
+                .iter()
+                .position(|&b| Self::forbidden_control(b))
+                .map(|rel| start + rel);
             if let Some(off) = bad {
                 self.pending_comment_err = Some(self.err_at("control character in comment", off));
             }

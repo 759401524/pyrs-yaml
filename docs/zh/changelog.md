@@ -136,6 +136,13 @@ status: new
 
 #### 内部
 
+- **两处引擎形状满足 Rust 1.100.0 放宽后的 clippy** — stable 1.100.0 扩大了 `needless_bool` 与
+  `needless_range_loop` 的判定，使未固定的 `@stable` `rust-lint` 任务在 1.99.1 接受的代码上变红。
+  JSON5 数字写器 `is_json5_number` 现在直接返回末尾的布尔表达式，不再走 `if … { return true } false`
+  尾部；TOML 注释扫描器 `take_comment` 把按索引的 `for i in start..self.pos` 字节循环换成
+  `self.s[start..self.pos].iter().position(...)`，保留绝对偏移与只记首个违规的粘滞错误。两处改写
+  语义等价——注释扫描省去逐字节的边界检查——行为不变。
+
 - **`edit_yaml` 数一个名字由几对回答，而不是问它死没死** — `rename` 和 `move` 动的都是查找在身份那一
   趟解析出的那一对；文档把同一个键文本拼两遍时，兄弟那一对经查找的拼写回落趟继续回答这个名字，所以
   “旧名字已经没了”并不是这份输出作出的断言。这就是 2026-11-02 那批 `edit_yaml` 剩下三条输入所在的同
