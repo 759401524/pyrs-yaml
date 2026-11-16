@@ -19,6 +19,9 @@
 //! does not spell at all: the loader projects a YAML sequence key to a Python
 //! tuple, so such a key really does reach the converter, and the pair is handed
 //! to the core serializer for that case rather than mirroring the spelling twice.
+//! A key whose simple spelling leaves the reader's 1024-character window takes
+//! the same route, for the same reason: the reader accepts the explicit form of
+//! any length and refuses the long simple one.
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
@@ -34,7 +37,7 @@ use crate::py::python_types::{
     float_to_yaml_string, is_decimal_digits, key_is_readable_shape, py_string_to_arc,
 };
 use crate::py::type_registry;
-use crate::serializer::{SerializeOptions, to_yaml_with_options};
+use crate::serializer::{SIMPLE_KEY_WINDOW, SerializeOptions, to_yaml_with_options};
 use crate::serializer::{
     is_short_alphanumeric, is_yaml_noncharacter, write_double_quoted_scalar, write_plain_scalar,
     write_single_quoted_scalar,
@@ -507,6 +510,49 @@ impl DirectWriter {
         false
     }
 
+    /// Whether the key just spelled from `key_start` leaves the reader's simple-key
+    /// window, in the characters the reader will count.
+    ///
+    /// There is no node style to ask here, so the emitted spelling is the measurement —
+    /// which is the right one anyway: a 602-character key spells at 1209 once quoted.
+    /// Bytes bound characters from above, so a spelling that fits the window in bytes
+    /// fits it in characters and the walk is skipped on the hot path.
+    fn key_spelling_crosses_window(&self, key_start: usize) -> bool {
+        self.output.len() - key_start > SIMPLE_KEY_WINDOW
+            && self.output[key_start..].chars().count() > SIMPLE_KEY_WINDOW
+    }
+
+    /// The compact dash body: every pair on the dash line, with `- ` already written.
+    ///
+    /// `Ok(false)` means a key's spelling left the reader's simple-key window. The
+    /// output is rewound to where the body started and the caller takes the block
+    /// shape, which is the same decision the node writer makes for that key ahead of
+    /// time (`is_compact_item` asks `key_needs_window_marker`).
+    fn write_compact_pairs(
+        &mut self,
+        py: Python,
+        dict: &Bound<'_, PyDict>,
+        indent_width: usize,
+        depth: usize,
+    ) -> PyResult<bool> {
+        let body_start = self.output.len();
+        for (pi, (key, value)) in dict.iter().enumerate() {
+            if pi > 0 {
+                self.write_indent(indent_width + 2);
+            }
+            let key_start = self.output.len();
+            self.write_key(py, &key)?;
+            if self.key_spelling_crosses_window(key_start) {
+                self.output.truncate(body_start);
+                return Ok(false);
+            }
+            self.output.push(':');
+            self.output.push(' ');
+            self.write_node(py, &value, 0, depth + 1)?;
+        }
+        Ok(true)
+    }
+
     /// Mirror of `Serializer::write_mapping_pair` for each `(key, value)`.
     fn write_mapping(
         &mut self,
@@ -552,8 +598,21 @@ impl DirectWriter {
             }
             return self.write_complex_pair(py, key, value, indent_width);
         }
+        let line_start = self.output.len();
         self.write_indent(indent_width);
+        let key_start = self.output.len();
         self.write_key(py, key)?;
+        if self.key_spelling_crosses_window(key_start) {
+            // The reader stops accepting a simple key once its `:` is more than 1024
+            // characters from the key's first character, and the explicit form is not
+            // windowed at all — so a long simple spelling is text the writer would have
+            // emitted and the reader refuses (`safe_dump({"k" * 1200: 1})` re-read as
+            // "mapping values are not allowed in this context"). The pair goes over to
+            // the same delegation the complex keys above take, whose output is
+            // `parse(...).to_yaml()`'s by construction.
+            self.output.truncate(line_start);
+            return self.write_complex_pair(py, key, value, indent_width);
+        }
         self.output.push(':');
         let vkind = classify(value);
         match vkind {
@@ -652,19 +711,13 @@ impl DirectWriter {
                     // putting it on a line of its own re-reads as a flow node and the next
                     // dump inlines it — the dash line is where the text stops moving.
                     self.output.push_str("{}\n");
-                } else if self.is_compact_mapping(py, dict) {
-                    for (pi, (key, value)) in dict.iter().enumerate() {
-                        if pi > 0 {
-                            self.write_indent(indent_width + 2);
-                        }
-                        self.write_key(py, &key)?;
-                        self.output.push(':');
-                        self.output.push(' ');
-                        self.write_node(py, &value, 0, depth + 1)?;
-                    }
                 } else {
-                    self.output.push('\n');
-                    self.write_mapping(py, dict, indent_width + 2, depth + 1)?;
+                    let compact = self.is_compact_mapping(py, dict)
+                        && self.write_compact_pairs(py, dict, indent_width, depth)?;
+                    if !compact {
+                        self.output.push('\n');
+                        self.write_mapping(py, dict, indent_width + 2, depth + 1)?;
+                    }
                 }
             } else if let Ok(list) = item.cast::<PyList>() {
                 if list.is_empty() {

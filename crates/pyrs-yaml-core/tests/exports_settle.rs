@@ -1,16 +1,15 @@
-//! How far a number's source spelling survives an export spoke: one round, not two.
+//! How far a number's source spelling survives an export spoke.
 //!
 //! `fuzz/fuzz_targets/edit_yaml.rs` asks the settlement question of whatever it explores and says so
-//! itself: an edited tree reaches the JSON5 and TOML writers through no other tier. Both shapes below
-//! are one mechanism seen from two dialects: the writers pass a number's text through (fidelity
-//! first), but re-reading a number restores no text, so the second emission canonicalizes. One case
-//! drifts in spelling, the other drifts in type - and the reason they cannot both be fixed by asking
-//! the text is that a JSON5 number and a YAML string that looks like one are the same node:
-//! `from_json5` yields `Scalar { style: Plain, tag: None, fidelity: None }`, and so does a YAML plain
-//! scalar whose text overflows the integer range.
+//! itself: an edited tree reaches the JSON5 and TOML writers through no other tier. Both cases below
+//! come from that oracle. The TOML one settles because the reader carries a float token's whole text,
+//! sign included, through the hub; the JSON5 one still drifts in type, because a JSON5 number and a
+//! YAML string that looks like one are the same node: `from_json5` yields
+//! `Scalar { style: Plain, tag: None, fidelity: None }`, and so does a YAML plain scalar whose text
+//! overflows the integer range.
 //!
-//! These assert today's answer, not the wanted one. quality-ledger (je) names the remedies and the
-//! decision among them; each assertion states how to invert it when one lands.
+//! The remaining pinned answer is today's, not the wanted one. quality-ledger (je) names the
+//! remedies and the decision among them; the assertion states how to invert it when one lands.
 
 use pyrs_json::{from_json5, to_json5_text};
 use pyrs_toml::{from_toml, to_toml};
@@ -47,22 +46,19 @@ fn a_hex_plain_scalar_outside_the_integer_range_exports_bare_and_then_stays_bare
 
 /// libFuzzer `edit_yaml` crash-d161db83, minimized to one key.
 ///
-/// TOML takes a leading `+` on a float, so the first emission keeps `+83e6` - the rule
-/// `preserves_exponent_float_source_spelling` pins that behavior deliberately. Re-reading yields the
-/// same f64 with no text attached, so the second pass writes the canonical `83e6`. The value never
-/// moves, which is why no equality tier sees it; the loss is the spelling, and it is why the
-/// settlement claim fails.
+/// TOML takes a leading `+` on a float; the reader now records the token's whole text, sign
+/// included, so both emissions keep `+83e6`. It used to record the digits alone, and the second pass
+/// wrote the canonical `83e6`: the value never moved, so no equality tier saw it, and the loss was
+/// the spelling. The same drift reached through a YAML source is crash-8a14f730.
 #[test]
-fn a_leading_plus_on_a_float_survives_one_toml_round_and_not_two() {
+fn a_leading_plus_on_a_float_survives_every_toml_round() {
     let source = "k: +83e6\n";
     let once = to_toml(&tree(source)).expect("the tree exports");
+    assert_eq!(once, "k = +83e6\n", "the source spelling is kept");
     let twice =
         to_toml(&from_toml(&once).expect("its own export re-reads")).expect("and re-writes");
     assert_eq!(
-        (once.as_str(), twice.as_str()),
-        ("k = +83e6\n", "k = 83e6\n"),
-        "the float spelling stopped drifting. If the reader now carries the source text both rounds \
-         are `k = +83e6`; if canonicalization was chosen both are `k = 83e6` - collapse the pair to \
-         one value either way"
+        once, twice,
+        "the spoke stopped settling in one round: {once:?} -> {twice:?}"
     );
 }
