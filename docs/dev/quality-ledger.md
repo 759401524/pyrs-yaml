@@ -14368,8 +14368,9 @@ prefix fold brought those to +1.67% / +2.05% / +1.52% / +0.96% / +0.76%; the sin
 `ITERATIONS = 2_000` is 198.8 per document, which over the fixture's 18 pairs is 11.05 per key, the
 residual; a further variant that deferred the alias test outright read the same rows,
 `serialize_small` and `serialize_medium` bit-identical). `serialize_small` reads 3,609,498 against
-the control's 3,577,179 (+0.90%), but its committed floor (2,983,393) is stale on this host for the
-control too (+19.90%), so that row measures baseline age rather than this change. Two rows are not
+the control's 3,577,179 (+0.90%), but the floor committed when this was read (2,983,393) is
+stale on this host for the control too (+19.90%), so that row measures baseline age rather than
+this change. Two rows are not
 this guard at all and are recorded so nobody attributes them: `safe_dump_small` 13,332,559 and
 `safe_dump_medium` 111,028,627 run through `direct_dump` (crates/pyrs-yaml/src/py/functions.rs:620),
 which never calls `write_mapping_pair`, and `documents_short_strings` / `documents_long_strings`
@@ -14381,7 +14382,20 @@ them (`serialize_small`, `serialize_medium`, `serialize_block`, `serialize_block
 `serialize_anchors`, `serialize_note_flow`) in the refresh dispatch's `accept_drift` on this
 change's head, never a wider tolerance. The run then crashed in `nearest_image_row`
 (`scripts/ir_gate.py:559`) after printing verdicts, the pre-existing non-image-host defect (lo)
-records, separate from this change and not fixed here. One surface outside this guard was measured
+records, separate from this change and not fixed here. Dispatched on this head, the refresh was
+given all six names and the guard accepted five — `serialize_anchors` 22,551,355 -> 22,919,373
+(+1.63%), `serialize_medium` 27,605,411 -> 27,933,368 (+1.19%), `serialize_block` 10,969,376 ->
+11,071,353 (+0.93%), `serialize_small` 2,983,393 -> 3,007,379 (+0.80%),
+`serialize_block_scalars` 7,960,999 -> 8,008,960 (+0.60%) — and `serialize_note_flow` was the one
+name that did not cross, which costs nothing because the guard only refuses unnamed moves. The
+runner landed on `20261111.127.1` again, so the flat column and that row now carry these values;
+its `serialize_anchors` reading sits 73 instructions from the WSL number this fix measured with
+the branch in place (22,919,446; the same-host control with this branch removed read 22,961,446),
+so the isolation above survives
+the move to the enforcing image. The artifact is committed in this change as its own commit —
+`.ci/ir-baseline.json` plus the twelve marked readings it re-pointed — and the line itself is
+untouched at 0.5%, because the six names are the remedy the gate asks for and a wider tolerance is
+not. One surface outside this guard was measured
 and is not closed here: `safe_dump({'k'×1200: 1})` still writes the 1204-character simple key and
 the library's reader refuses it at char 1200, because `direct_dump` spells keys in `write_key` with
 no width test; it is not a seed of this batch, and (lr) below closes it.
