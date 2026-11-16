@@ -394,9 +394,132 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
                     // reports it and the dash line stands (libFuzzer
                     // `edit_yaml` crash-ad42b9cc).
                     && (v.leading_comment().is_none() || Serializer::is_empty_container(v))
+                    // The dash line cannot hold a key whose simple spelling leaves the
+                    // reader's 1024-character window either. Such a key takes the
+                    // `?`-marker form in `write_mapping_pair`, which is the block body
+                    // this guard routes it to.
+                    && !key_needs_window_marker(k, false)
                     && inlineable_value(v)
             })
     )
+}
+
+/// The reader's simple-key window: a key written inline must reach its `:` within 1024
+/// characters of the key's own first character. libyaml refuses once
+/// `simple_key->mark.index + 1024 < parser->mark.index`, and granit and PyYAML agree —
+/// measured on this tree, quoted key content of 1022 characters reads back while 1023
+/// does not, plain keys of 1024 characters read back while 1025 do not, and 1024 CJK
+/// characters are still inside the window, so the count is characters, not bytes.
+/// Indentation and the `- ` dash sit outside it; a key's anchor, tag and quotes do not.
+/// The `?`-marker form is not windowed at all (5000 characters measured).
+///
+/// Public because the direct writer (`safe_dump`'s no-AST route) has no node style to
+/// measure and instead counts the characters it just emitted against this same window.
+pub const SIMPLE_KEY_WINDOW: usize = 1024;
+
+/// The byte length at which a scalar key can no longer be inside the window by
+/// construction. The widest escape the writer emits is six characters (`\u{XXXX}`, or nine
+/// for `\U` on a four-byte character, which is 2.25 per byte), so 170 bytes spell at most
+/// 1022 characters under any style. Only a longer scalar, or one carrying an anchor or a
+/// tag, can put its colon outside the window.
+const SIMPLE_KEY_PREFIX_BYTES: usize = SIMPLE_KEY_WINDOW / 6;
+
+/// Whether this key must leave the simple form because its spelling leaves the reader's
+/// window. The spelled-width question is asked only when the cheap prefix says it can
+/// matter: this runs once per key on the writer's hot path, so a short scalar that carries
+/// no properties answers from two fields.
+#[inline]
+fn key_needs_window_marker(key: &CustomNode, flow: bool) -> bool {
+    let may_cross = match key {
+        CustomNode::Scalar { value, meta, .. } => {
+            value.len() > SIMPLE_KEY_PREFIX_BYTES || meta.has_properties()
+        }
+        CustomNode::Null { meta, .. } => meta.has_properties(),
+        _ => false,
+    };
+    may_cross && key_crosses_simple_window(key, flow)
+}
+
+/// Whether this key's simple spelling would leave the colon outside the reader's window,
+/// so the `?`-marker form has to carry it. Complex keys answer `false`: they already take
+/// that marker, whose body is not windowed.
+fn key_crosses_simple_window(key: &CustomNode, flow: bool) -> bool {
+    let (meta, body) = match key {
+        CustomNode::Scalar {
+            value, style, meta, ..
+        } => (meta, scalar_key_body_width(value, style, flow)),
+        CustomNode::Null { meta, .. } => (meta, 4),
+        _ => return false,
+    };
+    let mut width = body;
+    if let Some(name) = meta.anchor() {
+        width += name.chars().count() + 2; // `&name `
+    }
+    if let Some(tag) = meta.tag() {
+        width += Serializer::yaml_tag_text(tag).chars().count() + 1; // `tag `
+    }
+    width > SIMPLE_KEY_WINDOW
+}
+
+/// The spelled width, in characters, of a scalar used as a simple key.
+///
+/// A plain token spells one character per character, and the widest escape a
+/// double-quoted character takes is ten characters (`\U{:08x}`), so a value of at most
+/// 102 bytes cannot reach the window under any style. That is the hot path — where the
+/// answer is "no" — and a byte-length test answers it without walking the text.
+fn scalar_key_body_width(value: &str, style: &ScalarStyle, flow: bool) -> usize {
+    if value.len() <= SIMPLE_KEY_WINDOW / 10 {
+        return value.len();
+    }
+    match style {
+        ScalarStyle::Plain => {
+            // The style on the node is not the style on the page: this is exactly
+            // `write_scalar_for_key`'s plain arm, which quotes a key that cannot be
+            // plain at all. Counting the plain spelling of a key the writer renders
+            // double-quoted is how a 602-character key (600 backslashes and a tab)
+            // was measured at 602 and emitted at 1209 — the `yaml_roundtrip` inputs
+            // of 2026-11-14 are that shape, and the reader refused the result.
+            if value.is_empty() {
+                2 // `""`
+            } else if flow && flow_plain_unsafe(value) {
+                double_quoted_width(value)
+            } else if needs_double_quoted(value) {
+                if value.contains('\\') && single_quoted_holds(value) {
+                    value.chars().count() + 2 + value.matches('\'').count()
+                } else {
+                    double_quoted_width(value)
+                }
+            } else {
+                value.chars().count()
+            }
+        }
+        ScalarStyle::SingleQuoted if single_quoted_holds(value) => {
+            value.chars().count() + 2 + value.matches('\'').count()
+        }
+        _ => double_quoted_width(value),
+    }
+}
+
+/// Whether [`Serializer::write_scalar`]'s single-quote arm can represent the text at all.
+fn single_quoted_holds(value: &str) -> bool {
+    !value.contains('\n')
+        && !value.chars().any(char::is_control)
+        && !value.chars().any(is_yaml_noncharacter)
+}
+
+/// Character width of [`write_double_quoted_scalar`]'s output, without building it.
+fn double_quoted_width(value: &str) -> usize {
+    let mut width = 2;
+    for c in value.chars() {
+        width += match c {
+            '\\' | '"' | '\n' | '\r' | '\t' | '\0' | '\x08' | '\x0C' | '\x1B' | '/' => 2,
+            c if c.is_control() || is_yaml_noncharacter(c) || c == '\u{FEFF}' => {
+                if (c as u32) > 0xFFFF { 10 } else { 6 }
+            }
+            _ => 1,
+        };
+    }
+    width
 }
 
 /// Serialize a single block-mapping pair via [`Serializer::write_mapping_pair`],
@@ -916,6 +1039,22 @@ impl Serializer {
         line_has_comment_marker(&bytes[start..end])
     }
 
+    /// Whether the block's last line belongs to a node that wrote a header line of its own.
+    ///
+    /// The question decides what an alias's trailing slot is worth: a note riding that line is
+    /// re-read onto the node that ends it, and a node with a header lifts such a note above the
+    /// header on the next emission - so the enclosing container must not use the slot. A node
+    /// written without one keeps the note on the line, and the slot stays a fixed point. The
+    /// header need not belong to the node the alias sits in (libFuzzer `edit_yaml`
+    /// crash-09e50854: the header heads the inner mapping, not the sequence that owns the note).
+    fn ended_line_under_a_header(&self) -> bool {
+        let Some(block) = self.output.strip_suffix('\n') else {
+            return false;
+        };
+        let line_start = block.rfind('\n').map_or(0, |break_before| break_before + 1);
+        self.header_gap_start(line_start) < line_start
+    }
+
     /// Write the notes that cannot fit the single inline slot of an empty
     /// container above its line, so a stack of them is never dropped.
     ///
@@ -1425,6 +1564,14 @@ impl Serializer {
                     // header is where the re-read files it, so the first emission writes it there
                     // (libFuzzer `edit_yaml` crash-35c8809a / crash-e26004a5).
                     self.note_line_above(inherited_header.unwrap_or(body_start), &c.text);
+                } else if self.tail_slot_is_alias && self.ended_line_under_a_header() {
+                    // Same alias tail, but the header heads a *child* node rather than this
+                    // container, so neither of the offsets above names it. The note re-reads onto
+                    // that child, whose writer lifts it above its own header on the next
+                    // emission (libFuzzer `edit_yaml` crash-09e50854). Above the line this
+                    // container's block starts on is where the re-read files a container's own
+                    // note - the placement the `indent_width > 0` fallback below already uses.
+                    self.note_line_above(body_start, &c.text);
                 } else if self.trailing_note_slot_open
                     && self.output.ends_with('\n')
                     && !self.tail_line_has_note()
@@ -1561,11 +1708,31 @@ impl Serializer {
         // ("simple key expected ':'"), and ruamel.yaml's scanner raises on it from 0.19 while
         // 0.18.16 reads it as an empty-tuple key (both measured). The marker is the only form
         // that reads the same everywhere, and the durable refusal is ours, not theirs.
-        let alias_key = matches!(key, CustomNode::Alias { .. });
-        let explicit_key_marker = matches!(
-            key,
-            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. }
-        );
+        let explicit_key_marker = match key {
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. } => {
+                true
+            }
+            // A key whose simple spelling cannot reach its `:` inside the reader's window
+            // (`key_crosses_simple_window`) takes the marker too: the reader accepts an
+            // explicit key of any length, while re-reading the long simple form fails — so
+            // the writer would otherwise emit text its own reader refuses (the 2026-11-14
+            // `yaml_roundtrip` inputs: 1023-character quoted content, 1025-character plain).
+            //
+            // The length test is the cheap prefix of that question and shares this dispatch,
+            // so a short key that carries nothing answers from two fields: only a scalar
+            // longer than `SIMPLE_KEY_PREFIX_BYTES`, or a node carrying an anchor or tag,
+            // asks for a width.
+            CustomNode::Scalar { value, meta, .. } => {
+                (value.len() > SIMPLE_KEY_PREFIX_BYTES || meta.has_properties())
+                    && key_crosses_simple_window(key, false)
+            }
+            CustomNode::Null { meta, .. } => {
+                meta.has_properties() && key_crosses_simple_window(key, false)
+            }
+        };
+        // Only the marker branches consult the alias flag, so it is read after the dispatch:
+        // the simple-key path — every key of every ordinary document — never asks.
+        let alias_key = explicit_key_marker && matches!(key, CustomNode::Alias { .. });
 
         if explicit_key_marker {
             // Complex key: use ? indicator. A standalone note on the key
@@ -2314,6 +2481,14 @@ impl Serializer {
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
                 self.output.push_str("? ");
                 self.serialize_flow_value(key, depth + 1)?;
+                self.output.push(':');
+            }
+            other if key_needs_window_marker(other, true) => {
+                // The window is enforced in flow mappings too — `{"a"×1023: 1}` is refused
+                // — and the marker form is the only spelling that reads back at any length
+                // (`{? "a"×2000: 1}` measured).
+                self.output.push_str("? ");
+                self.write_scalar_for_key(other, true);
                 self.output.push(':');
             }
             other => {
@@ -3470,6 +3645,81 @@ mod tests {
         // without one stays unquoted.
         assert!(needs_double_quoted("a\nb"));
         assert!(!needs_double_quoted("a b"));
+    }
+
+    #[test]
+    fn the_key_width_estimate_matches_the_writer() {
+        // The window guard decides on `double_quoted_width` instead of rendering the key, so
+        // the two must agree character for character.
+        let tricky = [
+            "\\",
+            "\"",
+            "/",
+            "\n",
+            "\r\n",
+            "\t",
+            "\0",
+            "\x08",
+            "\x0C",
+            "\x1B",
+            "\u{7F}",
+            "\u{85}",
+            "\u{FEFF}",
+            "\u{FDD0}",
+            "\u{FFFE}",
+            "\u{1FFFE}",
+            "中",
+            "a b",
+            "? x: y",
+            "# z",
+            "'",
+        ];
+        for value in tricky {
+            let mut rendered = String::new();
+            write_double_quoted_scalar(&mut rendered, value);
+            assert_eq!(
+                double_quoted_width(value),
+                rendered.chars().count(),
+                "{value:?}"
+            );
+        }
+
+        // Above the 102-byte band the estimate is exact, for both quoted styles.
+        for fill in ["a", "\"", "\\", "\u{1FFFE}"] {
+            let value = fill.repeat(120);
+            let mut double = String::new();
+            write_double_quoted_scalar(&mut double, &value);
+            assert_eq!(
+                scalar_key_body_width(&value, &ScalarStyle::DoubleQuoted, false),
+                double.chars().count(),
+                "{fill:?}"
+            );
+            // A single-quoted key whose text that style cannot hold (a break, a control,
+            // a noncharacter) is demoted to double quotes by `write_scalar`, so the wide
+            // spelling is the writer's own answer, not the raw single-quoted one.
+            let mut single = String::new();
+            if single_quoted_holds(&value) {
+                write_single_quoted_scalar(&mut single, &value);
+            } else {
+                write_double_quoted_scalar(&mut single, &value);
+            }
+            assert_eq!(
+                scalar_key_body_width(&value, &ScalarStyle::SingleQuoted, false),
+                single.chars().count(),
+                "{fill:?}"
+            );
+        }
+
+        // Below it the answer is a bound, not the figure — it is only ever compared against
+        // the window, and the widest escape keeps 102 content characters inside it.
+        let all_escaped = "\u{1FFFE}".repeat(102);
+        let mut rendered = String::new();
+        write_double_quoted_scalar(&mut rendered, &all_escaped);
+        assert!(rendered.chars().count() <= SIMPLE_KEY_WINDOW);
+        assert!(
+            scalar_key_body_width(&all_escaped, &ScalarStyle::DoubleQuoted, false)
+                <= SIMPLE_KEY_WINDOW
+        );
     }
 
     use crate::ast::Tag;

@@ -198,12 +198,14 @@ fn inline_dropped_uses(
             return Vec::new();
         }
         *node = replacement;
-        // The inlined copy carries the anchor, so it re-defines the name right here: later uses
-        // of it are reachable again and keep their reference.
-        if let Some(name) = node.anchor() {
-            defined.push(name.to_string());
-        }
-        return Vec::new();
+        // The inlined copy can name anchors of its own, and those definitions may have left the
+        // tree in the same document's fold: `<<: &b` over a body whose own `&c` folded against a
+        // plain null key drops both definitions, and the body only re-enters the tree here. A
+        // single pass over the tree cannot see inside it, so the copy is walked as if it had
+        // stood in this position from the start — that registers its own anchor in document
+        // order and inlines what it still names (libFuzzer `yaml_roundtrip` crash-e1e921af,
+        // whose emission defined neither name and was refused by this library's own reader).
+        return inline_dropped_uses(node, dropped, defined);
     }
     if let Some(name) = node.anchor() {
         defined.push(name.to_string());

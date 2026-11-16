@@ -75,6 +75,23 @@ PARITY_TABLE = [
     ("empty tuple key", "?\n  []\n:\n  1\n", {(): 1}),
     ("tuple key among scalars", "?\n  - a\n:\n  1\nb: 2\n", {("a",): 1, "b": 2}),
     ("tuple under a dash", "- \n  k:\n    - a\n    - b\n", [{"k": ("a", "b")}]),
+    # The reader stops accepting a simple key once its `:` is more than 1024 characters from
+    # the key's own first character, so a longer simple spelling is text the writer would
+    # emit and its own reader refuses ("mapping values are not allowed in this context",
+    # measured at 1200). Both writers carry such a key at the `?` marker; the direct one has
+    # no node style to measure ahead of time and counts the characters it just emitted.
+    ("key at the simple-key window", "k" * 1024 + ": 1\n", {"k" * 1024: 1}),
+    ("key one past the simple-key window", "?\n  " + "k" * 1025 + "\n:\n  1\n", {"k" * 1025: 1}),
+    # The window counts characters, not bytes: 1024 CJK characters are 3072 bytes and still
+    # read back as a simple key.
+    ("wide key counted in characters", "键" * 1024 + ": 1\n", {"键" * 1024: 1}),
+    ("key past the window nested", "a:\n  ?\n    " + "k" * 1025 + "\n  :\n    1\n", {"a": {"k" * 1025: 1}}),
+    ("key past the window in a compact item", "- \n  ?\n    " + "k" * 1025 + "\n  :\n    1\n", [{"k" * 1025: 1}]),
+    (
+        "compact item whose second key is past the window",
+        "- \n  a: 1\n  ?\n    " + "k" * 1025 + "\n  :\n    2\n",
+        [{"a": 1, "k" * 1025: 2}],
+    ),
 ]
 
 IDS = [label for label, _text, _obj in PARITY_TABLE]

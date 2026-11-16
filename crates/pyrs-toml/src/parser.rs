@@ -831,11 +831,11 @@ impl<'a> Parser<'a> {
             }
             let is_float = true;
             self.scan_optional_exponent(is_float, num_start)?;
-            return self.emit_float(num_start, negative);
+            return self.emit_float(num_start, token_start, negative);
         }
         if matches!(self.peek(), Some(b'e' | b'E')) {
             self.scan_optional_exponent(true, num_start)?;
-            return self.emit_float(num_start, negative);
+            return self.emit_float(num_start, token_start, negative);
         }
         // Emit integer if no float marker. `token_start` reaches back over
         // the sign (when there is one), so the source text is the whole
@@ -868,7 +868,12 @@ impl<'a> Parser<'a> {
         Ok(TomlValue::Integer(value, source))
     }
 
-    fn emit_float(&mut self, num_start: usize, negative: bool) -> Result<TomlValue, ParseError> {
+    fn emit_float(
+        &mut self,
+        num_start: usize,
+        token_start: usize,
+        negative: bool,
+    ) -> Result<TomlValue, ParseError> {
         let text = &self.text[num_start..self.pos];
         let cleaned = text.replace('_', "");
         let magnitude: f64 = cleaned
@@ -880,13 +885,15 @@ impl<'a> Parser<'a> {
         // carries no tag and stays fully interoperable with the YAML
         // pipeline. Canonical decimal forms (`1.5`, `-0.0`) already
         // match the parsed value's rendering, so no source is recorded.
-        let has_exponent = text.bytes().any(|b| b == b'e' || b == b'E');
-        let source: Option<alloc::sync::Arc<str>> = if has_exponent && !text.contains('_') {
-            Some(if negative {
-                alloc::sync::Arc::from(format!("-{text}"))
-            } else {
-                alloc::sync::Arc::from(text)
-            })
+        //
+        // The whole token is recorded, sign included: an explicit `+` is part
+        // of the source spelling (`+0e8`) and Core reads it back as the same
+        // float, so dropping it here made the first emission `+0e8` and the
+        // second `0e8` (libFuzzer `edit_yaml` crash-8a14f730).
+        let raw = &self.text[token_start..self.pos];
+        let has_exponent = raw.bytes().any(|b| b == b'e' || b == b'E');
+        let source: Option<alloc::sync::Arc<str>> = if has_exponent && !raw.contains('_') {
+            Some(alloc::sync::Arc::from(raw))
         } else {
             None
         };

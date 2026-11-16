@@ -1507,6 +1507,11 @@ mod tests {
             "v = -3.14e-2\n",
             "v = 6.02E23\n",
             "v = 0.0e1\n",
+            // An explicit `+` is a legal exponent spelling and part of the
+            // source text; dropping it made the second emission `0e8`
+            // (libFuzzer `edit_yaml` crash-8a14f730).
+            "v = +0e8\n",
+            "v = +1.5e+3\n",
         ] {
             let ast = from_toml(src).unwrap();
             let text = to_toml(&ast).unwrap();

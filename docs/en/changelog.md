@@ -19,6 +19,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A key past the reader's simple-key window takes the marker form** — a simple key must reach its
+  `:` within 1024 characters, and the writer re-derived the `?`-marker form from the node kind, so
+  an explicit marker over a long key collapsed back to the simple form and emitted text this
+  engine's own reader refuses (libFuzzer `yaml_roundtrip` crash-b8731e07 / crash-dd90d50e). The
+  window is measured on the spelling the writer chooses — a tab costs six characters in the
+  double-quoted form — at the block pair, the compact item's guard and the flow pair
+  (`docs/dev/quality-ledger.md` (lq)).
+- **The direct writer takes the same window** — `safe_dump` builds no node to measure and spelled a
+  key at any length, so a key whose `:` fell more than 1024 characters from its first character
+  produced text its own reader refused (`mapping values are not allowed in this context`, measured
+  at a 1200-character key). It now counts the characters it just emitted — bytes first, so every
+  key that fits skips the walk — and hands a pair past the window to the core writer, at the
+  mapping pair and inside a compact sequence item (`docs/dev/quality-ledger.md` (lr)).
+- **A sequence's note no longer rides a child's alias tail** — a block sequence whose last item is a
+  headed mapping whose last pair value is an alias wrote its own note on that alias's trailing
+  slot; the reader files the note on the child, whose writer lifts it above its `&a` header, so the
+  emission settled only on a second round (libFuzzer `edit_yaml` crash-09e50854). The container now
+  asks whether the line it just finished sits under a header, and places the note above its own
+  block's first line (`docs/dev/quality-ledger.md` (ls)).
+- **An inlined anchor definition repairs the aliases it still holds** — the duplicate-key fold drops
+  a pair that defined an anchor and inlines the surviving uses from the dropped subtree, but the
+  walk stopped at the use it rewrote, so an alias *inside* the inlined copy could be left naming an
+  anchor the same fold had dropped, and the emission carried an undefined anchor (libFuzzer
+  `yaml_roundtrip` crash-e1e921af). The copy is now walked in place, registering its own anchor and
+  inlining what it still names.
+- **A TOML float keeps the sign it was written with** — the reader recorded an exponent float's
+  digits and re-prefixed only `-`, so a leading `+` was dropped: `+0e8` re-read as `0e8` and the
+  second emission moved (libFuzzer `edit_yaml` crash-8a14f730, the spelling half of crash-d161db83).
+  The whole token is recorded now, sign included, so the source spelling is a fixed point.
 - **An alias key in a compact sequence item is no longer spelled `null`** — a block mapping that is
   a sequence item takes the compact `- key: value` form, whose key writer spells any non-scalar
   `null`, so an alias key `*x` came out as a literal `null:` beside the item's own null key. The

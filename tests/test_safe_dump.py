@@ -184,6 +184,21 @@ class TestFuzzRegressions:
         v = {"k": "x " + "y" * 75 + chr(0x10A09B)}
         assert self._rt(v) == v
 
+    def test_key_past_the_simple_key_window(self):
+        # The reader refuses a simple key whose `:` is more than 1024 characters from the
+        # key's first character, so the long simple spelling is text the writer emitted and
+        # its own reader rejected ("mapping values are not allowed in this context",
+        # measured at a 1200-character key before this guard existed).
+        for key in ("k" * 1200, "键" * 1200):
+            v = {key: 1}
+            assert self._rt(v) == v
+
+    def test_key_whose_escape_widens_it_past_the_window(self):
+        # 602 characters, 1209 written once quoted: the window counts the emitted
+        # spelling, so the guard measures what was written, not the value's length.
+        v = {"\\" * 600 + "\t" + "y": 1}
+        assert self._rt(v) == v
+
 
 class TestIntegersWiderThanI64:
     """A Python int outside i64 keeps its decimal digits on the way out.

@@ -14287,3 +14287,196 @@ on the enforcing leg), and `documents_short_strings` −12.77% / `documents_long
 instructions out of millions — the `Alias` arm is a cold guard the fixtures never take. The run then
 crashed in `nearest_image_row` (`scripts/ir_gate.py:559`, `row.get` on an int) on both trees: the
 pre-existing non-image-host defect (lo) records, separate from this change and not fixed here.
+
+### (lq) A key past the simple-key window takes the marker form (2026-11-16)
+
+- **the writer re-derived a key's form from the node kind, so an explicit marker over a long key
+  collapsed back to the simple form and emitted text this engine's own reader refuses** — a simple
+  key must reach its `:` within 1024 characters of the key's first character. Read in this engine in
+  block and flow context alike: quoted key content of 1022 characters reads back while 1023 does
+  not, plain keys of 1024 read back while 1025 do not, 1024 CJK characters stay inside (characters,
+  not bytes), and the `?`-marker form is not windowed at all (5000 characters measured).
+  `write_mapping_pair` built the marker from `Mapping` / `Sequence` / `Alias` keys alone, so a
+  source that spelled a long scalar key with `?` was re-emitted as `key…: v`, and the re-read
+  refused it — libFuzzer `yaml_roundtrip` crash-b8731e07 (1023 characters of quoted content) and
+  crash-dd90d50e (1025 plain). The window is measured on the spelling the writer *chooses*, not the
+  one the node carries: 600 backslashes and a tab are 602 characters as a value but 1209 as written,
+  because the tab sends the key through the double-quoted arm, where `\` costs two characters and
+  the tab six.
+- **and the duplicate-key fold stopped at the alias it inlined, so a definition inside the copy
+  stayed dropped** — the fold that drops a pair defining an anchor inlines the surviving uses from
+  the dropped subtree, but the walk did not descend into the copy it installed. In `<<: &b` over a
+  body whose own `&c` folded against a plain null key, both definitions leave the tree in one pass:
+  `*b` inlines as that body, and `*c` inside the copy re-enters the tree still naming an anchor no
+  node defines. The writer then emitted `? *.?-` with no `&.?-` anywhere and this library's own
+  reader refused it (libFuzzer `yaml_roundtrip` crash-e1e921af, 34 bytes minimized).
+  `inline_dropped_uses` now returns its own result for the replacement, so the copy is walked in
+  place and registers its own anchor in document order (crates/pyrs-yaml-core/src/parser/mod.rs).
+- **and a TOML float lost a leading `+` on its second emission** — the reader recorded an exponent
+  float's digits and re-prefixed only `-`, so `+0e8` re-read as `0e8` and the second emission moved;
+  the value never moved, which is why no equality tier saw it (libFuzzer `edit_yaml` crash-8a14f730,
+  the spelling half of crash-d161db83). `emit_float` records the whole token from `token_start` now,
+  sign included.
+
+The window question has a cheap prefix, because it runs once per key of every document the writer
+touches. `SIMPLE_KEY_PREFIX_BYTES` is 1024/6: the widest escape is six characters, and `\U` on a
+four-byte character is nine characters for four bytes (2.25 per byte), so a scalar of at most 170
+bytes spells at most 1022 characters under any style. A key longer than that, or a node carrying an
+anchor or tag (whose spellings count inside the window, quotes included), asks
+`key_crosses_simple_window` for the spelled width; every other key answers from two fields.
+`NodeMeta::has_properties` makes the second field one load — `Fidelity` is one boxed pair that
+`prune_fidelity` sets to `None` when empty, so the question is `fidelity.is_some()`. Three sites ask
+it, and they are the three the reader windows: `write_mapping_pair`'s marker dispatch shares the
+same `match` as the length test, `is_compact_item` routes a long key away from the dash line
+(serializer.rs:401), and the flow pair takes `? ` before its scalar (serializer.rs:2459) because a
+flow mapping windows too (`{"a"×1023: 1}` is refused). Complex keys answer `false` — they already
+take a marker whose body is not windowed. The alias flag is read only after the dispatch, because
+only the marker branches consult it and the simple-key path is every key of every ordinary document.
+`the_key_width_estimate_matches_the_writer` pins the estimate against the writer's own rendering on
+both the exact branch and the bound branch.
+
+Gates: `a_key_past_the_simple_key_window_settles_in_one_round` (the four shapes — the block pair in
+quoted and plain spelling, the compact item, and the flow pair — take the marker and settle, while
+the 1022-content key keeps the simple form byte-for-byte),
+`a_plain_key_the_writer_quotes_settles_in_one_round` (crash-b8731e07 / crash-dd90d50e: the
+1209-character emitted key takes the marker in block and compact form and settles; its
+1009-character sibling stays simple), `an_inlined_definition_repairs_its_own_aliases`
+(crash-e1e921af: both spellings emit no `*` and are fixed points),
+`a_leading_plus_on_a_float_survives_every_toml_round` (crash-8a14f730, with
+`preserves_exponent_float_source_spelling` extended by `+0e8` and `+1.5e+3`), the four seeds
+archived under `fuzz/seeds/**/former-crash-*.seed` and reached by `seed_reach`, whose registry
+(`.ci/seed-reach.txt`, 10 lines) names none of them, 933 across `cargo nextest run --all` (933
+passed, 0 skipped), `cargo clippy --all --all-targets -- -D warnings` and the narrow `ir-gate` bench
+scope both clean.
+
+Mutation: returning `false` from `key_needs_window_marker`'s crossed test reddens
+both window tests (0 passed, 2 failed); deleting the `return inline_dropped_uses(...)` recursion
+reddens `an_inlined_definition_repairs_its_own_aliases` (panic at settles_in_one_round.rs:1382);
+slicing the recorded float from `num_start` instead of `token_start` reddens
+`preserves_exponent_float_source_spelling` (`v = 3.14e-2\n` vs `v = -3.14e-2\n`, exit 100). Each red
+compiled and each restore returned the crate to green.
+
+Measured after the change: the guard's cost is per key, and it is the price of a writer that never
+emits text its own reader refuses. On pinned `rustc 1.97.1` in WSL, against a same-host main control
+at 61f1c122 (a separate worktree, a fresh target dir, three deterministic samples per run), the six
+serialize floors moved in three rounds — the first form, which asked the spelled-width question of
+every scalar key, read `serialize_medium` +5.72%, `serialize_anchors` +6.44%, `serialize_block`
++4.92%, `serialize_note_flow` +2.91%, `serialize_block_scalars` +2.31%; the length-and-properties
+prefix fold brought those to +1.67% / +2.05% / +1.52% / +0.96% / +0.76%; the single-load
+`has_properties` and the merged dispatch brought them to +1.44% / +1.82% / +1.32% / +0.56% / +0.71%
+(`serialize_medium` 28,003,521 instructions against the control's 27,605,834 — 397,687 over
+`ITERATIONS = 2_000` is 198.8 per document, which over the fixture's 18 pairs is 11.05 per key, the
+residual; a further variant that deferred the alias test outright read the same rows,
+`serialize_small` and `serialize_medium` bit-identical). `serialize_small` reads 3,609,498 against
+the control's 3,577,179 (+0.90%), but its committed floor (2,983,393) is stale on this host for the
+control too (+19.90%), so that row measures baseline age rather than this change. Two rows are not
+this guard at all and are recorded so nobody attributes them: `safe_dump_small` 13,332,559 and
+`safe_dump_medium` 111,028,627 run through `direct_dump` (crates/pyrs-yaml/src/py/functions.rs:620),
+which never calls `write_mapping_pair`, and `documents_short_strings` / `documents_long_strings`
+count `parse_documents` only (`crates/pyrs-yaml-core/benches/ir_gate.rs:447`) — the control worktree
+reads them 12.77% / 8.22% below the floor while this tree sits +0.04% / +0.03%, which is the
+allocation-layout spread `docs/dev/perf.md` records for that scenario pair, not a writer effect. The
+six serialize rows sit past the 0.5% `tolerance_hint`, so the remedy is the one the gate names: name
+them (`serialize_small`, `serialize_medium`, `serialize_block`, `serialize_block_scalars`,
+`serialize_anchors`, `serialize_note_flow`) in the refresh dispatch's `accept_drift` on this
+change's head, never a wider tolerance. The run then crashed in `nearest_image_row`
+(`scripts/ir_gate.py:559`) after printing verdicts, the pre-existing non-image-host defect (lo)
+records, separate from this change and not fixed here. One surface outside this guard was measured
+and is not closed here: `safe_dump({'k'×1200: 1})` still writes the 1204-character simple key and
+the library's reader refuses it at char 1200, because `direct_dump` spells keys in `write_key` with
+no width test; it is not a seed of this batch, and (lr) below closes it.
+
+### (lr) The direct writer measures its keys against the same window (2026-11-16)
+
+- **`safe_dump({'k'×1200: 1})` wrote a 1204-character simple key its own reader refused** —
+  `YAML parse error: mapping values are not allowed in this context at char 1200`. (lq) closed the
+  window on the node writer; this route never reaches it.
+- **The direct writer has no node style to ask**: `write_key` in
+  `crates/pyrs-yaml/src/py/direct_dump.rs` spells a key at any length, and `write_mapping_pair`
+  pushed the `:` after it.
+- **The fix measures the spelling it just emitted** — `key_spelling_crosses_window` compares the
+  emitted width against `SIMPLE_KEY_WINDOW` (now `pub` in core, one source for both writers), and a
+  pair past it rewinds to the line start and delegates to `write_complex_pair`, the hand-over tuple
+  keys already take, whose output is `parse(...).to_yaml()`'s bytes by construction.
+- **The compact sequence item needs its own decision**: its pairs are written before the item's
+  shape is known, so `write_compact_pairs` rewinds to the `- ` mark and returns `Ok(false)`, and
+  the caller takes a newline plus the block mapping — the shape the node writer picks ahead of
+  time in
+  `is_compact_item`.
+
+The measurement is bytes first: `written > SIMPLE_KEY_WINDOW && written.chars().count() >
+SIMPLE_KEY_WINDOW`. Bytes bound characters from above, so a key that fits in bytes fits the window
+and skips the walk; the character count is what decides, and 1024 CJK characters (3072 bytes) stay
+simple exactly as the node writer keeps them — the route-parity row pins that agreement.
+
+Gates: `tests/test_route_parity.py` gained six rows (the window itself, one past it, 1024 CJK
+characters, a nested pair, a compact item, a compact item whose second key is the long one) with
+all four of the file's assertions applied to each, and `tests/test_safe_dump.py` two round-trip
+tests (1200 plain and 1200 CJK characters; a 602-character key that spells at 1209 once quoted).
+`cargo nextest run --all` 933 passed, 0 skipped; `uv run pytest tests/ -v` 4830 passed, 11 skipped,
+with the matrix rows rewritten to 2,191 Python test functions; `cargo clippy --all --all-targets --
+-D warnings` and the narrow `ir-gate` bench scope both clean.
+
+Mutation: `key_spelling_crosses_window` returning `false` reddens fourteen assertions — the four
+`*past the window` rows on all three parity checks, plus both `safe_dump` round trips; removing
+only the compact rewind reddens six (the two compact rows on the same three checks) while the
+mapping rows stay green, so each site is priced separately.
+
+Measured after the change: `safe_dump_medium` is the scenario this route serves, and the added work
+per key is a length read and a comparison, with the character walk only for a spelling past 1024
+bytes — no fixture key is. On pinned `rustc 1.97.1` in WSL, both trees built with a `/tmp` target
+dir: a main control worktree at 61f1c122 reads 110,458,381 (+0.20% against the committed floor) and
+this tree reads 110,952,420 (+0.65%). The same tree binary (`sha256 ae9917335f27ada1`, byte for
+byte) read 111,355,842 from a second invocation with its target dir on `/mnt/d`, so run-level drift
+on this host is 0.36% for one unchanged binary — larger than the 0.45% tree-vs-control gap, which is
+therefore not attributable to the guard. The floor's tolerance decides on the enforcing image, and
+the refresh dispatch's `accept_drift` stays unnamed for `safe_dump_*` unless that run says
+otherwise.
+
+### (ls) A sequence's note stops riding a child's alias tail (2026-11-16)
+
+- **The input is two edits on `- - !bsae: &x 0s<e: *x`** — `set_anchor` on the inner mapping
+  (`a2`), then `set_comment` on the inner sequence — the 2026-11-16 `edit_yaml` batch filed on
+  issue #732. Of its two artifacts, `crash-09e50854` still reproduced on 61f1c122;
+  `crash-1c7e4c25` already executed clean, so one mechanism, one fix.
+- **The first emission puts the sequence's note on the child's alias line** (`… 0s<e: *x  # fuzz
+  239`). The reader has nowhere else to file it: aliases carry no `NodeMeta`, so the note lands on
+  the child mapping, whose writer opens a second round by lifting it above `&a2` — the settle
+  assertion at `fuzz_targets/edit_yaml.rs` panicked with the two spellings.
+- **The guard asked about the wrong header.** The alias-tail branch required
+  `wrote_header || inherited_header.is_some()`, i.e. a header written by this container or an
+  ancestor. Here the only header heads the child mapping's block, and neither term sees it, so the
+  note fell through to the tail slot it cannot own.
+- **The fix asks the text, not the frame** — `ended_line_under_a_header()` runs
+  `header_gap_start` on the line the block just finished; the walk crosses `&a2` (a header-only
+  line at the same indent) and returns an earlier line start. The branch then writes the note with
+  `note_line_above(body_start)`: above the line the sequence's own block starts on, which is where
+  the re-read files a sequence's note (`lift_first_item_notes` already relies on that placement).
+- **The compact item keeps its withheld placement**: an item with no header anywhere still rides
+  the alias tail (`- &x !bsae: 0s<e: *x  # fuzz 239` is a fixed point; the owner drift there is
+  the claim `edit_yaml` documents, unchanged by this fix).
+- **Both artifacts are archived as seeds** — `former-crash-09e50854.seed` and
+  `former-crash-1c7e4c25.seed`; `seed_reach` 3 passed and neither needs a `.ci/seed-reach.txt`
+  line, so the corpus is 69 `edit_yaml` seeds of 322.
+
+Gates: `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` gained
+`a_sequence_note_over_a_headed_childs_alias_tail_settles_in_one_round` (fixed point, one note, and
+the note pinned above the block's first line — a fixed point alone cannot tell the two owners
+apart). `cargo nextest run --all` 934 passed, 0 skipped; `uv run pytest tests/ -q` 4832 passed, 11
+skipped, after `python scripts/quality_matrix.py --write-rows` moved the fuzz row to 322 seeds and
+208 former-crash; `cargo clippy -p pyrs-yaml-core --all-targets -- -D warnings` clean. Both seed
+corpora replay clean under `cargo fuzz run … -- -runs=<count>` (69 and 147 files).
+
+Mutation: `ended_line_under_a_header` forced false reddens exactly one test, the new one — no other
+settle shape in the file reaches the branch. The placement has no independent site: passing
+`body_start` straight to `note_line_above` (the neighbouring arm's argument) moves nothing, because
+the helper normalises a mid-line offset to the line it means, so the rewind this branch does not
+perform is not load-bearing; measured as an inert mutation rather than claimed as priced.
+
+Cost: the branch runs only for a container note whose block ended on an alias, and the added work
+is one backward scan of the last line over header-only lines — no hot path changes. Measured rather
+than assumed: `serialize_anchors` reads 22,961,446 — the same `+1.82%` (lq) records for this tree —
+with this fix's helper and branch removed from the same tree, and 22,919,446 with them in place, so
+the movement that fails the gate is the per-key window guard and none of it is this branch. Its
+fixture carries no comments, which the branch needs before its one scan can run; the 0.18% between
+the two readings is code layout, and it points down.

@@ -1171,6 +1171,50 @@ fn a_container_note_over_an_alias_tail_settles_above_the_header() {
     );
 }
 
+/// libFuzzer `edit_yaml` crash-09e50854: a sequence note over a *headed child* mapping whose last
+/// pair value is an alias.
+///
+/// The enclosing sequence owns the note, but the only header (`&a2`) belongs to the inner mapping's
+/// first item, so neither the container's own `wrote_header` nor an inherited header names it - the
+/// note rides the alias's trailing slot, which the reader files on the child mapping, and that
+/// mapping's writer lifts it above its header on the next emission. The sequence must place its own
+/// note above the first line of its block instead, which is where the re-read files it.
+#[test]
+fn a_sequence_note_over_a_headed_childs_alias_tail_settles_in_one_round() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_comment_path};
+
+    let src = "- - !bsae: &x 0s<e: *x\n";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let inner_mapping = [Segment::Index(0), Segment::Index(0)];
+    set_anchor_path(&mut node, &inner_mapping, "a2", src, None).expect("the anchor is set");
+    let headed = to_yaml(&node);
+
+    let inner_sequence = [Segment::Index(0)];
+    let note = Comment {
+        text: "fuzz 239".into(),
+        standalone: false,
+    };
+    set_comment_path(&mut node, &inner_sequence, note, &headed, None).expect("the note is set");
+
+    let one = to_yaml(&node);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert_eq!(
+        one.matches("# ").count(),
+        1,
+        "the note survives the placement, and no round may invent or fold one: {one:?}"
+    );
+    assert!(
+        one.contains("\n  # fuzz 239\n  - "),
+        "the sequence's note belongs above its block's first line, not on the child's alias tail: {one:?}"
+    );
+}
+
 /// libFuzzer `edit_yaml` crash-12c96086: a column-0 note between two block-sequence items, the
 /// first item's value a nested mapping whose `s:` is an empty tagged scalar `&a0 !s:`.
 ///
@@ -1283,4 +1327,106 @@ fn an_alias_key_in_a_compact_sequence_item_settles_in_one_round() {
         "the alias key must survive as an explicit marker, not be spelled null: {one:?}"
     );
     assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}
+
+/// The 2026-11-14 `yaml_roundtrip` window class: a key whose simple spelling leaves its
+/// colon past the reader's 1024-character window.
+///
+/// Measured on this tree, the reader enforces the window in block and flow context alike —
+/// quoted key content of 1022 characters reads back while 1023 does not, plain keys of 1024
+/// read back while 1025 do not, and 1024 CJK characters are still inside, so the count is
+/// characters, not bytes. The `?`-marker form is not windowed (5000 characters measured).
+/// The writer re-derived the form from the node kind, so an explicit `? key` source was
+/// collapsed back to the simple form and came out as text this engine's own reader refuses.
+/// A key past the window now takes the marker at all three sites: the block pair, the
+/// compact sequence item, and the flow pair.
+#[test]
+fn a_key_past_the_simple_key_window_settles_in_one_round() {
+    let quoted = "a".repeat(1023);
+    let plain = "a".repeat(1025);
+    let sources = [
+        format!("? \"{quoted}\"\n: v\n"),
+        format!("? {plain}\n: v\n"),
+        format!("- ? \"{quoted}\"\n  : v\n"),
+        format!("{{? \"{quoted}\": v}}\n"),
+    ];
+    for src in &sources {
+        let one = emit(src);
+        assert!(
+            one.contains('?'),
+            "a key past the window must take the marker form: {src:?} -> {one:?}"
+        );
+        assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+    }
+
+    // Inside the window the simple form stands: quoting it would rewrite documents the
+    // reader already accepts.
+    let at_window = format!("\"{}\": v\n", "a".repeat(1022));
+    let one = emit(&at_window);
+    assert_eq!(one, at_window, "the 1022-content key is inside the window");
+    assert_eq!(emit(&one), one);
+}
+
+/// The window is measured on the spelling the writer chooses, not the one the node carries.
+///
+/// 600 backslashes and a tab keep the plain count at 602 characters, but the tab sends the key
+/// through `write_plain_scalar`'s double-quoted arm, where every backslash costs two and the tab
+/// six: the emitted key is 1209 characters, past the window, and the reader refused it
+/// (libFuzzer `yaml_roundtrip` crash-b8731e07 / crash-dd90d50e, 2026-11-14).
+#[test]
+fn a_plain_key_the_writer_quotes_settles_in_one_round() {
+    let mut key = "\\".repeat(600);
+    key.push('\t');
+    key.push('y');
+    let sources = [format!("{key}: v\n"), format!("- {key}: v\n")];
+    for src in &sources {
+        let one = emit(src);
+        assert!(
+            one.contains('?'),
+            "a key whose quoted spelling passes the window must take the marker form: {one:?}"
+        );
+        assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+    }
+
+    // The same shape with its quoted spelling inside the window stays simple: the marker is
+    // for keys the reader would refuse, not for every key that needed quoting.
+    let mut short = "\\".repeat(500);
+    short.push('\t');
+    short.push('y');
+    let one = emit(&format!("{short}: v\n"));
+    assert!(
+        !one.contains('?'),
+        "1209 - 200 characters is inside: {one:?}"
+    );
+    assert_eq!(emit(&one), one);
+}
+
+/// An inlined definition's own aliases are repaired too.
+///
+/// The duplicate-key fold drops a pair that defined an anchor, and `repair_orphaned_anchors`
+/// inlines the surviving uses. Its walk used to stop at the use it rewrote: the copy that
+/// replaced the alias came from the dropped subtree, and a definition *inside* that subtree had
+/// been dropped by that same document's fold, so the copy re-entered the tree still naming an
+/// anchor no node defined. Here `<<: &b` heads a body whose `&c` folded against a plain null
+/// key; the fold takes `&b` with the `<<` entry and takes `&c` inside the body, the alias key
+/// `*b` inlines as the body, and `*c` inside it was left dangling — the writer emitted
+/// `? *.?-` with no `&.?-` anywhere and this library's own reader refused the result
+/// (libFuzzer `yaml_roundtrip` crash-e1e921af, 34 bytes as minimized).
+///
+/// The walk now descends into the replacement, so its anchor is registered in document order
+/// and whatever it still names is inlined as well.
+#[test]
+fn an_inlined_definition_repairs_its_own_aliases() {
+    let sources = [
+        "<<: &b\n ? &c\n ?\n ? *c\n? *b\n<<:",
+        "<<: &b\n ? &.?-\n ?\n ? *.?-\n? *b\n<<:",
+    ];
+    for src in sources {
+        let one = emit(src);
+        assert!(
+            !one.contains('*'),
+            "every alias in the emission must resolve: {one:?}"
+        );
+        assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+    }
 }

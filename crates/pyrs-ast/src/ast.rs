@@ -510,6 +510,16 @@ impl NodeMeta {
         self.comment = None;
     }
 
+    /// Whether this node carries an anchor or a tag.
+    ///
+    /// The two slots share one box, and every mutator prunes it once both are empty, so this
+    /// answers `anchor().is_some() || tag().is_some()` in one load — worth having on the
+    /// writers' per-key path, where the question is asked and the answer is almost always no.
+    #[inline]
+    pub fn has_properties(&self) -> bool {
+        self.fidelity.is_some()
+    }
+
     /// The anchor name, read-only, or `None` for the far more common undecorated node.
     #[inline]
     pub fn anchor(&self) -> Option<&str> {
