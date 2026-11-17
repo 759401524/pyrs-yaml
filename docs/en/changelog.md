@@ -19,6 +19,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A key's inline note stays on the pair line over a container body that starts below** — the
+  writer asked the value, not the line, whether the pair's slot was free, and a value carrying its
+  own note answered no even when its body opens on the next line: the key's note was hoisted above
+  the pair, and the next round read it back on the value, so the emission stopped being its own
+  fixed point (libFuzzer `yaml_roundtrip` crash-200342d3). The slot question now looks at the line;
+  only a merge key still keeps its note above, because `<<: # note` reads back as a literal key
+  (`docs/dev/quality-ledger.md` (lz)).
 - **A merge no longer repeats a container key the mapping already owns** — the duplicate-key fold
   compared contributed keys as whole nodes, which sees an inner scalar's style, so two mappings
   that write the same key line (`? ! "": ~`, one spelled with an empty plain and one with an empty

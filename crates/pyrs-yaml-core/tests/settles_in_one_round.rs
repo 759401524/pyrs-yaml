@@ -1381,6 +1381,36 @@ fn a_merged_container_key_does_not_repeat_the_owned_one() {
     );
 }
 
+/// A key's inline note over a flow body that carries its own note settles in one round.
+///
+/// libFuzzer `yaml_roundtrip` crash-200342d3: the value is a flow sequence that has to start
+/// below the pair (its leading note forces the break) and trails a note of its own. Round one
+/// parks the document's trailing note on the `]` line at column 0, where the re-read reports it
+/// on the mapping; the writer then indents that line into the sequence, the re-read reports the
+/// note on the *sequence*, and `write_pair`'s "one line, one trailing slot" question answers the
+/// other way - the second emission hoists the key's note above the pair. The slot question now
+/// looks at the line: a body that starts below leaves the pair line free whatever note it carries
+/// itself. Only a merge key keeps its note above the pair, because a comment on a `<<:` line turns
+/// the merge into a literal key (crash-69931a77).
+#[test]
+fn a_key_note_over_a_noted_flow_body_settles_in_one_round() {
+    let one = emit(": <<\n<&,: #+\n#\n# [\n [\n  32  #! # x\n]\n#&~:");
+    assert_eq!(
+        one,
+        "~: <<\n<&,:  # +\n  # [\n  [32  # ! # x\n   ]  # &~:\n"
+    );
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+
+    let raw = &include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-200342d3.seed")[..];
+    let src = std::str::from_utf8(raw).expect("seed is utf-8");
+    let once = emit(src);
+    assert_eq!(
+        emit(&once),
+        once,
+        "not a fixed point in one round: {once:?}"
+    );
+}
+
 /// The 2026-11-14 `yaml_roundtrip` window class: a key whose simple spelling leaves its
 /// colon past the reader's 1024-character window.
 ///
