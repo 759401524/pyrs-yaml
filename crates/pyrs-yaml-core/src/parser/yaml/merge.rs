@@ -112,9 +112,19 @@ fn resolve_merges_recursive(
     }
     match node {
         CustomNode::Mapping {
-            pairs, flow_style, ..
+            pairs,
+            flow_style,
+            meta,
         } => {
-            resolve_mapping_merges(pairs, *flow_style, anchors, path, depth, orphaned);
+            resolve_mapping_merges(
+                pairs,
+                *flow_style,
+                anchors,
+                path,
+                depth,
+                orphaned,
+                meta.anchor(),
+            );
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
@@ -180,6 +190,18 @@ fn references_alias(node: &CustomNode) -> bool {
     }
 }
 
+/// True if `node`'s subtree spells the alias `name`.
+fn references_name(node: &CustomNode, name: &str) -> bool {
+    match node {
+        CustomNode::Alias { name: spelled } => spelled == name,
+        CustomNode::Sequence { items, .. } => items.iter().any(|item| references_name(item, name)),
+        CustomNode::Mapping { pairs, .. } => pairs
+            .iter()
+            .any(|(k, v)| references_name(k, name) || references_name(v, name)),
+        CustomNode::Null { .. } | CustomNode::Scalar { .. } => false,
+    }
+}
+
 /// Anchor name carried alongside each merged-in key so the expansion it came
 /// from can be told apart from an independent merge elsewhere in the document.
 /// An empty name marks an inline mapping used directly as a merge value.
@@ -193,6 +215,7 @@ fn resolve_mapping_merges(
     path: &mut Vec<String>,
     depth: usize,
     orphaned: &mut Vec<(String, CustomNode)>,
+    own: Option<&str>,
 ) {
     // The merge entry is addressed by position, never by value: `IndexMap` compares
     // whole nodes, and a note or an anchor on the key is metadata, not identity. See
@@ -230,6 +253,15 @@ fn resolve_mapping_merges(
         .and_then(|index| pairs.get_index(index))
         .and_then(|(_, merge_value)| match merge_value {
             CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
+            // `<<: *b` inside `&b` merges the mapping with itself: every pair it could
+            // bring is one this mapping already owns, so the expansion is empty by
+            // construction, not by the cycle guard. Consuming it still deleted the entry,
+            // and the definition the orphan repair inlines one step later (`&b {<<: *b}`
+            // spelled beside a plain `*b`) carries the merge key unresolved — so the
+            // emitted text had the `<<` line and the re-read dropped it, and the round
+            // never settled (libFuzzer `yaml_roundtrip` crash-b8fa5a3a). Keeping the
+            // pair spells it back exactly as written, which is its own fixed point.
+            CustomNode::Alias { name } if own == Some(name.as_str()) => None,
             CustomNode::Alias { .. } => Some(collect_merge_data(
                 merge_value,
                 pairs,
@@ -267,7 +299,13 @@ fn resolve_mapping_merges(
                     merge_value
                 };
                 let merged = collect_merge_data(source, pairs, anchors, path, depth, orphaned);
-                if !merged.is_empty() || references_alias(merge_value) {
+                // A container merge source that names this mapping (`&b {<<: [*b]}`,
+                // `&b {<<: {<<: *b}}`) has the same property as the alias spelling above:
+                // it can only bring back what the mapping owns. Keeping it literal is what
+                // makes that spelling its own fixed point.
+                if merged.is_empty() && own.is_some_and(|own| references_name(merge_value, own)) {
+                    None
+                } else if !merged.is_empty() || references_alias(merge_value) {
                     Some(merged)
                 } else {
                     None
@@ -666,6 +704,13 @@ fn collect_inline_pairs(
                 CustomNode::Null { .. } | CustomNode::Scalar { .. } | CustomNode::Alias { .. }
             )
         {
+            // The pair leaves the tree here, so a definition it carries leaves with it
+            // while an alias elsewhere may still spell the name: `<<: &b` over a body
+            // whose own `<<:` holds the anchor left `":#| <<": *b` with no `&b` in the
+            // emission, refused by our own reader (libFuzzer `yaml_roundtrip`
+            // crash-87a2073f).
+            collect_anchored_nodes(key, orphaned);
+            collect_anchored_nodes(value, orphaned);
             continue;
         }
         if pairs.contains_key(key) {
@@ -728,6 +773,7 @@ fn collect_merged_pairs_for_anchor(
             &mut nested,
             depth + 1,
             orphaned,
+            Some(name),
         );
         &resolved
     } else {
@@ -1498,6 +1544,34 @@ mod tests {
             !c.contains_key(&make_scalar("<<")),
             "stray merge key survived"
         );
+    }
+
+    // The direct spelling, `<<: *a` inside `&a` itself. Unlike the two shapes above, its
+    // expansion is empty by construction - every pair it could bring is one the mapping
+    // already owns - so there is nothing to resolve and nothing to lose by keeping the
+    // pair. Consuming it made the round drift instead: the orphan repair inlines the same
+    // definition with the key still unresolved, so `<<: *a` was in one emission and gone
+    // from the next (libFuzzer `yaml_roundtrip` crash-b8fa5a3a). Both spellings, and both
+    // source kinds, stay as written.
+    #[test]
+    fn a_merge_naming_its_own_mapping_keeps_its_pair() {
+        for yaml in ["a: &a\n  <<: *a\n  x: 1\n", "a: &a {<<: [*a], x: 1}\n"] {
+            let mut root = parse(yaml, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let a = get_mapping(get_mapping(&root).get(&make_scalar("a")).unwrap());
+            assert!(
+                a.keys().any(is_merge_key),
+                "the self-naming merge was consumed: {yaml:?}"
+            );
+            assert_eq!(get_scalar_value(a.get(&make_scalar("x")).unwrap()), "1");
+            let one = crate::serializer::to_yaml(&root);
+            let again =
+                crate::serializer::to_yaml(&crate::parser::parse(&one, YamlSchema::Core).unwrap());
+            assert_eq!(
+                again, one,
+                "{yaml:?} is not a fixed point: {one:?} -> {again:?}"
+            );
+        }
     }
 
     #[test]

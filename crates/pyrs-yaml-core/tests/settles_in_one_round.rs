@@ -1512,3 +1512,56 @@ fn an_inlined_definition_repairs_its_own_aliases() {
         assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
     }
 }
+
+/// A merge source that yields nothing still leaves with the anchor it defined.
+///
+/// `<<: &b` heads a body whose own nested `<<:` is where the `&b` sits. The empty-source
+/// skip consumed the pair without collecting that definition, so the surviving
+/// `":#| <<": *b` spelled a name no node defined and the writer emitted text this
+/// library's own reader refused - `unknown anchor at char 76 line 13 column 11`
+/// (libFuzzer `yaml_roundtrip` crash-87a2073f, 85 bytes). The skip hands both nodes to
+/// the orphan repair now, and `emit(&one)` is itself the reader check that the alias
+/// resolved.
+#[test]
+fn an_empty_merge_source_leaves_its_anchor_to_the_repair_pass() {
+    let src = std::str::from_utf8(include_bytes!(
+        "../../../fuzz/seeds/yaml_roundtrip/former-crash-87a2073f.seed"
+    ))
+    .expect("seed is utf-8");
+    let one = emit(src);
+    assert!(
+        one.contains("&b"),
+        "the definition the alias names must survive in the emission: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
+/// A merge naming the mapping that holds it keeps its written spelling.
+///
+/// `&b {<<: *b}` expands to nothing by construction - every pair it could bring back is
+/// one the mapping already owns - so the entry was consumed as an empty merge. The
+/// definition the orphan repair inlines one step later carries the key unresolved, so
+/// `<<: *b` was in round one's text and gone from round two's
+/// (libFuzzer `yaml_roundtrip` crash-b8fa5a3a, 62 bytes). Keeping the pair is its own
+/// fixed point; the cycle guard inside the expansion is what still bounds the walk.
+#[test]
+fn a_merge_that_names_its_own_mapping_settles_in_one_round() {
+    let src = std::str::from_utf8(include_bytes!(
+        "../../../fuzz/seeds/yaml_roundtrip/former-crash-b8fa5a3a.seed"
+    ))
+    .expect("seed is utf-8");
+    let one = emit(src);
+    assert!(
+        one.contains("<<: *b"),
+        "the self-naming merge keeps the spelling it was written with: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
