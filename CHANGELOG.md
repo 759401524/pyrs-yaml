@@ -9,6 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Ir gate's off-image failure note reads the image rows** — a run outside a runner image
+  dressed each failing scenario with the nearest row's floor, but the helper was handed the
+  flattened `{scenario: int}` map the run had been judged against, so the first failure died with
+  `'int' object has no attribute 'get'` and lost the reading that run had already taken; CI's
+  enforcing leg is on an image and never reaches the path. The note now reads `image_floors`
+  itself, skips a stale floor (which has its own remedy) and prints nothing when the file carries
+  no rows (`docs/dev/quality-ledger.md` (lt)).
 - **A key past the reader's simple-key window takes the marker form** — a simple key must reach its
   `:` within 1024 characters, and the writer re-derived the `?`-marker form from the node kind, so
   an explicit marker over a long key collapsed back to the simple form and emitted text this
