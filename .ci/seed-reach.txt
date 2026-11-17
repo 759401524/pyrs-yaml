@@ -1,18 +1,8 @@
 # Seeds that reach NO assertion, measured by `crates/pyrs-yaml-core/tests/seed_reach.rs` against
 # the engine call each of the six targets opens with, where a typed refusal is a pass. Replaying
-# one of these inputs runs no writer and asks no round-trip promise. That is not no protection:
-# five lines answer `max depth exceeded (max=1000)`, the TOML depth guard's own postcondition,
-# and stay filed because the refusal they pin is worth keeping. What the list denies is the
-# stronger credit - that the archived defect cannot come back. A line drops when an input is
-# re-mined into a document that parses, and appears the moment one stops reaching. Regenerate:
+# one of these inputs runs no writer and asks no round-trip promise. A line appears the moment an
+# input stops reaching and drops when it is re-mined into a document that parses, or moved to a
+# target that asks something of a refusal. An empty list is a measured state: the gate re-derives
+# it from the corpus on every `cargo nextest`, keeps `reaches` refusing two known shapes, and
+# refuses a target whose seed directory went missing. Regenerate:
 #   SEED_REACH_UPDATE=1 cargo test -p pyrs-yaml-core --test seed_reach
-parse_toml former-crash-2503e079.seed
-parse_toml former-crash-6c15f693.seed
-parse_toml former-crash-837bd790.seed
-toml_roundtrip former-crash-2a5ea394.seed
-toml_roundtrip former-crash-7a3aac52.seed
-yaml_roundtrip former-crash-3ff42607.seed
-yaml_roundtrip former-crash-41c6594b.seed
-yaml_roundtrip former-crash-4bf6ee37.seed
-yaml_roundtrip former-crash-b88f1b4f.seed
-yaml_roundtrip former-crash-f59d4ae3.seed
