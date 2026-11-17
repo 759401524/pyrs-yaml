@@ -646,16 +646,16 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — Invalid tag handler registration (inherits from `ValueError`)
 - `YamlTagSkip` — Sentinel raised by a tag handler to pass a node down the handler chain (inherits from `YamlTagError`)
 
-`Document.validate()` answers outside this family in one way this release keeps: it delegates
-the rules to `jsonschema`, which nothing here installs — the package depends on
-`typing-extensions` alone and its extras are `cli`, `pydantic` and `settings` — so with no
-evaluator the call raises a bare `ModuleNotFoundError: No module named 'jsonschema'`, even for a
-document the schema would pass. A `schema` given as text is this package's own door: it is read
-with `json.loads` before evaluation, and a text that is not JSON is refused with
-`YamlValidateError` (`schema text must be JSON (…); pass the schema as a dict if it is not
-JSON`), so the YAML spelling stays inside the family. The missing evaluator is a known boundary,
-documented for users in [Quick Start](../quick-start.md) and
-[Custom Schemas](../guides/custom-schema.md).
+`Document.validate()` answers inside this family throughout. It delegates the rules to
+`jsonschema`, which nothing here installs — the package depends on `typing-extensions` alone and
+its extras are `cli`, `pydantic` and `settings` — so run `pip install jsonschema` first. With no
+evaluator importable the call raises `YamlValidateError` whose message names that install route
+and carries the import error, even for a document the schema would pass. A `schema` given as text
+is this package's own door: it is read with `json.loads` before evaluation, and a text that is
+not JSON is refused with `YamlValidateError` (`schema text must be JSON (…); pass the schema as a
+dict if it is not JSON`), so the YAML spelling stays inside the family too. The evaluator not
+shipping with the library is a known boundary, documented for users in
+[Quick Start](../quick-start.md) and [Custom Schemas](../guides/custom-schema.md).
 
 See [Exceptions](exceptions.md) for full details.
 

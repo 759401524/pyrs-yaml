@@ -118,26 +118,22 @@ except pyrs_yaml.YamlValidateError as e:
 !!! warning "委譲の境界"
     評価は Python の `jsonschema` パッケージへ委譲され、**本プロジェクトが公開するどれにもそれは
     インストールされません**：`[project.dependencies]` は `typing-extensions` だけで、extra は
-    `cli`、`pydantic`、`settings` の三つです。だから `doc.validate({"type": "object"})` は裸の
-    `ModuleNotFoundError` で答えます——`YamlValidateError` ではありません——このビルドで実測済みです。
-    そのテキストはモジュールの欠け方で決まります。名前が本当に無いなら
-    `No module named 'jsonschema'` で、`tests/test_validate.py` が存在しないホイールを再現する
-    止め方（`sys.modules["jsonschema"] = None`）なら
-    `import of jsonschema halted; None in sys.modules` です。
+    `cli`、`pydantic`、`settings` の三つです。検証の前に `pip install jsonschema` を実行して
+    ください。評価器が import できないとき、`doc.validate({"type": "object"})` は `YamlValidateError`
+    で答え、そのメッセージはこのインストール経路を名乗ります——「JSON Schema evaluation needs the
+    `jsonschema` package, which this distribution does not install; install it with `pip install
+    jsonschema` (…)」——スキーマなら通す文書でも同じです。括弧の中は import エラーそのものなので、
+    壊れたインストールも診断できます。再現は `tests/test_validate.py` が存在しないホイールを
+    再現する `sys.modules["jsonschema"] = None` です。
 
     `str` スキーマの綴りはこのパッケージ自身の決定であり、評価器のものではありません：テキストの扉は
     評価器の前に JSON として読み、JSON でないテキストは `YamlValidateError` で拒否され、その
     メッセージは `schema text must be JSON (…); pass the schema as a dict if it is not JSON` です。
-    JSON として正しいスキーマのテキストはそのまま評価器まで届き、そこで欠落が答えるのは上の
-    `ModuleNotFoundError` です。
 
-    この `ModuleNotFoundError` は `pyrs-yaml validate` の CLI の `except YamlValidateError` 節を
-    抜け出します。だから評価器の無いインストールでは、あのコマンドはいつもの `error: …` の行ではなく
-    traceback を印字します。[検証](../guides/cli.md#cmd-validate) を参照してください。これは
-    `.ci/known-residuals.json` に登記済みの境界
-    （`api:validate-evaluator-is-not-installed-by-anything-we-ship`）で、再現テストと、それを閉じる
-    ための終了条件が付いています。YAML の綴りのスキーマは今ではほかの拒否と同じく `error: …` で
-    終わります——コンソールスクリプト経由で実測：stderr はこの一行、stdout は空、終了コード `1`。
+    どちらの拒否も CLI が捕まえる一族に属するので、評価器の無いインストールでも
+    `pyrs-yaml validate` は traceback ではなく、いつもの `error: …` の行を印字して `1` で終わり
+    ます——[検証](../guides/cli.md#cmd-validate) を参照してください。YAML の綴りのスキーマは
+    コンソールスクリプト経由で実測：stderr はこの一行、stdout は空、終了コード `1`。
 
 ## YamlEditError
 

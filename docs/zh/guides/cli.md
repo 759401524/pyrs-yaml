@@ -173,7 +173,7 @@ pyrs-yaml validate app.yaml --schema schema.json        # 同一个参数
 
 不是 JSON 的 schema 文件 — 正是读者会伸手去拿的那种 YAML 拼法 — 在读取文本时就被拒绝，拒绝属于 `YamlValidateError`，于是命令打出 `error: schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON` 并退出 `1`（通过 console script 实测：stderr 装着这一行，stdout 保持为空）。
 
-是 JSON 的那种仍然依赖求值器，因为求值委托给 Python 的 `jsonschema`，而本项目发布的任何东西都不安装它 — 基础依赖只有 `typing-extensions`，extras 是 `cli`、`pydantic` 与 `settings`。在这样的安装上，命令以一段 `ModuleNotFoundError` traceback 收场；那一条是在进程内用 `sys.modules["jsonschema"] = None` 实测的 — 测试套件用的就是这段复现 — 因为本开发 venv 里装着求值器，而命令的 `except YamlValidateError` 分支接不住这个类，这正是那一行是 traceback 而不是 `error: …` 的原因。它登记在 `.ci/known-residuals.json` 里（`api:validate-evaluator-is-not-installed-by-anything-we-ship`），不是 CLI 会修掉的缺陷；参见 [异常 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)。
+是 JSON 的那种仍然依赖求值器，因为求值委托给 Python 的 `jsonschema`，而本项目发布的任何东西都不安装它 — 基础依赖只有 `typing-extensions`，extras 是 `cli`、`pydantic` 与 `settings`。在这样的安装上，命令打出 `error: JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)` 并以 `1` 退出；拒绝属于 `YamlValidateError`，于是和其他失败一样走同一个 `except YamlValidateError` 分支。这一行是在进程内用 `sys.modules["jsonschema"] = None` 实测的 — 测试套件用的就是这段复现 — 因为本开发 venv 里装着求值器，那里括号内的 import 细节读作 `import of jsonschema halted; None in sys.modules`。参见 [异常 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)。
 
 标量解析用的 Schema 与 `Document.validate()` API 参见[自定义 Schema](custom-schema.md)。
 

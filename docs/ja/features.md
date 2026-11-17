@@ -109,11 +109,13 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 評価器は別のインストールです。`jsonschema` は pyrs-yaml の依存ではありません——基底の
 インストールは `typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings`
-です——だから環境に評価器がないと、`validate()` は `YamlValidateError` ではなく `jsonschema` を
-名乗る裸の `ModuleNotFoundError` を投げます。自分で `pip install jsonschema` を入れてください。
-評価器の欠落はこの面の既知の境界で本リリースの欠陥ではなく、プロジェクト自前の評価器は別個の
-設計問題です。上の例のスキーマのテキストは JSON です：YAML の綴りのスキーマは受け付ける形を
-名乗る `YamlValidateError` で拒否されます——そのようなスキーマは `dict` として渡してください。
+です——だから検証の前に `pip install jsonschema` を実行してください。評価器が import
+できないと、`validate()` は `jsonschema` を名乗る裸の `ModuleNotFoundError` ではなく、その
+インストール経路を名乗る `YamlValidateError` を投げます。スキーマなら通す文書でも同じです。
+評価器が出荷物に無いことはこの面の既知の境界で本リリースの欠陥ではなく、プロジェクト自前の
+評価器は別個の設計問題です。上の例のスキーマのテキストは JSON です：YAML の綴りのスキーマは
+受け付ける形を名乗る `YamlValidateError` で拒否されます——そのようなスキーマは `dict` として
+渡してください。
 
 ## 重複キー
 

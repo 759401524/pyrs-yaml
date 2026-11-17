@@ -14612,3 +14612,47 @@ the counterexample test exists; restoring the call returns 4 passed.
   `ModuleNotFoundError` separately; the evaluator's residual
   (`api:validate-evaluator-is-not-installed-by-anything-we-ship`) stays registered, and the two
   boundaries no longer travel as one sentence.
+
+### (lw) An absent evaluator refuses in the family the docs name (2026-11-17)
+
+The residual `api:validate-evaluator-is-not-installed-by-anything-we-ship` asked for one of two
+outcomes: an evaluator this distribution installs, or a `Document.validate()` refusal that belongs
+to a pyrs_yaml class and names the install route, so that following `docs/en/quick-start.md` from
+its single `pip install pyrs-yaml` line cannot end in a `ModuleNotFoundError`. The second is what
+landed. Shipping an extra stays a packaging decision, and #517 still holds the design for a
+project-owned evaluator.
+
+- **Three import sites, one message** - `run_jsonschema_validate`, `run_cached_validator` and
+  `cache_validator` each called `py.import(...)` and let the error through as a stdlib class. They
+  now share `import_jsonschema(py, module)`, whose `map_err` answers
+  `YamlValidateError: JSON Schema evaluation needs the jsonschema package, which this distribution
+  does not install; install it with pip install jsonschema (<import error>)`. The import error
+  stays inside the text on purpose: an absent distribution and a broken one are different
+  problems, and the second is diagnosable only from that text.
+- **The docstring carries the route, and the test reads it** -
+  `test_an_absent_evaluator_names_the_install_route` in `tests/test_validate.py` sets
+  `sys.modules["jsonschema"] = None` for the call and restores whatever was there, so every leg
+  measures the refusal whether or not the evaluator is installed on that host; it asserts the
+  class, the `pip install jsonschema` route, and that the route is in
+  `YamlDocument.validate.__doc__`. A docstring edit that drops the route reddens the run.
+- **Measured** - `uv run pytest tests/test_validate.py -q`: 21 passed, and the refusal text above
+  is the string the test matches and the one the pages quote.
+  `import of jsonschema halted; None in sys.modules` is the bracket detail this development venv
+  produces, and the CLI arm needs no separate proof: `YamlValidateError` is inside
+  `except YamlValidateError`, so the console script prints its usual one-line `error:` on stderr,
+  keeps stdout empty and exits 1 - the shape (lv) measured for the YAML-spelled schema.
+- **Seven pages per locale, four locales** - `guides/cli.md`, `api/yaml-document.md`,
+  `api/exceptions.md`, `api/reference.md`, `features.md`, `guides/custom-schema.md` and
+  `quick-start.md` in `en`, `zh`, `ja` and `ko` described a bare `ModuleNotFoundError`; each now
+  says the evaluator is a separate install, that an absent one refuses with `YamlValidateError`
+  naming that route, and that not shipping it is still a known boundary. The five changelog
+  `[Unreleased]` blocks carry the new bullet, and the (lv) sentence that said the residual "stays
+  registered" now says it *was* registered then - the dated bullet above keeps its wording,
+  because that is what was true when it was written.
+- **Registry and matrix** - the entry is gone from `.ci/known-residuals.json` and its row from
+  `QUALITY_MATRIX.md`; `tests/test_known_residuals.py` reads both directions over the five that
+  remain (`engine:container-inline-note-position`, `api:set-comment-container-owner`,
+  `engine:entry-blank-lines`, `api:dict-door-key-fold`, `engine:key-identity-route-parity`).
+- **What this does not close** - nothing the project ships still installs the evaluator, and
+  `docs/dev/boundaries.md` keeps that distinction: the refusal is inside the family and names the
+  door; the missing dependency is a packaging question and #517 stays the ruling.

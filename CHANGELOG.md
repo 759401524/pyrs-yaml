@@ -200,7 +200,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Measured through the console script: exit 1, one `error:` line on stderr, empty stdout. The
   `api:validate-schema-text-is-json-only` residual is gone from `.ci/known-residuals.json` and
   `QUALITY_MATRIX.md`, and the nine pages that named the old refusal say the new one; the
-  evaluator's `ModuleNotFoundError` stays registered (`docs/dev/quality-ledger.md` (lv)).
+  evaluator's own `ModuleNotFoundError` was still registered then
+  (`docs/dev/quality-ledger.md` (lv)).
+- **An absent evaluator refuses inside the documented family** — a base install ships no
+  `jsonschema`, and the three import sites behind `Document.validate` let the import error out as
+  a bare `ModuleNotFoundError`, a stdlib class outside the ten `Yaml*` ones, so a caller following
+  `docs/en/quick-start.md` from its single `pip install pyrs-yaml` line ended in a refusal the
+  family never names, and the CLI's `except YamlValidateError` arm printed a traceback. The
+  imports now pass through one helper that raises `YamlValidateError` naming the install route —
+  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install;
+  install it with pip install jsonschema (…)` — with the import error kept in the text so a broken
+  installation stays diagnosable, and the docstring carries the same route. The test that closes
+  the residual forces the failure with `sys.modules["jsonschema"] = None`, asserts the class, the
+  route and the docstring clause, so every leg measures it whether or not the evaluator is
+  installed here. The
+  `api:validate-evaluator-is-not-installed-by-anything-we-ship` residual is gone from
+  `.ci/known-residuals.json` and `QUALITY_MATRIX.md`, and the seven pages per locale that
+  recorded the bare class now record the refusal (`docs/dev/quality-ledger.md` (lw)).
 
 ### Changed
 

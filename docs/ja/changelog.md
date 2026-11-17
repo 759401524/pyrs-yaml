@@ -203,8 +203,21 @@ status: new
   トリングからそれを消す編集は実行を赤くします。コンソールスクリプトで実測：終了コード 1、stderr に
   `error:` の一行だけ、stdout は空。`api:validate-schema-text-is-json-only` は
   `.ci/known-residuals.json` と `QUALITY_MATRIX.md` から消え、古い拒否を書いていた九ページは新しい拒
-  否を書きます。評価器の `ModuleNotFoundError` は登録されたままです（`docs/dev/quality-ledger.md`
-  (lv)）。
+  否を書きます。評価器自身の `ModuleNotFoundError` はその時点ではまだ登録されていました
+  （`docs/dev/quality-ledger.md` (lv)）。
+- **評価器が無いときの拒否は文書化された一族の内側で起きます** — 基礎インストールは `jsonschema` を
+  同梱せず、`Document.validate` 背後の三か所の import がその import 誤りを裸の `ModuleNotFoundError`
+  として出していました — `Yaml*` 十クラスの外にある標準ライブラリの例外で、`docs/ja/quick-start.md`
+  の一行 `pip install pyrs-yaml` から来た呼び出しは一族が名乗らない拒否に行き着き、CLI の
+  `except YamlValidateError` 節は traceback を印字しました。三か所の import はいま一つの補助関数を通
+  り、インストール経路を名乗る `YamlValidateError` を投げます —
+  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)`
+  — テキストには import 誤りそのものを残すので壊れたインストールも診断でき、ドックストリングも同じ経
+  路を書きます。残差を閉じるテストは `sys.modules["jsonschema"] = None` で失敗を作り、例外クラス・経
+  路・ドックストリングの文を主張するので、評価器がここに入っていてもいなくても全レグが測ります。
+  `api:validate-evaluator-is-not-installed-by-anything-we-ship` は `.ci/known-residuals.json` と
+  `QUALITY_MATRIX.md` から消え、四つのロケールの七ページが裸の例外ではなくこの拒否を書きます
+  （`docs/dev/quality-ledger.md` (lw)）。
 
 #### 変更
 

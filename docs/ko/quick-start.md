@@ -237,11 +237,11 @@ bad.validate(schema)
 !!! info "평가 엔진은 별도 설치입니다"
     이 패키지가 배포하는 것은 `jsonschema`를 들여오지 않습니다: pyrs-yaml은
     `typing-extensions`에만 의존하고 세 개의 extras는 `cli`, `pydantic`,
-    `settings`입니다. 라이브러리만 있고 평가 엔진이 없는 환경에서는 이 단계의 모든
-    `validate()` 호출이 `Yaml*` 계열 밖의 맨 오류를 발생시킵니다:
-    `ModuleNotFoundError: No module named 'jsonschema'` — 스키마가 받아들이는
-    문서에서도 마찬가집니다. `pip install jsonschema`가 그 경로이며, 이 공백은
-    알려진 경계이지 이번 릴리스의 결함이 아닙니다.
+    `settings`입니다. 검증 전에 `pip install jsonschema`를 실행하세요. 라이브러리만 있고
+    평가 엔진이 없는 환경에서는 이 단계의 모든 `validate()` 호출이, 그 설치 경로를 밝히고
+    import 오류를 실은 `YamlValidateError`를 발생시킵니다 — 스키마가 받아들이는 문서에서도
+    마찬가지입니다. 평가 엔진이 배포물에 없는 것은 알려진 경계이지 이번 릴리스의 결함이
+    아닙니다.
 
 텍스트로 주어진 스키마는 YAML이 아니라 JSON으로 읽히므로
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")`는

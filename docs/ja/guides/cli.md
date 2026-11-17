@@ -173,7 +173,7 @@ pyrs-yaml validate app.yaml --schema schema.json        # 同じパラメータ�
 
 JSON ではないスキーマのファイル——読み手が手を伸ばす YAML の綴り——は、テキストを読む時点で拒否され、その拒否は `YamlValidateError` なので、コマンドは `error: schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON` を印字して `1` で終わります（コンソールスクリプト経由で実測：stderr はこの一行、stdout は空のまま）。
 
-JSON であるスキーマは依然として評価器に依存します。評価は Python の `jsonschema` に委譲され、本プロジェクトが公開するどれにもそれはインストールされないためです——基底の依存は `typing-extensions` だけで、extra は `cli`、`pydantic`、`settings` です。そのようなインストールではコマンドは `ModuleNotFoundError` の traceback で終わります。こちらは評価器がこの開発 venv に入っているので、プロセス内で `sys.modules["jsonschema"] = None` を使って実測しました——テストスイートが使う再現です——コマンドの `except YamlValidateError` 節はこのクラスを受け取らないため、行は `error: …` ではなく traceback になります。これは `.ci/known-residuals.json` に登記済みの境界（`api:validate-evaluator-is-not-installed-by-anything-we-ship`）で、CLI が直す欠陥ではありません。[例外 — YamlValidateError](../api/exceptions.md#yamlvalidateerror) を参照してください。
+JSON であるスキーマは依然として評価器に依存します。評価は Python の `jsonschema` に委譲され、本プロジェクトが公開するどれにもそれはインストールされないためです——基底の依存は `typing-extensions` だけで、extra は `cli`、`pydantic`、`settings` です。そのようなインストールではコマンドは `error: JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)` を印字して `1` で終わります。拒否は `YamlValidateError` なので、ほかの失敗と同じ `except YamlValidateError` 節から出ていきます。この行は評価器がこの開発 venv に入っているため、プロセス内で `sys.modules["jsonschema"] = None` を使って実測しました——テストスイートが使う再現で、括弧内の import 詳細はそこで `import of jsonschema halted; None in sys.modules` と読めます。[例外 — YamlValidateError](../api/exceptions.md#yamlvalidateerror) を参照してください。
 
 スカラー解決用スキーマと `Document.validate()` API は[カスタムスキーマ](custom-schema.md)を参照してください。
 

@@ -272,11 +272,11 @@ bad.validate(schema)
 !!! info "The evaluator is a separate install"
     Nothing this package ships brings `jsonschema` in: pyrs-yaml depends on
     `typing-extensions` alone, and its three extras are `cli`, `pydantic` and
-    `settings`. In an environment holding the library and no evaluator, every
-    `validate()` call in this step raises a bare error outside the `Yaml*` family:
-    `ModuleNotFoundError: No module named 'jsonschema'` — even for a document that
-    satisfies the schema. `pip install jsonschema` is the route, and the gap is a
-    known boundary, not a defect of this release.
+    `settings`. Run `pip install jsonschema` before validating. In an environment holding the
+    library and no evaluator, every `validate()` call in this step raises `YamlValidateError`
+    whose message names that install route and carries the import error — even for a document
+    that satisfies the schema. The evaluator not shipping with the library is a known boundary,
+    not a defect of this release.
 
 A schema given as text is read as JSON, never as YAML, so
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")`

@@ -144,19 +144,20 @@ class TestTheDelegatedEvaluatorContract:
             doc.validate("type: object\nrequired: [port]\n")
         assert "JSON" in pyrs_yaml.YamlDocument.validate.__doc__
 
-    @pytest.mark.known_residual("api:validate-evaluator-is-not-installed-by-anything-we-ship")
-    def test_a_base_install_answers_with_a_bare_module_not_found_error(self):
+    def test_an_absent_evaluator_names_the_install_route(self):
         # `sys.modules[...] = None` halts the import exactly as an absent distribution does, so this
         # runs on every leg whether or not the evaluator is installed here. The schema names nothing
         # the rest of the suite validates against, so the compiled-validator cache stays cold and the
-        # call really reaches the import.
+        # call really reaches the import. The refusal stays inside the family the docs name and says
+        # where the evaluator comes from, so a base install cannot end in a bare ModuleNotFoundError.
         held = sys.modules.get("jsonschema")
         sys.modules["jsonschema"] = None
         try:
-            with pytest.raises(ModuleNotFoundError):
+            with pytest.raises(pyrs_yaml.YamlValidateError, match="pip install jsonschema"):
                 pyrs_yaml.parse("port: 8080\n").validate({"title": "residual-validate-evaluator"})
         finally:
             if held is None:
                 del sys.modules["jsonschema"]
             else:
                 sys.modules["jsonschema"] = held
+        assert "pip install jsonschema" in pyrs_yaml.YamlDocument.validate.__doc__

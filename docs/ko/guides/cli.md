@@ -173,7 +173,7 @@ pyrs-yaml validate app.yaml --schema schema.json        # 동일한 매개변수
 
 JSON이 아닌 스키마 파일 — 읽는 사람이 집어드는 YAML 철자 — 은 텍스트를 읽는 시점에 거부되고, 그 거부는 `YamlValidateError`이므로 명령은 `error: schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`을 출력하고 `1`로 끝납니다(콘솔 스크립트로 측정: stderr는 이 한 줄, stdout은 빈 채로 남습니다).
 
-JSON인 스키마는 여전히 평가 엔진에 의존합니다 — 평가가 Python의 `jsonschema`에 위임되는데 이 프로젝트가 배포하는 무엇도 그 패키지를 설치하지 않기 때문입니다; 기본 의존성은 `typing-extensions` 하나이고 extras는 `cli`, `pydantic`, `settings`입니다. 그런 설치에서는 명령이 `ModuleNotFoundError` traceback으로 끝납니다. 그 쪽은 이 개발 venv에 평가 엔진이 설치되어 있어서, 테스트 스위트가 쓰는 재현인 `sys.modules["jsonschema"] = None`로 프로세스 안에서 측정했습니다; 이 명령의 `except YamlValidateError` 절은 그 클래스를 잡지 못하므로 그 줄이 `error: …`가 아니라 traceback입니다. 이것은 `.ci/known-residuals.json`에 등록된 경계입니다(`api:validate-evaluator-is-not-installed-by-anything-we-ship`) — CLI가 고치는 결함이 아닙니다; [예외 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)를 참고하세요.
+JSON인 스키마는 여전히 평가 엔진에 의존합니다 — 평가가 Python의 `jsonschema`에 위임되는데 이 프로젝트가 배포하는 무엇도 그 패키지를 설치하지 않기 때문입니다; 기본 의존성은 `typing-extensions` 하나이고 extras는 `cli`, `pydantic`, `settings`입니다. 그런 설치에서는 명령이 `error: JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)`를 출력하고 `1`로 끝납니다; 거부는 `YamlValidateError`이므로 다른 실패와 같은 `except YamlValidateError` 절로 나갑니다. 이 줄은 이 개발 venv에 평가 엔진이 설치되어 있어서, 테스트 스위트가 쓰는 재현인 `sys.modules["jsonschema"] = None`로 프로세스 안에서 측정했습니다 — 그때 괄호 안의 import 세부는 `import of jsonschema halted; None in sys.modules`로 읽힙니다. [예외 — YamlValidateError](../api/exceptions.md#yamlvalidateerror)를 참고하세요.
 
 스칼라 해석용 스키마와 `Document.validate()` API는 [사용자 정의 스키마](custom-schema.md)를 참고하세요.
 

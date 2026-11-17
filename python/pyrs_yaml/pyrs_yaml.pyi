@@ -361,6 +361,11 @@ class YamlDocument:
         parsed with `json.loads`, and a text that is not JSON - the YAML spelling,
         say - is refused with `YamlValidateError` instead of evaluated. Pass such a
         schema as a dict.
+
+        Evaluation is delegated to the third-party `jsonschema` package, which this
+        distribution does not install: run `pip install jsonschema` before
+        validating. If the package is absent the call raises `YamlValidateError`
+        naming that install route, not a bare `ModuleNotFoundError`.
         """
     def version(self, /) -> str:
         """

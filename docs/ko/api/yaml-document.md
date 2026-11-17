@@ -171,7 +171,7 @@ validate(schema: dict[str, Any]) -> None
 
 - `YamlValidateError` — 문서가 스키마에 맞지 않거나 스키마 인자를 쓸 수 없습니다. JSON이 아닌 `str`은 `schema text must be JSON (…); pass the schema as a dict if it is not JSON`으로 거부되고, `str`도 매핑도 아닌 인자도 이 클래스로 와서 엔진 자신의 거부 문장을 텍스트로 실습니다: `doc.validate(3)`는 `TypeError: argument of type 'int' is not iterable`로 답합니다
 
-거부 하나는 이 클래스 밖에서 옵니다 — 평가가 Python의 `jsonschema` 패키지에 위임되는데, 이 프로젝트가 배포하는 어떤 extra도 그 패키지를 설치하지 않기 때문입니다: `jsonschema`를 import할 수 없으면 `doc.validate({"type": "object"})`는 맨 `ModuleNotFoundError: No module named 'jsonschema'`로 답합니다. 재현과 함께 [예외 — YamlValidateError](exceptions.md#yamlvalidateerror)에 기록되어 있습니다.
+평가는 Python의 `jsonschema` 패키지에 위임되는데, 이 프로젝트가 배포하는 어떤 extra도 그 패키지를 설치하지 않습니다: 검증 전에 `pip install jsonschema`를 실행하세요. `jsonschema`를 import할 수 없을 때도 `doc.validate({"type": "object"})`는 `YamlValidateError`로 답하고, 그 메시지는 이 설치 경로를 밝히며 import 오류를 싣습니다. 재현과 함께 [예외 — YamlValidateError](exceptions.md#yamlvalidateerror)에 기록되어 있습니다.
 
 ### `flush_source()`
 

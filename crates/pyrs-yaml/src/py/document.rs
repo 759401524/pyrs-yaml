@@ -1111,6 +1111,11 @@ impl YamlDocument {
     /// parsed with `json.loads`, and a text that is not JSON - the YAML spelling,
     /// say - is refused with `YamlValidateError` instead of evaluated. Pass such a
     /// schema as a dict.
+    ///
+    /// Evaluation is delegated to the third-party `jsonschema` package, which this
+    /// distribution does not install: run `pip install jsonschema` before
+    /// validating. If the package is absent the call raises `YamlValidateError`
+    /// naming that install route, not a bare `ModuleNotFoundError`.
     #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
     fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
         let instance = self.to_dict(py)?;
@@ -1262,12 +1267,27 @@ fn jsonschema_error(py: Python, e: pyo3::PyErr) -> pyo3::PyErr {
     YamlValidateError::new_err(msg)
 }
 
+/// Import a `jsonschema` module, turning an import failure into
+/// `YamlValidateError` that names the install route. The evaluator is not a
+/// dependency of this distribution, so the first call on a base install would
+/// otherwise raise a bare `ModuleNotFoundError` naming nothing a reader can act
+/// on; the underlying import error is kept in the text so a broken (rather than
+/// absent) installation is still diagnosable.
+fn import_jsonschema<'py>(py: Python<'py>, module: &str) -> PyResult<Bound<'py, PyModule>> {
+    py.import(module).map_err(|e| {
+        YamlValidateError::new_err(format!(
+            "JSON Schema evaluation needs the `jsonschema` package, which this distribution does not install; install it with `pip install jsonschema` ({})",
+            e.value(py)
+        ))
+    })
+}
+
 fn run_jsonschema_validate(
     py: Python,
     instance: &Bound<'_, PyAny>,
     schema_obj: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    let jsonschema = py.import("jsonschema")?;
+    let jsonschema = import_jsonschema(py, "jsonschema")?;
     let validate_fn = jsonschema.getattr("validate")?;
     let kw = PyDict::new(py);
     kw.set_item("instance", instance)?;
@@ -1289,7 +1309,7 @@ fn run_cached_validator(
     let errors = validator
         .bind(py)
         .call_method1("iter_errors", (instance,))?;
-    let exceptions = py.import("jsonschema.exceptions")?;
+    let exceptions = import_jsonschema(py, "jsonschema.exceptions")?;
     let best = exceptions.call_method1("best_match", (errors,))?;
     if best.is_none() {
         return Ok(());
@@ -1301,7 +1321,7 @@ fn run_cached_validator(
 /// validation, keyed by `key`, with a deep-copy snapshot for mutation
 /// detection and a strong reference keeping identity keys stable.
 fn cache_validator(py: Python, key: ValidatorKey, schema_obj: &Bound<'_, PyAny>) -> PyResult<()> {
-    let jsonschema = py.import("jsonschema.validators")?;
+    let jsonschema = import_jsonschema(py, "jsonschema.validators")?;
     let cls = jsonschema.call_method("validator_for", (schema_obj,), None)?;
     let validator = cls.call1((schema_obj,))?;
     let pristine = py
