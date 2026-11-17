@@ -1106,6 +1106,11 @@ impl YamlDocument {
     }
 
     /// Validate the document against a JSON Schema.
+    ///
+    /// The schema is either a mapping or the JSON text of one: a `str` argument is
+    /// parsed with `json.loads`, and a text that is not JSON - the YAML spelling,
+    /// say - is refused with `YamlValidateError` instead of evaluated. Pass such a
+    /// schema as a dict.
     #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
     fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
         let instance = self.to_dict(py)?;
@@ -1122,7 +1127,14 @@ impl YamlDocument {
 
         if let Ok(schema_str) = schema.extract::<String>() {
             let json_module = py.import("json")?;
-            let parsed = json_module.call_method("loads", (schema_str.clone(),), None)?;
+            let parsed = json_module
+                .call_method("loads", (schema_str.clone(),), None)
+                .map_err(|e| {
+                    YamlValidateError::new_err(format!(
+                        "schema text must be JSON ({}); pass the schema as a dict if it is not JSON",
+                        e.value(py)
+                    ))
+                })?;
             let result = run_jsonschema_validate(py, instance.bind(py), &parsed);
             if result.is_ok() {
                 cache_validator(py, ValidatorKey::Text(schema_str), &parsed)?;

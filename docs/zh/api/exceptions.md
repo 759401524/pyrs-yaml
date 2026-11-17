@@ -110,14 +110,11 @@ except pyrs_yaml.YamlValidateError as e:
 既不是 `str` 也不是映射的 schema 仍然落在这个类里，带着引擎自己的那句拒绝文本：`doc.validate(3)` 回 `YamlValidateError: TypeError: argument of type 'int' is not iterable`。
 
 !!! warning "委托边界"
-    求值委托给 Python 的 `jsonschema` 包，而**本项目发布的任何东西都不安装它**：`[project.dependencies]` 只有 `typing-extensions` 一项，三个 extras 则是 `cli`、`pydantic` 与 `settings`。于是有两道门答在 `Yaml*` 类之外，两者都在这个构建上实测：
+    求值委托给 Python 的 `jsonschema` 包，而**本项目发布的任何东西都不安装它**：`[project.dependencies]` 只有 `typing-extensions` 一项，三个 extras 则是 `cli`、`pydantic` 与 `settings`。所以 `doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError` — 不是 `YamlValidateError` — 已在本构建上实测。它的文本取决于那个模块究竟是怎么缺失的：名字确实不存在时是 `No module named 'jsonschema'`，而按 `tests/test_validate.py` 复现缺 wheel 的那种方式让它中断（`sys.modules["jsonschema"] = None`）时是 `import of jsonschema halted; None in sys.modules`。
 
-    - `doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError` — 不是 `YamlValidateError`。它的文本取决于那个模块究竟是怎么缺失的：名字确实不存在时是 `No module named 'jsonschema'`，而按 `tests/test_validate.py` 复现缺 wheel 的那种方式让它中断（`sys.modules["jsonschema"] = None`）时是 `import of jsonschema halted; None in sys.modules`。
-    - `str` 这道 schema 门在问求值器**之前**先跑 `json.loads`，所以 YAML 拼法的 schema 文本回 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`，无论 `jsonschema` 装没装都一样。本身是合法 JSON 的 schema 文本仍然会走到求值器那里，而那里缺模块的答案就是上面那个 `ModuleNotFoundError`。
+    `str` 形式 schema 的拼法由本包自己决定，不归求值器管：文本门在问求值器之前先按 JSON 解析，而不是 JSON 的文本以 `YamlValidateError` 被拒绝，消息为 `schema text must be JSON (…); pass the schema as a dict if it is not JSON`。本身是合法 JSON 的 schema 文本仍然会走到求值器那里，而那里缺模块的答案就是上面的 `ModuleNotFoundError`。
 
-    两者都会逃出 `pyrs-yaml validate` 里 CLI 的 `except YamlValidateError` 分支，这正是该命令打印 traceback 而不是它平时那行 `error: …` 的原因 — 针对 YAML 拼法的 schema 经 console script 实测（stderr 是 traceback，stdout 为空，退出 `1`）— 参见[校验](../guides/cli.md#cmd-validate)。
-
-    这两条都不是本页要修掉的缺陷。它们是登记在 `.ci/known-residuals.json` 里的边界 — `api:validate-evaluator-is-not-installed-by-anything-we-ship` 与 `api:validate-schema-text-is-json-only` — 各自带着自己的复现测试和能够关掉它的退出条件。
+    这个 `ModuleNotFoundError` 会逃出 `pyrs-yaml validate` 里 CLI 的 `except YamlValidateError` 分支，这正是该命令在没有求值器的安装上打印 traceback 而不是它平时那行 `error: …` 的原因 — 参见[校验](../guides/cli.md#cmd-validate)。它是登记在 `.ci/known-residuals.json` 里的边界（`api:validate-evaluator-is-not-installed-by-anything-we-ship`），带着自己的复现测试和能够关掉它的退出条件。YAML 拼法的 schema 现在和其他拒绝一样走 `error: …` — 经 console script 实测：stderr 是这一行，stdout 为空，退出 `1`。
 
 ## YamlEditError
 

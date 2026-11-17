@@ -14570,3 +14570,45 @@ Mutation: forcing `reaches` to `return true` reddens exactly
 `reach_counterexamples_survive_the_remining` ("the TOML depth guard is gone") and leaves the
 registry comparison green, because an empty registry agrees with a blind walk - which is the reason
 the counterexample test exists; restoring the call returns 4 passed.
+
+### (lv) The schema text door refuses inside the family the docs name (2026-11-17)
+
+- **The refusal escaped the ten `Yaml*` classes** - `Document.validate` takes `str | dict`, and the
+  `str` door called `json.loads` with nothing mapped around it, so a YAML-spelled schema raised
+  `json.JSONDecodeError`. The CLI catches `YamlValidateError` alone (`python/pyrs_yaml/cli/app.py`),
+  so `pyrs-yaml validate doc.yaml --schema-file schema.yaml` printed a traceback instead of
+  `error: …`. That is the state `api:validate-schema-text-is-json-only` was registered against.
+- **The parse is wrapped; the cache is not** - only the `json.loads` call is mapped into
+  `YamlValidateError::new_err(format!("schema text must be JSON ({}); pass the schema as a dict if it is not JSON", e.value(py)))`
+  in `crates/pyrs-yaml/src/py/document.rs`. The JSON-schema path, the validator cache
+  (`ValidatorKey::Text`) and the dict door are untouched, so a cached hit still short-circuits and a
+  valid text schema costs the same calls. The message names the accepted form as well as the failure
+  because the CLI caller cannot pass a dict without editing the file: telling them only what went
+  wrong would leave the documented route shut.
+- **The sentence is not an i18n key** - the neighbouring refusals on this surface are `jsonschema`'s
+  own English messages (`jsonschema_error` forwards `.message` when it has one), so a translated
+  prefix on this one would be the only localized sentence in that arm. The docstring carries the
+  same English sentence instead.
+- **The docstring clause is the test** -
+  `tests/test_validate.py::TestTheDelegatedEvaluatorContract::test_a_yaml_spelled_schema_is_refused_in_the_documented_family`
+  asserts the exception class, the `must be JSON` text and
+  `"JSON" in pyrs_yaml.YamlDocument.validate.__doc__`, so deleting the sentence the exit criterion
+  asked for reddens the run rather than silently thinning the contract. The
+  `@pytest.mark.known_residual` marker is gone, the entry is gone from `.ci/known-residuals.json`,
+  its row is gone from `QUALITY_MATRIX.md`, and `tests/test_known_residuals.py` reads both
+  directions over the six residuals that remain.
+- **Measured through the console script** -
+  `.venv/Scripts/pyrs-yaml.exe validate doc.yaml --schema-file schema.yaml`: exit 1, stdout 0 bytes,
+  stderr exactly one line,
+  `error: schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`.
+  The same rules as `schema.json` exit 0, and `doc.validate(3)` still answers `TypeError` from the
+  evaluator, which the wrapper does not touch. `uv run pyrs-yaml` was deliberately not the
+  instrument: it prints `Installed 1 package` on stderr, which would have falsified the one-line
+  reading.
+- **Seven pages per locale recorded the old refusal** - `guides/cli.md`, `api/yaml-document.md`,
+  `api/exceptions.md`, `api/reference.md`, `features.md`, `guides/custom-schema.md` and
+  `quick-start.md` in `en`, `zh`, `ja` and `ko`, plus `docs/dev/boundaries.md` and the five
+  changelog `[Unreleased]` blocks. Each now names the `YamlValidateError` refusal and the remaining
+  `ModuleNotFoundError` separately; the evaluator's residual
+  (`api:validate-evaluator-is-not-installed-by-anything-we-ship`) stays registered, and the two
+  boundaries no longer travel as one sentence.

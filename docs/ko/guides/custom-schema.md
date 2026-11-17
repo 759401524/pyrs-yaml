@@ -106,7 +106,7 @@ doc.validate(schema)  # None을 반환하며, 실패하면 YamlValidateError 발
 `jsonschema.validate()`에 넘겨도 같은 판정입니다. 파일 검증은 [CLI 가이드](cli.md)를
 참조하세요.
 
-그 위임에는 두 경계가 따라오는데, 이번 릴리스는 둘 다 그대로 둡니다: 둘 다 프로젝트가
+그 위임에는 경계가 하나 따라오는데, 이번 릴리스는 그것을 그대로 둡니다: 프로젝트가
 등록한 알려진 경계이지 결함이 아니며, 프로젝트 자신의 평가 엔진을 만드는 것은 별개의
 설계 문제입니다.
 
@@ -120,12 +120,12 @@ doc.validate(schema)  # None을 반환하며, 실패하면 YamlValidateError 발
 **스키마 텍스트는 JSON이지 YAML이 아닙니다.** 이 페이지에서 `register_schema()`와
 `load_schema()`가 읽는 정의들과 달리, `validate()`에 넘기는 `str`은 평가 엔진을
 참조하기 전에 `json.loads`를 거치므로
-`doc.validate("type: object\nrequired: [port]\n")`는
-`json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`를
-발생시킵니다 — `jsonschema`가 설치되어 있든 없든 같습니다. CLI도 같은 파일을 같은
-방식으로 거부합니다: `pyrs-yaml validate doc.yaml --schema-file schema.yaml`은 그
-traceback을 stderr에 출력하고 종료 코드 1로 끝나며, 그 `except YamlValidateError`
-절은 그 실패를 보지 못합니다.
+`doc.validate("type: object\nrequired: [port]\n")`는 `YamlValidateError`를
+발생시킵니다: `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass
+the schema as a dict if it is not JSON` — `jsonschema`가 설치되어 있든 없든 같습니다. 이
+거부는 문서화된 `Yaml*` 계열 안에 머무르므로 CLI는 `error:` 한 줄만 출력합니다:
+`pyrs-yaml validate doc.yaml --schema-file schema.yaml`은 종료 코드 1로 끝나고, stderr에
+그 한 줄이, stdout은 비어 있습니다.
 
 ### 인라인 Dict 스키마
 

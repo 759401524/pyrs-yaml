@@ -245,7 +245,7 @@ bad.validate(schema)
 
 텍스트로 주어진 스키마는 YAML이 아니라 JSON으로 읽히므로
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")`는
-`json.decoder.JSONDecodeError`를 발생시킵니다 — 이 역시 계열 밖입니다.
+`YamlValidateError`를 발생시키고, 그 메시지가 인수가 받아들이는 형식을 밝힙니다.
 `dict`를 넘기거나 JSON 텍스트를 넘기세요.
 
 ### 13. 고급 편집

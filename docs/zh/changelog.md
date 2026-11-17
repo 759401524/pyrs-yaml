@@ -102,7 +102,8 @@ status: new
   rename、move 与元数据这几条路径上。别名的*父节点*仍被拒绝，别名节点上的那十二个元数据动词也一样。
   `api/exceptions.md` 现在列出十五个可达的原因令牌与应答每个令牌的那次调用，而 `validate()` 的两项依
   赖写在使用者会碰到它们的位置：本项目发布的任何东西都不安装 `jsonschema`，而作为文本传入的 schema
-  先由 `json.loads` 读取，因此一个 YAML 拼法的 schema 抛 `json.decoder.JSONDecodeError`。
+  先由 `json.loads` 读取，因此一个 YAML 拼法的 schema 被 `YamlValidateError` 拒绝，其消息点名该参数
+  接受的形式。
 - **文档开头那行标签头部之下的注释，在第一轮输出就定下来** — 搭不上自己那一行的注释要
   写在读者所报告的那个头部之上；可找头部的走查问的是头部行*之前*的换行，所以头部正好是
   文档第一行时根本不抬升，注释就留在缝隙里。在那个位置重读会把它归给根节点，下一轮输出
@@ -157,6 +158,17 @@ status: new
   收成一个，断言另一条拼写也能到达它（`docs/dev/quality-ledger.md` (jg)、(lj)）。实测：30 条
   merge 测试、500 条 `pyrs-yaml-core` 测试、`cargo nextest run --all` 919 条全过，clippy 两处范围
   干净，`prek run --all-files` 干净。
+- **YAML 拼法的 schema 现在被拒绝在文档列出的家族之内** — `Document.validate` 接受映射或映射的 JSON
+  文本，而那条文本门径裸跑 `json.loads`，于是 `doc.validate("type: object\nrequired: [port]\n")` 抛
+  `json.JSONDecodeError` — 一个 `Yaml*` 十个类之外的标准库异常，CLI 的 `except YamlValidateError` 分
+  支接不住，`pyrs-yaml validate doc.yaml --schema-file schema.yaml` 因此打印 traceback。门径现在包住
+  这次解析 —
+  `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`
+  — 文档字符串点名该参数接受的形式，而关闭这条残差的那条测试断言这句话，所以改动文档字符串把它删掉会
+  让测试变红。通过 console script 实测：退出 1，stderr 只有一行 `error:`，stdout 为空。
+  `api:validate-schema-text-is-json-only` 已从 `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 删
+  除，写过旧拒绝的九页改为新拒绝；求值引擎的 `ModuleNotFoundError` 仍在册
+  （`docs/dev/quality-ledger.md` (lv)）。
 
 #### 变更
 

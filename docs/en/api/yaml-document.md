@@ -175,15 +175,17 @@ validate(schema: str | dict[str, Any]) -> None
 
 **Raises:**
 
-- `YamlValidateError` — Document does not conform to the schema. A schema that is neither `str` nor a mapping arrives here too, with the engine's sentence as its text: `doc.validate(3)` answers `TypeError: argument of type 'int' is not iterable`
+- `YamlValidateError` — The document does not conform to the schema, or the schema argument is
+  unusable. A `str` that is not JSON is refused with `schema text must be JSON (…); pass the schema
+  as a dict if it is not JSON`, and an argument that is neither `str` nor a mapping arrives here
+  too, with the engine's sentence as its text: `doc.validate(3)` answers `TypeError: argument of
+  type 'int' is not iterable`
 
-Two refusals come from outside this class, because evaluation is delegated to the Python
-`jsonschema` package and no extra this project publishes installs it:
-
-- With `jsonschema` unimportable, `doc.validate({"type": "object"})` answers a bare `ModuleNotFoundError: No module named 'jsonschema'`
-- A `str` schema runs `json.loads` before the evaluator, so a YAML-spelled schema text answers `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — the same whether or not `jsonschema` is installed
-
-Both are recorded with their reproduction in [Exceptions — YamlValidateError](exceptions.md#yamlvalidateerror).
+One refusal comes from outside this class, because evaluation is delegated to the Python
+`jsonschema` package and no extra this project publishes installs it: with `jsonschema`
+unimportable, `doc.validate({"type": "object"})` answers a bare
+`ModuleNotFoundError: No module named 'jsonschema'`. It is recorded with its reproduction in
+[Exceptions — YamlValidateError](exceptions.md#yamlvalidateerror).
 
 **Example:**
 

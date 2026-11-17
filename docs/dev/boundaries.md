@@ -70,15 +70,13 @@ forms are not reproducible.
   routes decides which documents are valid at all, so it is a ruling rather than a patch, and both
   directions are pinned by `TestTheTwoReadersAnswerOppositeWaysOnAdjacentKeyPairs`.
 - **The schema text a `validate()` call accepts.** `Document.validate` takes `str | dict`, and the
-  `str` door is JSON: the binding runs `json.loads` on the text before the evaluator is consulted.
-  The YAML spelling — the form every other schema surface in this package reads — comes back as a
-  stdlib `json.decoder.JSONDecodeError`. That class is in neither the ten documented `Yaml*` errors
-  nor the CLI's `except YamlValidateError` arm: measured 2026-10-31,
-  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` printed a traceback for a file the guide
-  calls a schema. Registered as `api:validate-schema-text-is-json-only` and pinned by
-  `TestTheDelegatedEvaluatorContract.test_a_yaml_spelled_schema_refuses_with_a_stdlib_json_error`.
-  Accepting YAML text widens an acceptance door and re-wrapping the refusal changes the error
-  contract, so neither is smuggled in beside this registration.
+  `str` door is JSON: the binding runs `json.loads` on the text before the evaluator is consulted. A
+  text that is not JSON - the YAML spelling among them - is refused with `YamlValidateError` whose
+  message names the form the argument accepts, so the refusal stays inside the ten documented
+  `Yaml*` classes and the CLI's `except YamlValidateError` arm prints `error: …` instead of a
+  traceback (closed on 2026-11-17, ledger (lv); the docstring of `Document.validate` carries the
+  same sentence). Widening the door to read YAML text is a separate acceptance decision: nothing
+  here evaluates it.
 - **Who actually evaluates a JSON Schema.** No rule `Document.validate()` applies is owned here: the
   binding imports `jsonschema` and forwards, and that package lives in the test group only —
   `[project.dependencies]` is `typing-extensions` alone, and the three extras are `cli`, `pydantic`

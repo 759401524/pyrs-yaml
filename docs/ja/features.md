@@ -111,9 +111,9 @@ doc.validate('{"type": "object", "required": ["name"]}')
 インストールは `typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings`
 です——だから環境に評価器がないと、`validate()` は `YamlValidateError` ではなく `jsonschema` を
 名乗る裸の `ModuleNotFoundError` を投げます。自分で `pip install jsonschema` を入れてください。
-上の例のスキーマのテキストは JSON です：YAML の綴りのスキーマは、規則を読む前に `json.loads`
-によって `json.decoder.JSONDecodeError` で拒否されます。どちらもこの面の既知の境界で本リリースの
-欠陥ではなく、プロジェクト自前の評価器は別個の設計問題です。
+評価器の欠落はこの面の既知の境界で本リリースの欠陥ではなく、プロジェクト自前の評価器は別個の
+設計問題です。上の例のスキーマのテキストは JSON です：YAML の綴りのスキーマは受け付ける形を
+名乗る `YamlValidateError` で拒否されます——そのようなスキーマは `dict` として渡してください。
 
 ## 重複キー
 

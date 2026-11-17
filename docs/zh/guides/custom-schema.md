@@ -119,11 +119,11 @@ doc.validate(schema)  # 返回 None；文档不合格时抛出 YamlValidateError
 错误信息直接来自参考引擎（`'port' is a required property`）；同一份 schema 与实例交给
 `jsonschema.validate()` 会得到相同结论。校验文件请参阅 [CLI 指南](cli.md)。
 
-委托还带来两条边界，本版本两条都保留：它们是本项目已登记的已知边界，不是缺陷，而自建一个属于项目自己的求值器是另一个设计问题。
+委托还带来一条边界，本版本保留它：它是本项目已登记的已知边界，不是缺陷，而自建一个属于项目自己的求值器是另一个设计问题。
 
 **这里的任何安装途径都不会带入求值器。** pyrs-yaml 只依赖 `typing-extensions`，其 extras 是 `cli`、`pydantic` 与 `settings`，所以在只有本库的环境里 `doc.validate(schema)` 抛 `ModuleNotFoundError: No module named 'jsonschema'` — 没有任何 `Yaml*` 类应答，即便文档本会通过这份 schema。途径是 `pip install jsonschema`。
 
-**schema 文本是 JSON，从来不是 YAML。** 与本页 `register_schema()` 和 `load_schema()` 读取的定义不同，交给 `validate()` 的 `str` 在询问任何求值器之前会先经过 `json.loads`，所以 `doc.validate("type: object\nrequired: [port]\n")` 抛 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — 无论装没装 `jsonschema` 都一样。CLI 对同一个文件给出同样的拒绝：`pyrs-yaml validate doc.yaml --schema-file schema.yaml` 把那段 traceback 打到 stderr，退出 1，而它的 `except YamlValidateError` 分支永远看不到这次失败。
+**schema 文本是 JSON，从来不是 YAML。** 与本页 `register_schema()` 和 `load_schema()` 读取的定义不同，交给 `validate()` 的 `str` 在询问任何求值器之前会先经过 `json.loads`，所以 `doc.validate("type: object\nrequired: [port]\n")` 抛 `YamlValidateError`：`schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON` — 无论装没装 `jsonschema` 都一样。这次拒绝留在文档列出的 `Yaml*` 家族内，所以 CLI 只打印一行 `error:`：`pyrs-yaml validate doc.yaml --schema-file schema.yaml` 以退出码 1 结束，stderr 上就是那一行，stdout 为空。
 
 ### 内联 Dict Schema
 
