@@ -132,8 +132,8 @@ What it does claim is measured: a CI leg has taken its floor from a row. PR #662
 on `20261023.334.3`, printed all seven keyed names and `OK: every scenario within tolerance`, with
 three loader scenarios at +0.000 % of their own row and `load_json_medium` at +0.45 % — inside the
 line, ninety per cent of it, and recorded with its attribution in the ledger rather than smoothed
-over. That row has since been paid on the same image by the refresh named above
-(`57,111,529 → 57,368,032`), which leaves the enforcing reading 0.003 % from its floor; `(hk)` keeps
-both numbers and the fact that the sibling refresh on `354.1` is not in this file. One leg is not a
+over. That row has since been paid on the same image by the refresh named above, which leaves the
+enforcing reading 0.003 % from its floor; `(hk)` keeps both numbers and the fact that the sibling
+refresh on `354.1` is not in this file. One leg is not a
 distribution: what the line will keep absorbing per image is still a question each refresh answers
 for itself.
