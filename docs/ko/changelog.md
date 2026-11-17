@@ -202,8 +202,21 @@ status: new
   독스트링에서 그것을 지우는 편집은 실행을 빨갛게 만듭니다. 콘솔 스크립트로 실측: 종료 코드 1,
   stderr에 `error:` 한 줄, stdout은 비어 있음. `api:validate-schema-text-is-json-only`는
   `.ci/known-residuals.json`과 `QUALITY_MATRIX.md`에서 사라졌고, 옛 거부를 적던 아홉 페이지는 새
-  거부를 적습니다. 평가 엔진의 `ModuleNotFoundError`는 등록된 채
-  남습니다(`docs/dev/quality-ledger.md` (lv)).
+  거부를 적습니다. 평가 엔진 자신의 `ModuleNotFoundError`는 그 시점에 아직 등록되어 있었습니다
+  (`docs/dev/quality-ledger.md` (lv)).
+- **평가 엔진이 없을 때의 거부는 문서화된 계열 안에서 일어납니다** — 기본 설치는 `jsonschema`를 싣지
+  않고, `Document.validate` 뒤의 세 import가 그 import 오류를 맨 `ModuleNotFoundError`로
+  내보냈습니다 — `Yaml*` 열 개 클래스 밖의 표준 라이브러리 예외라, `docs/ko/quick-start.md`의 한 줄
+  `pip install pyrs-yaml`을 따라온 호출자는 계열이 이름 붙인 적 없는 거부에 닿았고 CLI의
+  `except YamlValidateError` 절은 traceback을 출력했습니다. 세 import는 이제 하나의 도우미를 거쳐
+  설치 경로를 밝히는 `YamlValidateError`를 발생시킵니다 —
+  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)`
+  — 텍스트에 import 오류 자체를 남기므로 망가진 설치도 진단할 수 있고, 독스트링도 같은 경로를
+  싣습니다. 잔여 항목을 닫는 테스트는 `sys.modules["jsonschema"] = None`으로 실패를 만들고 예외
+  클래스·경로·독스트링 문장을 단언하므로, 이 호스트에 평가 엔진이 있든 없든 모든 leg가 그것을
+  측정합니다. `api:validate-evaluator-is-not-installed-by-anything-we-ship`는
+  `.ci/known-residuals.json`과 `QUALITY_MATRIX.md`에서 사라졌고, 네 locale의 일곱 페이지가 맨 예외
+  대신 이 거부를 적습니다 (`docs/dev/quality-ledger.md` (lw)).
 
 #### 변경
 

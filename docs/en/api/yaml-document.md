@@ -181,10 +181,10 @@ validate(schema: str | dict[str, Any]) -> None
   too, with the engine's sentence as its text: `doc.validate(3)` answers `TypeError: argument of
   type 'int' is not iterable`
 
-One refusal comes from outside this class, because evaluation is delegated to the Python
-`jsonschema` package and no extra this project publishes installs it: with `jsonschema`
-unimportable, `doc.validate({"type": "object"})` answers a bare
-`ModuleNotFoundError: No module named 'jsonschema'`. It is recorded with its reproduction in
+Evaluation is delegated to the Python `jsonschema` package, which no extra this project publishes
+installs: run `pip install jsonschema` before validating. With `jsonschema` unimportable,
+`doc.validate({"type": "object"})` still answers a `YamlValidateError`, whose message names that
+install route and carries the import error. It is recorded with its reproduction in
 [Exceptions — YamlValidateError](exceptions.md#yamlvalidateerror).
 
 **Example:**

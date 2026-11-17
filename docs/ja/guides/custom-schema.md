@@ -125,9 +125,9 @@ doc.validate(schema)  # None を返し、不合格なら YamlValidateError を�
 既知の境界で欠陥ではなく、自前の評価器を作るのは別個の設計問題です。
 
 **どのインストール経路も評価器は連れてきません。** pyrs-yaml は `typing-extensions` のみに依存し、
-extra は `cli`、`pydantic`、`settings` なので、ライブラリだけの環境では `doc.validate(schema)` は
-`ModuleNotFoundError: No module named 'jsonschema'` を投げます — スキーマなら通す文書でも
-`Yaml*` のクラスは答えません。経路は `pip install jsonschema` です。
+extra は `cli`、`pydantic`、`settings` なので、まず `pip install jsonschema` を実行してください。
+ライブラリだけの環境では `doc.validate(schema)` は、そのインストール経路を名乗り import エラーを
+添えた `YamlValidateError` を投げます — スキーマなら通す文書でも同じです。
 
 **スキーマのテキストは JSON であり YAML ではありません。** このページの `register_schema()` や
 `load_schema()` が読む定義と違い、`validate()` に渡した `str` は評価器を参照する前に `json.loads` を

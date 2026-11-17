@@ -180,10 +180,10 @@ validate(schema: str | dict[str, Any]) -> None
   `str` でもマッピングでもない引数も同じくここに届き、エンジンの文をそのテキストにします：
   `doc.validate(3)` は `TypeError: argument of type 'int' is not iterable` と答えます
 
-このクラスの外から来る拒否が一つあります。評価は Python の `jsonschema` パッケージへ委譲され、
-本プロジェクトが公開するどの extra もそれをインストールしないためです：`jsonschema` が import
-できないと、`doc.validate({"type": "object"})` は裸の
-`ModuleNotFoundError: No module named 'jsonschema'` で答えます。再現とともに
+評価は Python の `jsonschema` パッケージへ委譲され、本プロジェクトが公開するどの extra もそれを
+インストールしません：検証の前に `pip install jsonschema` を実行してください。`jsonschema` が
+import できないときも `doc.validate({"type": "object"})` は `YamlValidateError` で答え、その
+メッセージはこのインストール経路を名乗り import エラーを添えます。再現とともに
 [例外 — YamlValidateError](exceptions.md#yamlvalidateerror) に記録しています。
 
 ### `flush_source()`

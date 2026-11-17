@@ -114,13 +114,13 @@ Raises `YamlValidateError` on validation failure.
 
 The evaluator is a separate install. `jsonschema` is not a dependency of pyrs-yaml —
 the base install depends on `typing-extensions` alone, and the extras are `cli`,
-`pydantic` and `settings` — so with no evaluator in the environment `validate()`
-raises a bare `ModuleNotFoundError` naming `jsonschema` instead of `YamlValidateError`.
-Install it yourself with `pip install jsonschema`. That missing evaluator is a known
-boundary of this surface, not a defect of this release, and an evaluator of the
-project's own is a separate design question. The schema text in the example above is
-JSON: a YAML-spelled schema is refused with `YamlValidateError` naming the accepted
-form — pass such a schema as a dict.
+`pydantic` and `settings` — so run `pip install jsonschema` before validating. Without an
+importable evaluator `validate()` raises `YamlValidateError` naming that install route, not a
+bare `ModuleNotFoundError`, even for a document the schema would pass; the evaluator not
+shipping with the library is a known boundary of this surface, not a defect of this release,
+and an evaluator of the project's own is a separate design question. The schema text in the
+example above is JSON: a YAML-spelled schema is refused with `YamlValidateError` naming the
+accepted form — pass such a schema as a dict.
 
 ### YAML Schema Language
 

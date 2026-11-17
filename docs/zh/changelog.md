@@ -167,8 +167,19 @@ status: new
   — 文档字符串点名该参数接受的形式，而关闭这条残差的那条测试断言这句话，所以改动文档字符串把它删掉会
   让测试变红。通过 console script 实测：退出 1，stderr 只有一行 `error:`，stdout 为空。
   `api:validate-schema-text-is-json-only` 已从 `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 删
-  除，写过旧拒绝的九页改为新拒绝；求值引擎的 `ModuleNotFoundError` 仍在册
+  除，写过旧拒绝的九页改为新拒绝；求值引擎自身的 `ModuleNotFoundError` 当时仍在册
   （`docs/dev/quality-ledger.md` (lv)）。
+- **缺失的求值引擎在文档列出的家族之内拒绝** — 基础安装不含 `jsonschema`，而 `Document.validate` 背
+  后的三处 import 让导入错误原样外泄为裸 `ModuleNotFoundError` — 一个 `Yaml*` 十个类之外的标准库异
+  常，于是照着 `docs/zh/quick-start.md` 那唯一一行 `pip install pyrs-yaml` 走下来的调用者，得到一个
+  家族从不点名的拒绝，而 CLI 的 `except YamlValidateError` 分支把 traceback 打了出去。三处导入现在都
+  走同一个辅助函数，它抛出点名安装途径的 `YamlValidateError` —
+  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)`
+  — 文本里保留导入错误本身，坏掉的安装仍可诊断，文档字符串也写出同一条途径。关闭这条残差的测试用
+  `sys.modules["jsonschema"] = None` 造出失败，断言异常类、安装途径与文档字符串那句，所以无论本机装
+  没装求值器，每条腿都会测到它。`api:validate-evaluator-is-not-installed-by-anything-we-ship` 已从
+  `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 删除，四个 locale 里记录裸异常的那七页现在记录这
+  次拒绝（`docs/dev/quality-ledger.md` (lw)）。
 
 #### 变更
 

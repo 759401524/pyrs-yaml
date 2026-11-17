@@ -237,11 +237,10 @@ bad.validate(schema)
 !!! info "評価器は別のインストールです"
     このパッケージが出荷するどれにも `jsonschema` は入っていません：pyrs-yaml は
     `typing-extensions` のみに依存し、三つの extra は `cli`、`pydantic`、`settings` です。
-    ライブラリだけで評価器のない環境では、このステップのあらゆる `validate()` 呼び出しが
-    `Yaml*` の一族の外にある裸のエラーを投げます：
-    `ModuleNotFoundError: No module named 'jsonschema'`——スキーマなら通す文書でも同じです。
-    経路は `pip install jsonschema` であり、この欠落は既知の境界で、本リリースの欠陥では
-    ありません。
+    検証の前に `pip install jsonschema` を実行してください。ライブラリだけで評価器のない環境では、
+    このステップのあらゆる `validate()` 呼び出しが、そのインストール経路を名乗り import エラーを
+    添えた `YamlValidateError` を投げます——スキーマなら通す文書でも同じです。評価器が出荷物に
+    無いことは既知の境界で、本リリースの欠陥ではありません。
 
 テキストで与えたスキーマは YAML ではなく必ず JSON として読まれるため、
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")` は

@@ -129,10 +129,10 @@ boundary the project has registered, not a defect, and building an evaluator of 
 project's own is a separate design question.
 
 **No install route here brings in an evaluator.** pyrs-yaml depends on
-`typing-extensions` alone and its extras are `cli`, `pydantic` and `settings`, so in
-an environment holding only the library `doc.validate(schema)` raises
-`ModuleNotFoundError: No module named 'jsonschema'` — no `Yaml*` class answers, even
-for a document the schema would pass. `pip install jsonschema` is the route.
+`typing-extensions` alone and its extras are `cli`, `pydantic` and `settings`, so run
+`pip install jsonschema` first. In an environment holding only the library
+`doc.validate(schema)` raises `YamlValidateError` whose message names that install route
+and carries the import error — even for a document the schema would pass.
 
 **Schema text is JSON, never YAML.** Unlike the definitions `register_schema()` and
 `load_schema()` read on this page, a `str` handed to `validate()` goes through

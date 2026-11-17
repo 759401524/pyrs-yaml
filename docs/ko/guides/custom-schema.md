@@ -111,11 +111,10 @@ doc.validate(schema)  # None을 반환하며, 실패하면 YamlValidateError 발
 설계 문제입니다.
 
 **여기의 어떤 설치 경로도 평가 엔진을 들여오지 않습니다.** pyrs-yaml은
-`typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`이므로,
-라이브러리만 가진 환경에서 `doc.validate(schema)`는
-`ModuleNotFoundError: No module named 'jsonschema'`를 발생시킵니다 — 스키마가
-통과시켰을 문서에서도 `Yaml*` 계열은 아무것도 답하지 않습니다. `pip install jsonschema`가
-그 경로입니다.
+`typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`이므로, 먼저
+`pip install jsonschema`를 실행하세요. 라이브러리만 가진 환경에서 `doc.validate(schema)`는
+그 설치 경로를 밝히고 import 오류를 실은 `YamlValidateError`를 발생시킵니다 — 스키마가
+통과시켰을 문서에서도 마찬가지입니다.
 
 **스키마 텍스트는 JSON이지 YAML이 아닙니다.** 이 페이지에서 `register_schema()`와
 `load_schema()`가 읽는 정의들과 달리, `validate()`에 넘기는 `str`은 평가 엔진을

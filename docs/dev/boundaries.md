@@ -80,13 +80,13 @@ forms are not reproducible.
 - **Who actually evaluates a JSON Schema.** No rule `Document.validate()` applies is owned here: the
   binding imports `jsonschema` and forwards, and that package lives in the test group only —
   `[project.dependencies]` is `typing-extensions` alone, and the three extras are `cli`, `pydantic`
-  and `settings`. Measured 2026-10-31 with the module halted the way an absent wheel halts it, a
-  base install answers the documented method with a bare `ModuleNotFoundError` that names no route,
-  while `docs/en/quick-start.md` installs once at its top and calls `validate()` in step 12. It is
-  registered as `api:validate-evaluator-is-not-installed-by-anything-we-ship`, pinned by
-  `TestTheDelegatedEvaluatorContract.test_a_base_install_answers_with_a_bare_module_not_found_error`.
-  Adding an extra is a packaging decision (AGENTS.md: ask first), and the evaluator this repository
-  would own is designed in the still-open PR #517.
+  and `settings`. Measured 2026-11-17 with the module halted the way an absent wheel halts it, a
+  base install answers the documented method with `YamlValidateError` whose text names the install
+  route (`pip install jsonschema`) and carries the import error, so the refusal stays inside the ten
+  documented `Yaml*` classes and the CLI's `except YamlValidateError` arm prints `error: …`; the
+  docstring of `Document.validate` carries the same route (closed on 2026-11-17, ledger (lw)).
+  Shipping an extra that installs the evaluator remains a packaging decision (AGENTS.md: ask first),
+  and the evaluator this repository would own is designed in the still-open PR #517.
 - **Integer source spelling (`0b1010`, `1_000`, `+5`).** Closed by `(cp)`, widened by `(eq)` — the
   spelling now survives the round trip. It was canonicalised to decimal while the bridges read
   scalar text only: YAML Core has no `0b` spelling and cannot read `_` separators, so a faithful

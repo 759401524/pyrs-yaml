@@ -127,28 +127,23 @@ own refusal text: `doc.validate(3)` answers
 !!! warning "Delegation boundary"
     Evaluation is delegated to the Python `jsonschema` package, and **nothing this project
     publishes installs it**: `[project.dependencies]` is `typing-extensions` alone and the three
-    extras are `cli`, `pydantic` and `settings`. So `doc.validate({"type": "object"})` answers a
-    bare `ModuleNotFoundError` — not a `YamlValidateError` — measured on this build. Its text
-    depends on how the module is missing: with the name genuinely absent it is
-    `No module named 'jsonschema'`, and halted the way `tests/test_validate.py`
-    reproduces the absent wheel (`sys.modules["jsonschema"] = None`) it is
-    `import of jsonschema halted; None in sys.modules`.
+    extras are `cli`, `pydantic` and `settings`. Run `pip install jsonschema` before validating.
+    With no evaluator importable, `doc.validate({"type": "object"})` raises `YamlValidateError`
+    whose message names that install route — "JSON Schema evaluation needs the `jsonschema`
+    package, which this distribution does not install; install it with `pip install jsonschema`
+    (…)" — even for a document the schema would pass. The parenthesised detail is the import
+    error itself, so a broken installation stays diagnosable; the reproduction is
+    `sys.modules["jsonschema"] = None`, the way `tests/test_validate.py` stages an absent wheel.
 
     The spelling of a `str` schema is this package's own decision, not the evaluator's: the text
     door parses JSON before the evaluator is consulted, and a text that is not JSON is refused
     with `YamlValidateError` whose message reads
-    `schema text must be JSON (…); pass the schema as a dict if it is not JSON`. A schema text
-    that is valid JSON still reaches the evaluator, and there the missing module is the
-    `ModuleNotFoundError` above.
+    `schema text must be JSON (…); pass the schema as a dict if it is not JSON`.
 
-    The `ModuleNotFoundError` escapes the CLI's `except YamlValidateError` arm in
-    `pyrs-yaml validate`, which is why that command prints a traceback instead of its usual
-    `error: …` line on an install without the evaluator — see
-    [Validation](../guides/cli.md#cmd-validate). It is a registered boundary in
-    `.ci/known-residuals.json` (`api:validate-evaluator-is-not-installed-by-anything-we-ship`),
-    carrying its reproduction test and the exit criterion that would close it. The YAML-spelled
-    schema now leaves through `error: …` like every other refusal - measured through the console
-    script: stderr holds that one line, stdout stays empty, exit `1`.
+    Both refusals belong to the family the CLI catches, so `pyrs-yaml validate` prints its usual
+    `error: …` line and exits `1` instead of a traceback on an install without the evaluator —
+    see [Validation](../guides/cli.md#cmd-validate). The YAML-spelled schema was measured through
+    the console script: stderr holds that one line, stdout stays empty, exit `1`.
 
 ### YamlEditError
 

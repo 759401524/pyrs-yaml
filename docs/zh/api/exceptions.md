@@ -110,11 +110,11 @@ except pyrs_yaml.YamlValidateError as e:
 既不是 `str` 也不是映射的 schema 仍然落在这个类里，带着引擎自己的那句拒绝文本：`doc.validate(3)` 回 `YamlValidateError: TypeError: argument of type 'int' is not iterable`。
 
 !!! warning "委托边界"
-    求值委托给 Python 的 `jsonschema` 包，而**本项目发布的任何东西都不安装它**：`[project.dependencies]` 只有 `typing-extensions` 一项，三个 extras 则是 `cli`、`pydantic` 与 `settings`。所以 `doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError` — 不是 `YamlValidateError` — 已在本构建上实测。它的文本取决于那个模块究竟是怎么缺失的：名字确实不存在时是 `No module named 'jsonschema'`，而按 `tests/test_validate.py` 复现缺 wheel 的那种方式让它中断（`sys.modules["jsonschema"] = None`）时是 `import of jsonschema halted; None in sys.modules`。
+    求值委托给 Python 的 `jsonschema` 包，而**本项目发布的任何东西都不安装它**：`[project.dependencies]` 只有 `typing-extensions` 一项，三个 extras 则是 `cli`、`pydantic` 与 `settings`。校验前请先运行 `pip install jsonschema`。没有可导入的求值器时，`doc.validate({"type": "object"})` 抛出 `YamlValidateError`，消息点名这条安装途径 — “JSON Schema evaluation needs the `jsonschema` package, which this distribution does not install; install it with `pip install jsonschema` (…)” — 即便文档本会通过该 schema。括号里是 import 错误本身，所以损坏的安装仍可诊断；复现方式是 `tests/test_validate.py` 用来模拟缺 wheel 的 `sys.modules["jsonschema"] = None`。
 
-    `str` 形式 schema 的拼法由本包自己决定，不归求值器管：文本门在问求值器之前先按 JSON 解析，而不是 JSON 的文本以 `YamlValidateError` 被拒绝，消息为 `schema text must be JSON (…); pass the schema as a dict if it is not JSON`。本身是合法 JSON 的 schema 文本仍然会走到求值器那里，而那里缺模块的答案就是上面的 `ModuleNotFoundError`。
+    `str` 形式 schema 的拼法由本包自己决定，不归求值器管：文本门在问求值器之前先按 JSON 解析，而不是 JSON 的文本以 `YamlValidateError` 被拒绝，消息为 `schema text must be JSON (…); pass the schema as a dict if it is not JSON`。
 
-    这个 `ModuleNotFoundError` 会逃出 `pyrs-yaml validate` 里 CLI 的 `except YamlValidateError` 分支，这正是该命令在没有求值器的安装上打印 traceback 而不是它平时那行 `error: …` 的原因 — 参见[校验](../guides/cli.md#cmd-validate)。它是登记在 `.ci/known-residuals.json` 里的边界（`api:validate-evaluator-is-not-installed-by-anything-we-ship`），带着自己的复现测试和能够关掉它的退出条件。YAML 拼法的 schema 现在和其他拒绝一样走 `error: …` — 经 console script 实测：stderr 是这一行，stdout 为空，退出 `1`。
+    两道拒绝都属于 CLI 捕获的家族，所以在没有求值器的安装上，`pyrs-yaml validate` 打印的仍是它平时那行 `error: …` 并以 `1` 退出，而不是 traceback — 参见[校验](../guides/cli.md#cmd-validate)。YAML 拼法的 schema 经 console script 实测：stderr 是这一行，stdout 为空，退出 `1`。
 
 ## YamlEditError
 
