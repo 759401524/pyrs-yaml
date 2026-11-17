@@ -245,6 +245,16 @@ pub fn detect_block_header(yaml: &str, content_start: usize) -> BlockHeader {
         if bytes[idx] == b'#' && (idx == line_start || matches!(bytes[idx - 1], b' ' | b'\t')) {
             break;
         }
+        // A sigil inside a key's own text is not the header, whatever its tail looks
+        // like: `"?\n  \"h>+#\": |\n:\n  ~"` reports its empty body at 14..14, and the
+        // `>` in the quoted key validated as Keep (its `+#` read as a comment), so the
+        // real `|` on the next line was never reached; the anchor in `&>#` shadowed the
+        // `>+` the same way (libFuzzer `yaml_roundtrip` crash-6d0caaa2 /
+        // crash-3411a423). A header's sigil is a token of its own: it starts its line
+        // or follows a blank.
+        if idx != line_start && !matches!(bytes[idx - 1], b' ' | b'\t') {
+            continue;
+        }
         if bytes[idx] == b'|' || bytes[idx] == b'>' {
             // The first sigil whose tail reaches the line end (or a comment) as
             // a valid header is the block header — at most one can qualify.
@@ -470,6 +480,23 @@ mod tests {
         let h = detect_block_header(s, s.find('x').unwrap());
         assert_eq!(h.indent, None);
         assert_eq!(h.chomping, Chomping::Clip);
+    }
+
+    #[test]
+    fn detect_block_header_sigil_inside_key_text_is_not_the_header() {
+        // crash-6d0caaa2 test shape: the `>` inside the quoted key has a
+        // validating tail (`+#` reads as Keep plus a comment), so before the
+        // position guard it shadowed the real `|` and the emission gained a `+`.
+        let s = "?\n  \"h>+#\": |\n:\n  ~\n";
+        // granit spans this empty body on the `:` of the next line (offset 14).
+        let h = detect_block_header(s, 14);
+        assert_eq!(h, BlockHeader::default());
+
+        // crash-3411a423 test shape: the same shadowing through an anchor's
+        // name, where the real header is the `>+` after the CR.
+        let s = "&>#\r>+\r8";
+        let h = detect_block_header(s, s.find('8').unwrap());
+        assert_eq!(h.chomping, Chomping::Keep);
     }
 
     #[test]

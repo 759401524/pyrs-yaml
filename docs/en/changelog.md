@@ -19,6 +19,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A block header is no longer shadowed by a sigil inside key text** — the header walk took the
+  first `|`/`>` on the header line whose tail validated, and a `>` inside a quoted key (`"h>+#"`)
+  or an anchor's name (`&>#`) has one: `+#` reads as Keep plus a comment, so the real header on the
+  next line was never reached and the emission gained a chomping indicator the source never wrote
+  (libFuzzer `yaml_roundtrip` crash-6d0caaa2 / crash-3411a423 / crash-418d64b8). A sigil is a
+  candidate only where a token can start — at its line's own start or after a blank
+  (`docs/dev/quality-ledger.md` (lx)).
 - **The Ir gate's off-image failure note reads the image rows** — a run outside a runner image
   dressed each failing scenario with the nearest row's floor, but the helper was handed the
   flattened `{scenario: int}` map the run had been judged against, so the first failure died with
