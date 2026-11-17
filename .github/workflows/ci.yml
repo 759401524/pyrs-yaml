@@ -692,11 +692,30 @@ jobs:
         with:
           key: build-${{ matrix.os }}
 
+      # The interpreter is pinned rather than inherited from the image: `python3` on
+      # `macos-latest` moved from CPython 3.14 to 3.15 with the `macos-26-arm64` 20261103 image,
+      # and maturin 1.16 tags a 3.15 build of this manifest `cp315-abi3.abi3t` - the free-threaded
+      # twin the release publishes - which pip refuses on every leg below 3.15t ("not a supported
+      # wheel on this platform", run 43981935691, eight macOS legs). A build below
+      # `abi3t-py315`'s floor tags the wheel `cp38-abi3`, the one wheel `scripts/wheel_smoke.py`
+      # says the whole 3.8-3.15 grid installs. uv provides it for the same reason the test legs
+      # give: the image's own set of interpreters is a moving target.
+      - name: Install uv and the abi3 build interpreter
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.14"
+          enable-cache: false
+
+      - name: Resolve the pinned interpreter
+        id: build-python
+        run: echo "path=$(uv python find 3.14)" >> "$GITHUB_OUTPUT"
+
       - name: Build abi3 wheel (for test jobs)
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --interpreter python3 --out dist-test
+          args: --release --interpreter ${{ steps.build-python.outputs.path }} --out dist-test
 
       - name: Upload abi3 wheel
         uses: actions/upload-artifact@v7
