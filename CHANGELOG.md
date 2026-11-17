@@ -9,6 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A merge no longer repeats a container key the mapping already owns** — the duplicate-key fold
+  compared contributed keys as whole nodes, which sees an inner scalar's style, so two mappings
+  that write the same key line (`? ! "": ~`, one spelled with an empty plain and one with an empty
+  literal) both survived the fold and the emission carried the pair twice — text this engine's own
+  reader refuses (libFuzzer `yaml_roundtrip` crash-0810c8b4). The fold now asks the reader's own
+  key probe, the write-and-read-back `duplicate_complex_key` runs, in the receiving mapping's flow
+  spelling (`docs/dev/quality-ledger.md` (ly)).
 - **A block header is no longer shadowed by a sigil inside key text** — the header walk took the
   first `|`/`>` on the header line whose tail validated, and a `>` inside a quoted key (`"h>+#"`)
   or an anchor's name (`&>#`) has one: `+#` reads as Keep plus a comment, so the real header on the

@@ -1,5 +1,5 @@
 use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle, Tag};
-use crate::parser::{collect_anchored_nodes, is_null_key, repair_orphaned_anchors};
+use crate::parser::{collect_anchored_nodes, is_null_key, read_back_key, repair_orphaned_anchors};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -20,7 +20,7 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
         return;
     }
     // First, collect all anchor names and their mappings
-    let mut anchors: NodeMap<String, NodeMap<CustomNode, CustomNode>> = NodeMap::default();
+    let mut anchors: NodeMap<String, AnchorBody> = NodeMap::default();
     collect_anchor_mappings(node, &mut anchors);
 
     // Then, resolve merge keys. `path` carries the anchor names whose expansion
@@ -98,7 +98,7 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// Recursively resolve merge keys in a node
 fn resolve_merges_recursive(
     node: &mut CustomNode,
-    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, AnchorBody>,
     path: &mut Vec<String>,
     depth: usize,
     orphaned: &mut Vec<(String, CustomNode)>,
@@ -107,8 +107,10 @@ fn resolve_merges_recursive(
         return;
     }
     match node {
-        CustomNode::Mapping { pairs, .. } => {
-            resolve_mapping_merges(pairs, anchors, path, depth, orphaned);
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => {
+            resolve_mapping_merges(pairs, *flow_style, anchors, path, depth, orphaned);
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
@@ -119,16 +121,32 @@ fn resolve_merges_recursive(
     }
 }
 
+/// One anchored mapping body, held with the flow spelling it was written in. The flow
+/// decides how the writer lays a container key down, so a merge inside this body asks its
+/// duplicate question in the same context the document itself would.
+struct AnchorBody {
+    pairs: NodeMap<CustomNode, CustomNode>,
+    flow: bool,
+}
+
 /// Collect all anchor names and their mapping pairs from the AST.
 /// Used for resolving merge keys (`<<`).
-fn collect_anchor_mappings(
-    node: &CustomNode,
-    anchors: &mut NodeMap<String, NodeMap<CustomNode, CustomNode>>,
-) {
+fn collect_anchor_mappings(node: &CustomNode, anchors: &mut NodeMap<String, AnchorBody>) {
     match node {
-        CustomNode::Mapping { pairs, meta, .. } => {
+        CustomNode::Mapping {
+            pairs,
+            flow_style,
+            meta,
+            ..
+        } => {
             if let Some(anchor_name) = meta.anchor() {
-                anchors.insert(anchor_name.to_string(), pairs.clone());
+                anchors.insert(
+                    anchor_name.to_string(),
+                    AnchorBody {
+                        pairs: pairs.clone(),
+                        flow: *flow_style,
+                    },
+                );
             }
             for (_key, value) in pairs {
                 collect_anchor_mappings(value, anchors);
@@ -166,7 +184,8 @@ type AnchoredPairs = Vec<(String, CustomNode, CustomNode)>;
 /// Resolve merge keys in a mapping
 fn resolve_mapping_merges(
     pairs: &mut NodeMap<CustomNode, CustomNode>,
-    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
+    flow: bool,
+    anchors: &NodeMap<String, AnchorBody>,
     path: &mut Vec<String>,
     depth: usize,
     orphaned: &mut Vec<(String, CustomNode)>,
@@ -349,8 +368,12 @@ fn resolve_mapping_merges(
         let mut kept: NodeMap<CustomNode, CustomNode> =
             NodeMap::with_capacity_and_hasher(pending.len(), Default::default());
         for (key, (_source, value)) in pending {
-            let overridden = owns_owning_key(pairs, merge_index, &key)
-                || kept.keys().any(|own| same_emitted_key(own, &key));
+            let key_is_container = is_container_key(&key);
+            let overridden = owns_owning_key(pairs, merge_index, &key, key_is_container, flow)
+                || kept.keys().any(|own| {
+                    same_emitted_key(own, &key)
+                        || (key_is_container && container_keys_collide(own, &key, flow))
+                });
             if overridden {
                 // The pair is dropped whole, so any definition inside it leaves the tree
                 // while a contributed alias may still spell the name.
@@ -395,11 +418,14 @@ fn owns_owning_key(
     pairs: &NodeMap<CustomNode, CustomNode>,
     merge_index: Option<usize>,
     key: &CustomNode,
+    key_is_container: bool,
+    flow: bool,
 ) -> bool {
-    pairs
-        .iter()
-        .enumerate()
-        .any(|(index, (own, _))| Some(index) != merge_index && same_emitted_key(own, key))
+    pairs.iter().enumerate().any(|(index, (own, _))| {
+        Some(index) != merge_index
+            && (same_emitted_key(own, key)
+                || (key_is_container && container_keys_collide(own, key, flow)))
+    })
 }
 
 /// The tag on a scalar or null key, and `None` on every other node: those two are the variants
@@ -462,6 +488,18 @@ fn tagged_keys_collide(a: &CustomNode, b: &CustomNode) -> bool {
 /// as a second key, and the writer then emitted a pair its own reader refuses (libFuzzer
 /// `yaml_roundtrip` crash-4bf6ee37's merge shape). A tag-free merge pays one match per pair for
 /// it; asked unconditionally, the comparison read +0.95% on `parse_inline_merge`.
+///
+/// A *container* key is compared by its written key line, not as a node: key position is lossy
+/// (a block scalar becomes a quoted one, an empty plain becomes `""`), so two mapping keys that
+/// differ only in an inner style sit apart in the node map while the writer lays them down
+/// identically - `{! "": ~}` spelled plain and with an empty literal both reach the page as
+/// `? ! "": ~`. The reader already refuses that pair when the document carries both
+/// (`duplicate_complex_key`, crash-b88f1b4f); the merge fold missed it and kept both, so the
+/// emission repeated the pair and the re-read refused it (libFuzzer `yaml_roundtrip`
+/// crash-0810c8b4, minimised to 18 bytes: `? ? !` LF `<<:` LF ` ? ? ! |`). Asking
+/// [`read_back_key`] - the reader's own probe, in this mapping's `flow` spelling - keeps the
+/// two verdicts from drifting apart, and the caller asks it only when both keys are containers
+/// (`container_keys_collide`), so the scalar comparison below stays the whole hot path.
 fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
     if is_null_key(a) && is_null_key(b) {
         return true;
@@ -486,6 +524,32 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
     }
 }
 
+/// Whether a key is a container, which is the one condition under which the fold has to ask the
+/// reader's key probe. One discriminant test on the contributed key, hoisted out of the comparison
+/// loop: measured on `parse_inline_merge`, holding the probe in any form inside
+/// [`same_emitted_key`] moved that scenario +0.18% against the parent tree, because the fixture's
+/// merges contribute only scalar keys and the added arms are code the hot path never runs.
+fn is_container_key(key: &CustomNode) -> bool {
+    matches!(
+        key,
+        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+    )
+}
+
+/// Ask the reader's own key identity of a contributed container key, out of line: `read_back_key`
+/// writes the key into a one-pair mapping and parses it back, which costs a document per call and
+/// is warranted only where key position is lossy.
+#[inline(never)]
+fn container_keys_collide(a: &CustomNode, b: &CustomNode, flow: bool) -> bool {
+    if !(is_container_key(a) && is_container_key(b)) {
+        return false;
+    }
+    match (read_back_key(a, flow), read_back_key(b, flow)) {
+        (Some(left), Some(right)) => left == right,
+        _ => a == b,
+    }
+}
+
 /// Collect merged pairs from a merge key value.
 ///
 /// YAML 1.1 merge types: an alias to a mapping, a sequence of such aliases,
@@ -498,7 +562,7 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
 fn collect_merge_data(
     merge_value: &CustomNode,
     pairs: &NodeMap<CustomNode, CustomNode>,
-    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, AnchorBody>,
     path: &[String],
     depth: usize,
     orphaned: &mut Vec<(String, CustomNode)>,
@@ -619,15 +683,16 @@ fn collect_inline_pairs(
 fn collect_merged_pairs_for_anchor(
     name: &str,
     pairs: &NodeMap<CustomNode, CustomNode>,
-    anchors: &NodeMap<String, NodeMap<CustomNode, CustomNode>>,
+    anchors: &NodeMap<String, AnchorBody>,
     path: &[String],
     depth: usize,
     result: &mut AnchoredPairs,
     orphaned: &mut Vec<(String, CustomNode)>,
 ) {
-    let Some(merged) = anchors.get(name) else {
+    let Some(anchor) = anchors.get(name) else {
         return;
     };
+    let merged = &anchor.pairs;
     // Re-entering an anchor whose expansion is already being walked further up
     // this path is a cycle, not a merge. Skipping the expansion leaves the `<<`
     // key resolving to nothing, which is the only terminating answer: the
@@ -652,7 +717,14 @@ fn collect_merged_pairs_for_anchor(
         resolved = merged.clone();
         let mut nested = path.to_vec();
         nested.push(name.to_string());
-        resolve_mapping_merges(&mut resolved, anchors, &mut nested, depth + 1, orphaned);
+        resolve_mapping_merges(
+            &mut resolved,
+            anchor.flow,
+            anchors,
+            &mut nested,
+            depth + 1,
+            orphaned,
+        );
         &resolved
     } else {
         merged

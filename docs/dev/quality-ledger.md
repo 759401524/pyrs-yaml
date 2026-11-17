@@ -14695,3 +14695,60 @@ identical bytes).
   `36178218` and `5ea9fbb8`. Those are the merge-key fold, the duplicate tagged empty key, the
   re-homed trailing note, the JSON5 number spelling and the tag-only settle - each with its own
   dated section where one exists. No issue is closed by this entry.
+
+### (ly) A merge drops a container key that writes the same line (2026-11-17)
+
+- **The input is 18 bytes** - `? ? !` LF `<<:` LF ` ? ? ! |`, `yaml_roundtrip` crash-0810c8b4 from
+  the 2026-11-16 batch on #732. The emission carried the merged pair twice and the re-read refused
+  it (`duplicate key`), so the settle assertion failed on text this engine's own writer produced.
+- **Key position is lossy; node equality is not** - the two keys are mappings that differ only in
+  an inner scalar's style: one `{! "": ~}` spelled with an empty plain, the other with an empty
+  literal. `key_position_text` flattens both to `! ""`, which is why the reader refuses a document
+  carrying both (`duplicate_complex_key`, crash-b88f1b4f), but the fold compared whole nodes, saw
+  the style difference and kept both. `IndexMap` keys whole nodes, so they coexisted and the writer
+  laid the same key line down twice.
+- **The fold asks the reader's probe, not a new rule** - `container_keys_collide` runs
+  `read_back_key` (the write-and-read-back probe `duplicate_complex_key` already uses) on each side
+  in the receiving mapping's `flow` spelling and compares the parsed nodes, so the two verdicts
+  stay one by construction: every pair the writer spells alike is a pair the reader refuses.
+  `AnchorBody` carries the flow of the body it came from, because a contributed key is laid down by
+  the receiving mapping, not by the anchor's own.
+- **The scalar hot path keeps its body** - `same_emitted_key` is byte-identical to the parent,
+  `is_container_key` runs once per contributed key, and `container_keys_collide` is
+  `#[inline(never)]`: holding the probe in any form inside `same_emitted_key` read +0.18% on
+  `parse_inline_merge` against the parent tree.
+- **The family is not closed by this entry** - a3dded4d, 860ec5b7 and 91652883 are the merge-key
+  fold and idempotence shapes that still fail; no issue is closed here.
+
+Gates: `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` gained
+`a_merged_container_key_does_not_repeat_the_owned_one` (the minimized document's emission pinned
+byte for byte, plus a fixed point over the archived seed, since a fixed point alone cannot
+tell "kept the right key" from "kept both"). `cargo nextest run -p pyrs-yaml-core` 519 passed, 0
+skipped; `uv run pytest tests/ -q` 4838 passed, 11 skipped; both clippy scopes clean
+(`--all --all-targets` and the narrow `--bench ir_gate --features ir-gate`); the 173-byte artifact
+replays clean through the rebuilt `yaml_roundtrip` target (one-file corpus, `-runs=0`, no crash
+file), so this input no longer fails, while `seed_reach` stays 4 passed - the seed reaches its
+assertion, so the empty `.ci/seed-reach.txt` is unchanged and the issue's closure line stays open on
+the three that still fail.
+
+Mutation: Making `container_keys_collide` answer `false` - the pre-fix comparison exactly - reddens
+exactly `a_merged_container_key_does_not_repeat_the_owned_one` (the emission carries `? !
+"": ~` twice) and leaves the other 518 green; restoring it returns 519 passed. The arm has
+one call site pair in the fold, so this is the defect itself rather than a proxy.
+
+Cost: `parse_inline_merge` is the scenario this fold is counted in, and the paired readings on this
+host - the WSL2 box (lr)-(lt) also read from - are: the parent tree 71787f58 reads 363,061,024
+against the committed 361,588,346 (+0.41%), and this tree reads 363,511,767 (+0.53%), which is
++0.12% over the parent. The first cut asked the probe inline and read 364,169,404 (+0.71%);
+hoisting `is_container_key` out of the comparison loop closed most of that, and splitting the two
+call sites into an `if`/`else` measured 363,634,915 (+0.57%), so the hoisted-bool form is the one
+kept. The 0.03 pp over the local 0.50% line is the host offset (lr) and (lt) record - this box
+reads the parent 0.41% high against a floor the enforcing image measured, and that image owns the
+verdict. The fixture contributes only scalar keys, so `container_keys_collide` is never entered
+there, and the whole cost is one discriminant test per contributed key plus the `&&` in two
+closures; profiles of the rejected shapes moved `resolve_mapping_merges'2` (parent 11,516,000;
+outlined helper 10,718,000; inline(always) 12,644,000), which is part of why the kept shape reads
+closest. The full gate on this host also reads `serialize_small` +19.75% and both `documents_*`
+scenarios 12.77% and 8.22% below their floors, and the parent tree reproduces all three with the
+same numbers, so none of them is attributable to this change: the `Ir baseline refresh` dispatch
+owns those, never a local `--update`.
