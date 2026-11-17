@@ -83,7 +83,11 @@ fn source_carries_merge_key(merge_value: &CustomNode) -> bool {
 /// the merge and the pair vanished between rounds (libFuzzer `yaml_roundtrip`
 /// crash-69931a77, minimised to 10 bytes). Style and tag still decide identity, exactly
 /// as the null-key rule does: a quoted `"<<"` or a tagged `!x <<` is not a merge key.
-fn is_merge_key(key: &CustomNode) -> bool {
+pub(crate) fn is_merge_key(key: &CustomNode) -> bool {
+    // The serializer's `write_pair` asks this too (through `merge::is_merge_key`): a
+    // comment written on a `<<:` line turns the merge into a literal key, so a merge
+    // key's note may never ride that line, and two copies of the style/tag rule could
+    // drift apart.
     matches!(
         key,
         CustomNode::Scalar {

@@ -1886,10 +1886,9 @@ impl Serializer {
         // value, and re-reading hands it to the value node. The note used to be
         // dropped outright (`? a # note` + `: b` emitted `a: b`); it now rides the
         // only slot a reader can report it from, so it survives the round trip and
-        // the line is stable because the next parse agrees on that position. The
-        // value keeps priority when it carries a note of its own — one line has one
-        // trailing slot — and complex keys are left alone, their notes travel with
-        // the `?` body.
+        // the line is stable because the next parse agrees on that position. One line
+        // has one trailing slot, and complex keys are left alone, their notes travel
+        // with the `?` body.
         if !explicit_key_marker {
             let key_note = match key {
                 CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
@@ -1899,16 +1898,18 @@ impl Serializer {
                 _ => None,
             };
             if let Some(text) = key_note {
-                // The question is the pair line's slot, not the value's note. A scalar whose body
+                // The question is the pair line's slot, not the value's note. A value whose body
                 // starts below - a leading note forces that - leaves the pair line free, so the key's
                 // note can ride it, and asking the value instead made the note move on the second
-                // round (quality-ledger (ds)). Two measured exclusions: a container written below
-                // turns `<<:  # note` over a flow body into a null merge key (6 properties at
-                // 20 000 cases), and a pending tag-only line is still open, so a comment there is
-                // read as the value's leading note.
+                // round (quality-ledger (ds)). For a container the one exception is the merge key:
+                // `<<: # note` over a body on the next line reads back as a *literal* key while the
+                // same note above the pair keeps the merge (crash-69931a77), so only there does a
+                // container keep its note above. A pending tag-only line is still open, so a comment
+                // there is read as the value's leading note.
                 let body_below_leaves_the_line = key_note_at.is_some()
-                    && matches!(value, CustomNode::Scalar { .. } | CustomNode::Null { .. })
-                    && !self.pending_line_is_last();
+                    && !self.pending_line_is_last()
+                    && (matches!(value, CustomNode::Scalar { .. } | CustomNode::Null { .. })
+                        || !crate::parser::yaml::merge::is_merge_key(key));
                 if (body_below_leaves_the_line || value.comment().is_none())
                     && self.output.ends_with('\n')
                 {

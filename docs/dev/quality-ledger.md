@@ -14752,3 +14752,59 @@ closest. The full gate on this host also reads `serialize_small` +19.75% and bot
 scenarios 12.77% and 8.22% below their floors, and the parent tree reproduces all three with the
 same numbers, so none of them is attributable to this change: the `Ir baseline refresh` dispatch
 owns those, never a local `--update`.
+
+### (lz) A key's note rides the pair line over a body that starts below (2026-11-17)
+
+- **The input is 41 bytes** - `: <<` LF `<&,: #+` LF `#` LF `# [` LF ` [` LF `  32  #! # x` LF `]`
+  LF `#&~:` with a closing newline, `yaml_roundtrip` crash-200342d3 from the 2026-11-16 batch on
+  issue #732. Round one is not the source's text, which the settle contract allows; round two is
+  not round one's, which is the failure.
+- **The (ds) question kept a container arm the seed enters** - `write_pair` asked whether the
+  *value* owned a note before letting the key's note ride the pair line, and (ds)'s third remedy
+  freed the slot for a scalar or null whose body starts below. Here the value is a flow sequence:
+  round one parks the document's trailing note on the `]` line at column 0, where the re-read
+  reports it on the mapping; the writer indents that line into the sequence, the re-read reports
+  the note on the *sequence*, and `value.comment()` flips from `None` to `Some`. The next round
+  asked the same question and got the other answer, hoisting the key's note above the pair.
+- **The slot question now belongs to the line** - `body_below_leaves_the_line` is
+  `key_note_at.is_some() && !self.pending_line_is_last() && (matches!(value, Scalar { .. } |
+  Null { .. }) || !is_merge_key(key))`: a body that opens below leaves the pair line free whatever
+  note it carries itself, and the scalar-or-null clause (ds) measured is kept beside it because a
+  container is the shape that was still open.
+- **The merge key keeps its note above, by the reader's rule** - (ds)'s first remedy already
+  measured a blanket `key_note_at.is_some()` reddening six properties on a plain `<<` key
+  (`"<<" -> "null"`, entry count `1 -> 3`), because a comment on a `<<:` line turns the merge into a
+  literal key (crash-69931a77). `is_merge_key` had no home outside the parser; it is `pub(crate)`
+  now, so the reader's style/tag rule - plain, untagged, value `<<` - is written once and the
+  writer asks it instead of restating it.
+- **A sentence above the predicate went stale and left** - it said the value keeps priority over the
+  pair line whenever it carries a note of its own, which is exactly what a body starting below no
+  longer obeys; the branch's own comment states the rule now.
+- **The family is not closed** - 860ec5b7, 91652883 and a3dded4d still drift on the same corpus; no
+  issue is closed here.
+
+Gates: `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` gained
+`a_key_note_over_a_noted_flow_body_settles_in_one_round` (the minimized emission pinned byte for
+byte, then a fixed point over the archived seed, since a fixed point alone cannot tell which owner
+the note reached). `cargo nextest run -p pyrs-yaml-core` 520 passed, 0 skipped; the property tier 17
+passed at 20 000 cases; `uv run pytest tests/ -q` 4839 passed, 11 skipped after
+`python scripts/quality_matrix.py --write-rows` moved the rows to 952 Rust tests and 327 seeds of
+which 213 are `former-crash-*`; both clippy scopes clean; the 41-byte seed replays clean through the
+rebuilt `yaml_roundtrip` target (`-runs=0`, one-file corpus, no crash file), so `seed_reach` stays 4
+passed - the seed reaches its assertion, `.ci/seed-reach.txt` is unchanged, and the closure line on
+issue #732 stays open on the three that still fail.
+
+Mutation: forcing `body_below_leaves_the_line` false restores the pre-(ds) question exactly and
+reddens two of the 41 settle tests - `a_key_note_over_a_block_body_settles_in_one_round` (the (ds)
+pin, which the same predicate carries) and the new one - with 39 passing; restoring returns 41. The
+container arm is what the new test pins, and no other settle shape reaches the branch.
+
+Cost: the branch runs only for a key note, and the added work inside it is one `is_merge_key` call.
+The same-directory control measures it at zero where the gate's one local failure is:
+`safe_dump_medium` reads 111,355,842 / 111,355,872 / 111,355,867 with the arm shorted out and the
+same three numbers with it in place, so that scenario never enters the branch and the +0.57% it
+reports over the flat floor is this host's reading - the parent commit built in a fresh worktree
+reads 110,952,220 there (+0.20%), which is the build-layout distance the scenario sweep (PR #599)
+records, and CI's enforcing image measured the parent head green. Every other scenario in this
+tree's full gate sits inside tolerance; `serialize_note_flow`, the one that carries notes, reads
+60,269,942 (+0.05%).
