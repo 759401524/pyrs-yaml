@@ -2991,8 +2991,7 @@ mod tests {
     #[test]
     fn container_keys_the_writer_spells_alike_are_refused() {
         // The authoritative bytes, replayed from the committed seed rather than a hand-copy.
-        let raw =
-            include_bytes!("../../../../fuzz/seeds/yaml_roundtrip/former-crash-b88f1b4f.seed");
+        let raw = include_bytes!("../../../../fuzz/seeds/parse_yaml/former-crash-b88f1b4f.seed");
         let src = std::str::from_utf8(raw).expect("seed is utf-8");
         let err = parse(src, YamlSchema::Core).expect_err("crash-b88f1b4f must be refused");
         assert!(matches!(err, ParseError::DuplicateKey(_)), "{err:?}");

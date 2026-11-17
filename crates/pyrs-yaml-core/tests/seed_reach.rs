@@ -7,11 +7,14 @@
 //! there replays clean under `-runs=0` with the writer promise it was filed for never asked of it,
 //! while the corpus total still counts it and the matrix row still credits the target.
 //!
-//! A refusal is not the same thing as no protection, and this gate does not claim it is: five of the
-//! registered lines answer `max depth exceeded (max=1000)`, which is the TOML depth guard's own
-//! postcondition. What the registry denies is the stronger credit — that the input keeps the writer
-//! or placement defect from coming back — and the inputs stay filed because the refusal they pin is
-//! a behaviour worth keeping.
+//! A refusal is not the same thing as no protection, and this gate does not claim it is. What the
+//! registry denies is the stronger credit — that the input keeps the writer or placement defect
+//! from coming back. The ten lines it carried until 2026-11-17 were closed by re-mining nine inputs
+//! into documents one gate reads and moving the tenth, the duplicate-key refusal fixture, to
+//! `parse_yaml`, where a refused input is the question the target asks. The list is empty now, and
+//! that emptiness is a measurement: the counterexample test below keeps `reaches` refusing the two
+//! shapes those inputs pinned, and a target whose seed directory went missing is refused rather
+//! than read as clean.
 //!
 //! This asks each target's own question of its own seeds - the same engine calls, including both TOML
 //! gates, which no Python surface offers - and refuses when the set of unreachable seeds differs
@@ -117,11 +120,15 @@ fn registry_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.ci/seed-reach.txt")
 }
 
+fn corpus_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fuzz/seeds")
+}
+
 /// The unreachable seeds per target, and how many seeds the walk found in the six targets at all -
 /// the second number is what keeps the first one honest, because a walk that found nothing would
 /// otherwise report the same empty blind spot as a corpus that has none.
 fn measure() -> (BTreeMap<String, Vec<String>>, usize) {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fuzz/seeds");
+    let root = corpus_root();
     let mut blind: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut walked = 0usize;
     for target in SKIP_ON_REFUSAL {
@@ -143,11 +150,11 @@ fn render(map: &BTreeMap<String, Vec<String>>) -> String {
     for line in [
         "Seeds that reach NO assertion, measured by `crates/pyrs-yaml-core/tests/seed_reach.rs` against",
         "the engine call each of the six targets opens with, where a typed refusal is a pass. Replaying",
-        "one of these inputs runs no writer and asks no round-trip promise. That is not no protection:",
-        "five lines answer `max depth exceeded (max=1000)`, the TOML depth guard's own postcondition,",
-        "and stay filed because the refusal they pin is worth keeping. What the list denies is the",
-        "stronger credit - that the archived defect cannot come back. A line drops when an input is",
-        "re-mined into a document that parses, and appears the moment one stops reaching. Regenerate:",
+        "one of these inputs runs no writer and asks no round-trip promise. A line appears the moment an",
+        "input stops reaching and drops when it is re-mined into a document that parses, or moved to a",
+        "target that asks something of a refusal. An empty list is a measured state: the gate re-derives",
+        "it from the corpus on every `cargo nextest`, keeps `reaches` refusing two known shapes, and",
+        "refuses a target whose seed directory went missing. Regenerate:",
         "  SEED_REACH_UPDATE=1 cargo test -p pyrs-yaml-core --test seed_reach",
     ] {
         out.push_str(&format!("# {line}\n"));
@@ -240,9 +247,38 @@ fn registered_unreachable_seeds_equal_the_measured_set() {
         "{total} unreachable of {corpus} walked seeds is not a believable measurement - the seed \
          walk found almost everything blind; check `reaches` against the target sources"
     );
+    // An empty registry is only a measurement when the walk had a corpus; `total * 4 < corpus` is
+    // satisfied by 0 of 0. A per-target floor is what keeps a deleted seed directory from reading
+    // as a clean target - the assertion this replaced guarded the file ("the list must not be
+    // empty"), which is a claim about the registry rather than about the walk behind it.
+    for target in SKIP_ON_REFUSAL {
+        assert!(
+            !seeds_of(target, &corpus_root().join(target)).is_empty(),
+            "{target} carries no committed seed, so its unreachable set was never measurable"
+        );
+    }
+}
+
+/// `reaches` must still say no to a document its reader refuses.
+///
+/// The registry is empty, so an always-true `reaches` would leave the measurement agreeing with the
+/// file while nothing reached anything. These are the two refusals the closed lines pinned - the
+/// TOML depth guard and the duplicate-key refusal - asked directly instead of through a corpus
+/// whose inputs were re-mined.
+#[test]
+fn reach_counterexamples_survive_the_remining() {
+    let deep = format!("{} = 1\n", vec!["a"; 1100].join("."));
     assert!(
-        !registered.is_empty(),
-        "the registry lists no seed while the targets refuse some - read the measurement above"
+        !reaches("toml_roundtrip", deep.as_bytes()),
+        "the TOML depth guard is gone"
+    );
+    assert!(
+        !reaches("parse_toml", deep.as_bytes()),
+        "the TOML depth guard is gone"
+    );
+    assert!(
+        !reaches("yaml_roundtrip", b"? !? \"\"\n: 1\n? !? \"\"\n: 2\n"),
+        "the duplicate-key refusal is gone"
     );
 }
 

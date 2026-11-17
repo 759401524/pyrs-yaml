@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 947 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 948 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 322 seeds of which 208 are `former-crash-*`, thinnest 6 (`parse_yaml`) / fullest 147 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 322 seeds of which 208 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 146 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -196,9 +196,10 @@ tag the grammar got wrong is a red run, not an agreement. The blind spot this cl
 `authority-tier:schema-rule-language` and is now gone, so the registry was empty again - and the reading
 of an empty registry, that nothing is unmeasured rather than nothing is unjudged, is a statement about
 the measurement, not a claim of coverage. It has not stayed empty: five `seed-unreachable` holes were
-measured into it on 2026-11-06, two of them closed the same day by re-mining their seeds into input the
-target really reads, and the section *Registered blind spots* carries the three that remain with the
-state that removes each.
+measured into it on 2026-11-06, and the last three closed on 2026-11-17 by re-mining nine seeds into
+documents their targets read and moving the tenth - the duplicate-key refusal fixture - to `parse_yaml`,
+whose claim is about refusals. The section *Registered blind spots* records what each one was and the
+state that removed it.
 
 `partial` in the parity column is measured per dialect, not per family. The column reads the readers
 each `test_*_crosslib.py` imports - at module level, or through a `pytest.importorskip` inside the test
@@ -872,22 +873,22 @@ measurement no longer reproduces fails CI.
 | *none measured* | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two used to pass it — `docs/en` was one `[Unreleased]` entry behind and `docs/zh` one Added and five Fixed behind, with one Changed bullet no other mirror had. Condensing `[Unreleased]` into user-facing entries, written into all five pages in the same pass, closed the divergence, and `check_changelog_mirrors.py` now asserts the per-section counts instead of printing them | satisfied: the five pages report equal counts and the probe derives nothing |
 | *none measured* | the pyq jq/yq shell's accepted set was judged by the real binaries only on a host that happened to carry them: the tier skips when neither is installed, cargo captures the `SKIP:` line, and the leg still reported success — so the PR's central claim was host-dependent while reading as measured | satisfied by `ci.yml`'s rust-lint job, which installs the pinned release binaries (`v4.54.1`, `jq-1.8.2`, linux amd64), verifies their sha256, and binds them with `PYQ_DIALECT_YQ`/`PYQ_DIALECT_JQ` — under a binding, a missing or wrong reference fails the leg instead of skipping it, and `dialect_reference_bound()` measures the premise off the workflow text |
 | *none measured* | counting `prop_*` functions measures how many properties exist, not whether each one asserts. The probe found seven of the 25 properties guarding their assertion inside `if let Some(parsed) = try_roundtrip(&node)`, so any sample the helper declined to return was never spoken about - measured on 2026-10-14 by drawing 4000 trees from `arb_custom_node()`: 3423 filtered, none failed to parse. That is the mechanism by which a writer emitting `null: v` for a document's `? *x` key stayed green while the tier ran (#410 fixed the writer; this row is why nothing saw it) | closed by the round-trip classifier: each difference between a tree and its re-parse is either asserted or named in an enumerated set of tolerable normalizations (`NullToken`, `PlainRequoted`, `BlockRestyled`, `EmptyContainerFlow`, `NoteRehomed`), so the whitelist is capped instead of open-ended and the probe measures an empty guard list |
-| `seed-unreachable:yaml_roundtrip` | the target's first line is `let Ok(node) = parse(text, Schema::Core) else { return }`, so a seed the reader refuses never reaches the idempotence assertion it was archived for - yet `fuzz_seed_inventory()` counts the file, the PR tier replays it green, and the 5 inputs still named here (`former-crash-4bf6ee37`, `3ff42607`, `41c6594b`, `b88f1b4f`, `f59d4ae3`) became unreachable precisely because a later ruling made duplicate-keyed documents a refusal. The two that were refused as syntax - `cr-only-break-note-ownership` (its `- :` empty key, not its CR breaks) and `special-keys` (a bare `@literal`) - have since been re-mined into documents the reader accepts, so they reach the assertion | `.ci/seed-reach.txt` carries no `yaml_roundtrip` line: each remaining input is re-mined into a document `parse(Schema::Core)` accepts, or moved to `parse_yaml`, which since (jv) does ask something of a refused input - the two entry points must refuse it identically - though it still cannot ask the idempotence promise these five were filed for. `crates/pyrs-yaml-core/tests/seed_reach.rs` measures it against the engine call and reddens when the file and the measurement disagree in either direction |
-| `seed-unreachable:toml_roundtrip` | the target skips its whole body when both the 1.1 and the 1.0 gate refuse, so the two seeds named there (`former-crash-2a5ea394`, `former-crash-7a3aac52`) run no writer: both answer `max depth exceeded (max=1000)` - the guard PR #694 added, which is the fix they were filed for, so they stay live protection for that refusal and none for the runaway output they recorded. The third line this id carried, `shape-literal-and-folded`, was illegal TOML (`l = |`) and is now re-mined into a multi-line literal string beside a basic one: it parses, replays clean under `-runs=0` and reaches the writer | `.ci/seed-reach.txt` carries no `toml_roundtrip` line, reached by re-mining each remaining input into a document one gate parses - the exit taken once already; relocating a depth input to `fuzz/seeds/parse_toml/` is not an exit, because that target gates both of its writer promises on a successful read too |
-| `seed-unreachable:parse_toml` | the target skips its body when both TOML gates refuse, so its three named seeds - all answering `max depth exceeded (max=1000)` - prove the guard still rejects and nothing about the two writer promises the file asserts, a weaker protection than the `former-crash-*` name the corpus credits them for | `.ci/seed-reach.txt` carries no `parse_toml` line: a shallower input that still reaches the writer, or the guard's claim moving to a test that asserts it directly. Relocation closes nothing - every target that reads TOML gates its assertions on a successful read |
+| *none measured* | the fuzz tier credited ten `former-crash-*` files as regression protection while no assertion inside their targets ran: three in `parse_toml` and two in `toml_roundtrip` were 1,000-plus-segment dotted keys the depth guard refuses, and five in `yaml_roundtrip` were duplicate-keyed documents a later ruling made refusals - each of those seeds skipped the target's whole body on its first successful-read gate, yet `fuzz_seed_inventory()` counted the file and the PR tier replayed it green. Registered as three `seed-unreachable` ids on 2026-11-06 | closed on 2026-11-17 by taking each id's written exit. The five TOML inputs were truncated to a 300-segment dotted run - inside the guard and inside the writer's own fixed-point tests - so both gates read them and the writer runs; the five YAML inputs got a distinct tag on each later explicit key (`!z`, `!y`, `!x`, `!w`), so the keys are distinct while the explicit-key, block-scalar and CR family they were filed for is intact; and the tenth, `former-crash-b88f1b4f`, moved byte-identically to `fuzz/seeds/parse_yaml/`, where the target asks the two doors to refuse identically and a refusal is the question - it remains the `include_bytes!` fixture of the engine's duplicate-key refusal test. `.ci/seed-reach.txt` is header-only, and that emptiness is measured: `seed_reach.rs` refuses a target whose seed directory went missing and keeps `reaches` refusing a depth-refused TOML document and a duplicate-keyed YAML one (ledger (lu)) |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
 pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears
-unregistered, and a registered hole the measurement no longer reproduces. It has been empty twice,
-and every transition since has been measured rather than declared. The last time it emptied was
-after the property tier closed; the same measurement then asked a new question — not which scenarios
-the perf gate names, but which crates it can link — and the crate that serves the Python API failed
-it. That is how `perf-coverage:binding-layer` was registered (#302), with the artefact that would
-remove it named in its exit criterion.
+unregistered, and a registered hole the measurement no longer reproduces. Every transition has been
+measured rather than declared, and a closed row keeps the criterion it was held to, so a reader can
+check the claim instead of trusting the word "closed".
 
-It is not empty now. Retiring the rule validator on 2026-10-21 closed the hole the invented
-validator had opened, and the `rules:` language beside it kept one open: the surface was measured
-into the matrix rather than written off with the validator.
+It is empty today. The last emptying, on 2026-11-17, closed the three `seed-unreachable` ids once
+each one's written exit was taken (ledger (lu)); before that, retiring the rule validator on
+2026-10-21 closed the hole the invented validator had opened, while the `rules:` language beside it
+stayed measured into the matrix rather than written off with the validator. Emptiness is not a
+resting state: the measurement asked a new question after the property tier closed — not which
+scenarios the perf gate names, but which crates it can link — and the crate that serves the Python
+API failed it, which is how `perf-coverage:binding-layer` was registered (#302), with the artefact
+that would remove it named in its exit criterion.
 
 The question that filled it again on 2026-10-14 was about the tier itself: `property_functions()`
 counts properties, and a count is satisfied by a property that never asserts.

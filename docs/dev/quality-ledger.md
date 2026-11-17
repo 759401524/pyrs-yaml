@@ -14524,3 +14524,49 @@ today" where the file carries five (`334.3`, `354.1`, `360.1`, `127.1`, `370.1`)
 a `load_toml_medium` floor a later refresh had moved, or a row set the file no longer held (the
 checker's own example read 62,066,033 against the file's 60,237,908). They name rows now, not
 numbers: the file is the authority, and an unmarked copy goes stale at the next refresh.
+
+### (lu) Ten archived seeds reach the assertion their targets make (2026-11-17)
+
+- **The registry counted files, not inputs** - the three `seed-unreachable` ids closed here had one
+  cause: each of the six targets in `SKIP_ON_REFUSAL` opens its body with a typed refusal taken as a
+  pass, so a seed the engine refuses ran no writer and asked no round-trip promise, while
+  `fuzz_seed_inventory()` counted the file and the PR tier replayed it green. Five of the ten were
+  1,000-plus-segment dotted keys the TOML depth guard refuses (three in `parse_toml`, two in
+  `toml_roundtrip`), five were duplicate-keyed YAML documents a later ruling made refusals. The
+  guard itself was never untested - four deterministic tests in `crates/pyrs-toml/src/parser.rs`
+  pin it - which is what let the seeds move instead of the claim.
+- **Nine were re-mined, not relocated** - the five TOML inputs keep their delimiter and comment
+  shape with the longest dotted run truncated to 300 segments (`parse_toml`: 1,032 / 1,027 / 1,011
+  before, 1,193 / 1,155 / 1,189 bytes after; `toml_roundtrip`: 1,059 and 1,113 before, 823 and 797
+  after), inside both the guard and the writer's own fixed-point tests, so each gate now reads the
+  document and the writer runs. The four `yaml_roundtrip` inputs got a distinct tag on each later
+  explicit key (`!z`, `!y`, `!x`, `!w`), which makes the keys distinct while leaving the
+  explicit-key, block-scalar and CR family they were filed for intact - a single shared tag would
+  only have moved the duplicate.
+- **The tenth moved, because a refusal is its question** - `former-crash-b88f1b4f` (34 bytes) is
+  also the `include_bytes!` fixture of the engine's
+  `container_keys_the_writer_spells_alike_are_refused`, so re-mining it into a document that parses
+  would have deleted an assertion. It went byte-identically to `fuzz/seeds/parse_yaml/`, whose body
+  asks the two entry points to refuse identically - a refused input asserts something there. The
+  `cp fuzz/seeds/<target>/*.seed` step needs no edit for the move.
+- **The gate got stronger where its emptiness had been** - the old assertion was
+  `!registered.is_empty()`, a claim about the file that would now fail a measured empty state. It is
+  replaced by a per-target check that each gated directory still carries seeds (so a deleted
+  directory cannot read as a clean target) and by `reach_counterexamples_survive_the_remining`,
+  which asks `reaches` to keep refusing a depth-refused TOML document and a duplicate-keyed YAML
+  one. The Python half keeps only the reader invariant - the counts the matrix quotes are the lines
+  the file carries - and does not pin emptiness: a legitimate new hole would redden such an
+  assertion, while `.ci/quality-holes.json` is where it has to be declared with an exit anyway.
+
+Gates: `cargo test -p pyrs-yaml-core --test seed_reach` 4 passed; `roundtrip_corpus` is a fixed
+point over the re-mined seeds (23 rounds, unchanged floor); `note_survival` 2 passed;
+`container_keys_the_writer_spells_alike_are_refused` 1 passed with the moved fixture;
+`pytest tests/test_seed_reach.py tests/test_quality_matrix.py` 67 passed; `quality_matrix.py
+--check-rows` OK after `--write-rows` moved the unit row (one Rust test added) and the fuzz row
+(thinnest 7 `parse_yaml`, fullest 146 `yaml_roundtrip` - a move between targets, not a change in the
+322 total).
+
+Mutation: forcing `reaches` to `return true` reddens exactly
+`reach_counterexamples_survive_the_remining` ("the TOML depth guard is gone") and leaves the
+registry comparison green, because an empty registry agrees with a blind walk - which is the reason
+the counterexample test exists; restoring the call returns 4 passed.

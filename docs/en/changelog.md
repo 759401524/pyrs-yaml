@@ -211,6 +211,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Internal
 
+- **Ten archived seeds now reach the assertion their fuzz targets make** — each of the six targets
+  that treat a typed refusal as a pass skips its whole body on a refused input, so ten
+  `former-crash-*` seeds replayed green with no writer promise asked of them: five are 1,000-plus-
+  segment dotted keys the TOML depth guard refuses and five are duplicate-keyed YAML documents a
+  later ruling made refusals. Nine were re-mined rather than moved — the TOML inputs keep their
+  shape with the longest dotted run cut to 300 segments (inside the guard and the writer's
+  fixed-point tests), and each later explicit key in the YAML inputs takes a distinct tag, so the
+  keys are distinct while the explicit-key, block-scalar and CR family survives. The tenth is also
+  the `include_bytes!` fixture of the engine's duplicate-key refusal test, so it moved
+  byte-identically to the `parse_yaml` corpus, where the claim is that both entry points refuse
+  alike. `.ci/seed-reach.txt` is header-only, and that emptiness is measured: the gate refuses a
+  target whose seed directory went missing and keeps `reaches` refusing a depth-refused TOML
+  document and a duplicate-keyed YAML one (`docs/dev/quality-ledger.md` (lu)).
+
 - **Two engine shapes satisfy Rust 1.100.0's widened clippy** — stable 1.100.0 expanded
   `needless_bool` and `needless_range_loop`, reddening the unpinned `@stable` `rust-lint` job on
   code 1.99.1 accepted. The JSON5 number writer `is_json5_number` now returns its final boolean
