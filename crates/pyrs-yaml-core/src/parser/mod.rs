@@ -1068,7 +1068,10 @@ fn parse_probe(text: &str) -> Result<CustomNode, ParseError> {
 /// never runs. Taking the big entry's address instead only moved the cost - it was
 /// outlined and `load_ast` with it, +149 per parse. The barrier costs one indirect call
 /// on a path that only runs for a mapping holding at least two container keys.
-fn read_back_key(key: &CustomNode, flow: bool) -> Option<CustomNode> {
+///
+/// The merge fold asks the same question of a contributed container key
+/// (`yaml::merge::container_keys_collide`), which is what keeps the two verdicts one.
+pub(crate) fn read_back_key(key: &CustomNode, flow: bool) -> Option<CustomNode> {
     let text = key_position_text(key, flow)?;
     type Probe = fn(&str) -> Result<CustomNode, ParseError>;
     let parse: Probe = core::hint::black_box(parse_probe);

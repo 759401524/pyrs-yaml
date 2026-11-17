@@ -1355,6 +1355,32 @@ fn a_sigil_inside_key_text_does_not_shadow_the_block_header() {
     );
 }
 
+/// libFuzzer `yaml_roundtrip` crash-0810c8b4: a merge contributing a container key the mapping
+/// already owns under a different spelling of the same written line.
+///
+/// The two keys are mappings that differ only in an inner scalar's style - one `{! "": ~}` spelled
+/// with an empty plain, the other with an empty literal - and key position flattens both to
+/// `! ""`. The reader refuses that pair when a document carries both directly
+/// (`duplicate_complex_key`, crash-b88f1b4f), but the merge fold compared container keys as whole
+/// nodes, kept both, and the emission repeated the pair: `fmt output failed to re-parse: duplicate
+/// key`. The fold now asks the reader's own key probe in the receiving mapping's flow spelling, so
+/// the contributed twin leaves and the document is its own first emission.
+#[test]
+fn a_merged_container_key_does_not_repeat_the_owned_one() {
+    let one = emit("? ? !\n<<:\n ? ? ! |");
+    assert_eq!(one, "?\n  ! \"\": ~\n:\n  ~\n");
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+
+    let raw = &include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-0810c8b4.seed")[..];
+    let src = std::str::from_utf8(raw).expect("seed is utf-8");
+    let once = emit(src);
+    assert_eq!(
+        emit(&once),
+        once,
+        "not a fixed point in one round: {once:?}"
+    );
+}
+
 /// The 2026-11-14 `yaml_roundtrip` window class: a key whose simple spelling leaves its
 /// colon past the reader's 1024-character window.
 ///
