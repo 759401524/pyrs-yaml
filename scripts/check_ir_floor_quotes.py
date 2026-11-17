@@ -13,9 +13,11 @@ those. Nothing read the other nine.
 The rule is a declaration, not a parser. A number quoted as *current* carries the scenario it comes
 from immediately after it:
 
-    `serialize_note_flow` 62,066,033<!-- ir-floor: serialize_note_flow -->
+    `serialize_note_flow` 12,345,678<!-- ir-floor: serialize_note_flow -->
 
-and this checker re-reads `.ci/ir-baseline.json` and compares. A reading with no marker is not
+and this checker re-reads `.ci/ir-baseline.json` and compares. The readings in these shapes are
+placeholders: an example copied out of the file goes stale at the next refresh, which is the defect
+this checker exists to catch. A reading with no marker is not
 claimed to be current, which is what makes the sentence about a past measurement legal in the same
 page: prose says "measured +1.44% with the unpinned pair", "28 instructions out of 16,020,906",
 "event counts", `ITERATIONS = 2_000`, fixture widths. An earlier attempt found the same shape by
@@ -24,13 +26,13 @@ of them legitimate history — which is why the author declares instead of the c
 
 A scenario the file keys by runner image declares the row it quotes, not the flat column:
 
-    `load_toml_medium` 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 -->
+    `load_toml_medium` 12,345,678<!-- ir-floor: load_toml_medium @ 20261023.334.3 -->
 
 because for those scenarios the flat number is the one *no enforcing run compares against* — `ir_gate.py`
-takes its floor from `image_floors[image][scenario]` on an image the file measured. The two columns are
-not close: `load_toml_medium` carries 144,902,515 on `20261023.334.3` and 142,467,241 on
-`20261026.354.1`, a 1.71 % difference, and which one the flat column holds depends on the image the last
-refresh happened to land on. Marking a keyed floor without its image therefore lets a paragraph pass the
+takes its floor from `image_floors[image][scenario]` on an image the file measured, and the file's
+rows for one keyed scenario do not all hold the same number while the flat column holds exactly one
+image's. Which column a leg on a given image is judged against therefore depends on the image the
+last refresh happened to land on. Marking a keyed floor without its image lets a paragraph pass the
 gate while quoting a floor that belongs to a different machine than the leg the sentence describes.
 
 Five things this refuses, and one it cannot see:

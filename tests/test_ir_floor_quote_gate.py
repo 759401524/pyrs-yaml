@@ -8,9 +8,9 @@ instructions — and every gate in the repository was green, because nothing rea
 The second class is the one #662 opened. Seven scenarios now carry one floor per runner image, and an
 enforcing leg reads its own image's row, never the flat column — but the marks still compared against
 that column, so a paragraph could pass the gate while quoting a number the leg it describes is not
-judged against. The two columns are not close: `load_toml_medium` reads 144,902,515 on
-`20261023.334.3` and 142,467,241 on `20261026.354.1`, 1.71 % apart, and which one the flat column holds
-depends on the image the last refresh happened to land on. A keyed mark therefore has to name its row.
+judged against. The two columns are not close — the file's rows for `load_toml_medium` disagree with
+each other, and none of them is guaranteed to be the number the flat column holds, which follows the
+image the last refresh happened to land on. A keyed mark therefore has to name its row.
 
 Each control here is the shape that actually went wrong at least once while the checker was being
 written: a one-digit drift, a renamed scenario, an orphan marker left behind when its number was
@@ -144,8 +144,8 @@ def test_a_keyed_floor_marked_without_an_image_is_refused(tmp_path):
 def test_a_keyed_floor_quoting_the_flat_column_under_a_named_image_is_refused(tmp_path):
     """The precise confusion the marker exists to refuse: the right image, the wrong column's number.
 
-    This is only constructible when some row disagrees with the flat column, which it does by 1.71 %
-    on `load_toml_medium` — so the fixture reads the disagreement out of the file instead of trusting
+    This is only constructible when some row disagrees with the flat column, which the file shows on
+    `load_toml_medium` — so the fixture reads the disagreement out of the file instead of trusting
     a hand-typed pair.
     """
     scenario, version = disagreeing()[0]

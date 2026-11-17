@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 947 Rust `#[test]`, 2,191 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 947 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 322 seeds of which 208 are `former-crash-*`, thinnest 6 (`parse_yaml`) / fullest 147 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -752,8 +752,8 @@ declaration, not a parser: a reading quoted as *current* is followed by an HTML 
 scenario, `ir-floor:` and the name inside it — and for a scenario the file keys by runner image, the row
 it quotes, `load_toml_medium @ 20261023.334.3`, because for those seven the flat column is the number *no
 enforcing run compares against* (`ir_gate.py` takes its floor from `image_floors[image][scenario]`, and
-`load_toml_medium` reads 144,902,515 on `20261023.334.3` against 142,467,241 on `20261026.354.1`, which is
-1.71 %). Which image the flat column happens to describe is a property of the last refresh, not of the
+the file's rows for `load_toml_medium` do not all hold the same number, while the flat column holds one
+image's). Which image the flat column happens to describe is a property of the last refresh, not of the
 sentence quoting it. `scripts/check_ir_floor_quotes.py` compares each marked reading with
 `.ci/ir-baseline.json` — against the named row where the scenario is keyed, against the flat column
 otherwise — refusing a stale digit, an unknown scenario, an orphan marker whose number was deleted, a

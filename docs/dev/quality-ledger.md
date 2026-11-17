@@ -14494,3 +14494,33 @@ with this fix's helper and branch removed from the same tree, and 22,919,446 wit
 the movement that fails the gate is the per-key window guard and none of it is this branch. Its
 fixture carries no comments, which the branch needs before its one scan can run; the 0.18% between
 the two readings is code layout, and it points down.
+
+### (lt) A host run's failure note reads the image rows (2026-11-17)
+
+- **The failure path outside the runner channel died instead of printing the note** — when a local
+  (non-image) run had any failure, `ir_gate.py` called `nearest_image_row(floors, …)` with the
+  resolved flat floors, a `{scenario: int}` map, where the helper expects `{image: {scenario:
+  int}}`; the first `row.get` on an int raised `AttributeError`, and the run ended in a traceback
+  after it had already printed its verdicts. The (lo) entry recorded it and left it in place; CI
+  never reached it, because an enforcing leg is `on_image` and only a host outside that channel
+  takes the branch.
+- **The dressing is a function now** — `nearest_image_notes(ref, failures, measured)` reads
+  `ref["image_floors"]`, skips the `FLOOR_STALE` verdict (it has its own note and remedy) and owns
+  the failure-name parse, so the caller no longer holds the argument that was wrong. The flat table
+  is still what the host is judged against; only the note's source moved.
+
+Gates: `tests/test_ir_gate_nearest_image.py` gained
+`test_a_failing_reading_names_its_row_from_the_image_table_not_the_flat_one` (the real 145,123,924
+cell names the 142,478,660 row) and
+`test_a_host_with_no_rows_and_a_stale_floor_are_both_left_undressed`; the file is 5 passed.
+
+Mutation: re-pointing the read from `ref.get("image_floors")` to `ref.get("scenarios")` — the
+defect exactly — reddens exactly the two new tests (`AttributeError` on the int) and leaves the
+three helper tests green; restoring the read returns 5 passed.
+
+Corrected in the same change: `docs/dev/ir-environment.md` still said "Three rows are in the table
+today" where the file carries five (`334.3`, `354.1`, `360.1`, `127.1`, `370.1`); that page,
+`QUALITY_MATRIX.md`, this checker's docstring and `tests/test_ir_floor_quote_gate.py` each carried
+a `load_toml_medium` floor a later refresh had moved, or a row set the file no longer held (the
+checker's own example read 62,066,033 against the file's 60,237,908). They name rows now, not
+numbers: the file is the authority, and an unmarked copy goes stale at the next refresh.

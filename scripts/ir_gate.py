@@ -565,6 +565,35 @@ def nearest_image_row(floors: dict[str, dict[str, int]], name: str, value: int) 
     return best
 
 
+def nearest_image_notes(ref: dict, failures: list[str], measured: dict[str, int]) -> list[str]:
+    """The note naming each failure's nearest image row, for a run outside that channel.
+
+    The rows are read from the baseline's `image_floors` table, never from the flattened floors
+    this host was judged against: the flattened map answers a scenario name with an int, so reading
+    it as a table of rows died with `'int' object has no attribute 'get'` on the first failure of a
+    WSL run, losing the reading it had already taken (`docs/dev/quality-ledger.md` (lo)). A stale
+    floor is not dressed here - it has its own note and its own remedy.
+    """
+    rows = ref.get("image_floors") or {}
+    notes: list[str] = []
+    for failure in failures:
+        if failure.startswith("FLOOR_STALE"):
+            continue
+        match = re.match(r"^([A-Za-z0-9_.]+):", failure)
+        if not match:
+            continue
+        name = match.group(1)
+        nearest = nearest_image_row(rows, name, measured.get(name))
+        if nearest is None:
+            continue
+        key, base, below = nearest
+        notes.append(
+            f"\n  nearest image row: {key} - {name} is {below:.2%} below that row's floor"
+            f" ({base:,} this tree {measured.get(name, 0):,})"
+        )
+    return notes
+
+
 def floor_staleness(
     baseline: dict[str, int], measured: dict[str, int]
 ) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
@@ -903,25 +932,12 @@ def main() -> int:
 
     if failures:
         print("\n" + "\n".join(f"FAIL  {f}" for f in failures))
-        if not on_image and floors:
+        if not on_image:
             # The host is not on a runner image, so the flat table carries no verdict the reading
             # was rejected against: name the nearest image row next to the failure - the verdict it
             # would have refused - and leave the exit code and the verdict itself unchanged.
-            for f in failures:
-                if f.startswith("FLOOR_STALE"):
-                    continue
-                match = re.match(r"^([A-Za-z0-9_.]+):", f)
-                if not match:
-                    continue
-                name = match.group(1)
-                nearest = nearest_image_row(floors, name, measured.get(name))
-                if nearest is None:
-                    continue
-                key, base, below = nearest
-                print(
-                    f"\n  nearest image row: {key} - {name} is {below:.2%} below that row's floor"
-                    f" ({base:,} this tree {measured.get(name, 0):,})"
-                )
+            for note in nearest_image_notes(ref, failures, measured):
+                print(note)
         if stale:
             print(
                 "\nA stale floor is refreshed on the enforcing image, not on this host:\n"

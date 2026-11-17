@@ -99,11 +99,11 @@ The environment is part of the floor's key rather than a footnote next to it.
    counting as an image, a non-image run filing a row, and the shape contract restored to its
    unconditional form — with the file under test restored byte-for-byte afterwards.
 
-Three rows are in the table today, all read out of job logs rather than typed: `20261023.334.3`, the
-image that wrote the file when the keyed rows were introduced, `20261026.354.1`, and
-`20261101.360.1`, whose refresh run `41793835020` wrote the committed numbers. `load_toml_medium`
-reads 144,902,515 on `334.3` and 142,478,660 on both newer builds, so the 1.71 % a single floor
-could not hold separates one older image from two current ones rather than lying between every pair.
+Five rows are in the table today, all read out of job logs rather than typed: `20261023.334.3`, the
+image that wrote the file when the keyed rows were introduced, `20261026.354.1`, `20261101.360.1`,
+and the two `20261111` builds, `127.1` and `370.1`, that later refreshes added. The numbers stay in
+`.ci/ir-baseline.json` rather than in this paragraph: a refresh moves them, and the sentence that
+used to quote three of them was still naming two "newer builds" after two more rows had arrived.
 
 What the marker rule closes: `scripts/check_ir_floor_quotes.py` compares a marked reading against
 the row the mark names, so a paragraph quoting an interpreter-counting floor has to say which
@@ -111,21 +111,22 @@ image's floor it means — `load_toml_medium @ 20261023.334.3` — and a keyed m
 or names an image the file has no row for, is refused instead of being resolved against the flat
 column. <!-- landed: scripts/check_ir_floor_quotes.py::version_of --> That distinction is not
 pedantry: which image the flat column describes is a property of whichever run the last refresh
-happened to land on, not of the sentence quoting it, and the two rows for `load_toml_medium` differ
-by 1.71 %. A scenario the file does not key keeps the bare mark, and giving it an image is a refusal
-too — there is no row to name. `tests/test_ir_floor_quote_gate.py` forces all four shapes, and the
+happened to land on, not of the sentence quoting it, and the rows the file carries for
+`load_toml_medium` do not all hold the same number. A scenario the file does not key keeps the bare
+mark, and giving it an image is a refusal too — there is no row to name.
+`tests/test_ir_floor_quote_gate.py` forces all four shapes, and the
 four mutations of the checker that would let each one through were run against the file to confirm
 the tests are sensitive to them.
 
 ## What this page does not claim
 
-It does not claim the pool has exactly three live images — the jobs sampled named three, and a
-fourth is refused until one refresh adds its row. That is not hypothetical: the same `ubuntu-24.04`
-label served `20261026.354.1` and `20261101.360.1` twenty minutes apart, and one pull request's legs
-drew both, the enforcing one exiting 2 because the file had no row for the newer build. Nor are the
-rows offered as an easier verdict: on `334.3` the row for `load_toml_medium` is 144,902,515 where
-the flat table now carries 142,478,660 — the number both newer builds read — so keying tightens the
-older floor by 1.71 % rather than excusing it.
+It does not claim the pool has exactly five live images — the jobs sampled named five, and a sixth
+is refused until one refresh adds its row. That is not hypothetical: the same `ubuntu-24.04` label
+served `20261026.354.1` and `20261101.360.1` twenty minutes apart, and one pull request's legs drew
+both, the enforcing one exiting 2 because the file had no row for the newer build. Nor are the rows
+offered as an easier verdict: a row is that image's own measurement, not a relaxation of the flat
+table — a row below the flat column judges the leg that drew it tighter than the flat table would,
+and one above it looser, which is exactly what an image's own number is for.
 
 What it does claim is measured: a CI leg has taken its floor from a row. PR #662's own `ir` leg ran
 on `20261023.334.3`, printed all seven keyed names and `OK: every scenario within tolerance`, with
