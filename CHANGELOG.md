@@ -16,6 +16,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed point (libFuzzer `yaml_roundtrip` crash-200342d3). The slot question now looks at the line;
   only a merge key still keeps its note above, because `<<: # note` reads back as a literal key
   (`docs/dev/quality-ledger.md` (lz)).
+- **A merge that contributes nothing no longer loses a pair or an anchor** — `<<: *b` inside `&b`
+  can only bring back pairs the mapping already owns, so it was consumed as an empty merge; the
+  definition the orphan repair inlines a step later still carries the key, so round one's emission
+  spelled `<<: *b` and round two dropped it (libFuzzer `yaml_roundtrip` crash-b8fa5a3a). A merge
+  whose source names the mapping that holds it keeps its pair now, and an empty merge source that
+  leaves the tree hands its anchor to the repair pass instead of dropping it with the pair
+  (crash-87a2073f) (`docs/dev/quality-ledger.md` (ma)).
 - **A merge no longer repeats a container key the mapping already owns** — the duplicate-key fold
   compared contributed keys as whole nodes, which sees an inner scalar's style, so two mappings
   that write the same key line (`? ! "": ~`, one spelled with an empty plain and one with an empty

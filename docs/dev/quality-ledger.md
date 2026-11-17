@@ -14808,3 +14808,79 @@ reads 110,952,220 there (+0.20%), which is the build-layout distance the scenari
 records, and CI's enforcing image measured the parent head green. Every other scenario in this
 tree's full gate sits inside tolerance; `serialize_note_flow`, the one that carries notes, reads
 60,269,942 (+0.05%).
+
+### (ma) An empty merge keeps its pair and its anchor (2026-11-17)
+
+Two artifacts, one family: a merge entry that contributes nothing to the tree while its own nodes
+still decide the text around it. Both come from `yaml_roundtrip` on 2026-11-17, and both drift one
+round apart - one emission spells something, the re-read answers differently.
+
+- **`&b {<<: *b}`** (crash-b8fa5a3a, 62 bytes) names the mapping that holds it. Every pair such a
+  merge could bring back is one that mapping already owns, so the ownership test skips all of them
+  and the entry was consumed as an empty merge. Round one's emission still carried `<<: *b`, because
+  the `&b` in it had been inlined by the orphan repair from the *raw* definition - the node the
+  merge pass never rewrote - and round two, reading that definition in its anchor position,
+  consumed the key. One line, two rounds, two answers.
+- **`<<: &b` over a body whose nested `<<:` holds the definition** (crash-87a2073f, 85 bytes) is the
+  empty-source arm of the (lj) ruling: the pair is not a merge entry, so it leaves the tree. It left
+  without the anchor it defined while a sibling `*b` still spelled the name, and the writer emitted
+  a document this library's own reader refused (`unknown anchor at char 76 line 13 column 11`).
+
+The rule now asks *why* the expansion is empty. A merge whose source names the mapping that holds
+it keeps its pair: the expansion is empty by construction, not by the cycle guard, and the kept
+spelling is its own fixed point. `resolve_mapping_merges` takes `own` - the mapping's own anchor -
+beside `path`, and the Alias arm keeps the pair when `own == name`. The container arms ask the same
+question through `references_name`, and only when the expansion contributed nothing. The
+empty-source skip hands both nodes to `collect_anchored_nodes`, so a definition travels with the
+pair the way every other dropped pair's already does.
+
+- **The rejected cut put the mapping's own anchor on `path`.** That also stops a merge naming an
+  *ancestor* one level down, where the expansion is not empty by construction: this engine has
+  always let `a: &a {c: {<<: *a}}` contribute `a`'s non-conflicting keys to `c` and drop only the
+  recursive pair. `test_self_referential_merge_with_siblings_terminates` reddened at exactly that
+  assertion - `c["b"]` was `None` - which is why the guard asks "is this my own name" and never
+  "is my name open somewhere above".
+- **The cycle guard is untouched.** A path hit still resolves to nothing, so an expansion cannot
+  grow itself; only the *direct* self-merge keeps its spelling, and it is written back exactly as
+  read. Shapes that name an ancestor still bottom out one level down, as the two #166 tests pin.
+
+Gates: `settles_in_one_round` gained `a_merge_that_names_its_own_mapping_settles_in_one_round`
+(the `<<: *b` line must survive *and* the first emission must be the fixed point, since either half
+alone passes on a wrong answer) and `an_empty_merge_source_leaves_its_anchor_to_the_repair_pass`
+(its `&b` must survive, and `emit(&one)` is the reader check on the alias). merge.rs gained
+`a_merge_naming_its_own_mapping_keeps_its_pair` - both spellings, `<<: *a` and `<<: [*a]`, and a
+fixed point for each - beside the two #166 tests. Both artifacts are archived as
+`fuzz/seeds/yaml_roundtrip/former-crash-{b8fa5a3a,87a2073f}.seed`, so every `cargo nextest` replays
+them. `cargo nextest run --all` 942 passed, 0 skipped; `PROPTEST_CASES=20000` on `pbt` (37 passed)
+and `fmt_pbt` (17 passed); both clippy scopes clean; `uv run pytest tests/ -q` 4841 passed, 11
+skipped. `quality_matrix.py --write-rows` put the rows at 955 Rust `#[test]` and 329 seeds of which
+215 are `former-crash-*`, three tests and two seeds of which are this change's. `seed_reach` 4
+passed, so the empty `.ci/seed-reach.txt` is unchanged - both new seeds reach the round-trip
+assertion.
+
+Mutation: deleting the `own == name` arm reddens three of 523 - the unit test, the settle test, and
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission`, which is one seed reaching a
+third oracle rather than one assertion copied into three files - and leaves 520 green; restoring it
+returns 523 passed. Deleting the two `collect_anchored_nodes` calls on the empty-source skip reddens
+three others -
+the 87a settle test, `anchor_graph::the_anchor_graph_survives_one_emission` and
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission` - which is one seed reaching
+three oracles rather than one assertion copied into three files. The rejected cut is measured too:
+with the own anchor on `path`, the `c["b"] == 1` assertion in
+`test_self_referential_merge_with_siblings_terminates` reached `None`.
+
+Cost: the Alias arm adds one `&str` equality per `<<` whose source is an alias, and
+`references_name` walks a container source only when the expansion contributed nothing and the
+mapping has an anchor; no allocation was added. The pass got smaller in the same place: the
+`cycle: &mut bool` threaded through `collect_merge_data` and `collect_merged_pairs_for_anchor` is
+gone, because emptiness is now decided by identity rather than recorded during the walk.
+`parse_inline_merge` is the scenario that counts this path, and three runs on this host with the
+pinned `rustc 1.97.1` read 361,913,830 / 361,914,622 / 361,914,264 against the committed
+361,588,346 - +0.09%, inside the 0.5% line (the three runs share one binary digest,
+`808f58eef762d613`, so the spread is the harness's, not the compiler's). The parent (ly) tree read
+363,511,767 on this host, so this tree measures 0.44% below it; that is larger than one comparison
+can explain and the two readings were not taken in one session, so it is not claimed as a win - what
+the pair establishes is the gate above, not an improvement.
+
+The family is not closed by this entry - a3dded4d, 860ec5b7 and 91652883 are the merge-key fold and
+idempotence shapes that still fail, and no issue is closed here.
