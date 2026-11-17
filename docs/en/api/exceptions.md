@@ -127,28 +127,28 @@ own refusal text: `doc.validate(3)` answers
 !!! warning "Delegation boundary"
     Evaluation is delegated to the Python `jsonschema` package, and **nothing this project
     publishes installs it**: `[project.dependencies]` is `typing-extensions` alone and the three
-    extras are `cli`, `pydantic` and `settings`. Two doors therefore answer outside the
-    `Yaml*` classes, both measured on this build:
+    extras are `cli`, `pydantic` and `settings`. So `doc.validate({"type": "object"})` answers a
+    bare `ModuleNotFoundError` — not a `YamlValidateError` — measured on this build. Its text
+    depends on how the module is missing: with the name genuinely absent it is
+    `No module named 'jsonschema'`, and halted the way `tests/test_validate.py`
+    reproduces the absent wheel (`sys.modules["jsonschema"] = None`) it is
+    `import of jsonschema halted; None in sys.modules`.
 
-    - `doc.validate({"type": "object"})` answers a bare `ModuleNotFoundError` — not a
-      `YamlValidateError`. Its text depends on how the module is missing: with the name genuinely
-      absent it is `No module named 'jsonschema'`, and halted the way `tests/test_validate.py`
-      reproduces the absent wheel (`sys.modules["jsonschema"] = None`) it is
-      `import of jsonschema halted; None in sys.modules`.
-    - the `str` schema door runs `json.loads` **before** the evaluator, so a YAML-spelled schema
-      text answers `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`
-      whether or not `jsonschema` is installed. A schema text that is valid JSON still reaches
-      the evaluator, and there the missing module is the `ModuleNotFoundError` above.
+    The spelling of a `str` schema is this package's own decision, not the evaluator's: the text
+    door parses JSON before the evaluator is consulted, and a text that is not JSON is refused
+    with `YamlValidateError` whose message reads
+    `schema text must be JSON (…); pass the schema as a dict if it is not JSON`. A schema text
+    that is valid JSON still reaches the evaluator, and there the missing module is the
+    `ModuleNotFoundError` above.
 
-    Both escape the CLI's `except YamlValidateError` arm in `pyrs-yaml validate`, which is why
-    that command prints a traceback instead of its usual `error: …` line — measured through the
-    console script for the YAML-spelled schema (stderr traceback, empty stdout, exit `1`) — see
-    [Validation](../guides/cli.md#cmd-validate).
-
-    Neither is a defect this page fixes. Both are registered boundaries in
-    `.ci/known-residuals.json` — `api:validate-evaluator-is-not-installed-by-anything-we-ship` and
-    `api:validate-schema-text-is-json-only` — each carrying its reproduction test and the exit
-    criterion that would close it.
+    The `ModuleNotFoundError` escapes the CLI's `except YamlValidateError` arm in
+    `pyrs-yaml validate`, which is why that command prints a traceback instead of its usual
+    `error: …` line on an install without the evaluator — see
+    [Validation](../guides/cli.md#cmd-validate). It is a registered boundary in
+    `.ci/known-residuals.json` (`api:validate-evaluator-is-not-installed-by-anything-we-ship`),
+    carrying its reproduction test and the exit criterion that would close it. The YAML-spelled
+    schema now leaves through `error: …` like every other refusal - measured through the console
+    script: stderr holds that one line, stdout stays empty, exit `1`.
 
 ### YamlEditError
 

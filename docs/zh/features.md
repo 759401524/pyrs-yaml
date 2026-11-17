@@ -107,7 +107,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 验证失败时抛出 `YamlValidateError`。
 
-求值器需要另行安装。`jsonschema` 不是 pyrs-yaml 的依赖 — 基础安装只依赖 `typing-extensions`，而 extras 是 `cli`、`pydantic` 与 `settings` — 所以环境里没有求值器时，`validate()` 回的是一个点名 `jsonschema` 的裸 `ModuleNotFoundError`，而不是 `YamlValidateError`。请自行用 `pip install jsonschema` 安装它。上面示例中的 schema 文本是 JSON：YAML 拼法的 schema 会在任何规则被读到之前就被 `json.loads` 拒绝，报 `json.decoder.JSONDecodeError`。两条都是这一表面的已知边界，不是本版本的缺陷，而自研求值器是另一个设计问题。
+求值器需要另行安装。`jsonschema` 不是 pyrs-yaml 的依赖 — 基础安装只依赖 `typing-extensions`，而 extras 是 `cli`、`pydantic` 与 `settings` — 所以环境里没有求值器时，`validate()` 回的是一个点名 `jsonschema` 的裸 `ModuleNotFoundError`，而不是 `YamlValidateError`。请自行用 `pip install jsonschema` 安装它。求值器的缺席是这一表面的已知边界，不是本版本的缺陷，而自研求值器是另一个设计问题。上面示例中的 schema 文本是 JSON：YAML 拼法的 schema 会被 `YamlValidateError` 拒绝，其消息点名该参数接受的形式 — 这样的 schema 请以 `dict` 传入。
 
 ## 重复键
 

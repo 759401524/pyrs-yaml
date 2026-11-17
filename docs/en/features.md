@@ -116,11 +116,11 @@ The evaluator is a separate install. `jsonschema` is not a dependency of pyrs-ya
 the base install depends on `typing-extensions` alone, and the extras are `cli`,
 `pydantic` and `settings` — so with no evaluator in the environment `validate()`
 raises a bare `ModuleNotFoundError` naming `jsonschema` instead of `YamlValidateError`.
-Install it yourself with `pip install jsonschema`. The schema text in the example above
-is JSON: a YAML-spelled schema is refused by `json.loads` as
-`json.decoder.JSONDecodeError`, before any rule is read. Both are known boundaries
-of this surface, not defects of this release, and an evaluator of the project's own is
-a separate design question.
+Install it yourself with `pip install jsonschema`. That missing evaluator is a known
+boundary of this surface, not a defect of this release, and an evaluator of the
+project's own is a separate design question. The schema text in the example above is
+JSON: a YAML-spelled schema is refused with `YamlValidateError` naming the accepted
+form — pass such a schema as a dict.
 
 ### YAML Schema Language
 

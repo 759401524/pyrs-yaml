@@ -356,6 +356,11 @@ class YamlDocument:
     def validate(self, /, schema: "str | dict[str, Any]") -> "None":
         """
         Validate the document against a JSON Schema.
+
+        The schema is either a mapping or the JSON text of one: a `str` argument is
+        parsed with `json.loads`, and a text that is not JSON - the YAML spelling,
+        say - is refused with `YamlValidateError` instead of evaluated. Pass such a
+        schema as a dict.
         """
     def version(self, /) -> str:
         """

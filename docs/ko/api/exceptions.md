@@ -117,29 +117,26 @@ except pyrs_yaml.YamlValidateError as e:
 !!! warning "위임 경계"
     평가는 Python의 `jsonschema` 패키지에 위임되는데, **이 프로젝트가 배포하는 무엇도 그
     패키지를 설치하지 않습니다**: `[project.dependencies]`는 `typing-extensions` 하나이고 세 개의
-    extras는 `cli`, `pydantic`, `settings`입니다. 그래서 두 길은 `Yaml*` 클래스 밖에서 답하며,
-    둘 다 이 빌드에서 측정했습니다:
+    extras는 `cli`, `pydantic`, `settings`입니다. 그래서 `doc.validate({"type": "object"})`는 맨
+    `ModuleNotFoundError`로 답합니다 — `YamlValidateError`가 아닙니다 — 이 빌드에서 측정했습니다.
+    그 문구는 모듈이 어떻게 빠져 있느냐에 따라 달라집니다: 이름이 실제로 없으면
+    `No module named 'jsonschema'`이고, `tests/test_validate.py`가 없는 휠을 재현하는
+    방식(`sys.modules["jsonschema"] = None`)으로 중단되면
+    `import of jsonschema halted; None in sys.modules`입니다.
 
-    - `doc.validate({"type": "object"})`는 맨 `ModuleNotFoundError`로 답합니다 —
-      `YamlValidateError`가 아닙니다. 그 문구는 모듈이 어떻게 빠져 있느냐에 따라 달라집니다: 이름이
-      실제로 없으면 `No module named 'jsonschema'`이고, `tests/test_validate.py`가 없는 휠을
-      재현하는 방식(`sys.modules["jsonschema"] = None`)으로 중단되면
-      `import of jsonschema halted; None in sys.modules`입니다.
-    - `str` 스키마 길은 평가 엔진 **앞에** `json.loads`를 거치므로, YAML로 철자한 스키마 텍스트는
-      `jsonschema` 설치 여부와 상관없이
-      `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)`로 답합니다.
-      JSON으로 유효한 스키마 텍스트는 여전히 평가 엔진까지
-      닿고, 거기서 빠져 있는 모듈은 위 내용의 `ModuleNotFoundError`입니다.
+    `str` 스키마의 철자는 이 패키지 자신의 결정이며 평가 엔진의 것이 아닙니다: 텍스트 길은 평가 엔진
+    앞에서 JSON으로 읽고, JSON이 아닌 텍스트는 `YamlValidateError`로 거부되며 그 메시지는
+    `schema text must be JSON (…); pass the schema as a dict if it is not JSON`입니다. JSON으로
+    유효한 스키마 텍스트는 여전히 평가 엔진까지 닿고, 거기서 빠져 있는 모듈은 위의
+    `ModuleNotFoundError`입니다.
 
-    둘 다 `pyrs-yaml validate`의 CLI `except YamlValidateError` 절을 빠져나갑니다 — 그래서 그
-    명령은 `error: …` 줄 대신 traceback을 출력합니다 — YAML로 철자한 스키마에 대해 콘솔
-    스크립트로 측정했습니다(stderr의 traceback, 빈 stdout, 종료 코드 `1`) —
-    [검증](../guides/cli.md#cmd-validate)을 참고하세요.
-
-    둘 다 이 페이지가 고치는 결함이 아닙니다. 둘 다 `.ci/known-residuals.json`에 등록된
-    경계입니다 — `api:validate-evaluator-is-not-installed-by-anything-we-ship`과
-    `api:validate-schema-text-is-json-only` — 각각 재현 테스트와 그것을 닫는 출구 조건을
-    함께 실습니다.
+    이 `ModuleNotFoundError`는 `pyrs-yaml validate`의 CLI `except YamlValidateError` 절을
+    빠져나갑니다 — 그래서 평가 엔진이 없는 설치에서는 그 명령이 `error: …` 줄 대신 traceback을
+    출력합니다 — [검증](../guides/cli.md#cmd-validate)을 참고하세요. 이것은
+    `.ci/known-residuals.json`에 등록된 경계입니다
+    (`api:validate-evaluator-is-not-installed-by-anything-we-ship`) — 재현 테스트와 그것을 닫는
+    출구 조건을 함께 싣습니다. YAML로 철자한 스키마는 이제 다른 거부와 같이 `error: …`로
+    끝납니다: 콘솔 스크립트로 측정 — stderr는 이 한 줄, 빈 stdout, 종료 코드 `1`.
 
 ## YamlEditError
 

@@ -175,20 +175,16 @@ validate(schema: str | dict[str, Any]) -> None
 
 **スロー:**
 
-- `YamlValidateError` — ドキュメントがスキーマに適合しません。`str` でもマッピングでもない
-  スキーマも同じくここに届き、エンジンの文をそのテキストにします：`doc.validate(3)` は
-  `TypeError: argument of type 'int' is not iterable` と答えます
+- `YamlValidateError` — ドキュメントがスキーマに適合しないか、スキーマ引数が使えません。JSON ではない
+  `str` は `schema text must be JSON (…); pass the schema as a dict if it is not JSON` で拒否され、
+  `str` でもマッピングでもない引数も同じくここに届き、エンジンの文をそのテキストにします：
+  `doc.validate(3)` は `TypeError: argument of type 'int' is not iterable` と答えます
 
-このクラスの外から来る二つの拒否があります。評価は Python の `jsonschema` パッケージへ
-委譲され、本プロジェクトが公開するどの extra もそれをインストールしないためです：
-
-- `jsonschema` が import できないと、`doc.validate({"type": "object"})` は裸の
-  `ModuleNotFoundError: No module named 'jsonschema'` で答えます
-- `str` のスキーマは評価器の前に `json.loads` を通るので、YAML の綴りのスキーマのテキストは
-  `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` と答えます——
-  `jsonschema` のインストールの有無にかかわらず同じです
-
-両方とも再現とともに[例外 — YamlValidateError](exceptions.md#yamlvalidateerror)に記録しています。
+このクラスの外から来る拒否が一つあります。評価は Python の `jsonschema` パッケージへ委譲され、
+本プロジェクトが公開するどの extra もそれをインストールしないためです：`jsonschema` が import
+できないと、`doc.validate({"type": "object"})` は裸の
+`ModuleNotFoundError: No module named 'jsonschema'` で答えます。再現とともに
+[例外 — YamlValidateError](exceptions.md#yamlvalidateerror) に記録しています。
 
 ### `flush_source()`
 

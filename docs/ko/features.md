@@ -107,7 +107,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 검증 실패 시 `YamlValidateError`를 발생시킵니다.
 
-평가 엔진은 별도 설치입니다. `jsonschema`는 pyrs-yaml의 의존성이 아닙니다 — 기본 설치는 `typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`입니다 — 그래서 환경에 평가 엔진이 없으면 `validate()`는 `YamlValidateError`가 아니라 `jsonschema` 이름을 밝히는 맨 `ModuleNotFoundError`를 발생시킵니다. `pip install jsonschema`로 직접 설치하세요. 위 예시의 스키마 텍스트는 JSON입니다: YAML로 철자한 스키마는 어떤 규칙도 읽기 전에 `json.loads`에서 `json.decoder.JSONDecodeError`로 거부됩니다. 둘 다 이 표면의 알려진 경계이지 이번 릴리스의 결함이 아니며, 프로젝트 자신의 평가 엔진을 만드는 것은 별개의 설계 문제입니다.
+평가 엔진은 별도 설치입니다. `jsonschema`는 pyrs-yaml의 의존성이 아닙니다 — 기본 설치는 `typing-extensions`에만 의존하고 extras는 `cli`, `pydantic`, `settings`입니다 — 그래서 환경에 평가 엔진이 없으면 `validate()`는 `YamlValidateError`가 아니라 `jsonschema` 이름을 밝히는 맨 `ModuleNotFoundError`를 발생시킵니다. `pip install jsonschema`로 직접 설치하세요. 평가 엔진의 부재는 이 표면의 알려진 경계이지 이번 릴리스의 결함이 아니며, 프로젝트 자신의 평가 엔진을 만드는 것은 별개의 설계 문제입니다. 위 예시의 스키마 텍스트는 JSON입니다: YAML로 철자한 스키마는 받아들이는 형식을 밝히는 `YamlValidateError`로 거부됩니다 — 그런 스키마는 `dict`로 전달하세요.
 
 ## 중복 키
 

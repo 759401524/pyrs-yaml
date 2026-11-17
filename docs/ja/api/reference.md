@@ -649,14 +649,15 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlTagError` — タグハンドラエラー (`ValueError` を継承)
 - `YamlTagSkip` — ノードを次のハンドラへ渡す制御フローセンチネル (`YamlTagError` を継承)
 
-`Document.validate()` はこの一族の外に、本リリースが保つ二つの形で答えます。規則は
-`jsonschema` へ委譲しますが、ここにあるどれそれもそれをインストールしません——パッケージは
+`Document.validate()` がこの一族の外に答えるのは、本リリースが保つ一つの形だけです。規則は
+`jsonschema` へ委譲しますが、ここにあるどれもそれをインストールしません——パッケージは
 `typing-extensions` のみに依存し、extra は `cli`、`pydantic`、`settings` です——だから評価器が
 なければ、この呼び出しは裸の `ModuleNotFoundError: No module named 'jsonschema'` を投げます。
-スキーマなら通す文書でも同じです。そしてテキストで与えた `schema` は評価の前に `json.loads` で
-読まれるため、YAML の綴りは `json.decoder.JSONDecodeError` を投げます——評価器の有無に
-かかわらず。どちらも既知の境界で、利用者向けの説明は [クイックスタート](../quick-start.md) と
-[カスタムスキーマ](../guides/custom-schema.md) に置いています。
+スキーマなら通す文書でも同じです。テキストで与えた `schema` はこのパッケージ自身の扉で、評価の
+前に `json.loads` で読まれ、JSON でないテキストは `YamlValidateError`
+（`schema text must be JSON (…); pass the schema as a dict if it is not JSON`）で拒否されるため、
+YAML の綴りは一族の内側に留まります。評価器の欠落は既知の境界で、利用者向けの説明は
+[クイックスタート](../quick-start.md) と [カスタムスキーマ](../guides/custom-schema.md) に置いています。
 
 詳細は [例外](exceptions.md) ページを参照してください。
 

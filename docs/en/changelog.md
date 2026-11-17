@@ -129,7 +129,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   node. `api/exceptions.md` now lists the fifteen reachable reason tokens with the call that answers
   each, and `validate()`'s two dependencies are stated where users meet them: nothing this project
   ships installs `jsonschema`, and a schema passed as text is read by `json.loads` first, so a
-  YAML-spelled schema raises `json.decoder.JSONDecodeError`.
+  YAML-spelled schema is refused with `YamlValidateError` naming the form the argument accepts.
 - **A note under a tag header that opens the document settles on the first emission** — a note that
   cannot ride its line is written above the header the reader reports it on, and the walk that finds
   that header asked for the break *before* the header line, so a header starting the document was
@@ -199,6 +199,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   assertion that pinned the two answers is collapsed to one, asserting the other spelling reaches it
   (`docs/dev/quality-ledger.md` (jg), (lj)). Measured: 30 merge tests, 500 `pyrs-yaml-core` tests,
   919 across `cargo nextest run --all`, clippy both scopes clean, `prek run --all-files` clean.
+- **A schema spelled as YAML is refused inside the documented family** — `Document.validate` takes a
+  mapping or the JSON text of one, and the text door ran `json.loads` bare, so
+  `doc.validate("type: object\nrequired: [port]\n")` raised `json.JSONDecodeError` — a stdlib class
+  outside the ten `Yaml*` ones, which the CLI's `except YamlValidateError` arm does not catch, so
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` printed a traceback. The door now wraps
+  the parse — `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema
+  as a dict if it is not JSON` — the docstring names the form the parameter accepts, and the test
+  that closes the residual asserts that clause, so a docstring edit that drops it reddens the run.
+  Measured through the console script: exit 1, one `error:` line on stderr, empty stdout. The
+  `api:validate-schema-text-is-json-only` residual is gone from `.ci/known-residuals.json` and
+  `QUALITY_MATRIX.md`, and the nine pages that named the old refusal say the new one; the
+  evaluator's `ModuleNotFoundError` stays registered (`docs/dev/quality-ledger.md` (lv)).
 
 #### Changed
 

@@ -123,7 +123,7 @@ status: new
   メタデータの動詞も同じです。`api/exceptions.md` は到達可能な十五個の理由トークンとそれぞれに答える
   呼び出しを一覧にし、`validate()` の二つの依存は使い手が触れる場所に書きました：本プロジェクトが配
   布するものは `jsonschema` をインストールせず、テキストとして渡したスキーマはまず `json.loads` で読
-  まれるため、YAML つづりのスキーマは `json.decoder.JSONDecodeError` を投げます。
+  まれるため、YAML つづりのスキーマは引数が受け付ける形を名乗る `YamlValidateError` で拒否されます。
 - **文書の先頭にあるタグヘッダーの下の注釈が、第一回の出力で決まります** — 自分の行に
   乗せられない注釈は、読み手が報告するヘッダーの上に書きます。ところがヘッダーを探す
   走査はヘッダー行より*前*の改行をたずねるので、ヘッダーが文書の第一行なら持ち上げが
@@ -192,6 +192,19 @@ status: new
   の期待値に収めた主張が、別の綴りが到達することを主張しています（`docs/dev/quality-ledger.md`
   (jg)、(lj)）。実測：merge テスト 30 件、`pyrs-yaml-core` テスト 500 件、`cargo nextest run --all`
   の 919 件が全て通り、clippy の二つのスコープがクリーン、`prek run --all-files` がクリーンです。
+- **YAML つづりのスキーマは文書化された一族の内側で拒否されます** — `Document.validate` はマッピング
+  かその JSON テキストを受け取り、テキストの扉は `json.loads` を裸で走らせていたので、
+  `doc.validate("type: object\nrequired: [port]\n")` は `json.JSONDecodeError` を投げました —
+  `Yaml*` 十クラスの外にある標準ライブラリの例外で、CLI の `except YamlValidateError` 節は捕まえられ
+  ず、`pyrs-yaml validate doc.yaml --schema-file schema.yaml` は traceback を印字していました。扉は
+  いま解析を包みます —
+  `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`
+  — ドックストリングが引数の受け付ける形を名乗り、残差を閉じるテストがその文を主張するので、ドックス
+  トリングからそれを消す編集は実行を赤くします。コンソールスクリプトで実測：終了コード 1、stderr に
+  `error:` の一行だけ、stdout は空。`api:validate-schema-text-is-json-only` は
+  `.ci/known-residuals.json` と `QUALITY_MATRIX.md` から消え、古い拒否を書いていた九ページは新しい拒
+  否を書きます。評価器の `ModuleNotFoundError` は登録されたままです（`docs/dev/quality-ledger.md`
+  (lv)）。
 
 #### 変更
 

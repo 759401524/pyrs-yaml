@@ -118,29 +118,26 @@ except pyrs_yaml.YamlValidateError as e:
 !!! warning "委譲の境界"
     評価は Python の `jsonschema` パッケージへ委譲され、**本プロジェクトが公開するどれにもそれは
     インストールされません**：`[project.dependencies]` は `typing-extensions` だけで、extra は
-    `cli`、`pydantic`、`settings` の三つです。だから二つの扉は `Yaml*` のクラスの外に答え、
-    どちらもこのビルドで実測しました：
+    `cli`、`pydantic`、`settings` の三つです。だから `doc.validate({"type": "object"})` は裸の
+    `ModuleNotFoundError` で答えます——`YamlValidateError` ではありません——このビルドで実測済みです。
+    そのテキストはモジュールの欠け方で決まります。名前が本当に無いなら
+    `No module named 'jsonschema'` で、`tests/test_validate.py` が存在しないホイールを再現する
+    止め方（`sys.modules["jsonschema"] = None`）なら
+    `import of jsonschema halted; None in sys.modules` です。
 
-    - `doc.validate({"type": "object"})` は裸の `ModuleNotFoundError` で答えます——
-      `YamlValidateError` ではありません。そのテキストはモジュールの欠け方で決まります。
-      名前が本当に無いなら `No module named 'jsonschema'` で、`tests/test_validate.py` が
-      存在しないホイールを再現する止め方（`sys.modules["jsonschema"] = None`）なら
-      `import of jsonschema halted; None in sys.modules` です。
-    - `str` のスキーマの扉は評価器の前に `json.loads` を**通す**ので、YAML の綴りの
-      スキーマのテキストは `jsonschema` の有無にかかわらず
-      `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` と答えます。
-      JSON として正しいスキーマのテキストはそのまま評価器まで届き、そこで欠落が答えるのは
-      上の `ModuleNotFoundError` です。
+    `str` スキーマの綴りはこのパッケージ自身の決定であり、評価器のものではありません：テキストの扉は
+    評価器の前に JSON として読み、JSON でないテキストは `YamlValidateError` で拒否され、その
+    メッセージは `schema text must be JSON (…); pass the schema as a dict if it is not JSON` です。
+    JSON として正しいスキーマのテキストはそのまま評価器まで届き、そこで欠落が答えるのは上の
+    `ModuleNotFoundError` です。
 
-    どちらも `pyrs-yaml validate` の CLI の `except YamlValidateError` 節を抜け出ます。だから
-    あのコマンドはいつもの `error: …` の行ではなく traceback を印字します。YAML の綴りの
-    スキーマではコンソールスクリプト経由で実測しました（stderr に traceback、stdout は空、
-    終了コード `1`）。[検証](../guides/cli.md#cmd-validate) を参照してください。
-
-    どちらもこのページが直す欠陥ではありません。両方とも `.ci/known-residuals.json` に
-    登記済みの境界で（`api:validate-evaluator-is-not-installed-by-anything-we-ship` と
-    `api:validate-schema-text-is-json-only`）、それぞれに再現テストと、それを閉じるための
-    終了条件が付いています。
+    この `ModuleNotFoundError` は `pyrs-yaml validate` の CLI の `except YamlValidateError` 節を
+    抜け出します。だから評価器の無いインストールでは、あのコマンドはいつもの `error: …` の行ではなく
+    traceback を印字します。[検証](../guides/cli.md#cmd-validate) を参照してください。これは
+    `.ci/known-residuals.json` に登記済みの境界
+    （`api:validate-evaluator-is-not-installed-by-anything-we-ship`）で、再現テストと、それを閉じる
+    ための終了条件が付いています。YAML の綴りのスキーマは今ではほかの拒否と同じく `error: …` で
+    終わります——コンソールスクリプト経由で実測：stderr はこの一行、stdout は空、終了コード `1`。
 
 ## YamlEditError
 

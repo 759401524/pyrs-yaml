@@ -280,8 +280,8 @@ bad.validate(schema)
 
 A schema given as text is read as JSON, never as YAML, so
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")`
-raises `json.decoder.JSONDecodeError` — outside the family as well. Pass a
-`dict`, or JSON text.
+raises `YamlValidateError` naming the form the argument accepts. Pass a `dict`, or
+JSON text.
 
 ### 13. Deep Editing (batch, sort, move, copy)
 

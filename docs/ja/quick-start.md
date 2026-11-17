@@ -245,8 +245,8 @@ bad.validate(schema)
 
 テキストで与えたスキーマは YAML ではなく必ず JSON として読まれるため、
 `pyrs_yaml.parse("port: 8080\n").validate("type: object\nrequired: [port]\n")` は
-`json.decoder.JSONDecodeError` を投げます——これも一族の外です。`dict` か JSON テキストを
-渡してください。
+`YamlValidateError` を投げ、そのメッセージが引数として受け付ける形を名乗ります。`dict` か
+JSON テキストを渡してください。
 
 ### 13. 高度な編集
 

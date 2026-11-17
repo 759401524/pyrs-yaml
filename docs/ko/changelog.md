@@ -120,8 +120,8 @@ status: new
   *부모*는 여전히 거부되고, 별칭 노드의 열두 메타데이터 동사도 마찬가집니다. `api/exceptions.md`는
   이제 닿을 수 있는 열다섯 이유 토큰과 각각에 답하는 호출을 목록으로 실었고, `validate()`의 의존
   둘은 사용자가 만나는 자리에 적혔습니다: 이 프로젝트가 배포하는 무엇도 `jsonschema`를 설치하지
-  않고, 텍스트로 넘긴 스키마는 `json.loads`가 먼저 읽으므로 YAML로 철자한 스키마는
-  `json.decoder.JSONDecodeError`를 발생시킵니다.
+  않고, 텍스트로 넘긴 스키마는 `json.loads`가 먼저 읽으므로 YAML로 철자한 스키마는 인수가 받아들이는
+  형식을 밝히는 `YamlValidateError`로 거부됩니다.
 - **문서를 시작하는 태그 헤더 아래 주석이 첫 출력에서 고정됩니다** — 자기 줄에 실리지
   못하는 주석은 읽는 쪽이 보고하는 헤더 위에 씁니다. 그런데 헤더를 찾는 walk가 헤더 줄
   *앞*의 개행을 물어서, 헤더가 문서의 첫 줄이면 올라가지 못한 채 주석이 빈간격에
@@ -191,6 +191,19 @@ status: new
   (`docs/dev/quality-ledger.md` (jg)、(lj)). 실측: merge 테스트 30건, `pyrs-yaml-core` 테스트 500건,
   `cargo nextest run --all`의 919건이 모두 통과되고, clippy의 두 스코프가 깨지지 않았으며,
   `prek run --all-files`가 깨지지 않았습니다。
+- **YAML로 철자한 schema는 문서화된 계열 안에서 거부됩니다** — `Document.validate`는 매핑이나 그
+  JSON 텍스트를 받는데, 텍스트 문은 `json.loads`를 맨몸으로 돌렸으므로
+  `doc.validate("type: object\nrequired: [port]\n")`는 `json.JSONDecodeError`를 발생시켰습니다 —
+  `Yaml*` 열 개 클래스 밖의 표준 라이브러리 예외라 CLI의 `except YamlValidateError` 절이 잡지
+  못하고, `pyrs-yaml validate doc.yaml --schema-file schema.yaml`는 traceback을 출력했습니다. 이제
+  문은 그 파싱을 감쌉니다 —
+  `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`
+  — 독스트링이 인수가 받아들이는 형식을 밝히고, 잔여 항목을 닫는 테스트가 그 문장을 단언하므로
+  독스트링에서 그것을 지우는 편집은 실행을 빨갛게 만듭니다. 콘솔 스크립트로 실측: 종료 코드 1,
+  stderr에 `error:` 한 줄, stdout은 비어 있음. `api:validate-schema-text-is-json-only`는
+  `.ci/known-residuals.json`과 `QUALITY_MATRIX.md`에서 사라졌고, 옛 거부를 적던 아홉 페이지는 새
+  거부를 적습니다. 평가 엔진의 `ModuleNotFoundError`는 등록된 채
+  남습니다(`docs/dev/quality-ledger.md` (lv)).
 
 #### 변경
 

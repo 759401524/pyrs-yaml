@@ -137,14 +137,9 @@ validate(schema: str | dict[str, Any]) -> None
 
 **引发:**
 
-- `YamlValidateError` — 文档不符合 schema。既不是 `str` 也不是映射的 schema 同样落到这里，带着引擎自己那句话作为它的文本：`doc.validate(3)` 回 `TypeError: argument of type 'int' is not iterable`
+- `YamlValidateError` — 文档不符合 schema，或者 schema 参数不可用。不是 JSON 的 `str` 以 `schema text must be JSON (…); pass the schema as a dict if it is not JSON` 被拒绝，既不是 `str` 也不是映射的参数同样落到这里，带着引擎自己那句话作为它的文本：`doc.validate(3)` 回 `TypeError: argument of type 'int' is not iterable`
 
-有两道拒绝来自这个类之外，因为求值委托给 Python 的 `jsonschema` 包，而本项目发布的任何 extra 都不安装它：
-
-- `jsonschema` 无法导入时，`doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError: No module named 'jsonschema'`
-- `str` 形式的 schema 在问求值器之前会先跑 `json.loads`，所以 YAML 拼法的 schema 文本回 `json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)` — 装不装 `jsonschema` 都是同一句
-
-两条都连同各自的复现记录在 [异常 — YamlValidateError](exceptions.md#yamlvalidateerror)。
+有一道拒绝来自这个类之外，因为求值委托给 Python 的 `jsonschema` 包，而本项目发布的任何 extra 都不安装它：`jsonschema` 无法导入时，`doc.validate({"type": "object"})` 回一个裸的 `ModuleNotFoundError: No module named 'jsonschema'`。它连同复现记录在 [异常 — YamlValidateError](exceptions.md#yamlvalidateerror)。
 
 ### `flush_source()`
 
