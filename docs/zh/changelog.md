@@ -19,6 +19,11 @@ status: new
 
 #### 修复
 
+- **块头部不再被键文本里的 sigil 遮蔽** — 头部扫描取头部行上第一个尾部合法的 `|`/`>`，而带引号键
+  （`"h>+#"`）或锚点名称（`&>#`）里的 `>` 恰好合法：`+#` 被读作 Keep 加注释，于是下一行真正的头部
+  永远没有被读到，发射出的文本凭空多出一个源码从未写过的 chomping 指示符（libFuzzer
+  `yaml_roundtrip` crash-6d0caaa2 / crash-3411a423 / crash-418d64b8）。现在只有位于本行行首或空白
+  之后的 sigil 才是头部候选（`docs/dev/quality-ledger.md` (lx)）。
 - **Ir 门禁在镜像之外的失败诊断改读镜像行** — 在 runner 镜像之外运行时，门禁会为每个超限场景标出最近
   镜像行的地板，但辅助函数拿到的是本次判定所用的展平 `{scenario: int}` 映射，于是首个失败就以
   `'int' object has no attribute 'get'` 崩溃，丢掉了这次运行已经测到的读数；

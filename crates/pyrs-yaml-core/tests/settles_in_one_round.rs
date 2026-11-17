@@ -1329,6 +1329,32 @@ fn an_alias_key_in_a_compact_sequence_item_settles_in_one_round() {
     assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
 }
 
+/// libFuzzer `yaml_roundtrip` crash-6d0caaa2 / crash-3411a423 / crash-418d64b8: a block header
+/// shadowed by a sigil inside key text.
+///
+/// `detect_block_header` walks the header line for the first `|`/`>` whose tail validates, and a
+/// `>` inside a key (`"h>+#"`) or an anchor's name (`&>#`) has one — `+#` reads as Keep plus a
+/// comment — so the real header on the next line was never reached and the emission gained a
+/// chomping indicator the source never wrote. A header's sigil is a token of its own now: at the
+/// line's start or after a blank.
+#[test]
+fn a_sigil_inside_key_text_does_not_shadow_the_block_header() {
+    for raw in [
+        &include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-6d0caaa2.seed")[..],
+        &include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-3411a423.seed")[..],
+        &include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-418d64b8.seed")[..],
+    ] {
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = emit(src);
+        assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+    }
+    assert_eq!(
+        emit("?\n  \"h>+#\": |\n:\n  ~\n"),
+        "?\n  \"h>+#\": |\n:\n  ~\n",
+        "the real `|` is the header, not the `>` inside the quoted key"
+    );
+}
+
 /// The 2026-11-14 `yaml_roundtrip` window class: a key whose simple spelling leaves its
 /// colon past the reader's 1024-character window.
 ///

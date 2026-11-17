@@ -14656,3 +14656,42 @@ project-owned evaluator.
 - **What this does not close** - nothing the project ships still installs the evaluator, and
   `docs/dev/boundaries.md` keeps that distinction: the refusal is inside the family and names the
   door; the missing dependency is a packaging question and #517 stays the ruling.
+
+### (lx) A sigil inside key text shadowed the block header (2026-11-17)
+
+(jf) closed the note-line arm of `detect_block_header` and left `crash-6d0caaa2` open in the
+opposite direction: its emission *gained* a chomping indicator rather than losing one. The
+mechanism is the header walk, not the note. The walk takes the first `|`/`>` on the header line
+whose tail validates, and a sigil inside key text has a validating tail: in
+`?\n  "h>+#": |\n:\n  ~` the `>` inside the quoted key is followed by `+#`, which
+`parse_block_header_tail` reads as Keep plus a comment, so the walk answered `|+` for a document
+whose header is the `|` on the line below. granit spans that empty body on the `:` of the next
+line (offset 14), which is why the content-start fallback never saw the real header either. The
+anchor arm is the same shape: in `&>#\r>+\r8` the `>` inside the anchor's name validated and the
+`>+` after the CR was never consulted (`crash-3411a423`, `crash-418d64b8` - two artifacts,
+identical bytes).
+
+- **The guard is where a token can start** - a sigil is a header candidate only at the start of
+  its own line or after a blank, because a block header is a node of its own and nothing can spell
+  it inside a key or an anchor name. The comment break keeps its own rule, the two content-start
+  fallbacks are untouched, and the deliberate rule that an empty block body keeps its declared
+  chomping (`container_keys_differing_only_in_chomping_survive`,
+  `empty_block_header_reaches_a_fixed_point`) still holds: this changes which line is read, not
+  what an empty body is allowed to say.
+- **Tests** - `detect_block_header_sigil_inside_key_text_is_not_the_header` in
+  `crates/pyrs-yaml-core/src/parser/yaml/scalar.rs` pins both probes by offset (14 for the quoted
+  key, the `8` for the CR document), and
+  `a_sigil_inside_key_text_does_not_shadow_the_block_header` in
+  `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` replays the three archived seeds and pins
+  the minimized document's emission byte for byte.
+- **Measured** - `cargo nextest run -p pyrs-yaml-core` 518 passed; the three inputs are archived as
+  `fuzz/seeds/yaml_roundtrip/former-crash-6d0caaa2.seed`, `former-crash-3411a423.seed` and
+  `former-crash-418d64b8.seed`, all three reach their assertion so the empty `seed_reach` registry
+  is unchanged. Replaying the 66 downloaded crash artifacts through the rebuilt `yaml_roundtrip`
+  and `edit_yaml` targets fails 11: the three here left the set, and the eleven that remain are
+  the families listed next.
+- **What remains on #732 / #733** - `yaml_roundtrip` fails on `a3dded4d`, `860ec5b7`, `91652883`,
+  `0810c8b4` and `200342d3`; `edit_yaml` fails on `32aeadbf`, `3291d29b`, `beb3428d`, `12c96086`,
+  `36178218` and `5ea9fbb8`. Those are the merge-key fold, the duplicate tagged empty key, the
+  re-homed trailing note, the JSON5 number spelling and the tag-only settle - each with its own
+  dated section where one exists. No issue is closed by this entry.
