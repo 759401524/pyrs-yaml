@@ -24,7 +24,7 @@ fn emit(src: &str) -> String {
 /// reported that note as the value's; `write_pair` then asked the value who owns the line's
 /// trailing slot, got the other answer, and hoisted the key's note above the pair. Nothing was lost
 /// on the way, which is why neither the property tier (tree against tree, one cycle) nor
-/// `note_survival` (does a note appear) saw it. `write_pair` asks the line now: a scalar body that
+/// `note_survival` (a text search, which a re-homed note still passes) saw it. `write_pair` asks the line now: a scalar body that
 /// starts below leaves the pair line's slot free, so the note stays where it was written and the
 /// first emission is the fixed point.
 #[test]

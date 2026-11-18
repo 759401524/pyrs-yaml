@@ -9,6 +9,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A sequence item's note lifts above the header it belongs under** — a block container keeps its
+  note stack below the dash, and when the item's value opens with an `&a` / `!tag` header line that
+  tail is the gap under the header, where granit files the note on the *header's* node: the first
+  emission wrote `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`, and the second lifted the
+  note above `!fuzz6` (fuzz seed `former-crash-fb62e776`, record 7, found by the `edit_yaml`
+  corpus's new deterministic replay). The stack now goes through the line writer that crosses a
+  header at the item's own column, and appends exactly where it did when no header sits above
+  (`docs/dev/quality-ledger.md` (mr)).
+- **`sort_keys` lifts the note stack of the pair it writes first** — the preamble lift read the
+  source's first pair while the sorted emission wrote a different one, so that pair's stack stayed
+  between the header and the body and the emission settled only on a second round (fuzz seed
+  `former-crash-8d630b22`). The lift now takes the index the emission writes first, supplied from
+  the sorted order when `sort_keys` is on (`docs/dev/quality-ledger.md` (mp)).
+- **`sort_keys` keeps source order where sorting would use an anchor before its definition** —
+  sorting emitted `use: *x` above `~: {abase: &x 1}`, and this engine's own reader refused the text
+  with "found unknown anchor"; the parse-time orphan repair cannot help a writer that produced it.
+  A mapping that both defines and uses an anchor name locally keeps its source order now — a name
+  defined around the mapping is already in scope, so only local pairs can be broken by the reorder
+  (`docs/dev/quality-ledger.md` (mp)).
+- **A hoisted note crosses an indented header** — with `indent_offset: 2` a note that cannot ride a
+  pair's line was written below its `&a` / `!tag` header, where the next round lifted it: the gap
+  walk measured the body's indent from text a tail had not written yet, read 0, and stopped at an
+  indent-2 header. The walk now takes the column its caller knows and crosses the header, so the
+  note stays above it on the first emission (`docs/dev/quality-ledger.md` (mp)).
+- **`indent_sequence: 4` keeps a compact item's pair on the key's column** — a sequence item whose
+  first pair opens after `- ` wrote its second pair at `indent_width + 4` while the first key sat at
+  `indent_width + 2`, and the reader refuses the shallower line ("mapping values are not allowed in
+  this context", fuzz seed `former-crash-094d4d6a`). The pair column is where the first key landed,
+  not the block-body step, so the writer now uses the former (`docs/dev/quality-ledger.md` (mp)).
 - **An anchor whose node a merge consumes reaches the orphan repair** — four `yaml_roundtrip`
   shapes went wrong. Three ended with an alias in the emission and no definition anywhere: a nested
   `<<` was resolved on a clone while the repair inlined the raw body (`<<: &b` / ` <<:` / `  : *b`,

@@ -19,6 +19,28 @@ status: new
 
 #### 修复
 
+- **序列项的 note 提升到它所属的头部行之上** — 块容器把 note 栈写在短横线之下，而当该项的值以
+  `&a` / `!tag` 头部行开头时，那个尾部正是头部之下的空隙，granit 会把 note 记在*头部*节点上：首次
+  发射写出 `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`，第二次才把 note 提到 `!fuzz6` 之上
+  （fuzz 种子 `former-crash-fb62e776`，第 7 条记录，由 `edit_yaml` 语料新增的确定性回放发现）。note
+  栈现在走那条在项自身列上跨过头部行的写行路径，上方没有头部时落点与原来完全一致
+  （`docs/dev/quality-ledger.md` (mr)）。
+- **`sort_keys` 把它最先写出的那个 pair 的 note 栈一并提升** — 前导提升读的是源中的第一个 pair，而
+  排序后的发射写的是另一个，于是那个 pair 的栈留在头部与正文之间，发射要到第二轮才收敛（fuzz 种子
+  `former-crash-8d630b22`）。提升现在取发射最先写出的位置，`sort_keys` 开启时由排序结果提供
+  （`docs/dev/quality-ledger.md` (mp)）。
+- **排序会先用锚点后定义时，`sort_keys` 保留源顺序** — 排序把 `use: *x` 写在 `~: {abase: &x 1}`
+  之上，本引擎自己的读取器以 "found unknown anchor" 拒绝了这段文本；解析期的孤儿修复救不了一个这
+  样写出的发射。既在局部定义又在局部使用某锚点名的映射现在保留源顺序——在映射外围定义的名字本来
+  就在作用域内，只有局部 pair 会被重排打破（`docs/dev/quality-ledger.md` (mp)）。
+- **被提升的 note 会跨过缩进的头部行** — 在 `indent_offset: 2` 下，不能留在 pair 行上的 note 被写
+  到了它的 `&a` / `!tag` 头部之下，下一轮再把它提上来：空隙游走从尾部尚未写入的文本测量正文缩进，
+  读到 0，就停在了缩进为 2 的头部行。游走现在接受调用方已知的列并跨过头部，note 在首次发射就留在
+  头部之上（`docs/dev/quality-ledger.md` (mp)）。
+- **`indent_sequence: 4` 让紧凑项的 pair 停在键所在的列** — 第一个 pair 紧跟在 `- ` 之后的序列项
+  把第二个 pair 写在 `indent_width + 4`，而第一个键在 `indent_width + 2`，读取器拒绝更浅的那一行
+  （"mapping values are not allowed in this context"，fuzz 种子 `former-crash-094d4d6a`）。pair
+  列是第一个键落下的位置，不是块体的步进，写出器现在用前者（`docs/dev/quality-ledger.md` (mp)）。
 - **合并消费其节点的锚点进入孤儿修复** — 四个 `yaml_roundtrip` 形状出过问题。三个以发射文本里没有定
   义的别名收尾：嵌套 `<<` 在克隆上被解析，而修复内联的是原始体（`<<: &b` / ` <<:` / `  : *b`，
   crash-91652883）；锚点落在展开会拆散的项映射上（`<<:` / `- &b` / ` : *b`，crash-0fae03be）；一个非

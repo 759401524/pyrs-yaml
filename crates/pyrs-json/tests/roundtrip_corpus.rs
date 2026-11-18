@@ -20,27 +20,40 @@
 //! Inputs a dialect rejects are skipped, not failed — a typed rejection is a pass, and the
 //! corpus deliberately holds bytes only one of the three readers accepts.
 //!
-//! Both corpora that no other deterministic gate asks the fixed point of are walked.
-//! `json_events_replay` is charged in `events_replay.rs`, which asserts the same `once ==
-//! twice` over its own seeds; `parse_json`'s target asserts nothing about a writer, and
-//! `corpus_notes.rs` charges conservation over its seeds rather than settlement. A writer
-//! regression can settle inside a corpus no test ever asks a writer about, which is the shape
-//! the TOML twin closed for `parse_toml`. Measured 2026-11-18: 17 `json_roundtrip` seeds drive
-//! 40 rounds and 7 `parse_json` seeds drive 12, 52 together, so the floor sits below their sum
-//! and above either corpus alone.
+//! All three seed corpora are walked, in every writer shape the family publishes: the three
+//! compact writers and the three pretty ones at `indent = 2`. `parse_json`'s own target asserts
+//! nothing about a writer, and `json_events_replay` is not charged a fixed point anywhere else
+//! either - its target and `events_replay.rs` compare the tree walk against the event replay of
+//! the *same* input, so they write one tree twice but never write, re-parse and write again.
+//! (This doc used to say `events_replay.rs` asserts the same `once == twice`; it does not.)
+//! `corpus_notes.rs` charges note conservation over the replay seeds rather than settlement. A
+//! writer regression can settle inside a corpus no test ever asks a writer about, which is the
+//! shape the TOML twin closed for `parse_toml`. The pretty pairs are separate code paths - both
+//! container arms of `write_value_inner` branch on `pretty` - so the compact walk cannot see a
+//! drift that only moves a multi-line layout. Measured 2026-11-18: 80 `json_roundtrip` rounds,
+//! 24 `parse_json` and 72 `json_events_replay`, 176 together, every one settling.
 
-use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
+use pyrs_json::{
+    from_json, from_json5, from_jsonc, to_json_text, to_json_text_pretty, to_json5_text,
+    to_json5_text_pretty, to_jsonc_text, to_jsonc_text_pretty,
+};
 
-/// Lower bound on how many dialect rounds must reach the assertion.
+/// Per-corpus lower bounds on how many writer rounds must reach the assertion, measured
+/// 2026-11-18 with all six writer shapes.
 ///
-/// Measured 2026-11-18 over both corpora: 17 `json_roundtrip` seeds drive 40 rounds and 7
-/// `parse_json` seeds drive 12, 52 together (the 38 this file used to record was the round-trip
-/// corpus before the seed re-mining added two). Each seed is an input that made an assertion fail
-/// in the run that found it - a registered defect, not an exemption. The floor sits above either
-/// corpus alone and below their sum, so a walk that silently loses one reddens instead of
-/// reporting a smaller number; the same reasoning is why `crates/pyrs-yaml-core/tests/
-/// note_survival.rs` declares one.
-const MIN_SEEDED_ROUNDS: usize = 46;
+/// Each seed is an input that made an assertion fail in the run that found it - a registered
+/// defect, not an exemption. A corpus that silently drops out of the walk reddens on its own row
+/// instead of being absorbed by the other two.
+const MIN_CORPUS_ROUNDS: [(&str, usize); 3] = [
+    ("json_roundtrip", 74),
+    ("parse_json", 22),
+    ("json_events_replay", 66),
+];
+
+/// Lower bound on the total. The smallest per-shape contribution is 16 rounds - the strict
+/// writers over the three corpora - so losing any one of the six shapes reddens here even when
+/// every corpus row still clears its own floor.
+const MIN_SEEDED_ROUNDS: usize = 166;
 
 fn seeds(corpus: &str) -> Vec<(String, String)> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -78,17 +91,17 @@ fn seeds(corpus: &str) -> Vec<(String, String)> {
 /// invariant does not depend on which node type travels between reader and writer, and a
 /// function signature here would break when that type moves between crates.
 macro_rules! round_trip {
-    ($dialect:expr, $name:expr, $text:expr, $parse:path, $write:path) => {{
+    ($dialect:expr, $name:expr, $text:expr, $parse:path, $write:expr) => {{
         let (dialect, name, text) = ($dialect, $name, $text);
         match $parse(text) {
             Err(_) => 0,
-            Ok(node) => match $write(&node) {
+            Ok(node) => match ($write)(&node) {
                 Err(_) => 0,
                 Ok(once) => {
                     let reparsed = $parse(&once).unwrap_or_else(|e| {
                         panic!("{name} [{dialect}]: writer output failed to re-parse: {e}\n---\n{once}\n---\n{text}")
                     });
-                    let twice = $write(&reparsed).unwrap_or_else(|e| {
+                    let twice = ($write)(&reparsed).unwrap_or_else(|e| {
                         panic!("{name} [{dialect}]: writer rejected its own re-parsed tree: {e}\n---\n{once}")
                     });
                     assert_eq!(
@@ -105,16 +118,31 @@ macro_rules! round_trip {
 #[test]
 fn json_family_writers_reach_a_fixed_point_over_the_seed_corpus() {
     let mut rounds = 0usize;
-    for corpus in ["json_roundtrip", "parse_json"] {
+    for (corpus, floor) in MIN_CORPUS_ROUNDS {
+        let mut corpus_rounds = 0usize;
         for (name, text) in seeds(corpus) {
             let label = format!("{corpus}/{name}");
             // Reader and writer are paired per dialect and never crossed: `to_jsonc_text` emits
             // comments and `to_json5_text` emits hex numbers and bare keys, none of which the
             // strict reader may accept, so a cross-dialect demand would red correct output.
-            rounds += round_trip!("json", &label, &text, from_json, to_json_text);
-            rounds += round_trip!("jsonc", &label, &text, from_jsonc, to_jsonc_text);
-            rounds += round_trip!("json5", &label, &text, from_json5, to_json5_text);
+            corpus_rounds += round_trip!("json", &label, &text, from_json, to_json_text);
+            corpus_rounds += round_trip!("json-pretty", &label, &text, from_json, |n| {
+                to_json_text_pretty(n, 2)
+            });
+            corpus_rounds += round_trip!("jsonc", &label, &text, from_jsonc, to_jsonc_text);
+            corpus_rounds += round_trip!("json5", &label, &text, from_json5, to_json5_text);
+            corpus_rounds += round_trip!("jsonc-pretty", &label, &text, from_jsonc, |n| {
+                to_jsonc_text_pretty(n, 2)
+            });
+            corpus_rounds += round_trip!("json5-pretty", &label, &text, from_json5, |n| {
+                to_json5_text_pretty(n, 2)
+            });
         }
+        assert!(
+            corpus_rounds >= floor,
+            "the {corpus} corpus only drove {corpus_rounds} writer rounds; expected at least {floor}"
+        );
+        rounds += corpus_rounds;
     }
     assert!(
         rounds >= MIN_SEEDED_ROUNDS,

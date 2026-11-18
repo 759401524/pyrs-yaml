@@ -124,7 +124,10 @@ class TestToYamlWithOptions:
                 lambda o: o.startswith("---\n") and o.rstrip().endswith("..."),
             ),
             ({"indent_size": 4}, lambda o: "    child: value" in o),
-            ({"sort_keys": True}, lambda o: sorted(o.split()[:3]) == ["a:", "m:", "z:"] or True),
+            (
+                {"sort_keys": True},
+                lambda o: [line.split(":")[0] for line in o.splitlines()] == ["a", "m", "z"],
+            ),
         ],
         ids=["explicit-start", "explicit-end", "both", "indent-4", "sort-keys"],
     )
@@ -144,6 +147,16 @@ class TestToYamlWithOptions:
         lines = [line for line in output.strip().split("\n") if line and not line.startswith(" ")]
         keys = [line.split(":")[0] for line in lines]
         assert keys == ["z", "a", "m"]
+
+    def test_sort_keys_keeps_the_pair_that_defines_an_anchor_above_its_alias(self):
+        # Sorting this mapping would write `use: *x` above the `~:` pair that defines `&x`,
+        # text this library's own reader refuses, so a mapping that defines and aliases one
+        # name locally keeps source order - the exception the localized `api/yaml-document.md`
+        # pages name.
+        source = "~: {abase: &x 1}\nuse: *x\n"
+        output = pyrs_yaml.parse(source).to_yaml_with_options(sort_keys=True)
+        assert output == source, "sorting would orphan the anchor this mapping's first pair defines"
+        assert pyrs_yaml.parse(output).to_dict()["use"] == 1
 
     def test_note_placement_refuses_an_unknown_value(self):
         doc = pyrs_yaml.parse("key: value")

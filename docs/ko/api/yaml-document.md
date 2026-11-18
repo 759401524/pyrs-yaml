@@ -55,7 +55,7 @@ to_yaml(
 - `indent` — 들여쓰기 공백 수 (기본값: 2)
 - `allow_unicode` — Unicode 문자 허용 (기본값: True)
 - `default_flow_style` — 기본 플로우 스타일 사용 (기본값: False)
-- `sort_keys` — 키 정렬 (기본값: False)
+- `sort_keys` — 키 정렬 (기본값: False). 앵커 이름을 지역적으로 정의하고 지역적으로 사용하는 매핑은 소스 순서를 유지하므로, 정렬이 별칭을 해석 대상인 `&name` 위에 쓰지 않습니다
 - `width` — 줄 바꿈 너비 (기본값: 80)
 - `resolve_aliases` — 별칭 해석 (기본값: True)
 - `strip_comments` — 주석 제거 (기본값: False)
@@ -89,7 +89,7 @@ to_yaml_with_options(
 - `indent_size` — 들여쓰기 수준당 공백 수 (기본값: 2)
 - `explicit_start` — 문서 시작에 `---` 추가 (기본값: False)
 - `explicit_end` — 문서 끝에 `...` 추가 (기본값: False)
-- `sort_keys` — 키를 알파벳순으로 정렬 (기본값: False)
+- `sort_keys` — 키를 알파벳순으로 정렬 (기본값: False). 앵커 이름을 지역적으로 정의하고 지역적으로 사용하는 매핑은 소스 순서를 유지하므로, 정렬이 별칭을 해석 대상인 `&name` 위에 쓰지 않습니다
 - `note_placement` — 주석이 자기 줄에 실리지 못하고 바로 위가 `&a` / `!tag` 헤더 줄일 때의 자리: `note_first`(기본)는 헤더 위에 씁니다. 읽기도 거기 두므로 첫 출력에서 수렴합니다. `header_first`는 헤더와 본문 사이에 둡니다. 다른 값은 거부됩니다
 
 **예시:**

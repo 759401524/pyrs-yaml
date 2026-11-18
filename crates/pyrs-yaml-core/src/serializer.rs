@@ -936,6 +936,17 @@ impl Serializer {
     /// line (libFuzzer `edit_yaml` crash-92f3fc65 and crash-e392c402).
     fn header_gap_start(&self, at: usize) -> usize {
         let body_indent = self.output[at..].find(|c: char| c != ' ').unwrap_or(0);
+        self.header_gap_start_over(at, body_indent)
+    }
+
+    /// [`Self::header_gap_start`] where the body's column is known without being written.
+    ///
+    /// At a tail no line has started yet, so `header_gap_start` measures an indent of zero and a
+    /// header at any column but the document's own stops the walk. A note about to go above a
+    /// marker line whose column the caller knows (`indent_width`) is above the same header a
+    /// written line would be: with `indent_offset: 2` the two lines both sit at column 2 and the
+    /// note belongs above the header, where the next round otherwise hoists it.
+    fn header_gap_start_over(&self, at: usize, body_indent: usize) -> usize {
         let mut start = at;
         while start > 0 {
             let before = &self.output[..start];
@@ -992,10 +1003,10 @@ impl Serializer {
     /// `note_line_above` already applies, and it is reached here rather than at that function
     /// because the pending tag-only line still has to be closed first, and the close moves the tail
     /// the offset is read from. The tail keeps `write_note_line` itself, so `HeaderFirst` — which
-    /// wants the gap — and every hoist with no header above it pay what they paid before. Only the
-    /// flush-left header is crossed: the walk measures the body's indent from the line it starts,
-    /// and at the tail there is no line yet, so it measures zero. That is the shape the seventeen
-    /// inputs this closes have; an indented header keeps the gap spelling it has today.
+    /// wants the gap — and every hoist with no header above it pay what they paid before. The
+    /// walk is told the column of the line this note will head (`indent_width`), because at the
+    /// tail there is no line yet to measure: an indented header (`indent_offset` > 0) is crossed
+    /// by the same rule as a flush-left one, instead of costing the round granit's re-read charges.
     fn write_hoisted_note_line(&mut self, indent_width: usize, text: &str) {
         if note_text_to_write(text).is_empty() {
             return;
@@ -1003,7 +1014,7 @@ impl Serializer {
         self.close_pending_tag_line();
         let tail = self.output.len();
         let at = if self.note_first {
-            self.header_gap_start(tail)
+            self.header_gap_start_over(tail, indent_width)
         } else {
             tail
         };
@@ -1285,8 +1296,16 @@ impl Serializer {
         // header and a single emission step never reaches a fixed point (libFuzzer
         // `yaml_roundtrip` crash-77a8039b, 28 bytes; crash-e6551c75 and
         // crash-8f7085b0 for the marker-spine half). See [`lift_first_entry_notes`].
+        // The lift reads the entry the emission writes first: the source's first pair, or the
+        // sorted-first one when `sort_keys` reorders the body (see
+        // [`lift_first_entry_notes_at`]).
+        let lift_index = if self.sort_keys {
+            sorted_first_index(pairs)
+        } else {
+            0
+        };
         let (stripped_map, preamble_notes) =
-            lift_first_entry_notes(pairs, meta, flow_style, in_value_context);
+            lift_first_entry_notes(pairs, meta, flow_style, in_value_context, lift_index);
         let pairs: &NodeMap<CustomNode, CustomNode> = stripped_map.as_ref().unwrap_or(pairs);
         let preamble_notes = preamble_notes.as_deref();
         let sk = ContainerSkeleton {
@@ -1312,19 +1331,15 @@ impl Serializer {
             },
             |s, _gap| {
                 let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
-                pairs_vec.sort_by(|a, b| {
-                    let ka = match a.0 {
-                        CustomNode::Scalar { value, .. } => value.as_ref(),
-                        _ => "",
-                    };
-                    let kb = match b.0 {
-                        CustomNode::Scalar { value, .. } => value.as_ref(),
-                        _ => "",
-                    };
-                    ka.cmp(kb)
-                });
-                for (key, value) in pairs_vec.iter().copied() {
-                    s.write_mapping_pair(key, value, indent_width, depth)?;
+                pairs_vec.sort_by(|a, b| sorted_key(Some(a.0)).cmp(sorted_key(Some(b.0))));
+                if sort_breaks_anchor_order(&pairs_vec) {
+                    for (key, value) in pairs.iter() {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
+                } else {
+                    for (key, value) in pairs_vec.iter().copied() {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
                 }
                 Ok(())
             },
@@ -2000,7 +2015,16 @@ impl Serializer {
         if hoisted_notes {
             let stack = item.leading_comments();
             for comment in stack {
-                self.write_note_line(indent_width, &comment.text);
+                // `write_hoisted_note_line`, not `write_note_line`: when this item is the
+                // first of a headed container the tail is the gap under that container's
+                // `&a` / `!tag` line, and a note written there re-reads as the *header's*
+                // leading note, so the second emission lifts it above the header. Measured
+                // on `fuzz/seeds/edit_yaml/former-crash-fb62e776.seed` after the edit
+                // script turns the item into a flow sequence: `- ` / `  !fuzz6 ` /
+                // `  # fuzz 47` / `  - &a0 [{}]` settled only on its second round. With no
+                // header above, `write_hoisted_note_line` appends exactly where
+                // `write_note_line` did.
+                self.write_hoisted_note_line(indent_width, &comment.text);
             }
             // The child's prologue would print this stack again; the count lets
             // `write_note_line` drop exactly those lines and nothing deeper. Set
@@ -2029,9 +2053,13 @@ impl Serializer {
                 // Captured before this pair writes anything; see
                 // `close_captured_pending_line`.
                 let pending_before = self.pending_tag_insert_at;
-                // Compact key column is dash indent + `- ` (== indent_sequence
-                // for the default 2-step); a block body hangs off that line.
-                let key_base = indent_width + self.indent_sequence;
+                // Compact key column is where the first key landed on the dash line —
+                // dash indent + the two bytes of `- `. Not `indent_sequence`: that step
+                // moves a *block* body off its indicator, while this mapping's keys all
+                // share the column after `- `, and a deeper continuation line does not
+                // parse (`indent_sequence: 4` emitted `- ~: ~` over a 4-space second
+                // pair, refused as "mapping values are not allowed in this context").
+                let key_base = indent_width + 2;
                 // The first pair shares the dash line, so its own start is that line —
                 // everything after the last break written so far. Later pairs begin here.
                 let own_line_start = if pi == 0 {
@@ -3269,11 +3297,20 @@ fn is_block_container(node: &CustomNode) -> bool {
 /// `a_note_under_a_tag_header_is_lifted_above_it`, `notes_above_an_empty_container_all_survive`,
 /// `seq_item_value_with_standalone_comment_is_not_compacted`) passes both ways, so
 /// the blast radius was inferred rather than observed and the fear was unfounded.
+/// `sort_keys` writes a pair other than the source's first one first, and the lift is
+/// about the notes *between the header and the first pair written*: reading the
+/// insertion-order entry leaves the sorted-first entry's own stack in that gap, where
+/// the reader hands it to the container and the next emission hoists it above the
+/// header — the one-round failure of libFuzzer `yaml_roundtrip` crash-8d630b22, whose
+/// sorted order begins with a `?` key carrying a note stack that the unsorted order
+/// does not. The sorted pass re-orders `stripped` anyway, so moving the lifted entry
+/// to the front of the body copy costs nothing there.
 fn lift_first_entry_notes(
     pairs: &NodeMap<CustomNode, CustomNode>,
     meta: &NodeMeta,
     flow_style: bool,
     in_value_context: bool,
+    index: usize,
 ) -> (
     Option<NodeMap<CustomNode, CustomNode>>,
     Option<Vec<Comment>>,
@@ -3281,7 +3318,7 @@ fn lift_first_entry_notes(
     if !writes_block_header(meta, flow_style, in_value_context) {
         return (None, None);
     }
-    let Some((first_key, first_value)) = pairs.get_index(0) else {
+    let Some((first_key, first_value)) = pairs.get_index(index) else {
         return (None, None);
     };
     // A simple key's inline note is written on its own line above the pair when the
@@ -3311,7 +3348,7 @@ fn lift_first_entry_notes(
     // `IndexMap` never hands out `&mut K`, so take the entry out, strip its
     // notes, and put it back where it was.
     let mut stripped = pairs.clone();
-    stripped.shift_remove_index(0);
+    stripped.shift_remove_index(index);
     // `strip_leading_comment` also drops the `blank_before` decoration that the
     // lifted lines now carry, so the body copy goes through it rather than
     // through a bare `remove_leading_comment`.
@@ -3325,6 +3362,119 @@ fn lift_first_entry_notes(
     }
     stripped.shift_insert(0, worked, first_value.clone());
     (Some(stripped), Some(notes))
+}
+
+/// The text `sort_keys` orders a pair by: a scalar key's content, everything else as empty.
+///
+/// One definition for the sort, the first-entry lift's index and the anchor-order check,
+/// so the three cannot disagree about which pair is written first.
+fn sorted_key(key: Option<&CustomNode>) -> &str {
+    match key {
+        Some(CustomNode::Scalar { value, .. }) => value.as_ref(),
+        _ => "",
+    }
+}
+
+/// The entry a stable sort by [`sorted_key`] emits first: the first of the minimal keys.
+fn sorted_first_index(pairs: &NodeMap<CustomNode, CustomNode>) -> usize {
+    let mut first = 0;
+    let mut first_key = sorted_key(pairs.get_index(0).map(|(key, _)| key));
+    for (index, (key, _)) in pairs.iter().enumerate().skip(1) {
+        let key = sorted_key(Some(key));
+        if key < first_key {
+            first = index;
+            first_key = key;
+        }
+    }
+    first
+}
+
+/// The metadata a node carries, if it can carry any (`Alias` cannot).
+fn node_meta(node: &CustomNode) -> Option<&NodeMeta> {
+    match node {
+        CustomNode::Scalar { meta, .. }
+        | CustomNode::Mapping { meta, .. }
+        | CustomNode::Sequence { meta, .. }
+        | CustomNode::Null { meta } => Some(meta),
+        CustomNode::Alias { .. } => None,
+    }
+}
+
+/// Record every `&name` this node defines, in emission order.
+fn collect_anchor_names<'a>(node: &'a CustomNode, out: &mut Vec<&'a str>) {
+    if let CustomNode::Alias { .. } = node {
+        return;
+    }
+    if let Some(anchor) = node_meta(node).and_then(NodeMeta::anchor) {
+        out.push(anchor);
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs {
+                collect_anchor_names(key, out);
+                collect_anchor_names(value, out);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                collect_anchor_names(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Does this subtree use an alias whose `local` definition has not been emitted yet?
+///
+/// The walk follows the writer's own order — a node's header, then a mapping's pairs
+/// (key before value) or a sequence's items — because that is the order a reader binds
+/// `&name` in.
+fn alias_precedes_definition<'a>(
+    node: &'a CustomNode,
+    local: &[&str],
+    seen: &mut Vec<&'a str>,
+) -> bool {
+    if let CustomNode::Alias { name } = node {
+        let name = name.as_str();
+        return local.contains(&name) && !seen.contains(&name);
+    }
+    if let Some(anchor) = node_meta(node).and_then(NodeMeta::anchor) {
+        seen.push(anchor);
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => pairs.iter().any(|(key, value)| {
+            alias_precedes_definition(key, local, seen)
+                || alias_precedes_definition(value, local, seen)
+        }),
+        CustomNode::Sequence { items, .. } => items
+            .iter()
+            .any(|item| alias_precedes_definition(item, local, seen)),
+        _ => false,
+    }
+}
+
+/// Whether emitting these pairs in this order would put an alias above its definition.
+///
+/// YAML binds an alias to the nearest *preceding* `&name`, so sorting a mapping that both
+/// defines and uses one can emit text this engine's reader refuses ("found unknown
+/// anchor") — the corpus's `use: *x` over `~: {abase: &x 1}` shape, where `"use"` sorts
+/// before `"~"`. `sort_keys` keeps the source order for such a mapping rather than
+/// paying a refusal; only names defined inside this mapping's own pairs are checked,
+/// because a name defined around it is already in scope when the body starts.
+fn sort_breaks_anchor_order(order: &[(&CustomNode, &CustomNode)]) -> bool {
+    let mut local: Vec<&str> = Vec::new();
+    for (key, value) in order {
+        collect_anchor_names(key, &mut local);
+        collect_anchor_names(value, &mut local);
+    }
+    if local.is_empty() {
+        return false;
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    order.iter().any(|(key, value)| {
+        alias_precedes_definition(key, &local, &mut seen)
+            || alias_precedes_definition(value, &local, &mut seen)
+    })
 }
 
 /// Whether any note stack sits on the marker spine of `key`, without taking the

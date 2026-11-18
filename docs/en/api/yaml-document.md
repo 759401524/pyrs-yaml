@@ -55,7 +55,7 @@ to_yaml_with_options(
 - `indent_size` — Spaces per indent level (default: 2)
 - `explicit_start` — Add `---` at document start (default: False)
 - `explicit_end` — Add `...` at document end (default: False)
-- `sort_keys` — Sort keys alphabetically (default: False)
+- `sort_keys` — Sort keys alphabetically (default: False); a mapping that both defines and uses an anchor name locally keeps its source order, so sorting never writes an alias above the `&name` it resolves to
 - `note_placement` — Where a note goes when it cannot ride its line and an `&a` / `!tag` header line sits above it: `note_first` (default) writes it above the header, where a read files it, so the first emission settles; `header_first` keeps it inside the gap. Any other value is refused
 
 **Example:**

@@ -1317,11 +1317,15 @@ mod tests {
             prop_assert_eq!(&emitted, &to_yaml(&after), "not a fixed point: {:?}", emitted);
         }
 
+        /// `parse_with_options` takes `&str`, so arbitrary bytes can only reach it through a lossy
+        /// decode - the same door `fmt_pbt.rs` opens for the other four dialects. A panic is this
+        /// property's failure signal, which is why it asserts nothing and still charges its tier.
         #[test]
-        fn prop_no_crash_invalid_utf8(bytes in prop::collection::vec(any::<u8>(), 0..1024)) {
-            if let Ok(s) = std::str::from_utf8(&bytes) {
-                let _ = parse_with_options(s, true, Schema::Core, 1000, DuplicateKeys::AsIs);
-            }
+        fn prop_parse_never_panics_on_arbitrary_bytes(
+            bytes in prop::collection::vec(any::<u8>(), 0..1024),
+        ) {
+            let s = String::from_utf8_lossy(&bytes);
+            let _ = parse_with_options(&s, true, Schema::Core, 1000, DuplicateKeys::AsIs);
         }
 
         #[test]

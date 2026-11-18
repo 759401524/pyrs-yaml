@@ -412,19 +412,18 @@ fn write_notated_array(
         }
         out.push_str("  ");
         write_value_inner(out, it, false)?;
-        // The last element's line is the only one a note may finish: `1 # x,` is not TOML at all,
-        // and a note written after the comma is reported by the reader as the *next* element's
-        // leading note - so that placement moved the comment on every round and the text never
-        // settled. Anywhere but last, the note gets its own line after the element, which is where
-        // the reader hands it to the next one.
+        // The note that finished the element's line stays on it; the separator moves down instead,
+        // because `1 # x,` is not TOML. Writing the note after the comma kept the text stable but
+        // handed it to the *next* element: the reader reports a `# ` line above an element as that
+        // element's leading note, so the note changed owner on the first round (measured over the
+        // corpus, `p[2]` -> `p[3]`). A leading comma on its own line is accepted by this reader.
         match it.comment().filter(|c| !c.standalone) {
-            Some(c) if i + 1 == items.len() => {
+            Some(c) => {
                 out.push_str(" # ");
                 push_note_text(out, &c.text);
-            }
-            Some(c) => {
-                out.push_str(",\n  # ");
-                push_note_text(out, &c.text);
+                if i + 1 != items.len() {
+                    out.push_str("\n  ,");
+                }
             }
             None => {
                 if i + 1 != items.len() {
@@ -489,20 +488,17 @@ fn write_notated_table(
         push_scalar_key(out, k)?;
         out.push_str(" = ");
         write_value(out, v)?;
-        // A `#` runs to end of line, so the only member line a note can legitimately finish is the
-        // document's last one: `a = 1 # n,` is not TOML at all (measured: the reader rejects it), and
-        // writing the note *after* the comma - which is what this branch used to do - hands it to the
-        // next key on re-read, so the next emission moved it and the text never settled (proptest
-        // `prop_toml_writer_is_fixed_point`, 20 000 cases). Anywhere but last, the note gets its own
-        // line after the member, which is the position the reader reports it from.
+        // A `#` runs to end of line, so the note stays on the member's line and the separator moves
+        // down: `a = 1 # n,` is not TOML, but `a = 1 # n\n  ,` is. Writing the note after the comma
+        // instead kept the text stable while handing it to the next key's leading slot (the array
+        // arm's defect, one level in).
         match v.comment().filter(|c| !c.standalone) {
-            Some(c) if last => {
+            Some(c) => {
                 out.push_str(" # ");
                 push_note_text(out, &c.text);
-            }
-            Some(c) => {
-                out.push_str(",\n  # ");
-                push_note_text(out, &c.text);
+                if !last {
+                    out.push_str("\n  ,");
+                }
             }
             None => {
                 if !last {
@@ -1744,7 +1740,7 @@ mod tests {
     }
 
     #[test]
-    fn a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line() {
+    fn a_same_line_note_on_a_non_last_member_stays_on_its_member() {
         // The guard for the placement rule, and it has to build the AST rather than parse text:
         // no valid TOML produces this shape, because `#` runs to end of line and the comma that
         // TOML demands between members cannot sit inside a comment. So the only node carrying a
@@ -1752,11 +1748,12 @@ mod tests {
         // TOML) or a generator hands over - which is how `prop_toml_writer_is_fixed_point` found
         // it at 20 000 cases and could not find it at 256.
         //
-        // Emitting it as `b = 1, # n` reads back as `c`'s leading note, so the second emission
-        // moves the comment and the text never settles. Writing the note on its own line puts it
-        // exactly where the reader reports it from, which makes the first emission the fixed
-        // point - measured: `# n` comes back as `Comment { text: "n", standalone: true }` on the
-        // following key.
+        // This used to write the note on a line of its own above the next member, which settles
+        // but changes owner: the reader reports a `#` line above a member as that member's leading
+        // note, so `# n` came back on `c` instead of `b` (the array arm's defect, measured over
+        // the corpus as `p[2]` -> `p[3]`). The note stays on its member's line and the separator
+        // moves down instead - `b = 1 # n,` is not TOML, but `b = 1 # n\n  ,` is, and the reader
+        // reports the note back on `b`.
         let mut b = CustomNode::plain_scalar("1");
         b.set_comment(Comment {
             text: "n".into(),
@@ -1781,8 +1778,8 @@ mod tests {
 
         let out = to_toml(&root).unwrap();
         assert_eq!(
-            out, "t = [{\n  b = 1,\n  # n\n  c = 2\n}]\n",
-            "the note did not get its own line: {out}"
+            out, "t = [{\n  b = 1 # n\n  ,\n  c = 2\n}]\n",
+            "the note did not stay on its member's line: {out}"
         );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");

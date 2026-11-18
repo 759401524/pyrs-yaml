@@ -51,13 +51,17 @@ use pyrs_yaml_core::parser::yaml::Schema;
 ///
 /// `edit_yaml` is measured one precondition short of its harness on purpose. The target also needs a
 /// NUL separator, at least one complete two-byte record, a non-empty path list, and one verb that
-/// answers ok (`edit_yaml.rs:418-597`); this predicate asks only whether the document parses,
-/// because deciding the rest means duplicating the harness's own path walk and verb dispatch, and a
-/// second copy of that logic drifts silently. The gap was measured rather than assumed: with the
-/// harness instrumented to panic at each precondition and every seed replayed in its own process,
-/// 62 of 62 `edit_yaml` seeds reached an assertion, so the weaker predicate and the real one agree
-/// on today's corpus. A script whose every verb refuses would be counted reachable here while the
-/// target asserts nothing - ledger (jm) carries the replay method for re-checking that.
+/// answers ok (`fuzz/edit_driver.rs:384-593`, where the target's loop body lives since the fuzz
+/// target and this repository's replay share it); this predicate asks only whether the document
+/// parses, because deciding the rest means duplicating the harness's own path walk and verb
+/// dispatch, and a second copy of that logic drifts silently. The rest is not left to trust: the
+/// replay (`edit_scripts.rs`) requires every seed to apply at least one edit, measured 2026-11-18
+/// as a per-seed count (all 69 clear it; the minimum is the one accepted edit of each 1-record
+/// seed), so a script whose every verb refuses reddens there instead of sitting in the corpus while
+/// the edit tier never ran - that per-seed floor is the weaker form of the claim this predicate
+/// cannot make. Before the replay existed the gap was measured instead: with the harness
+/// instrumented to panic at each precondition and every seed replayed in its own process, 62 of 62
+/// seeds reached an assertion (ledger (jm) carries that method).
 const SKIP_ON_REFUSAL: [&str; 6] = [
     "yaml_roundtrip",
     "edit_yaml",
@@ -110,8 +114,8 @@ fn seeds_of(target: &str, dir: &Path) -> Vec<(String, Option<Vec<u8>>)> {
             let name = path.file_name()?.to_string_lossy().to_string();
             let raw = fs::read(&path).ok()?;
             // Only `edit_yaml` stores `document NUL script`: its harness parses up to that NUL and
-            // returns at `edit_yaml.rs:418` when the separator is absent, so a seed without one
-            // reaches no assertion however well its document parses. The other five targets are
+            // returns at `fuzz/edit_driver.rs:386` when the separator is absent, so a seed without
+            // one reaches no assertion however well its document parses. The other five targets are
             // handed the whole byte string, and splitting theirs would measure a shorter input than
             // the assertion ever sees.
             let document = if target == "edit_yaml" {
