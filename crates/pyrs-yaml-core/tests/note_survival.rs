@@ -17,10 +17,16 @@
 //! charge 60 + 2 + 1 and 11 + 3 note-bearing seeds. Inputs that are not valid UTF-8 or that the
 //! parser (correctly) rejects are skipped: they have no AST, so there is no note to keep.
 //!
-//! **This file is the conservation half; the settlement half is elsewhere and wider.**
+//! **The conservation half is here; the YAML spokes' settlement is charged here too.**
 //! `crates/pyrs-toml/tests/roundtrip_corpus.rs` and its JSON twin replay the same corpora for the
-//! fixed point on every `cargo nextest`. That is not the same claim: an emission that *drops* a note
-//! settles immediately, so only charging the tree's notes against the text sees the loss — the
+//! fixed point on every `cargo nextest`, and this file charges all three YAML spokes for it as
+//! well — every seed that parses, note-bearing or not, because a note-less input was the shape that
+//! escaped: crash-b3c57280's 20 bytes carry no note, so the conservation branch skipped them before
+//! settlement was ever asked. The other two spokes need the charge rather than inherit it:
+//! `edit_yaml`'s fuzz target does assert the fixed point, but nothing deterministic replays that
+//! corpus, and `parse_yaml`'s target asks nothing of a writer. Measured 2026-11-18, 161 + 69 + 4 =
+//! 234 seeds parse and settle. That is not the same claim as conservation: an emission that *drops*
+//! a note settles immediately, so only charging the tree's notes against the text sees the loss — the
 //! failure mode `(hw)` and `(hy)` name for TOML, where a lost line passed re-parseability, the fixed
 //! point and tree equality all at once.
 //!
@@ -111,9 +117,15 @@ fn document_bytes<'a>(dir: &Path, raw: &'a [u8]) -> &'a [u8] {
 #[test]
 fn every_note_in_the_seed_corpus_survives_one_emission() {
     let mut checked = 0usize;
+    let mut settled = 0usize;
     let mut failures = Vec::new();
 
     for dir in seed_dirs() {
+        // Every spoke is charged, not only the one whose target asks for it: `edit_yaml`'s target
+        // does assert the fixed point, but no test replays that corpus, so the demand lives in a
+        // sampler; `parse_yaml`'s asks only panic-freedom and refusal parity, so its parsed seeds
+        // are asked for nothing. Charging all three keeps a writer regression from sitting in a
+        // corpus that `cargo nextest` reads without ever asking the writer anything.
         let mut entries = std::fs::read_dir(&dir)
             .unwrap_or_else(|e| panic!("{} must be readable: {e}", dir.display()))
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -128,26 +140,12 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
             let Ok(node) = parse(src, Schema::Core) else {
                 continue; // a typed rejection has no AST to lose notes from
             };
-            let mut texts = Vec::new();
-            note_texts(&node, &mut texts);
-            if texts.is_empty() {
-                continue;
-            }
-            checked += 1;
             let emitted = to_yaml(&node);
-            let dropped: Vec<&String> = texts.iter().filter(|t| !emitted.contains(&***t)).collect();
-            if !dropped.is_empty() {
-                failures.push(format!(
-                    "{}: dropped {:?} from {src:?}, emitted {emitted:?}",
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
-                    dropped,
-                ));
-                continue;
-            }
-            // The same input also has to settle in one emission, which is the
-            // assertion the fuzz tier makes by replaying these files: checking it
-            // here too turns the corpus into a deterministic gate that runs on every
-            // `cargo nextest`, not only where libFuzzer happens to explore.
+            // Settlement is asked of every seed that parsed, not only the note-bearing ones:
+            // the assertion the fuzz tier makes by replaying these files is a property of the
+            // input, and crash-b3c57280 (no note anywhere) is the shape that escaped when it
+            // sat behind the conservation branch.
+            settled += 1;
             let again =
                 to_yaml(&parse(&emitted, Schema::Core).unwrap_or_else(|e| {
                     panic!("{}: emitted text must re-parse: {e}", path.display())
@@ -156,6 +154,20 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
                 failures.push(format!(
                     "{}: not a one-round fixed point: {emitted:?} -> {again:?}",
                     path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
+                ));
+            }
+            let mut texts = Vec::new();
+            note_texts(&node, &mut texts);
+            if texts.is_empty() {
+                continue;
+            }
+            checked += 1;
+            let dropped: Vec<&String> = texts.iter().filter(|t| !emitted.contains(&***t)).collect();
+            if !dropped.is_empty() {
+                failures.push(format!(
+                    "{}: dropped {:?} from {src:?}, emitted {emitted:?}",
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
+                    dropped,
                 ));
             }
         }
@@ -174,6 +186,13 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
     assert!(
         checked >= 55,
         "expected the seed corpus to carry notes for many inputs, got {checked} note-bearing seeds"
+    );
+    // Measured on 2026-11-18, 234 seeds across the three YAML spokes parse (161 `yaml_roundtrip`
+    // + 69 `edit_yaml` document halves + 4 `parse_yaml`), so the settlement charge is asked of 234
+    // inputs; 215 leaves slack for retirements without letting the charge go vacuous.
+    assert!(
+        settled >= 215,
+        "expected the YAML spokes to be charged for settlement, got {settled} seeds"
     );
 }
 

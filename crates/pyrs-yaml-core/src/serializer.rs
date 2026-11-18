@@ -214,6 +214,10 @@ struct Serializer {
     /// round (libFuzzer `edit_yaml` crash-35c8809a). Set by the alias writer, cleared by the pair
     /// and item writers before their value, so it names the last value the block wrote.
     tail_slot_is_alias: bool,
+    /// Count of note lines the next node's prologue would repeat: `write_sequence_item`
+    /// writes a simple item's stack above its dash and sets this to the lines the child
+    /// would otherwise emit, so the child's prologue stays the parent's function.
+    suppress_leading_notes: usize,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -569,6 +573,7 @@ impl Serializer {
             enclosing_header_start: None,
             note_first: matches!(options.note_placement, NotePlacement::NoteFirst),
             tail_slot_is_alias: false,
+            suppress_leading_notes: 0,
         }
     }
 
@@ -957,6 +962,13 @@ impl Serializer {
     /// round; writing the value's own null text first — `k: !- ~` — keeps the note where
     /// the AST has it and settles at once (crash-c5b367d3).
     fn write_note_line(&mut self, indent_width: usize, text: &str) {
+        // `write_sequence_item` writes a simple item's stack above its dash and
+        // counts the lines the child's prologue would repeat here. Exactly the
+        // child's own stack is skipped, so a stack deeper inside still lands.
+        if self.suppress_leading_notes > 0 {
+            self.suppress_leading_notes -= 1;
+            return;
+        }
         if note_text_to_write(text).is_empty() {
             return;
         }
@@ -1972,9 +1984,31 @@ impl Serializer {
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
         // normalised view — and a note-free item is the common case.
-        if compact && item.has_notes() {
-            for comment in item.leading_comments() {
+        //
+        // A scalar or flow item's stack goes above its dash; a block container keeps its own
+        // below. Below the dash, the note lines sit where the reader has not yet resolved the
+        // entry's value, so it buffers them until it does — and refuses past granit's
+        // `max_buffered_comment_events` (96): a scalar item carrying 100 leading notes emitted
+        // 100 lines below its dash and failed to re-parse ("too many consecutive comments
+        // before resolving collection entry", libFuzzer `yaml_roundtrip` crash-c5f32014). A
+        // block body's stack cannot move up: above the dash the reader reports it on the
+        // enclosing sequence, and the next emission hoists it a level. Empty containers stay
+        // out — their notes are demoted to inline by the writers below, since a bare `{}`/`[]`
+        // cannot hold a line of its own.
+        let hoisted_notes = item.has_notes()
+            && (compact || (!Self::is_empty_container(item) && !is_block_container(item)));
+        if hoisted_notes {
+            let stack = item.leading_comments();
+            for comment in stack {
                 self.write_note_line(indent_width, &comment.text);
+            }
+            // The child's prologue would print this stack again; the count lets
+            // `write_note_line` drop exactly those lines and nothing deeper. Set
+            // only here, so a note-free item stores nothing; a compact item never
+            // reaches the child's prologue, so its count stays zero and a later
+            // pair's key notes are not swallowed.
+            if !compact {
+                self.suppress_leading_notes = stack.len();
             }
         }
         // Where the dash line begins, after any note lines written above it: an item's own
@@ -2089,9 +2123,7 @@ impl Serializer {
                     self.note_line_above(enclosing_header.unwrap_or(dash_line_start), &c.text);
                 }
             }
-        } else if !Self::is_empty_container(item)
-            && (is_block_container(item) || item.leading_comment().is_some())
-        {
+        } else if !Self::is_empty_container(item) && is_block_container(item) {
             // An empty block container never takes this branch: `{}` / `[]` have no block
             // spelling, so a line of their own re-reads as a *flow* node and the next
             // emission inlines it — `pbt::tests::prop_mapping_order_preserved` caught that
@@ -2101,21 +2133,23 @@ impl Serializer {
             self.output.push('\n');
             let child_indent = indent_width + self.indent_sequence;
             // The first item of a headed chain hands the gap on to the container it starts,
-            // whose own first item may extend the chain. Only a block container consumes it;
-            // a scalar with a leading note would leave it for a sibling that does not own it.
-            if let Some(start) = enclosing_header
-                && is_block_container(item)
-            {
+            // whose own first item may extend the chain. Only a block container reaches this
+            // branch, and only a block container consumes it.
+            if let Some(start) = enclosing_header {
                 self.enclosing_header_start = Some(start);
             }
             // As for the mapping value above: the indicator a block scalar on this
             // line carries is relative to the dash, not to the item's own column.
+            // A body's own note stack stays below the dash: above it the reader reports
+            // the note on the enclosing sequence, and the next emission hoists it a level.
             self.serialize_node_internal(item, child_indent, indent_width, false, depth + 1)?;
         } else {
             // For simple items (including flow-style containers),
             // they go on the same line as the dash. Don't pass
             // indent_width to avoid extra indentation; a block body still
             // hangs off the dash line, so the base is the dash indent.
+            // A hoisted stack is already on the lines above, and the count set
+            // there keeps this call from printing it a second time.
             self.serialize_node_internal(item, 0, indent_width, false, depth + 1)?;
         }
 

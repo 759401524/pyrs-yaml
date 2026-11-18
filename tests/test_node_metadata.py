@@ -56,7 +56,11 @@ class TestNodeComment:
     def test_comment_sequence_item(self):
         doc = pyrs_yaml.parse("- a\n- b")
         Node(doc).find("$[1]").set_comment("second")
-        assert doc.to_yaml() == "- a\n- \n  # second\n  b\n"
+        # Above the dash, not below it: under the dash the reader has not resolved the
+        # item yet and buffers its notes, refusing past 96 of them.
+        assert doc.to_yaml() == "- a\n# second\n- b\n"
+        # A standalone note lives on the leading slot, not the inline one.
+        assert Node(pyrs_yaml.parse(doc.to_yaml())).find("$[1]").leading_comments == ["second"]
 
     @pytest.mark.known_residual("api:set-comment-container-owner")
     def test_set_comment_on_a_container_lands_on_its_last_child(self):

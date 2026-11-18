@@ -249,6 +249,10 @@ fn resolve_mapping_merges(
     // (Null / scalar / `<<: []` / `<<: [1, 2]` / `<<: {}`); then `{'<<': []}`
     // etc. round-trip instead of being silently dropped. Anything alias-bearing
     // or producing real merged pairs is consumed.
+    // The resolved clone a nested-`<<` source is collected from, kept so the orphan
+    // repair below can inline the body as the expansion produced it rather than the
+    // raw node it started from. See the push site.
+    let mut resolved_source: Option<CustomNode> = None;
     let merge_data = merge_index
         .and_then(|index| pairs.get_index(index))
         .and_then(|(_, merge_value)| match merge_value {
@@ -290,11 +294,11 @@ fn resolve_mapping_merges(
                 // reached by the recursive walk below (`resolve_merges_recursive` visits
                 // every mapping in the tree, and the merged values are re-walked at
                 // their own level), so it cannot be lost the way a top-level one can.
-                let mut resolved;
                 let source = if source_carries_merge_key(merge_value) {
-                    resolved = merge_value.clone();
+                    let mut resolved = merge_value.clone();
                     resolve_merges_recursive(&mut resolved, anchors, path, depth + 1, orphaned);
-                    &resolved
+                    resolved_source = Some(resolved);
+                    resolved_source.as_ref().unwrap_or(merge_value)
                 } else {
                     merge_value
                 };
@@ -347,9 +351,26 @@ fn resolve_mapping_merges(
     if merge_data.is_some()
         && let Some((key, value)) = merge_index.and_then(|index| pairs.get_index(index))
     {
-        for node in [key, value] {
-            if let Some(name) = node.anchor() {
-                orphaned.push((name.to_string(), node.clone()));
+        if let Some(name) = key.anchor() {
+            orphaned.push((name.to_string(), key.clone()));
+        }
+        // The value may have carried a `<<` of its own, which the expansion resolved on
+        // the clone the pairs were collected from. Inlining the raw node spelled that
+        // unresolved key into the output and the next read consumed it, so the two
+        // emissions differed and the round never settled (libFuzzer `yaml_roundtrip`
+        // crash-91652883, minimised to 19 bytes: `<<: &b` LF ` <<:` LF `  : *b`).
+        // Cloned lazily: an unresolved value is cloned only when it names a definition,
+        // which is what this site paid before the resolved body existed.
+        match resolved_source {
+            Some(body) => {
+                if let Some(name) = body.anchor() {
+                    orphaned.push((name.to_string(), body));
+                }
+            }
+            None => {
+                if let Some(name) = value.anchor() {
+                    orphaned.push((name.to_string(), value.clone()));
+                }
             }
         }
     }
@@ -636,11 +657,26 @@ fn collect_merge_data(
                         orphaned,
                     ),
                     CustomNode::Mapping { pairs: sub, .. } => {
+                        if let Some(name) = item.anchor() {
+                            orphaned.push((name.to_string(), item.clone()));
+                        }
+                        // The item mapping is the one container the expansion splices
+                        // away: its pairs travel as content, but an anchor on the mapping
+                        // itself is left with no node to sit on. A body whose own value
+                        // aliases that name (`<<:` LF `- &b` LF ` : *b`) emitted `*b`
+                        // with no definition anywhere — text our own reader refused
+                        // (libFuzzer `yaml_roundtrip` crash-0fae03be).
                         collect_inline_pairs(sub, pairs, &mut merged_pairs, orphaned);
                     }
                     _ => {
                         // Any other element type invalidates the whole merge
-                        // value: a partially applied sequence is not a merge.
+                        // value: a partially applied sequence is not a merge. The
+                        // whole node then leaves with the consumed entry — including
+                        // every anchor defined anywhere inside it — while the
+                        // document's own aliases may still name one, and the
+                        // emission carried `*b` with no `&b` left (libFuzzer
+                        // `yaml_roundtrip` crash-8baf41a3).
+                        collect_anchored_nodes(merge_value, orphaned);
                         return AnchoredPairs::new();
                     }
                 }
@@ -945,6 +981,110 @@ mod tests {
                 crate::serializer::to_yaml(&crate::parser::parse(&text, YamlSchema::Core).unwrap());
             assert_eq!(again, text, "expansion is not a fixed point for {yaml:?}");
         }
+    }
+
+    #[test]
+    fn an_orphan_repaired_definition_speaks_the_resolved_body() {
+        // libFuzzer `yaml_roundtrip` crash-91652883, minimised to 19 bytes. The merge
+        // consumes its own value node, while the pair it contributes still aliases the
+        // anchor that node defined -- so the orphan repair inlines the definition. It
+        // inlined the *raw* body, still carrying the nested `<<` the expansion had just
+        // resolved, and the next read resolved it: the first emission kept a `<<:` line
+        // the second dropped, so the round never settled.
+        let yaml = "<<: &b\n <<:\n  : *b\n";
+        let once = crate::serializer::to_yaml(&parse(yaml, YamlSchema::Core).unwrap());
+        assert_eq!(once, "~: &b\n  ~: *b\n");
+        let twice = crate::serializer::to_yaml(
+            &crate::parser::parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={once:?}")),
+        );
+        assert_eq!(twice, once, "the repaired definition is not a fixed point");
+    }
+
+    #[test]
+    fn a_repaired_definition_does_not_re_merge_on_the_next_read() {
+        // libFuzzer `yaml_roundtrip` crash-b3c57280, minimised to 20 bytes. The same raw
+        // body as crash-91652883, reached through a sequence item that merges the very
+        // anchor the consumed entry defined. Inlining the unresolved copy left `- <<:` in
+        // the emission, the next read consumed that key, and the item came back `{}` --
+        // `~: &b` LF `  - <<: *b` LF against `~: &b` LF `  - {}` LF.
+        let yaml = "<<: &b\n- <<: *b\n: *b";
+        let once = crate::serializer::to_yaml(&parse(yaml, YamlSchema::Core).unwrap());
+        assert_eq!(once, "~: &b\n  - {}\n");
+        let twice = crate::serializer::to_yaml(
+            &crate::parser::parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={once:?}")),
+        );
+        assert_eq!(
+            twice, once,
+            "the repaired definition re-merges on the next read"
+        );
+    }
+
+    #[test]
+    fn a_sequence_item_anchor_the_merge_splices_away_is_inlined() {
+        // libFuzzer `yaml_roundtrip` crash-0fae03be, minimised to 15 bytes. The merge
+        // source here is a sequence, so the anchor sits on the item mapping the
+        // expansion splices apart: its pairs travel as content, the node does not.
+        // Registering only the merge entry's own anchor left the emitted `*b` with no
+        // `&b` anywhere, which this reader refuses outright.
+        let yaml = "<<:\n- &b\n : *b\n";
+        let once = crate::serializer::to_yaml(&parse(yaml, YamlSchema::Core).unwrap());
+        let twice = crate::serializer::to_yaml(
+            &crate::parser::parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={once:?}")),
+        );
+        assert_eq!(
+            twice, once,
+            "the spliced item's definition is not a fixed point"
+        );
+    }
+
+    #[test]
+    fn an_invalidated_sequence_source_takes_its_anchors_through_the_repair() {
+        // libFuzzer `yaml_roundtrip` crash-8baf41a3, minimised to 21 bytes. One item
+        // that is not a mapping or an alias invalidates the whole merge source, so the
+        // sequence leaves the tree entire — the `&b` inside it included. The document's
+        // own `: *b` then emitted an alias with no definition, which this reader refuses.
+        let yaml = "<<:\n-\n- &b : *b\n: *b\n";
+        let once = crate::serializer::to_yaml(&parse(yaml, YamlSchema::Core).unwrap());
+        let twice = crate::serializer::to_yaml(
+            &crate::parser::parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={once:?}")),
+        );
+        assert_eq!(
+            twice, once,
+            "the invalidated source's definition is not a fixed point"
+        );
+    }
+
+    #[test]
+    fn a_tagged_merge_key_is_data_and_stays_so() {
+        // libFuzzer `yaml_roundtrip` crash-85764e37, minimised to 21 bytes. A merge
+        // whose source contributes `! <<` and `!G <<` keys emits both as data pairs.
+        // The reader folded those two against each other by the text alone, so the
+        // document came back as one pair — and the pair the writer had already emitted
+        // was gone. Both spellings are data keys: only an untagged plain `<<` merges.
+        let yaml = "<<:
+- ! <<:
+- !G <<:
+";
+        let once = crate::serializer::to_yaml(&parse(yaml, YamlSchema::Core).unwrap());
+        assert_eq!(
+            once,
+            "! <<: ~
+!G <<: ~
+"
+        );
+        let twice = crate::serializer::to_yaml(
+            &crate::parser::parse(&once, YamlSchema::Core).unwrap_or_else(|e| {
+                panic!(
+                    "emission failed to re-parse: {e}
+text={once:?}"
+                )
+            }),
+        );
+        assert_eq!(twice, once, "a tagged merge key did not survive the round");
     }
 
     #[test]

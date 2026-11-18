@@ -14946,3 +14946,144 @@ records for this host, not a term of this change; the enforcing image owns that 
 Closure: both seeds replay clean and the registry names none of them, which is the closure line on
 issues #732 and #733; closing them stays a separate, user-approved act, and this entry does not
 perform it.
+
+### (mc) A merge repair speaks the body it resolved (2026-11-18)
+
+Four archived artifacts, one blind spot: the expansion empties the merge entry's value because its
+pairs travel as content, and the repair that keeps an anchor defined there alive inlines whatever
+node the entry still holds. For four shapes that node was not what the expansion had read from.
+
+- **91652883** (19 bytes: `<<: &b` LF ` <<:` LF `  : *b`) - the value is a mapping that itself
+  merges. The expansion collected its pairs from a clone whose own `<<` had been resolved; the
+  repair inlined the unresolved copy, so the emission spelled `<<:` back as data, the next read
+  consumed it, and the two rounds never agreed. The resolved body is now kept (`resolved_source`)
+  and inlined by the repair, cloned lazily because a value without a nested `<<` is still moved as
+  it was.
+- **0fae03be** (15 bytes: `<<:` LF `- &b` LF ` : *b`) - the source is a sequence and the anchor sits
+  on an item mapping, the one container the expansion splices away. Its pairs travelled as content
+  and the anchor did not, so the emission carried `*b` with no `&b` anywhere: text this reader
+  refuses. The item-mapping arm registers the anchor before splicing.
+- **8baf41a3** (21 bytes: `<<:` LF `-` LF `- &b : *b` LF `: *b`) - an item that is neither scalar
+  nor mapping invalidates the whole source, because a partially applied sequence is not a merge. The
+  sequence then leaves entire with the consumed entry, every anchor inside it included. The
+  invalidated arm walks the source with `collect_anchored_nodes`.
+- **b3c57280** (20 bytes: `<<: &b` LF `- <<: *b` LF `: *b`) - the same unresolved body as 91652883,
+  reached through a sequence item that merges the anchor the consumed entry defined. Inlined raw,
+  the first emission kept `- <<: *b` under `~: &b`; the next read consumed that key and the item
+  came back `{}`, so the two rounds disagreed (`~: &b` LF `  - <<: *b` LF against `~: &b` LF
+  `  - {}` LF). The same `resolved_source` covers it: the repaired definition now inlines `- {}`.
+
+Gates: merge.rs gained `an_orphan_repaired_definition_speaks_the_resolved_body`,
+`a_repaired_definition_does_not_re_merge_on_the_next_read`,
+`a_sequence_item_anchor_the_merge_splices_away_is_inlined` and
+`an_invalidated_sequence_source_takes_its_anchors_through_the_repair`, each replaying the artifact's
+shape and asking the emission for the definition its alias names. `note_survival.rs`'s corpus walk
+asked settlement only of seeds carrying a note, which skipped all four of these shapes - none has a
+comment - so the deterministic suite never replayed the property libFuzzer had just falsified; it
+now charges every seed that parses across all three YAML spokes (161 `yaml_roundtrip` + 69
+`edit_yaml` document halves + 4 `parse_yaml`, measured 2026-11-18, floor 215). The other two
+spokes needed the charge rather than inheriting it: `edit_yaml`'s fuzz target asserts the fixed
+point but no test replays that corpus, and `parse_yaml`'s target asks nothing of a writer. The
+four seeds are archived under
+`fuzz/seeds/yaml_roundtrip/former-crash-*.seed` as minimisations of the artifacts (`91652883`'s
+artifact is 113 bytes with CRs under `target/audit/43156160019/`; the seed is the 19-byte
+reduction), not as copies of them. `cargo nextest run --all` 949 passed; `uv run pytest tests/ -q`
+4849 passed, 11 skipped; `quality_matrix.py --check-rows` puts the rows at 962 Rust `#[test]`, 337
+seeds of which 223 are `former-crash-*`; both clippy scopes clean. The 142 `former-crash-*.seed`
+files in `fuzz/seeds/yaml_roundtrip/` and the three artifacts this host still holds under
+`target/audit/*/artifacts/yaml_roundtrip/` (91652883 included) reach a fixed point through the
+rebuilt extension.
+
+Mutations, each `--no-fail-fast`, so the count is of the whole suite rather than of the tests a
+fail-fast run reached: inlining the unresolved value again reads 946 of 949 and reddens three
+tests - 91652883's and b3c57280's, plus the corpus walk, which names both seeds by their two
+emissions - so each archived seed is charged twice, by its pinned shape and by the corpus. Leaving
+the spliced item's anchor unregistered also reads 946 of 949 (its test, the anchor-graph property
+and the corpus walk); not walking the invalidated source reads 946 of 949 (the same three, with the
+corpus walk failing on 8baf41a3's emitted text as an unknown anchor, the refusal the fix exists to
+prevent).
+
+Cost, from one full gate run on this host (`RUSTUP_TOOLCHAIN` pinned, binary hashes differ from the
+baseline build, so these are code movements and pair with no other run's numbers):
+`parse_inline_merge` 361,588,346 → 361,537,100 (−0.01%) and `parse_anchors` 270,747,719 →
+271,442,492 (+0.26%), the second being the walk's own size. The walk runs only where a source is
+invalidated and the clone only where a source carries a `<<`.
+
+### (md) A tagged `<<` is data, and one predicate decides it (2026-11-18)
+
+**85764e37** (21 bytes: `<<:` LF `- ! <<:` LF `- !G <<:`) - one document, two answers to "is this
+key the merge marker". The writer asked the tag-aware predicate and emitted both keys as data pairs;
+the duplicate-key fold asked the text and the plain style alone, so `! <<` and `!G <<` folded
+against each other, the document came back as one pair, and the pair the writer had emitted was
+gone. Only an untagged plain `<<` merges, and the reader that said otherwise was a second copy of
+the rule.
+
+The fold now delegates to `yaml::merge::is_merge_key` (the one that requires
+`meta.tag().is_none()`), so the merge pass, the duplicate-key check and the writer's `write_pair`
+share one answer instead of three readings of it. The decision is pinned by
+`a_tagged_merge_key_is_data_and_stays_so` - both spellings emit as data and the emission re-reads as
+itself - beside the existing `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key`.
+
+Mutations, `--no-fail-fast`: dropping the tag test from the predicate reads 946 of 948 and reddens
+both tests. Either one alone would have been satisfied by a wrong rule - the look-alike test against
+a `!` marker, the round test against a predicate that happened to stay consistent - which is why the
+answer has one home rather than two.
+
+Cost: `parse_inline_merge` 361,588,346 → 361,537,100 (−0.01%) on this host. The predicate itself
+adds one tag test per `<<` candidate, and it deleted a duplicate rather than adding a scan.
+
+### (me) A sequence item's note stack rides above its dash (2026-11-18)
+
+**c5f32014** (562 bytes: an unresolved `<<: #b` entry followed by a stack of notes inside a nested
+sequence) - a noted item that took a line of its own put its stack under the dash, where the reader
+has not yet resolved the entry's value and buffers the notes until it does. granit refuses the 97th
+buffered note (`Options::max_buffered_comment_events`, default 96), so the writer's own output
+stopped re-parsing once a stack was long enough; 100 notes is the narrowest drawn length that fails.
+Under the dash the notes also read back onto the sequence rather than onto the item, so the emission
+was not a fixed point either.
+
+The writer now hoists a scalar or flow item's stack above its dash, where the reader takes the same
+lines back as the item's own notes at any length. The branch that gives an item a line of its own is
+now block containers only; it used to take any item carrying a legacy standalone note as well
+(`item.leading_comment().is_some()`), which is the shape that put a simple item's stack under its
+dash. A block container keeps its stack below, because above the dash the reader files it on the
+enclosing sequence, and an empty container keeps its own arm (its notes are demoted inline, since a
+bare `{}`/`[]` cannot hold a line of notes). A compact item already hoisted before this change - its
+`- key: value` line has no room for a stack - and the compact branch never reaches the child's
+prologue, so it needs no count.
+
+The mechanism is a count, not a flag: `write_sequence_item` writes the stack, then sets
+`suppress_leading_notes = stack.len()`, and `write_note_line` decrements-and-returns at its top, so
+exactly the child's own prologue lines are skipped and a stack deeper inside still lands. The
+child's prologue stays byte-for-byte the parent's, which is the point: every variant that passed the
+decision through `serialize_node_internal`'s signature or a new field moved `serialize_block` by
++0.94% to +6.05%, and the clone-and-strip variant that avoided the signature read +0.36% there and
++4.00% on `serialize_note_flow`, whose fixture's flow items carry notes. The count is set only under
+`if !compact`, because a compact item never reaches the child's prologue and a stray count would
+swallow the next pair's key notes.
+
+Gates: `a_note_stack_on_a_sequence_item_is_written_where_it_reads_back` builds the 100-note
+document, asserts the stack above the dash and the fixed point, then replays the seed; ir_fixtures'
+`the_note_flow_fixture_reaches_every_answer_the_writer_gives` now demands the noted member (`over:`
+LF `  # lead` LF `  - x`), the shape the demotion exists to measure; and
+`tests/test_node_metadata.py::test_comment_sequence_item` pins `- a` LF `# second` LF `- b` plus the
+re-read `leading_comments == ["second"]`, where it used to accept the below-dash line the reader
+then handed to the sequence. The seed is archived as `former-crash-c5f32014.seed` and replayed with
+the 141-file corpus above.
+
+Mutations, `--no-fail-fast`: disabling the hoist reads 928 of 948 - 20 red, among them the new test,
+both ir_fixtures note_flow premises,
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission`, the anchor-graph property,
+five property tests and the parser's own note-ownership tests
+(`stacked_comments_above_a_key_all_survive`, `comment_line_ownership_is_stable_across_rounds`). The
+placement rule is the most-tested thing in this entry for exactly the reason the crash shows: it is
+a reader-side attribution, not a formatting preference.
+
+Cost: `serialize_block` 11,071,353 → 11,053,367 (−0.16%) and `serialize_note_flow` 60,237,908 →
+60,533,902 (+0.49%), the second inside the 0.5% line by 40 instructions across three samples and the
+price of writing each hoisted stack once and counting it - the alternative designs above paid 8×
+that in the same scenario. `safe_dump_small` (+0.24%) and `safe_dump_medium` (+0.57%, the one row
+past the line) belong to `direct_dump`, a writer this change does not touch; `(mb)` already records
+that movement as this host's build-layout distance, and this run's own note says why the image owns
+the verdict: the tree sits −1.02% below the `ubuntu24` row's floor (110,233,946). Every other
+scenario is inside ±0.26%.

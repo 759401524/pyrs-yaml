@@ -1565,3 +1565,56 @@ fn a_merge_that_names_its_own_mapping_settles_in_one_round() {
         "not a fixed point in one round: {one:?} -> {again:?}"
     );
 }
+
+/// libFuzzer `yaml_roundtrip` crash-c5f32014: a note stack on a sequence item, and the first
+/// length that made the writer's own output unreadable.
+///
+/// A noted item that took a line of its own put the stack *under* the dash, where the reader has
+/// not yet resolved the entry's value and buffers the notes until it does. granit refuses the 97th
+/// buffered note (`max_buffered_comment_events`, default 96), so the emission stopped re-parsing
+/// once the stack was long enough - 100 notes is the narrowest drawn length that fails. Above the
+/// dash the same stack is read back as the item's own notes at any length, which is where the
+/// writer puts it now (the merge-flavoured original of this shape is the seed below; the literal
+/// 100-note document is the minimized body of the same defect).
+#[test]
+fn a_note_stack_on_a_sequence_item_is_written_where_it_reads_back() {
+    let mut src = String::from(
+        "- a
+",
+    );
+    for n in 0..100 {
+        src.push_str(&format!(
+            "#c{n}
+"
+        ));
+    }
+    src.push_str(
+        "- b
+",
+    );
+    let one = emit(&src);
+    assert!(
+        one.contains(
+            "# c99
+- b
+"
+        ),
+        "the stack belongs above its item's dash, where the reader takes any length: {one:?}"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+
+    let seed = std::str::from_utf8(include_bytes!(
+        "../../../fuzz/seeds/yaml_roundtrip/former-crash-c5f32014.seed"
+    ))
+    .expect("seed is utf-8");
+    let one = emit(seed);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "the artifact's shape does not settle in one round: {one:?} -> {again:?}"
+    );
+}

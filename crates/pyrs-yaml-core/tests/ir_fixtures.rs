@@ -676,7 +676,7 @@ fn the_note_flow_fixture_reaches_every_answer_the_writer_gives() {
     );
     // Braces abandoned for the member carrying two notes: the walk said no and the container demoted.
     assert!(
-        once.contains("over:\n  - \n") && !once.contains("over: ["),
+        once.contains("over:\n  # lead\n  - x") && !once.contains("over: ["),
         "the two-note member no longer forces the demotion, so the block path is unmeasured:\n{once}"
     );
     // A `?` marker inside braces, with the note lifted onto the marker rather than into the body.
