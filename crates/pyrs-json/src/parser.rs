@@ -1543,6 +1543,7 @@ fn quoted_or_plain(value: Cow<'_, str>) -> CustomNode {
     if needs_quotes(&value)
         || (json5_could_be_typed(&value)
             && (json_number_text(&value)
+                || crate::writer::is_json5_number(&value)
                 || !matches!(Schema::Json5.resolve(&value), YamlType::Str(_))))
     {
         CustomNode::double_quoted_scalar(value)

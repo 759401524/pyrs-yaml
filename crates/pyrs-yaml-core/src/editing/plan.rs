@@ -226,6 +226,17 @@ fn set_path_mapping_key(
                 Some(k) => k,
                 None => key_node.clone(),
             };
+            // The document's own `<<:` may hold a null or a scalar and stay a pair, but a value the
+            // reader treats as a merge source is consumed instead of kept, so writing one here
+            // would hand back a tree without the pair - silently for the caller, and a lost round
+            // for `edit_yaml` (crash-32aeadbf: a move onto `<<:` emitted `<<: *x`, and the next
+            // read had no such key). The pair the caller would get is a different key than the one
+            // they named, so this is refused rather than requoted.
+            if crate::parser::yaml::merge::is_merge_key(&stored_key)
+                && merge_consumes_value(&new_value)
+            {
+                return Err("cannot-edit-merge-key".to_string());
+            }
             let (old_key_start, old_value_end, old_indent) = pairs
                 .get_index(idx)
                 .map(|(k, v)| {
@@ -360,12 +371,30 @@ fn set_path_sequence_index(
 /// [`resolved_by_a_yaml_1_1_reader`](pyrs_schema::schema::resolved_by_a_yaml_1_1_reader) rather
 /// than [`needs_quotes`](pyrs_schema::schema::needs_quotes) as the conversion layer does. Node
 /// identity ignores style, so the duplicate-key check in `rename_path` is unaffected.
+/// A key an edit creates is emitted with the style that makes the reader hand back that same key.
+/// A name a YAML 1.1 reader would resolve is emitted quoted so it stays a string; `<<` joins that
+/// list for a different reader rule: a plain `<<` pair is the merge operator when its value is an
+/// alias or a container, and the next read consumes the line instead of keeping the key. Measured
+/// with `edit_yaml` (crash-32aeadbf): a moved pair landed as `<<: *x`, and the round after had no
+/// such pair at all. The caller named a data key, and the quoted spelling is that key.
 fn named_key_node(name: &str) -> CustomNode {
-    if pyrs_schema::schema::resolved_by_a_yaml_1_1_reader(name) {
+    if name == "<<" || pyrs_schema::schema::resolved_by_a_yaml_1_1_reader(name) {
         CustomNode::double_quoted_scalar(name.to_string())
     } else {
         CustomNode::plain_scalar(name.to_string())
     }
+}
+
+/// Whether a value written under a plain `<<` is a merge source the reader consumes rather than a
+/// pair it hands back. Aliases, mappings and sequences are sources; nulls and scalars are data and
+/// stay. The reader also keeps an alias-free source that yields nothing (`<<: {}`, `<<: []`), which
+/// this refuses with the rest - one predicate, and the pair a caller cannot write is one the reader
+/// would not have kept as the key they named.
+fn merge_consumes_value(value: &CustomNode) -> bool {
+    matches!(
+        value,
+        CustomNode::Alias { .. } | CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+    )
 }
 
 /// [`named_key_node`] for a rename: the entry keeps its place, so it also keeps the properties that
@@ -1401,6 +1430,40 @@ mod tests {
 
     fn segments(key: &str) -> Vec<Segment<'static>> {
         vec![Segment::Key(Cow::Owned(key.to_string()))]
+    }
+
+    /// A destination named `<<` is a data key, not the merge operator. Written plain, the pair an
+    /// edit lands there (`<<: *x`) is consumed by the next read and the moved entry is gone
+    /// (libFuzzer `edit_yaml` crash-32aeadbf). A key the document already holds is refused instead:
+    /// requoting it would hand the caller a different key than the `<<:` the document spells.
+    #[test]
+    fn a_destination_named_like_the_merge_operator_stays_a_data_key() {
+        let source = "list:\n  - 1:\n  - &x 0\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        move_path(&mut node, &segments("use"), &segments("<<"), source, None)
+            .expect("moving onto a key named << is representable");
+        let emitted = to_yaml(&node);
+        assert!(
+            emitted.ends_with("\"<<\": *x\n"),
+            "the destination is the quoted key: {emitted:?}"
+        );
+        let again = parse(&emitted, Schema::Core).expect("the emission parses");
+        assert_eq!(to_yaml(&again), emitted, "not a fixed point: {emitted:?}");
+        assert!(
+            crate::editing::navigate(&again, &segments("<<")).is_ok(),
+            "the key survives the re-read: {emitted:?}"
+        );
+
+        // The same destination with a `<<:` pair already in the document: that pair is a data key
+        // while its value is a null, and writing a merge source into it would drop the key on the
+        // next read, so the edit is refused and nothing moves.
+        let source = "list:\n  - 1:\n  - &x 0\nuse: *x\n<<:\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let before = to_yaml(&node);
+        let error = move_path(&mut node, &segments("use"), &segments("<<"), source, None)
+            .expect_err("a merge source under `<<` is not a pair the reader keeps");
+        assert_eq!(error, "cannot-edit-merge-key");
+        assert_eq!(to_yaml(&node), before, "refusing changes nothing");
     }
 
     /// The shape `edit_yaml` found: the verb succeeded, and the text it wrote named an anchor that
