@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 956 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 959 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 331 seeds of which 217 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 155 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 334 seeds of which 220 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 155 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -825,7 +825,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (217 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (220 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 
