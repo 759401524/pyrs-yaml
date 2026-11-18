@@ -15206,3 +15206,45 @@ charge in `events_replay.rs`.
 Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
 and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
 `scripts/quality_matrix.py --check-rows` stays at 963.
+
+### (mk) The JSON note gate asked only that a note appear, not where (2026-11-18)
+
+`crates/pyrs-json/tests/corpus_notes.rs` flattened every note the tree carried and asserted the
+flattened text occurred somewhere in the emitted document. A writer that re-homed a note onto
+another key passes that: the text is in the document, under the wrong member. This is the YAML
+family's re-homing defect class, and it was invisible here because presence was the whole claim.
+
+The walk now re-reads each emission with the dialect's own reader and compares multisets of
+`(path, text)`: a mapping key and its value share one segment (the slot is not part of the claim),
+a sequence item takes its index, a container key collapses to `?`. Presence follows from placement,
+so it is not asserted twice - the separate `contains` oracle is gone rather than kept beside a
+stricter one that implies it. A re-read the dialect refuses is a panic naming the seed, the same
+reading `roundtrip_corpus.rs` gives.
+
+Measured 2026-11-18: 46 seeds over the three corpora x 2 comment-capable dialects is 92 trials, 72
+accepted documents, 34 note-bearing, 68 placements compared - 46 from `json_events_replay`, 16 from
+`json_roundtrip`, 6 from `parse_json` - and every one matches: a coverage gap, not a defect.
+`MIN_PLACED_TRIALS` is 56, which the replay and round-trip corpora clear together (62) and neither
+clears alone (46 and 16), while `parse_json`'s removal is caught by the two existing floors -
+measured: "the corpus only drove 62 accepted documents; expected at least 66".
+
+Both asserts were made to fire, then reverted. Moving each trial's first note onto a sibling
+member before the comparison, which is what a re-homing writer does to the re-read tree, reddens
+with "a note left its node" and the two multisets. Deleting `emit_inline_comment(node, &mut out)`
+from `to_jsonc_text` reddens on `json_events_replay/shape-root-line-note.seed [jsonc/compact]`,
+the root's line-end slot - the claim the file already carried, re-verified against the stricter
+oracle.
+
+The generative tiers are still presence-only (`json_missing_notes`, `yaml_missing_notes`), and so
+are the TOML and YAML corpus walks (`note_survival.rs` filters on `emitted.contains`), so a shape a
+generator draws or a corpus outside JSON still cannot see a re-homed note. That is left open here:
+each is another crate's oracle and needs its own measurement of what placement the generated trees
+already satisfy.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The first run of the suite read one failure, `test_extension_freshness`, because
+the source mutation that re-verified the root-note claim touched `crates/pyrs-json/src/writer.rs`
+and left its mtime newer than the loaded extension; the content was restored, the extension
+rebuilt, and the suite re-run.
+The test count is unchanged - one test replaced another - so the matrix's `--check-rows` gate
+stays at 963.
