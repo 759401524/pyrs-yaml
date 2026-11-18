@@ -30,13 +30,15 @@
 //! failure mode `(hw)` and `(hy)` name for TOML, where a lost line passed re-parseability, the fixed
 //! point and tree equality all at once.
 //!
-//! **Not charged here, and why.** The three JSON corpora (`json_roundtrip` 16 seeds,
-//! `json_events_replay` 15, `parse_json` 6) share one byte string across `from_json`, `from_jsonc`
+//! **Not charged here, and why.** The three JSON corpora (`json_roundtrip` 17 seeds,
+//! `json_events_replay` 22, `parse_json` 7) share one byte string across `from_json`, `from_jsonc`
 //! and `from_json5`, and only the latter two record a note — but strict `to_json_text` has nowhere to
-//! put it, so a conservation assertion written against that emission would fail by design. A JSONC
-//! conservation half has to compare against `to_jsonc_text`, which is a different claim from the one
-//! this file makes and is left unbuilt rather than quietly folded in. `parse_schema` holds one seed
-//! and has no comment vocabulary at all.
+//! put it, so a conservation assertion written against that emission would fail by design. That half
+//! of the invariant is not missing, it is charged where the emission can carry the note:
+//! `crates/pyrs-json/tests/corpus_notes.rs` walks the committed JSON corpora through both dialects in
+//! both shapes and compares against `to_jsonc_text` / `to_json5_text`, so a note the JSONC writer
+//! drops is a red run there rather than a gap here. `parse_schema`'s seeds are schema documents, and
+//! a schema has no comment vocabulary at all.
 //!
 //! **What this gate cannot see, stated because a green check invites trust in it.**
 //! The measure is the note the *reader recorded*, so a note lost during ingest is
@@ -102,8 +104,8 @@ fn seed_dirs() -> Vec<PathBuf> {
 ///
 /// `edit_yaml` entries are `document NUL script`: the fuzzer splits them the same way, so charging
 /// the whole buffer would ask the YAML parser to read a script as content and reject the input,
-/// which the loop above would then skip. Measured 2026-11-02: all 31 seeds hold a NUL, **none** of
-/// the 31 parses whole, and cutting at the first NUL yields 31 documents — an unsplit walk would not
+/// which the loop above would then skip. Measured 2026-11-18: all 69 seeds hold a NUL, **none** of
+/// the 69 parses whole, and cutting at the first NUL yields 69 documents — an unsplit walk would not
 /// have failed, it would have found nothing, which is the worse outcome for a coverage gate.
 fn document_bytes<'a>(dir: &Path, raw: &'a [u8]) -> &'a [u8] {
     if dir.file_name().is_some_and(|name| name == "edit_yaml") {

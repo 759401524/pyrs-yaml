@@ -25,8 +25,14 @@
 //!
 //! Deleting the root-note call from either compact entry point reddens this file on
 //! `shape-root-line-note.seed`, naming that dialect and shape. The seed was added with this file:
-//! no other document in either corpus held the root's line-end slot, the one position no member
-//! loop reaches.
+//! no other document in `json_events_replay` or `json_roundtrip` held the root's line-end slot,
+//! the one position no member loop reaches.
+//!
+//! All three JSON corpora are walked, not only the two named above. `parse_json` was the one no
+//! deterministic test read — its fuzz target asks only panic-freedom and refusal parity — and two
+//! of its seeds (`jsonc-comments`, `former-crash-comment-feff`) carry notes, so walking it costs a
+//! read and closes the gap rather than adding a claim. It is also what moves the floors: without it
+//! the walk accepts 62 documents with 31 note-bearing, and the floors below sit above both.
 
 use pyrs_ast::ast::CustomNode;
 use pyrs_json::{
@@ -39,11 +45,13 @@ use pyrs_json::{
 /// `MIN_PARSED_DOCUMENTS` counts seed-and-dialect trials a reader accepted — the documents the
 /// writer claims run on. `MIN_NOTE_BEARING_DOCUMENTS` counts the accepted trees that actually
 /// carry a note, so it is the floor under the comparison itself; without it, a corpus of note-free
-/// seeds would drive every trial and prove nothing. Measured: 36 seeds over the two corpora x 2
-/// comment-capable dialects is 72 trials, 56 accepted documents, 26 of them note-bearing. Both
-/// floors sit below those numbers on purpose — slack for a seed being retired, not targets to hit.
-const MIN_PARSED_DOCUMENTS: usize = 38;
-const MIN_NOTE_BEARING_DOCUMENTS: usize = 15;
+/// seeds would drive every trial and prove nothing. Measured 2026-11-18: 46 seeds over the three
+/// corpora x 2 comment-capable dialects is 92 trials, 72 accepted documents, 34 of them
+/// note-bearing. Both floors sit between those numbers and what the first two corpora alone drive
+/// (62 accepted, 31 noted), so dropping `parse_json` is a red run rather than a quietly smaller
+/// walk, while a single seed being retired still passes.
+const MIN_PARSED_DOCUMENTS: usize = 66;
+const MIN_NOTE_BEARING_DOCUMENTS: usize = 32;
 
 fn seeds(corpus: &str) -> Vec<(String, String)> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -134,10 +142,11 @@ fn every_note_the_corpus_tree_keeps_reaches_a_comment_writer() {
     ];
     let mut parsed = 0usize;
     let mut noted = 0usize;
-    // Both committed JSON corpora: the replay corpus holds the note-slot shapes (a note after a
-    // comma, around a separator, in every slot), the round-trip corpus the comment-only, block and
-    // JSON5-spelling documents. Neither alone spells the shapes the other does.
-    for (corpus, name, text) in ["json_events_replay", "json_roundtrip"]
+    // All three committed JSON corpora: the replay corpus holds the note-slot shapes (a note after
+    // a comma, around a separator, in every slot), the round-trip corpus the comment-only, block
+    // and JSON5-spelling documents, and the parse corpus the two small accepted documents its
+    // target replayed without ever asking a writer anything.
+    for (corpus, name, text) in ["json_events_replay", "json_roundtrip", "parse_json"]
         .into_iter()
         .flat_map(|corpus| {
             seeds(corpus)

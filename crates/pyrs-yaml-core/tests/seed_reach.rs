@@ -27,6 +27,13 @@
 //! The registry is a plain-text list (`.ci/seed-reach.txt`), one `target seedname` line per
 //! unreachable seed: this crate links no JSON parser, and adding one to measure a corpus property
 //! would cost more than the measurement is worth.
+//!
+//! The set of targets read is checked against the corpus, not trusted: `fuzz/seeds` is the
+//! authority, and `every_seed_corpus_is_walked_or_explained` refuses a directory that is neither in
+//! `SKIP_ON_REFUSAL` nor in `EXPLAINED_ABSENT`. Measured 2026-11-18: nine seed directories, six
+//! walked and three explained. Without that pair a tenth target would replay clean and reach no
+//! assertion - the exact hole this file exists to close - while every number here stayed green,
+//! because a hand-written list cannot notice a corpus it never heard of.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -37,14 +44,10 @@ use pyrs_yaml_core::parser::yaml::Schema;
 
 /// The targets that skip their whole body on a typed refusal.
 ///
-/// `json_events_replay` is absent on purpose: its `(Err, Err)` arm asserts that the two walks refuse
-/// with the same message, so a refusal is the claim it makes. `parse_schema` holds its result in
-/// `let _ =`, which leaves "no panic on any input" as the assertion every seed does reach.
-/// `parse_yaml` is absent for the opposite reason: its body asks something on both arms, the
-/// refusal arm compares the two doors' messages, so no seed can replay it blind. `parse_json` and
-/// `parse_toml` are not like those: both loop over the dialects (or the two TOML gates) and
-/// `continue` when a parse refuses, so a seed no dialect accepts runs no writer and asserts
-/// nothing - the same hole the round-trip targets have, which is why they are listed here.
+/// Why the three in `EXPLAINED_ABSENT` need no reach check lives there, next to the list that keeps
+/// them from being silently forgotten. `parse_json` and `parse_toml` are here for the reason the
+/// round-trip targets are: both loop over the dialects (or the two TOML gates) and `continue` when a
+/// parse refuses, so a seed no dialect accepts runs no writer and asserts nothing.
 ///
 /// `edit_yaml` is measured one precondition short of its harness on purpose. The target also needs a
 /// NUL separator, at least one complete two-byte record, a non-empty path list, and one verb that
@@ -63,6 +66,15 @@ const SKIP_ON_REFUSAL: [&str; 6] = [
     "parse_json",
     "parse_toml",
 ];
+
+/// The seed corpora this gate does not walk, each for the reason its target needs no reach check.
+///
+/// Kept separate from the doc comment above so the derivation below can refuse a corpus that is in
+/// neither list: `json_events_replay` asserts that both walks refuse with the same message on its
+/// `(Err, Err)` arm, so a refusal is the claim it makes; `parse_yaml` compares the two doors'
+/// messages on its refusal arm, so no seed replays it blind; `parse_schema` holds its result in
+/// `let _ =`, which leaves "no panic on any input" as the assertion every seed does reach.
+const EXPLAINED_ABSENT: [&str; 3] = ["json_events_replay", "parse_schema", "parse_yaml"];
 
 fn reaches(target: &str, document: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(document) else {
@@ -255,6 +267,80 @@ fn registered_unreachable_seeds_equal_the_measured_set() {
         assert!(
             !seeds_of(target, &corpus_root().join(target)).is_empty(),
             "{target} carries no committed seed, so its unreachable set was never measurable"
+        );
+    }
+}
+
+/// Every seed corpus is either walked here or explained, and every name in those lists still names
+/// a target with seeds.
+///
+/// `SKIP_ON_REFUSAL` and `EXPLAINED_ABSENT` are hand-written while `fuzz/seeds` is the authority,
+/// so a new target that arrives with a corpus would be walked by nothing and reported by nothing -
+/// the same blindness as a stale `.ci/seed-reach.txt`, one level up. The opposite direction costs
+/// the same to check and fails the same way in practice: a renamed target leaves a name behind that
+/// matches no directory, and the list keeps reading as coverage of something that moved.
+#[test]
+fn every_seed_corpus_is_walked_or_explained() {
+    let root = corpus_root();
+    let mut corpora: Vec<String> = fs::read_dir(&root)
+        .unwrap_or_else(|error| panic!("{} must be readable: {error}", root.display()))
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    corpora.sort();
+    assert!(
+        !corpora.is_empty(),
+        "no seed corpus found under {}, so this check measured nothing",
+        root.display()
+    );
+
+    let unclassified: Vec<&str> = corpora
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !SKIP_ON_REFUSAL.contains(name) && !EXPLAINED_ABSENT.contains(name))
+        .collect();
+    assert!(
+        unclassified.is_empty(),
+        "seed corpora neither walked nor explained: {unclassified:?} - add each to SKIP_ON_REFUSAL \
+         if its target skips on a refusal, or to EXPLAINED_ABSENT with the reason it needs no \
+         reach check"
+    );
+
+    let named: Vec<&str> = SKIP_ON_REFUSAL
+        .iter()
+        .chain(EXPLAINED_ABSENT.iter())
+        .copied()
+        .collect();
+    let missing: Vec<&str> = named
+        .iter()
+        .copied()
+        .filter(|name| !corpora.iter().any(|corpus| corpus == name))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "targets named here with no seed corpus: {missing:?} - a name kept after its corpus moved \
+         reads as coverage of nothing"
+    );
+    let targetless: Vec<&str> = corpora
+        .iter()
+        .map(String::as_str)
+        .filter(|name| {
+            !Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fuzz/fuzz_targets")
+                .join(format!("{name}.rs"))
+                .is_file()
+        })
+        .collect();
+    assert!(
+        targetless.is_empty(),
+        "seed corpora with no target source: {targetless:?} - their inputs replay nothing"
+    );
+    for name in SKIP_ON_REFUSAL {
+        assert!(
+            !EXPLAINED_ABSENT.contains(&name),
+            "{name} is both walked and explained, and whichever list a reader believes decides the \
+             answer"
         );
     }
 }

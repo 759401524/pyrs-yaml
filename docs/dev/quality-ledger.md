@@ -15087,3 +15087,68 @@ past the line) belong to `direct_dump`, a writer this change does not touch; `(m
 that movement as this host's build-layout distance, and this run's own note says why the image owns
 the verdict: the tree sits −1.02% below the `ubuntu24` row's floor (110,233,946). Every other
 scenario is inside ±0.26%.
+
+### (mg) The JSON note gate read two corpora while its target replayed three (2026-11-18)
+
+`crates/pyrs-json/tests/corpus_notes.rs` walked `json_events_replay` and `json_roundtrip`. The third
+JSON corpus, `parse_json`, was read by no deterministic test at all: its fuzz target asks only
+panic-freedom and refusal parity, and the walk that does assert note conservation never opened the
+directory. Two of its seven seeds spell notes (`jsonc-comments`, `former-crash-comment-feff`), so
+the walk now takes all three corpora: 46 seeds x 2 comment-capable dialects, 92 trials, 72 accepted
+documents and 34 of them note-bearing, against 62 and 31 for the first two.
+
+The floors are what make the third corpus load-bearing, because the conservation assertions pass
+either way - a lost note is the only thing they look for, and neither corpus in isolation loses one.
+Set at 66 and 32, between the two measurements, dropping `parse_json` reddens the walk with "the
+corpus only drove 62 accepted documents; expected at least 66", and with the first floor relaxed it
+reddens again with "only 31 accepted documents carried a note; expected at least 32". Both are real
+runs; the file was restored before the tree was measured whole.
+
+`note_survival.rs` carried the other half of the claim, and it had gone stale: its "not charged
+here" paragraph described a JSONC conservation half as "left unbuilt" and gave the three corpora 16,
+15 and 6 seeds. The half exists in `corpus_notes.rs` and the corpora hold 17, 22 and 7 today, so the
+paragraph now points at the file that makes the claim and states the counts it measures. Its
+`parse_schema` sentence said "one seed"; that corpus holds 19 schema documents, and the claim with
+work left in it is the one kept: a schema has no comment vocabulary.
+
+Two counts in the neighbouring gates had drifted the same way, and both were re-measured rather than
+left to their dates: `events_replay.rs` said 21 seeds drove 63 pairs and replayed 35, and the corpus
+is 22 seeds, 66 pairs and 36 replays; `note_survival.rs` said all 31 `edit_yaml` seeds hold a NUL
+and none parses whole, and all 69 do and none does. The properties those sentences argue for still
+hold - the split is still what makes that corpus a corpus - so both now state the reading and its
+date.
+
+Readings on this tree: `cargo nextest run --all` 949 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped.
+
+### (mh) The seed-reach gate trusted a target list the corpus could outgrow (2026-11-18)
+
+`crates/pyrs-yaml-core/tests/seed_reach.rs` derives `.ci/seed-reach.txt` from the six targets named
+in `SKIP_ON_REFUSAL`. `fuzz/seeds` is the authority for which targets exist, and nothing compared
+the two: a tenth target arriving with a corpus would be walked by nothing and reported by nothing,
+and the registry would stay empty and green - the same blindness as a stale `.ci/seed-reach.txt`,
+one level up. The reverse costs the same to check and fails the same way in practice: a renamed
+target leaves a name that matches no directory, and the list keeps reading as coverage of something
+that moved.
+
+The three corpora this gate does not walk now live in `EXPLAINED_ABSENT`, each with the reason read
+from its own target: `json_events_replay` compares the tree's and the stream's refusals on its
+`(Err, Err)` arm, so a refusal is the claim it makes; `parse_yaml` compares the two doors' messages
+on its refusal arm; `parse_schema` holds its result in `let _ =`, which leaves "no panic on any
+input" as the assertion every seed reaches. `every_seed_corpus_is_walked_or_explained` reads the
+directory set from `fuzz/seeds` - nine measured on 2026-11-18, six walked and three explained - and
+refuses a corpus in neither list, a listed name whose directory went missing, and a corpus whose
+`fuzz/fuzz_targets/<name>.rs` does not exist.
+
+Each assert was made to fire, then reverted. Dropping `parse_schema` from the list: "seed corpora
+neither walked nor explained: [\"parse_schema\"] - add each to SKIP_ON_REFUSAL if its target skips
+on a refusal, or to EXPLAINED_ABSENT with the reason it needs no reach check". Adding
+`ghost_target`: "targets named here with no seed corpus: [\"ghost_target\"] - a name kept after its
+corpus moved reads as coverage of nothing". An empty `fuzz/seeds/ghost_corpus`, listed as explained
+to get past the first refusal, read "seed corpora with no target source: [\"ghost_corpus\"] - their
+inputs replay nothing"; the directory was removed afterwards.
+
+Readings on this tree: `cargo nextest run --all` 950 passed (was 949; the new test is the
+difference), `uv run pytest tests/ -q` 4849 passed and 11 skipped, and
+`scripts/quality_matrix.py --check-rows` OK after `--write-rows` took the unit / integration row
+from 962 to 963 Rust `#[test]`.
