@@ -18,12 +18,14 @@
 //! parser (correctly) rejects are skipped: they have no AST, so there is no note to keep.
 //!
 //! **The conservation half is here; the YAML spokes' settlement is charged here too.**
-//! `crates/pyrs-toml/tests/roundtrip_corpus.rs` and its JSON twin replay the same corpora for the
-//! fixed point on every `cargo nextest`, and this file charges all three YAML spokes for it as
-//! well — every seed that parses, note-bearing or not, because a note-less input was the shape that
-//! escaped: crash-b3c57280's 20 bytes carry no note, so the conservation branch skipped them before
-//! settlement was ever asked. The other two spokes need the charge rather than inherit it:
-//! `edit_yaml`'s fuzz target does assert the fixed point, but nothing deterministic replays that
+//! `crates/pyrs-toml/tests/roundtrip_corpus.rs` and its JSON twin replay their format's corpora for
+//! the fixed point on every `cargo nextest` - both TOML corpora, and `json_roundtrip` plus
+//! `parse_json` (`json_events_replay`'s settlement is charged by the JSON crate's own
+//! `events_replay.rs`, which asserts the same pair) - and this file charges all three YAML spokes
+//! for it as well — every seed that parses, note-bearing or not, because a note-less input was the
+//! shape that escaped: crash-b3c57280's 20 bytes carry no note, so the conservation branch skipped
+//! them before settlement was ever asked. The other two spokes need the charge rather than inherit
+//! it: `edit_yaml`'s fuzz target does assert the fixed point, but nothing deterministic replays that
 //! corpus, and `parse_yaml`'s target asks nothing of a writer. Measured 2026-11-18, 161 + 69 + 4 =
 //! 234 seeds parse and settle. That is not the same claim as conservation: an emission that *drops*
 //! a note settles immediately, so only charging the tree's notes against the text sees the loss — the

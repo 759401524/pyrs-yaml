@@ -19,23 +19,33 @@
 //!
 //! Inputs a dialect rejects are skipped, not failed — a typed rejection is a pass, and the
 //! corpus deliberately holds bytes only one of the three readers accepts.
+//!
+//! Both corpora that no other deterministic gate asks the fixed point of are walked.
+//! `json_events_replay` is charged in `events_replay.rs`, which asserts the same `once ==
+//! twice` over its own seeds; `parse_json`'s target asserts nothing about a writer, and
+//! `corpus_notes.rs` charges conservation over its seeds rather than settlement. A writer
+//! regression can settle inside a corpus no test ever asks a writer about, which is the shape
+//! the TOML twin closed for `parse_toml`. Measured 2026-11-18: 17 `json_roundtrip` seeds drive
+//! 40 rounds and 7 `parse_json` seeds drive 12, 52 together, so the floor sits below their sum
+//! and above either corpus alone.
 
 use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
 
 /// Lower bound on how many dialect rounds must reach the assertion.
 ///
-/// Measured when the sign-strip seed joined: 17 seeds driving 38 rounds (a seed the three
-/// readers all accept drives three). Each seed is an input
-/// that made an assertion fail in the run that found it - a registered defect, not an
-/// exemption. The floor sits below that on purpose — it is slack for a seed being retired,
-/// not a target to hit — and a count under it would mean the corpus stopped carrying input
-/// the writers can act on at all. The silently-vacuous gate is what a floor exists to catch;
-/// the same reasoning is why `crates/pyrs-yaml-core/tests/note_survival.rs` declares one.
-const MIN_SEEDED_ROUNDS: usize = 25;
+/// Measured 2026-11-18 over both corpora: 17 `json_roundtrip` seeds drive 40 rounds and 7
+/// `parse_json` seeds drive 12, 52 together (the 38 this file used to record was the round-trip
+/// corpus before the seed re-mining added two). Each seed is an input that made an assertion fail
+/// in the run that found it - a registered defect, not an exemption. The floor sits above either
+/// corpus alone and below their sum, so a walk that silently loses one reddens instead of
+/// reporting a smaller number; the same reasoning is why `crates/pyrs-yaml-core/tests/
+/// note_survival.rs` declares one.
+const MIN_SEEDED_ROUNDS: usize = 46;
 
-fn seeds() -> Vec<(String, String)> {
-    let dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fuzz/seeds/json_roundtrip");
+fn seeds(corpus: &str) -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fuzz/seeds")
+        .join(corpus);
     let mut entries = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("seed corpus missing at {}: {e}", dir.display()))
         .map(|entry| entry.expect("readable dir entry").path())
@@ -44,7 +54,7 @@ fn seeds() -> Vec<(String, String)> {
     entries.sort();
     assert!(
         !entries.is_empty(),
-        "no seeds in the JSON round-trip corpus at {}",
+        "no seeds in the {corpus} corpus at {}",
         dir.display()
     );
     entries
@@ -95,13 +105,16 @@ macro_rules! round_trip {
 #[test]
 fn json_family_writers_reach_a_fixed_point_over_the_seed_corpus() {
     let mut rounds = 0usize;
-    for (name, text) in seeds() {
-        // Reader and writer are paired per dialect and never crossed: `to_jsonc_text` emits
-        // comments and `to_json5_text` emits hex numbers and bare keys, none of which the
-        // strict reader may accept, so a cross-dialect demand would red correct output.
-        rounds += round_trip!("json", &name, &text, from_json, to_json_text);
-        rounds += round_trip!("jsonc", &name, &text, from_jsonc, to_jsonc_text);
-        rounds += round_trip!("json5", &name, &text, from_json5, to_json5_text);
+    for corpus in ["json_roundtrip", "parse_json"] {
+        for (name, text) in seeds(corpus) {
+            let label = format!("{corpus}/{name}");
+            // Reader and writer are paired per dialect and never crossed: `to_jsonc_text` emits
+            // comments and `to_json5_text` emits hex numbers and bare keys, none of which the
+            // strict reader may accept, so a cross-dialect demand would red correct output.
+            rounds += round_trip!("json", &label, &text, from_json, to_json_text);
+            rounds += round_trip!("jsonc", &label, &text, from_jsonc, to_jsonc_text);
+            rounds += round_trip!("json5", &label, &text, from_json5, to_json5_text);
+        }
     }
     assert!(
         rounds >= MIN_SEEDED_ROUNDS,

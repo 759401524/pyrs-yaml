@@ -15179,3 +15179,30 @@ folded in, because it is a second crate's walk and needs its own measurement.
 Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
 and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
 `scripts/quality_matrix.py --check-rows` stays at 963.
+
+### (mj) The JSON fixed point was asked of one corpus while two answered it (2026-11-18)
+
+`crates/pyrs-json/tests/roundtrip_corpus.rs` walked `json_roundtrip` only. `json_events_replay`
+was already charged - `events_replay.rs` asserts the same `once == twice` over its own seeds - but
+`parse_json` was not: its fuzz target asserts nothing about a writer, and `corpus_notes.rs`
+charges conservation rather than settlement over the same seven seeds. The pair is the TOML twin's
+shape (`(mi)`): a writer regression can settle inside a corpus no test ever asks a writer about.
+
+The walk now reads both corpora. Measured 2026-11-18: 17 `json_roundtrip` seeds drive 40 rounds and
+7 `parse_json` seeds drive 12, 52 together, every round settling - a coverage gap, not a defect.
+`MIN_SEEDED_ROUNDS` is 46: above either corpus alone (40) and below their sum. Both asserts were
+made to fire, then reverted. Walking `json_roundtrip` only: "the corpus only drove 40 writer
+rounds; expected at least 46". With both corpora and the floor at 100000: "the corpus only drove 52
+writer rounds; expected at least 100000".
+
+The constant's doc block recorded "17 seeds driving 38 rounds", measured when the sign-strip seed
+joined; this tree drives 40 over the same 17 seeds, and 9d6ecd9ce ("two dead JSON seeds re-mined to
+reach") is the later change that would move that number, so the block now carries the measured 40
+rather than the earlier reading. `note_survival.rs`'s module doc also said the TOML and JSON twins
+"replay the same corpora", which was already loose and is now false for `json_events_replay`; its
+summary of who charges settlement is corrected in the same change to name that corpus's separate
+charge in `events_replay.rs`.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
+`scripts/quality_matrix.py --check-rows` stays at 963.
