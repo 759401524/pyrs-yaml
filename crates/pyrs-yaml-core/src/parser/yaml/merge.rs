@@ -692,18 +692,18 @@ fn collect_inline_pairs(
     orphaned: &mut Vec<(String, CustomNode)>,
 ) {
     for (key, value) in source {
-        // An empty merge source - the pair is itself a `<<` whose source yields
-        // nothing, or a `<<` with no body at all - is an ordinary key under the
-        // (lj) ruling, not a merge entry: it carries no identity to resolve, and
-        // contributing it as merged content is what made the note's line slot decide
-        // whether a spelling kept a level or not (recorded in (jg); seeds 860ec5b7,
-        // a3dded4d, d360e9fd, f3a2f8cf). Treat it like any other pair of the source.
-        if is_merge_key(key)
-            && matches!(
-                &value,
-                CustomNode::Null { .. } | CustomNode::Scalar { .. } | CustomNode::Alias { .. }
-            )
-        {
+        // A `<<` inside a merge source is a merge marker *of that source*, never data
+        // the destination receives. An empty merge source - a `<<` whose body yields
+        // nothing, or no body at all - carries no identity to resolve ((lj): reaching it
+        // as merged content made the note's line slot decide whether a spelling kept a
+        // level at all; seeds 860ec5b7, a3dded4d, d360e9fd, f3a2f8cf), and one the source
+        // kept literal because its own keys override everything the nested merge brings
+        // is still a directive, not a pair. Contributing it would put `<<` in the
+        // destination's pair list, where the re-read consumes it: `<<: {<<: {x: 1}, x: 9}`
+        // emitted `<<: {x: 1}` beside `x: 9` and collapsed to `x: 9` on the next read.
+        // The quoted spelling is a data key and stays (`<<: {"<<": {x: 1}}` is PyYAML's
+        // and ruamel's `{"<<": {x: 1}}`).
+        if is_merge_key(key) {
             // The pair leaves the tree here, so a definition it carries leaves with it
             // while an alias elsewhere may still spell the name: `<<: &b` over a body
             // whose own `<<:` holds the anchor left `":#| <<": *b` with no `&b` in the
@@ -713,9 +713,21 @@ fn collect_inline_pairs(
             collect_anchored_nodes(value, orphaned);
             continue;
         }
-        if pairs.contains_key(key) {
+        if pairs
+            .keys()
+            .any(|own| !is_merge_key(own) && same_emitted_key(own, key))
+        {
             // The mapping owns this key, so the pair never reaches the tree and a
-            // definition nested in it leaves with it.
+            // definition nested in it leaves with it. The identity is the emitted one
+            // [`owns_owning_key`] applies at override time, not whole-node equality: a
+            // merge whose pairs the mapping all overrides must read as contributing
+            // nothing, or the entry is consumed on one read and kept literal on a
+            // re-read whose notes/spelling shifted the nodes apart (seeds 860ec5b7,
+            // a3dded4d - the same key spelled `_<<` on both sides, kept only because
+            // the two nodes' notes happened to compare equal). The merge entry itself is
+            // skipped, as `owns_owning_key` skips it by position: it is consumed, not an
+            // own data key, and a source's quoted `"<<"` is a pair PyYAML and ruamel keep
+            // (`<<: {"<<": {x: 1}}` reads back as `{"<<": {x: 1}}`).
             collect_anchored_nodes(key, orphaned);
             collect_anchored_nodes(value, orphaned);
             continue;
@@ -780,9 +792,21 @@ fn collect_merged_pairs_for_anchor(
         merged
     };
     for (k, v) in body {
-        if pairs.contains_key(k) {
-            // Same drop as the inline path: the mapping owns the key, so this pair
-            // never reaches the tree and a definition it carries leaves with it.
+        if is_merge_key(k) {
+            // An expansion that kept its own `<<` literal (`&m {<<: {x: 1}, x: 9}`) still
+            // carries a marker, not a pair: same drop as the inline path.
+            collect_anchored_nodes(k, orphaned);
+            collect_anchored_nodes(v, orphaned);
+            continue;
+        }
+        if pairs
+            .keys()
+            .any(|own| !is_merge_key(own) && same_emitted_key(own, k))
+        {
+            // Same drop and the same identity as the inline path: the mapping owns the
+            // key, so this pair never reaches the tree and a definition it carries
+            // leaves with it. The consumed merge entry is not an own data key here
+            // either.
             collect_anchored_nodes(k, orphaned);
             collect_anchored_nodes(v, orphaned);
             continue;
@@ -1157,6 +1181,61 @@ mod tests {
                 one.contains(text.as_str()),
                 "note {text:?} was lost; wanted {wanted:?}, got {kept:?} in {one:?}"
             );
+        }
+    }
+
+    /// A `<<` that the first read keeps literal must be decided by what the emission
+    /// says, not by how the source's nodes happened to compare: both minimisations
+    /// below keep the entry on one read and lose it on the next. In a3dded4d the
+    /// source's own `<<` marker was lifted as a pair, and the parent's null key then
+    /// overrode the pair it carried; in 860ec5b7 the source's `_<<` was dropped at
+    /// collect time by whole-node equality but survived the override filter's emitted
+    /// identity, so the entry the notes hung on left only on the second read.
+    #[test]
+    fn a_kept_merge_entry_is_a_fixed_point_whatever_its_source_compares_like() {
+        for (name, seed) in [
+            (
+                "a3dded4d",
+                &include_bytes!(
+                    "../../../../../fuzz/seeds/yaml_roundtrip/former-crash-a3dded4d.seed"
+                )[..],
+            ),
+            (
+                "860ec5b7",
+                &include_bytes!(
+                    "../../../../../fuzz/seeds/yaml_roundtrip/former-crash-860ec5b7.seed"
+                )[..],
+            ),
+        ] {
+            let src = std::str::from_utf8(seed).expect("seed is utf-8");
+            let parsed = parse(src, YamlSchema::Core).expect("input parses");
+
+            let mut wanted = Vec::new();
+            gathered_notes(&parsed, &mut wanted);
+
+            let one = crate::serializer::to_yaml(&parsed);
+            let again = parse(&one, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{name}: emission must re-parse: {e}\n---\n{one}\n---"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(
+                twice, one,
+                "{name}: one emission is the fixed point: {one:?}"
+            );
+
+            for text in &wanted {
+                assert!(
+                    one.contains(text.as_str()),
+                    "{name}: note {text:?} left the emission; wanted {wanted:?} in {one:?}"
+                );
+            }
+            let mut kept = Vec::new();
+            gathered_notes(&again, &mut kept);
+            for text in &wanted {
+                assert!(
+                    kept.iter().any(|k| k == text),
+                    "{name}: note {text:?} did not survive the re-read; got {kept:?} from {one:?}"
+                );
+            }
         }
     }
 
