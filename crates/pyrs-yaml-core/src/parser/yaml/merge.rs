@@ -37,8 +37,47 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
     let mut orphaned: Vec<(String, CustomNode)> = Vec::new();
     resolve_merges_recursive(node, &anchors, &mut path, 0, &mut orphaned);
     if !orphaned.is_empty() {
+        let orphaned = resolve_stashed_definitions(orphaned, &anchors);
         repair_orphaned_anchors(node, orphaned);
     }
+}
+
+/// Resolve each stashed definition's own merges before the repair inlines it.
+///
+/// A definition the pass hands to [`repair_orphaned_anchors`] is content that re-enters
+/// the tree *after* every merge has run: the repair replaces each surviving `*name` with
+/// the node that defined it. That position is an ordinary value, so the next read
+/// resolves a `<<` left in it — a decision the pass never made for a copy it had already
+/// discarded. The text then moves one round later (libFuzzer `yaml_roundtrip`
+/// crash-91652883: `<<: &b` over a body whose own `<<` names `*b` emitted `k: &b` /
+/// `<<: &n` / `k: *b` and settled at `k: &b` / `k: *b`; the same defect reached a
+/// dropped pair of an inline source whose value defined an anchor, `<<: {a: &c {<<: {x:
+/// 1}}, b: *c}` under an own `a`). Resolving the copy on its own — the expansion's
+/// standalone rule, `own` being the anchor the node itself defines — makes it carry the
+/// decision the next read would make, so inlining cannot change what the document says.
+/// A resolved copy can hand over a deeper definition the same way, so the worklist runs
+/// until no stashed node carries a merge key, bounded like the expansion itself.
+fn resolve_stashed_definitions(
+    orphaned: Vec<(String, CustomNode)>,
+    anchors: &NodeMap<String, AnchorBody>,
+) -> Vec<(String, CustomNode)> {
+    let mut ready = Vec::with_capacity(orphaned.len());
+    let mut pending = orphaned;
+    let mut rounds = 0;
+    while !pending.is_empty() && rounds < MAX_MERGE_DEPTH {
+        rounds += 1;
+        let mut path: Vec<String> = Vec::new();
+        let mut next = Vec::new();
+        for (name, mut definition) in pending.drain(..) {
+            if has_merge_key(&definition) {
+                resolve_merges_recursive(&mut definition, anchors, &mut path, 0, &mut next);
+            }
+            ready.push((name, definition));
+        }
+        pending = next;
+    }
+    ready.extend(pending);
+    ready
 }
 
 /// Return true if any mapping in the tree has a `<<` merge key.
@@ -1644,6 +1683,42 @@ mod tests {
             );
             assert_eq!(get_scalar_value(a.get(&make_scalar("x")).unwrap()), "1");
             let one = crate::serializer::to_yaml(&root);
+            let again =
+                crate::serializer::to_yaml(&crate::parser::parse(&one, YamlSchema::Core).unwrap());
+            assert_eq!(
+                again, one,
+                "{yaml:?} is not a fixed point: {one:?} -> {again:?}"
+            );
+        }
+    }
+
+    /// A definition the pass stashes for the orphan repair carries no unresolved merge.
+    ///
+    /// Consuming a `<<` entry deletes the anchor its value defined, and the repair later
+    /// inlines that definition wherever a `*name` use survived. Inlined after the pass, in
+    /// an ordinary value position, its own `<<` was never decided there — so the next read
+    /// consumed what this one kept and the text moved one round later (libFuzzer
+    /// `yaml_roundtrip` crash-91652883). Each spelling below emitted a literal `<<` inside
+    /// the inlined copy and settled only on the second round; none may now leave a marker
+    /// in the emission or move at all.
+    #[test]
+    fn a_repaired_definition_carries_no_unresolved_merge() {
+        for yaml in [
+            // The seed's shape: the body's own `<<` names the anchor it sits in.
+            "<<: &b\n  <<: &n\n    k: *b\n",
+            // A surviving use beside the entry, so the repair inlines the definition.
+            "<<: &b\n  <<: {x: 1}\nk: *b\n",
+            // The same, with the merge one level below the body's own keys.
+            "<<: &b\n  a: {<<: {x: 1}}\nk: *b\n",
+            // A dropped pair of an inline source, whose value defined the anchor.
+            "<<: {a: &c {<<: {x: 1}}, b: *c}\na: 1\n",
+        ] {
+            let root = parse(yaml, YamlSchema::Core).unwrap();
+            let one = crate::serializer::to_yaml(&root);
+            assert!(
+                !one.contains("<<"),
+                "an unresolved merge survived the repair: {yaml:?} -> {one:?}"
+            );
             let again =
                 crate::serializer::to_yaml(&crate::parser::parse(&one, YamlSchema::Core).unwrap());
             assert_eq!(

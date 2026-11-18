@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A repaired merge definition carries the merge decisions it was stashed with** — consuming a `<<`
+  hands the value's definition to the orphan repair, which inlines it after the merge pass; that
+  stash was the raw node, so a body still carrying its own `<<` landed in an ordinary value
+  position and the next read consumed it: round one kept `k: &b` with `<<: &n` and `k: *b` inside,
+  round two folded the inner merge, and the emission stopped being its own fixed point (libFuzzer
+  `yaml_roundtrip` crash-91652883). Stashed definitions are now resolved standalone before the
+  repair, with the node's own anchor as the expansion name and a worklist bounded by
+  `MAX_MERGE_DEPTH` (`docs/dev/quality-ledger.md` (mc)).
 - **A kept merge entry is decided by the emitted key, not by whole-node equality** — the fold that
   decides what a merge contributes compared a source's pairs with the mapping's own keys as whole
   nodes, so a pair differing only in notes or spelling survived collection and was then dropped by
