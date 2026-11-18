@@ -14946,3 +14946,58 @@ records for this host, not a term of this change; the enforcing image owns that 
 Closure: both seeds replay clean and the registry names none of them, which is the closure line on
 issues #732 and #733; closing them stays a separate, user-approved act, and this entry does not
 perform it.
+
+### (mc) A repaired definition carries the merge decisions it was stashed with (2026-11-18)
+
+The third shape (mb) named as still failing: **91652883** (113 bytes) from the `yaml_roundtrip`
+discovery run 43156160019 drifted on main after (mb) landed. Its outer merge consumed an entry whose
+value carried an anchor, and that anchor's body held a `<<` of its own. The first emission kept the
+body - `k: &b` with `<<: &n` and `k: *b` beneath it - and the next read consumed that inner merge,
+so the second emission was `k: &b` with `k: *b`.
+
+Where the cause sits: `resolve_merges_recursive` stashes the definition of every consumed `<<` value
+for `repair_orphaned_anchors`, and the repair inlines it into the tree **after** the pass. The stash
+is the raw node, so a body that still carried a merge key lands in an ordinary value position, where
+the next read resolves it - one round keeps what the next consumes. Four spellings reach that place
+and the regression test pins each:
+
+- a self-reference, `<<: &b` whose body merges and names `*b`;
+- a body holding a merge beside a surviving `*b` (`<<: &b` with `<<: {x: 1}`, `k: *b` outside);
+- a nested merge under a key of the body (`<<: &b` with `a: {<<: {x: 1}}`, `k: *b` outside);
+- a dropped pair of an inline source whose value defines an anchor another contributed pair uses
+  (`<<: {a: &c {<<: {x: 1}}, b: *c}` with its own `a`).
+
+The fix is `resolve_stashed_definitions`: before the repair, each stashed definition is resolved
+standalone with `own` set to the node's own anchor - the rule expansion already uses - and a
+worklist repeats while any stashed node still carries a merge key, bounded by `MAX_MERGE_DEPTH`.
+The repair then receives bodies whose merge decisions are the ones the pass had already made for
+them. Nothing else in the pass moves: `is_merge_key`, the self-name keep, the (ma) keep/consume arm
+and the (mb) identities stand as written.
+
+Gates: merge.rs gained `a_repaired_definition_carries_no_unresolved_merge` - all four spellings
+re-parse, the first emission carries no `<<`, and the second read emits the same text. The seed is
+archived as `fuzz/seeds/yaml_roundtrip/former-crash-91652883.seed`, `cmp`-identical to the audit
+artifact, and `.ci/seed-reach.txt` stays header-only (8 comment lines, none data) because it reaches
+the round-trip assertion. `cargo nextest run --all` 944 passed, 0 skipped (`-p pyrs-yaml-core` 525);
+`uv run pytest tests/ -q` 4844 passed, 11 skipped; `quality_matrix.py --check-rows` OK with the rows
+at 957 Rust `#[test]` and 332 seeds of which 218 are `former-crash-*`; both clippy scopes clean;
+`prek run --all-files` clean; and all 156 seeds replay as fixed points via the rebuilt extension.
+
+Mutations: gating the resolution off (`false &&`) reads 941 of 944 - the new test,
+`anchor_graph::the_anchor_graph_survives_one_emission` and
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission`, the last two because the
+archived seed joined those corpora: one seed reaching three oracles rather than one assertion copied
+thrice. Restoring the call returns 944.
+
+Cost: the parse scenarios were measured with the change parked and the patch re-applied (`jj
+restore` + `git apply`), so both readings are this host's: `parse_anchors` 271,691,508 on the parent
+tree against 271,705,721 with the fix (+0.005%), `parse_inline_merge` 361,804,092 against
+361,819,308 (+0.004%) - the extra work is one merge scan over definitions the pass had already
+visited, nothing per node. `safe_dump_medium` reads 111,355,847 on both trees, the +0.57% over the
+flat floor that (mb) and (ds) record for this host, and its counted region carries malloc,
+`Py_DecRef`, `DirectWriter` and `needs_quotes` rows only - no merge function and no parse - so the
+enforcing image owns that verdict, not this entry.
+
+Closure: a3dded4d, 860ec5b7 and 91652883 now all replay clean and the registry names none of them,
+which is what (mb) left open; the disposition of issues #732 and #733 remains as (mb) recorded and
+no issue is closed here.
