@@ -15152,3 +15152,30 @@ Readings on this tree: `cargo nextest run --all` 950 passed (was 949; the new te
 difference), `uv run pytest tests/ -q` 4849 passed and 11 skipped, and
 `scripts/quality_matrix.py --check-rows` OK after `--write-rows` took the unit / integration row
 from 962 to 963 Rust `#[test]`.
+
+### (mi) The TOML fixed point was asked of one corpus while two carried TOML (2026-11-18)
+
+`crates/pyrs-toml/tests/roundtrip_corpus.rs` walked `fuzz/seeds/toml_roundtrip`, and the
+`parse_toml` corpus was replayed by its fuzz target alone. That target asks two narrower questions -
+the writer output re-reads under the 1.1 gate, and a note-free 1.0-read tree writes 1.0-loadable
+text - so the binary fixed point was asked of those ten seeds by nothing deterministic. This is the
+shape `note_survival.rs` closed for `edit_yaml`, one crate over: a writer regression can settle
+inside a corpus that no test ever asks a writer about.
+
+The walk now reads both corpora and the floor charges each. Measured 2026-11-18: 25
+`toml_roundtrip` seeds drive 48 rounds and 10 `parse_toml` seeds drive 20, 68 together, and every
+round settles - a coverage gap, not a defect. `MIN_SEEDED_ROUNDS` is 58: above either corpus alone
+(48) and below their sum, so a walk that silently loses one reddens instead of reporting a smaller
+number. Both asserts were made to fire, then reverted. Walking `toml_roundtrip` only: "the corpora
+only drove 48 writer rounds; expected at least 58". With both corpora and the floor at 100000: "the
+corpora only drove 68 writer rounds; expected at least 100000".
+
+The same gap is open on the JSON side, measured while writing this: the JSON twin
+(`crates/pyrs-json/tests/roundtrip_corpus.rs`) walks `json_roundtrip` only,
+`fuzz/fuzz_targets/parse_json.rs` asserts nothing about a writer, and `corpus_notes.rs` charges
+conservation over `parse_json`'s 7 seeds rather than settlement. It is left open here rather than
+folded in, because it is a second crate's walk and needs its own measurement.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
+`scripts/quality_matrix.py --check-rows` stays at 963.
