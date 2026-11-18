@@ -73,6 +73,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   block container keeps its own stack below, because above the dash the reader reports the note on
   the enclosing sequence and each round hoists it one level
   (`docs/dev/quality-ledger.md` (me)).
+- **An edit that names `<<` writes a key the reader keeps** — a destination written plain is read as
+  the merge operator when its value is an alias or a container, so a moved pair emitted as `<<: *x`
+  was consumed by the next read and the entry the caller placed was gone (libFuzzer `edit_yaml`
+  crash-32aeadbf). A key an edit creates is now emitted quoted (`"<<"`), the same rule a YAML 1.1
+  spelling already follows; a destination the document itself spells as a plain `<<:` is refused
+  (`cannot-edit-merge-key`) when the new value would be consumed, because requoting it would hand
+  back a different key than the one the document holds (`docs/dev/quality-ledger.md` (mc)).
+- **A note hoisted above a dash pays the tag-only line it lands under** — a sequence item whose
+  note has nowhere else to go is placed above its dash; when the item before it was an empty tagged
+  scalar, `!t:` was still waiting for the `~` that closes it, and the note inserted between them
+  made the pending marker stale: the first emission kept a bare `!t:` and only the next round wrote
+  `~` (libFuzzer `edit_yaml` crash-beb3428d). The close now runs before the note is inserted, as
+  the pair writers already do (`docs/dev/quality-ledger.md` (mu)).
+- **A JSON5 string that spells a bare token stays quoted** — the reader stored a quoted string
+  plain whenever the JSON5 resolver called it a string, but that resolver is integer-bounded: a
+  hexadecimal run past `i64` (`0Xeeee…`) answered `Str`, was stored plain, and the writer's
+  bare-token walk then emitted it as a number the sentence never said — one round, two spellings
+  (libFuzzer `edit_yaml` crash-3291d29b). `quoted_or_plain` now asks the writer's own token
+  question, `is_json5_number`, which is `pub(crate)` for the second caller
+  (`docs/dev/quality-ledger.md` (mu)).
 - **A kept merge entry is decided by the emitted key, not by whole-node equality** — the fold that
   decides what a merge contributes compared a source's pairs with the mapping's own keys as whole
   nodes, so a pair differing only in notes or spelling survived collection and was then dropped by

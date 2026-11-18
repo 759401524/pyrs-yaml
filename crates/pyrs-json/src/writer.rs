@@ -632,12 +632,19 @@ fn write_plain(
 /// verbatim: a hexadecimal integer, a leading-dot / trailing-dot decimal, or a
 /// leading-`+` form.
 ///
+/// Two callers ask the same question from opposite sides. The writer asks it to decide whether a
+/// plain scalar is passed through bare; the reader asks it in `quoted_or_plain` to decide whether a
+/// quoted string may be stored plain at all, because storing one plain lets this writer hand the
+/// text back as a token the sentence never said. The resolver cannot answer that second question
+/// alone: it is integer-bounded, so `0Xeeee…` past `i64` resolves `Str` and looked like an ordinary
+/// string until the next round emitted it bare (libFuzzer `edit_yaml` crash-3291d29b).
+///
 /// `Infinity` and `NaN` are absent on purpose. The hub spells those values `.inf` /
 /// `-.inf` / `.nan` (see `crate::parser`), so the words reach this writer only when a document
 /// really holds a *string* that happens to be spelled like a JSON5 literal; treating it as a number
 /// was the second half of #312, and the bare token for a value is emitted by `write_plain` from the
 /// resolved float instead.
-fn is_json5_number(text: &str) -> bool {
+pub(crate) fn is_json5_number(text: &str) -> bool {
     // Strip a single leading sign for the numeric checks below.
     let (sign_len, body) = match text.as_bytes().first() {
         Some(b'+') | Some(b'-') => (1, &text[1..]),
@@ -1094,6 +1101,28 @@ mod tests {
         for bare in ["+7", "-7", "+1.5", "-1.5"] {
             let text = to_json5_text(&CustomNode::plain_scalar(bare)).unwrap();
             assert_eq!(text, bare);
+        }
+    }
+
+    #[test]
+    fn a_string_that_spells_a_bare_json5_token_stays_quoted() {
+        // libFuzzer `edit_yaml` (crash-3291d29b): the edit lands a `Literal` scalar, which JSON5 has
+        // no spelling for and so writes quoted. The re-read stored the text plain - the JSON5
+        // resolver is integer-bounded, so a hex run past `i64` answered `Str` - and the writer's
+        // bare-token walk then emitted it as a number the document never said. One round became
+        // two spellings. The reader now asks the writer's own token question, so the quoted form is
+        // the first round's fixed point while a bare token still survives verbatim.
+        for src in [
+            "0Xeeeeeeeeeeeeeeeeeeeeeeee4e6",
+            "99999999999999999999999999.",
+            "+99999999999999999999999999",
+        ] {
+            let quoted = to_json5_text(&crate::from_json5(&format!("\"{src}\"")).unwrap()).unwrap();
+            assert_eq!(quoted, format!("\"{src}\""), "{src}");
+            let again = to_json5_text(&crate::from_json5(&quoted).unwrap()).unwrap();
+            assert_eq!(again, quoted, "{src}");
+            let bare = to_json5_text(&crate::from_json5(src).unwrap()).unwrap();
+            assert_eq!(bare, src, "{src}");
         }
     }
 
