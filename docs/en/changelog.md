@@ -19,6 +19,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A kept merge entry is decided by the emitted key, not by whole-node equality** — the fold that
+  decides what a merge contributes compared a source's pairs with the mapping's own keys as whole
+  nodes, so a pair differing only in notes or spelling survived collection and was then dropped by
+  the override filter's emitted identity: the entry the notes hung on left one round later
+  (libFuzzer `yaml_roundtrip` crash-a3dded4d / crash-860ec5b7). Collection now asks the same emitted
+  identity the override filter asks, never counts the entry it is about to consume as an own key,
+  and never carries a source's `<<` marker as a pair — while a quoted `"<<"` stays a data key, as
+  PyYAML and ruamel read `<<: {"<<": {x: 1}}` (`docs/dev/quality-ledger.md` (mb)).
 - **A key's inline note stays on the pair line over a container body that starts below** — the
   writer asked the value, not the line, whether the pair's slot was free, and a value carrying its
   own note answered no even when its body opens on the next line: the key's note was hoisted above

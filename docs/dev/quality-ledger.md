@@ -14884,3 +14884,65 @@ the pair establishes is the gate above, not an improvement.
 
 The family is not closed by this entry - a3dded4d, 860ec5b7 and 91652883 are the merge-key fold and
 idempotence shapes that still fail, and no issue is closed here.
+
+### (mb) A kept merge entry is decided by the emitted key (2026-11-18)
+
+Two archived artifacts, one disagreement: the fold that decides what a merge contributes and the
+override filter that decides what a merge may supply answered "is this the same key" differently,
+so one round kept a pair the next round dropped. Both come from `yaml_roundtrip`, and each one
+reddened the round-trip oracle on a document that emitted cleanly.
+
+- **a3dded4d** (60 bytes) hands the destination a source whose own `<<` was kept literal - the
+  source's own key overrode everything its nested merge brought, so the (ma) rule kept the pair.
+  It travelled up as data, the destination's own null key overrode the pair it carried, and the
+  literal entry re-read as a merge that contributed nothing and left with its note.
+- **860ec5b7** (42 bytes) spells `_<<` on both sides. Whole-node equality kept the two keys apart
+  because their notes differed, so collection contributed a pair the override filter's emitted
+  identity then dropped: the entry the notes hung on survived one read and vanished on the next.
+
+The collection-time pre-filter now asks the identity the override filter asks -
+`same_emitted_key`, the emitted value of an untagged scalar key (ruling (o)) - instead of
+whole-node `contains_key`. Two further rules are what the two shapes taught, and each is pinned by
+a different tier:
+
+- **The merge entry is not an own data key.** `owns_owning_key` skips it by position; collection
+  now skips it with `is_merge_key`. Without that exclusion a source's quoted `"<<"` collides with
+  the destination's plain `<<` by text, and `<<: {"<<": {x: 1}}` keeps two literal levels where
+  PyYAML and ruamel read `{"<<": {x: 1}}`.
+- **A plain `<<` from a source is a marker, not a pair.** A source that kept its nested merge
+  literal would hand `<<` to the destination's pair list, where the re-read consumes it:
+  `<<: {<<: {x: 1}, x: 9}` emitted `<<: {x: 1}` beside `x: 9` and collapsed to `x: 9` only on the
+  second read. The inline and anchor loops drop the marker the way the empty-source arm does; the
+  quoted spelling stays a data key.
+
+Gates: merge.rs gained `a_kept_merge_entry_is_a_fixed_point_whatever_its_source_compares_like` -
+both seeds re-parse, the first emission is the fixed point, and every note in the input is still
+in that emission and survives the re-read. Both minimisations are archived as
+`fuzz/seeds/yaml_roundtrip/former-crash-{a3dded4d,860ec5b7}.seed`, byte-identical to the audit
+artifacts (`cmp`), and `.ci/seed-reach.txt` stays empty because both reach the round-trip
+assertion. `cargo nextest run --all` 943 passed, 0 skipped (`-p pyrs-yaml-core` 524); `uv run
+pytest tests/ -q` 4843 passed, 11 skipped; `quality_matrix.py --write-rows` put the rows at 956
+Rust `#[test]` and 331 seeds of which 217 are `former-crash-*`; both clippy scopes clean; `prek
+run --all-files` clean; all 76 `yaml_roundtrip` artifacts under `target/audit/**` replay clean
+through the rebuilt extension.
+
+Mutations: restoring whole-node equality in both scans reads 522 of 524 - the new test and
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission`, one seed reaching a second
+oracle rather than two assertions copied. Dropping the marker arm reddens
+`a_merge_source_that_itself_merges_contributes_its_nested_pairs` (523 of 524). Removing the
+merge-entry exclusion leaves the whole Rust suite green at 524 and reddens both library legs of
+`tests/test_merge_parity.py` at `<<: {"<<": {x: 1}}`, which is why that exclusion is pinned by the
+cross-library tier instead of a unit test.
+
+Cost: `parse_inline_merge` reads 361,804,222 on this host against the committed 361,588,346
+(+0.06%) and `parse_anchors` 271,691,698 against 270,747,719 (+0.35%), both inside the 0.5% line,
+with three readings per harness spread under 800 instructions. The scan adds one `is_merge_key`
+test per own key and one `same_emitted_key` per contributed pair. `safe_dump_medium` reads
+111,355,837 / 111,355,757 / 111,355,842 / 111,355,882 across runs (+0.57% over the flat floor), and
+its counted region (`--profile`) carries malloc, `Py_DecRef`, `DirectWriter` and `needs_quotes`
+rows only - no merge function and no parse - so it is the build-layout distance (ds) already
+records for this host, not a term of this change; the enforcing image owns that verdict.
+
+Closure: both seeds replay clean and the registry names none of them, which is the closure line on
+issues #732 and #733; closing them stays a separate, user-approved act, and this entry does not
+perform it.
