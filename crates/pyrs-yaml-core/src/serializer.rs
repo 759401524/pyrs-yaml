@@ -1996,6 +1996,13 @@ impl Serializer {
         // that line and is passed no target.
         self.pair_line_start = self.output.len();
         self.tail_slot_is_alias = false;
+        // Captured before this item writes anything: the line directly above belongs to the item
+        // before it, and an empty tagged scalar there leaves a tag-only line still open. A note this
+        // item has to place above its own dash would land under that line and be read back as that
+        // value's leading note, so the close runs first — the same remedy the pair paths apply
+        // (libFuzzer `edit_yaml` crash-beb3428d: `- &a0 !!ss:` / `# fuzz 47` settled only after a
+        // round, as `- &a0 !!ss: ~`).
+        let pending_above = self.pending_tag_insert_at;
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
         // normalised view — and a note-free item is the common case.
@@ -2148,7 +2155,11 @@ impl Serializer {
                     // sequence's leading note - the second emission hoists it above the header
                     // (libFuzzer `edit_yaml` crash-2fc59020). Above the header is that slot,
                     // and the outermost header of a headed chain is where the hoist ends.
-                    self.note_line_above(enclosing_header.unwrap_or(dash_line_start), &c.text);
+                    let at = self.close_captured_pending_line(
+                        pending_above,
+                        enclosing_header.unwrap_or(dash_line_start),
+                    );
+                    self.note_line_above(at, &c.text);
                 }
             }
         } else if !Self::is_empty_container(item) && is_block_container(item) {
@@ -5215,6 +5226,51 @@ mod tests {
 
         let one = to_yaml(&CustomNode::plain_sequence(vec![item]));
         assert_eq!(one, "# in\n- a: 1  # vn\n", "both notes keep their line");
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "not a fixed point: {one:?}"
+        );
+    }
+
+    /// The pending line this item may close belongs to the item *before* it. An empty tagged
+    /// value in item 1 leaves `!t:` waiting for its own `~`, and when item 2's note has nowhere
+    /// else to go it lands between that tag and the dash — a slot whose insertion silently made
+    /// the pending marker stale, so the first emission kept a bare `!t:` and only the round
+    /// after wrote its `~` (libFuzzer `edit_yaml` crash-beb3428d: `- &a0 !!ss:` / `# fuzz 47`
+    /// settled as `- &a0 !!ss: ~` one round late).
+    #[test]
+    fn an_item_note_above_the_dash_pays_the_tag_only_line_it_sits_under() {
+        let mut tagged_empty = NodeMeta::default();
+        tagged_empty.set_anchor("a");
+        tagged_empty.set_tag(Tag::primary("ss"));
+        let empty = CustomNode::Scalar {
+            value: String::new().into(),
+            style: ScalarStyle::Plain,
+            chomping: Chomping::Clip,
+            block_indent: None,
+            meta: tagged_empty,
+        };
+        let mut value = CustomNode::plain_scalar("1");
+        value.set_comment(Comment {
+            text: "vn".into(),
+            standalone: false,
+        });
+        let mut item = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("a"), value)]
+                .into_iter()
+                .collect(),
+        );
+        item.set_comment(Comment {
+            text: "in".into(),
+            standalone: false,
+        });
+
+        let one = to_yaml(&CustomNode::plain_sequence(vec![empty, item]));
+        assert_eq!(
+            one, "- &a !!ss ~\n# in\n- a: 1  # vn\n",
+            "the tag-only line pays its `~` before the note moves above the dash"
+        );
         assert_eq!(
             to_yaml(&parse_core(&one)),
             one,

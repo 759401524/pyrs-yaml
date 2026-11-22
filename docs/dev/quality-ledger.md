@@ -15057,8 +15057,8 @@ The mechanism is a count, not a flag: `write_sequence_item` writes the stack, th
 exactly the child's own prologue lines are skipped and a stack deeper inside still lands. The
 child's prologue stays byte-for-byte the parent's, which is the point: every variant that passed the
 decision through `serialize_node_internal`'s signature or a new field moved `serialize_block` by
-+0.94% to +6.05%, and the clone-and-strip variant that avoided the signature read +0.36% there and
-+4.00% on `serialize_note_flow`, whose fixture's flow items carry notes. The count is set only under
+0.94% to +6.05%, and the clone-and-strip variant that avoided the signature read +0.36% there and
+4.00% on `serialize_note_flow`, whose fixture's flow items carry notes. The count is set only under
 `if !compact`, because a compact item never reaches the child's prologue and a stray count would
 swallow the next pair's key notes.
 
@@ -15641,12 +15641,12 @@ instead of standing as a claim about today's 69.
 
 The wave was measured against the Ir floor before any of its work was believed. Against the
 committed baseline (image 127.1) seven writer scenarios sit past the 0.5% line - serialize_small
-+1.60%, serialize_medium +0.89%, serialize_block +0.96%, serialize_block_scalars +0.60%,
+1.60%, serialize_medium +0.89%, serialize_block +0.96%, serialize_block_scalars +0.60%,
 serialize_anchors +0.83%, serialize_note_flow +3.38%, safe_dump_medium +0.57% - while every reader,
 JSON/TOML, stream, edit and Python-conversion scenario stays inside ±0.26%. A same-host control on
 the parent tree (`42e81ae4`) separates code from host, and the parent reads 3,013,399 / 27,949,381 /
 11,053,373 / 8,015,002 / 22,953,384 / 60,533,943 / 111,356,381: the wave adds
-+1.39% / +0.83% / +1.12% / +0.52% / +0.68% / +2.87% to the six core writers and 60 instructions to
+1.39% / +0.83% / +1.12% / +0.52% / +0.68% / +2.87% to the six core writers and 60 instructions to
 `safe_dump_medium`, so six of the reds are this change and the seventh was already there. The
 profile pair says where the six sit: `header_gap_start_over` climbs from below 0.7M to 1,354,000
 self instructions (the hoisted-note walk now serves sequence items too), the inlined dispatch copy
@@ -15706,3 +15706,69 @@ run against the same mutation with the same spy, reached its end with
 `registrations the old body could not see: [('!duration', None)]` - it could not observe what it
 claimed. The mutation was reverted and the file reads 20 passed; `prek run --all-files` exits 0 over
 30 hooks. The row already existed, so no test count moves.
+
+### (mu) An edit's destination, a pending tag line, and a quoted JSON5 token (2026-11-18)
+
+Three `edit_yaml` artifacts from two audit runs (41557819123 → 32aeadbf; 41571301404 → beb3428d,
+3291d29b), one per layer: the edit plan, the YAML writer and the JSON5 reader. Each reddened the
+harness's post-edit promise - after an accepted edit the emission must be its own fixed point
+(`to_yaml` → `parse` → `to_yaml`) - and each failed that promise in a different direction.
+
+- **A destination named `<<` is a data key** (crash-32aeadbf, 81 bytes). The input document ends in
+  a `<<:` pair whose value is a null - a data key, as (lz)/(mb) established - so `paths` offers
+  `<<`, and a `move` lands on it: the Some(idx) branch of `set_path_mapping_key` replaces the null
+  with an alias. Written plain, `<<: *x` is the merge operator and the next read consumes the line,
+  so the entry the caller moved disappeared. A key an edit *creates* named `<<` is now quoted
+  (`named_key_node`, the rule a YAML 1.1 spelling already followed); a plain `<<` the document
+  itself holds is refused with `cannot-edit-merge-key`, because requoting it would hand back a
+  different key than the one the document spells. `merge_consumes_value` is the predicate - alias,
+  mapping, sequence - and the alias-free empty sources (`<<: {}`, `<<: []`) fall with them: the pair
+  a caller cannot write is one the reader would not have kept as the key they named.
+- **A note above a dash pays the tag-only line it lands under** (crash-beb3428d, 46 bytes).
+  `- &a0 !!ss:` is item 1, an empty plain tagged scalar whose tag-only line stays open in
+  `pending_tag_insert_at` until its `~` is written. Item 2's note has nowhere else to go and is
+  hoisted above the dash - and that insertion wrote a line under the pending marker without telling
+  it, so the marker went stale: the first emission kept a bare `!!ss:` and the round after wrote
+  `~`. `write_sequence_item` now captures the marker before the item writes anything and runs
+  `close_captured_pending_line` before `note_line_above`, the same remedy the pair paths apply, and
+  the two-step note fallback is measured by
+  `an_item_note_above_the_dash_pays_the_tag_only_line_it_sits_under`.
+- **A string that spells a bare JSON5 token stays quoted** (crash-3291d29b, 50 bytes). The edit
+  lands a `Literal` scalar under JSON5; JSON5 has no literal spelling, so the writer quotes it. The
+  re-read stored the text *plain* - `quoted_or_plain` asked the resolver, and the resolver is
+  integer-bounded, so a hexadecimal run past `i64` (`0Xeeee…`) answered `Str` - and the writer's
+  bare-token walk then emitted it as a number the sentence never said. `quoted_or_plain` now asks
+  the writer's own token question beside the resolver: `is_json5_number` became `pub(crate)`, so
+  the two halves of one round ask one predicate. Bare tokens still survive verbatim; only the
+  spellings the writer would hand back as numbers are stored quoted.
+
+Gates: `cargo nextest run --all` 946 passed, 0 skipped (`-p pyrs-yaml-core --lib` 439, `-p pyrs-json
+--lib` 110); `uv run pytest tests/ -q` 4846 passed, 11 skipped; `quality_matrix.py --write-rows` put
+the rows at 959 Rust `#[test]` and 334 seeds of which 220 are `former-crash-*`, three tests and
+three seeds of which are this change's; `seed_reach` 4 passed, so `.ci/seed-reach.txt` stays empty -
+all three seeds reach the round-trip assertion. Both clippy scopes clean; `prek run --all-files`
+clean. The artifacts are archived byte-identical (`cmp`) as
+`fuzz/seeds/edit_yaml/former-crash-{32aeadbf,beb3428d,3291d29b}.seed`, and each replays clean
+through `cargo fuzz run edit_yaml <seed> -- -runs=0` on the rebuilt target. That rebuild needed the
+WSL 9p trap handled first: an edit made from Windows on `D:` does not refresh the mtime WSL sees,
+`cargo fuzz build` reports "Finished" in a tenth of a second without compiling anything, and a
+replay against that binary says nothing about this tree - the run above touches the changed sources
+inside WSL first.
+
+Mutations, each measured on the final tree: disabling the merge-key guard reads 438 of 439 (the new
+`a_destination_named_like_the_merge_operator_stays_a_data_key` alone); dropping the
+`close_captured_pending_line` call reads 438 of 439 (the new serializer test alone); dropping the
+reader's `is_json5_number` term reads 109 of 110
+(`a_string_that_spells_a_bare_json5_token_stays_quoted` alone). Each fix is pinned by exactly one
+test, and each test fails on the mutation it pins and passes when it is restored.
+
+Cost: the three Ir scenarios nearest these paths read `from_json5_medium` 88,685,355 against
+88,689,313 (-0.00%), `edit_set_nested` 36,319,561 against 36,247,555 (+0.20%) and
+`serialize_medium` 27,983,406 against 27,933,368 (+0.18%) on this host with the pinned
+`rustc 1.97.1` - all inside the 0.5% line, and the binaries differ from the baseline build, so the
+movement is code. The only added work is one string comparison per created key, one field read per
+sequence item, and one token scan per quoted string the JSON5 reader could otherwise store plain;
+no allocation was added on any of the three paths.
+
+The family is not closed here: the audit runs carry other `edit_yaml` artifacts, and no issue is
+closed by this entry.
