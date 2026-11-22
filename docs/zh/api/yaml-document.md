@@ -53,7 +53,7 @@ to_yaml_with_options(
 - `indent_size` — 每级缩进空格数（默认：2）
 - `explicit_start` — 在文档开头添加 `---`（默认：False）
 - `explicit_end` — 在文档末尾添加 `...`（默认：False）
-- `sort_keys` — 按字母顺序对键排序（默认：False）
+- `sort_keys` — 按字母顺序对键排序（默认：False）；既在局部定义又在局部使用某锚点名的映射保留源顺序，排序不会把别名写在其解析到的 `&name` 之上
 - `note_placement` — 注释无法与其行同处一行、且其上方是 `&a` / `!tag` 头行时的落点：`note_first`（默认）把它写在头行之上，即读取所归档处，于是首次发射即收敛；`header_first` 把它留在间隙里。其他取值一律拒绝
 
 **示例:**

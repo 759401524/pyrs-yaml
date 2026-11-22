@@ -19,6 +19,46 @@ status: new
 
 #### 修复
 
+- **序列项的 note 提升到它所属的头部行之上** — 块容器把 note 栈写在短横线之下，而当该项的值以
+  `&a` / `!tag` 头部行开头时，那个尾部正是头部之下的空隙，granit 会把 note 记在*头部*节点上：首次
+  发射写出 `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`，第二次才把 note 提到 `!fuzz6` 之上
+  （fuzz 种子 `former-crash-fb62e776`，第 7 条记录，由 `edit_yaml` 语料新增的确定性回放发现）。note
+  栈现在走那条在项自身列上跨过头部行的写行路径，上方没有头部时落点与原来完全一致
+  （`docs/dev/quality-ledger.md` (mr)）。
+- **`sort_keys` 把它最先写出的那个 pair 的 note 栈一并提升** — 前导提升读的是源中的第一个 pair，而
+  排序后的发射写的是另一个，于是那个 pair 的栈留在头部与正文之间，发射要到第二轮才收敛（fuzz 种子
+  `former-crash-8d630b22`）。提升现在取发射最先写出的位置，`sort_keys` 开启时由排序结果提供
+  （`docs/dev/quality-ledger.md` (mp)）。
+- **排序会先用锚点后定义时，`sort_keys` 保留源顺序** — 排序把 `use: *x` 写在 `~: {abase: &x 1}`
+  之上，本引擎自己的读取器以 "found unknown anchor" 拒绝了这段文本；解析期的孤儿修复救不了一个这
+  样写出的发射。既在局部定义又在局部使用某锚点名的映射现在保留源顺序——在映射外围定义的名字本来
+  就在作用域内，只有局部 pair 会被重排打破（`docs/dev/quality-ledger.md` (mp)）。
+- **被提升的 note 会跨过缩进的头部行** — 在 `indent_offset: 2` 下，不能留在 pair 行上的 note 被写
+  到了它的 `&a` / `!tag` 头部之下，下一轮再把它提上来：空隙游走从尾部尚未写入的文本测量正文缩进，
+  读到 0，就停在了缩进为 2 的头部行。游走现在接受调用方已知的列并跨过头部，note 在首次发射就留在
+  头部之上（`docs/dev/quality-ledger.md` (mp)）。
+- **`indent_sequence: 4` 让紧凑项的 pair 停在键所在的列** — 第一个 pair 紧跟在 `- ` 之后的序列项
+  把第二个 pair 写在 `indent_width + 4`，而第一个键在 `indent_width + 2`，读取器拒绝更浅的那一行
+  （"mapping values are not allowed in this context"，fuzz 种子 `former-crash-094d4d6a`）。pair
+  列是第一个键落下的位置，不是块体的步进，写出器现在用前者（`docs/dev/quality-ledger.md` (mp)）。
+- **合并消费其节点的锚点进入孤儿修复** — 四个 `yaml_roundtrip` 形状出过问题。三个以发射文本里没有定
+  义的别名收尾：嵌套 `<<` 在克隆上被解析，而修复内联的是原始体（`<<: &b` / ` <<:` / `  : *b`，
+  crash-91652883）；锚点落在展开会拆散的项映射上（`<<:` / `- &b` / ` : *b`，crash-0fae03be）；一个非
+  映射项让整个序列源失效，源随其实体离开树时锚点也被带走，而文档仍别名指向它（`<<:` / `-` /
+  `- &b : *b` / `: *b`，crash-8baf41a3）。第四个经一个合并该被消费条目所定义锚点的序列项保留了原始体
+  中的 `<<`（`<<: &b` / `- <<: *b` / `: *b`，crash-b3c57280），下一轮读回时该项变成了 `{}`。修复现在
+  拿到展开解析后的体，登记被拆散项自身的锚点，并把失效源的锚点交给修复，而不是随条目一起丢弃
+  （`docs/dev/quality-ledger.md` (mc)）。
+- **带标签的 `<<` 在去重折叠中是数据键** — 值键检查按文本折叠重复键，于是 `! <<: ~` 之上再加
+  `!G <<: ~` 会读回一对：写入器已经发射的那对被下一轮读丢（libFuzzer `yaml_roundtrip`
+  crash-85764e37）。检查现在询问合并流程自己的标识，只有无标签的 plain `<<` 才合并
+  （`docs/dev/quality-ledger.md` (md)）。
+- **序列项上的注释栈写在短横线上方** — 短横线下方的注释位于读取器尚未解析条目值的位置，读取器会缓冲
+  直到解析，并在超过 granit 的 96 事件上限时拒绝：携带 100 条前导注释的标量项把每一行都写在短横线下
+  方，输出无法再解析（"too many consecutive comments before resolving collection entry"，libFuzzer
+  `yaml_roundtrip` crash-c5f32014；100 条是最窄的失败计数）。标量项与流式项现在把栈写在短横线上方，
+  任意长度都能读回；块容器仍把自栈留在下方，因为写在短横线上方时读取器会把注释报在外层序列上，每轮都
+  会再提升一层（`docs/dev/quality-ledger.md` (me)）。
 - **保留的合并项由发射出的键决定，而不是整节点相等** — 判断合并贡献什么的折叠把来源的键值对与映射自
   有的键按整节点比较，于是仅在注释或拼写上不同的键值对挺过了收集，又被覆盖过滤器的发射标识丢弃：注释
   所依附的条目晚一轮离开了树（libFuzzer `yaml_roundtrip` crash-a3dded4d / crash-860ec5b7）。收集现

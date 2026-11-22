@@ -176,16 +176,30 @@ def test_third_party_plugins_listed():
 
 
 def test_third_party_plugins_skip_when_absent(monkeypatch):
-    """_register_third_party() is a no-op when libraries are not importable."""
+    """_register_third_party() registers nothing when libraries are not importable."""
+    # Captured before the patch: the installed fake is what a bare `__import__`
+    # inside it would resolve to, and that self-call recurses until the
+    # interpreter gives up.
+    import builtins
+
     from pyrs_yaml.plugins import _builtin
+
+    real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):
         if name in ("pendulum", "arrow", "ulid"):
             raise ImportError(f"No module named {name!r}")
-        return __import__(name, *args, **kwargs)
+        return real_import(name, *args, **kwargs)
 
+    registered = []
     monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(_builtin, "register_type", lambda *a, **k: registered.append(a))
     _builtin._register_third_party()
+
+    # A handler built from a module that failed to import would be the failure
+    # this row exists to catch, and the registry itself cannot show it once the
+    # libraries are installed and already listed.
+    assert registered == [], f"registered {registered} from imports that failed"
 
 
 def test_get_plugin_answers_the_pair_list_plugins_reports():

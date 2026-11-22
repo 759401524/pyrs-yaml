@@ -19,6 +19,60 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A sequence item's note lifts above the header it belongs under** — a block container keeps its
+  note stack below the dash, and when the item's value opens with an `&a` / `!tag` header line that
+  tail is the gap under the header, where granit files the note on the *header's* node: the first
+  emission wrote `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`, and the second lifted the
+  note above `!fuzz6` (fuzz seed `former-crash-fb62e776`, record 7, found by the `edit_yaml`
+  corpus's new deterministic replay). The stack now goes through the line writer that crosses a
+  header at the item's own column, and appends exactly where it did when no header sits above
+  (`docs/dev/quality-ledger.md` (mr)).
+- **`sort_keys` lifts the note stack of the pair it writes first** — the preamble lift read the
+  source's first pair while the sorted emission wrote a different one, so that pair's stack stayed
+  between the header and the body and the emission settled only on a second round (fuzz seed
+  `former-crash-8d630b22`). The lift now takes the index the emission writes first, supplied from
+  the sorted order when `sort_keys` is on (`docs/dev/quality-ledger.md` (mp)).
+- **`sort_keys` keeps source order where sorting would use an anchor before its definition** —
+  sorting emitted `use: *x` above `~: {abase: &x 1}`, and this engine's own reader refused the text
+  with "found unknown anchor"; the parse-time orphan repair cannot help a writer that produced it.
+  A mapping that both defines and uses an anchor name locally keeps its source order now — a name
+  defined around the mapping is already in scope, so only local pairs can be broken by the reorder
+  (`docs/dev/quality-ledger.md` (mp)).
+- **A hoisted note crosses an indented header** — with `indent_offset: 2` a note that cannot ride a
+  pair's line was written below its `&a` / `!tag` header, where the next round lifted it: the gap
+  walk measured the body's indent from text a tail had not written yet, read 0, and stopped at an
+  indent-2 header. The walk now takes the column its caller knows and crosses the header, so the
+  note stays above it on the first emission (`docs/dev/quality-ledger.md` (mp)).
+- **`indent_sequence: 4` keeps a compact item's pair on the key's column** — a sequence item whose
+  first pair opens after `- ` wrote its second pair at `indent_width + 4` while the first key sat at
+  `indent_width + 2`, and the reader refuses the shallower line ("mapping values are not allowed in
+  this context", fuzz seed `former-crash-094d4d6a`). The pair column is where the first key landed,
+  not the block-body step, so the writer now uses the former (`docs/dev/quality-ledger.md` (mp)).
+- **An anchor whose node a merge consumes reaches the orphan repair** — four `yaml_roundtrip`
+  shapes went wrong. Three ended with an alias in the emission and no definition anywhere: a nested
+  `<<` was resolved on a clone while the repair inlined the raw body (`<<: &b` / ` <<:` / `  : *b`,
+  crash-91652883); the anchor sat on an item mapping the expansion splices apart (`<<:` / `- &b` /
+  ` : *b`, crash-0fae03be); and one non-mapping item invalidated the whole sequence source, which
+  left the tree with its anchors while the document still aliased one (`<<:` / `-` / `- &b : *b` /
+  `: *b`, crash-8baf41a3). The fourth kept the raw body's `<<` through a sequence item that merges
+  the anchor the consumed entry defined (`<<: &b` / `- <<: *b` / `: *b`, crash-b3c57280), and the
+  next read turned that item into `{}`. The repair now receives the body the expansion resolved,
+  registers a spliced item's own anchor, and hands an invalidated source's anchors to the repair
+  instead of dropping them with the entry (`docs/dev/quality-ledger.md` (mc)).
+- **A tagged `<<` is a data key in the duplicate-key fold** — the value-key check folded repeated
+  keys by text, so `! <<: ~` above `!G <<: ~` came back as one pair: the pair the writer had already
+  emitted was gone on the next read (libFuzzer `yaml_roundtrip` crash-85764e37). The check now asks
+  the merge pass's own identity, where only a plain untagged `<<` merges
+  (`docs/dev/quality-ledger.md` (md)).
+- **A note stack on a sequence item is written above its dash** — a note below a dash sits where the
+  reader has not yet resolved the entry's value, so it buffers the note until it does and refuses
+  past granit's 96-event cap: a scalar item carrying 100 leading notes emitted every line below its
+  dash and the output stopped re-parsing ("too many consecutive comments before resolving collection
+  entry", libFuzzer `yaml_roundtrip` crash-c5f32014; 100 notes is the narrowest failing count).
+  Scalar and flow items now carry the stack above the dash, where it reads back at any length; a
+  block container keeps its own stack below, because above the dash the reader reports the note on
+  the enclosing sequence and each round hoists it one level
+  (`docs/dev/quality-ledger.md` (me)).
 - **A kept merge entry is decided by the emitted key, not by whole-node equality** — the fold that
   decides what a merge contributes compared a source's pairs with the mapping's own keys as whole
   nodes, so a pair differing only in notes or spelling survived collection and was then dropped by

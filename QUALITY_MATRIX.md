@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 956 Rust `#[test]`, 2,193 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 964 Rust `#[test]`, 2,196 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 331 seeds of which 217 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 155 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 337 seeds of which 223 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 161 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -606,7 +606,7 @@ those bridges grew a long-value twin at both ends, since the long-value shape th
 two dialect bridges as well, since the event path grew that same long-value twin (`stream_long_strings`,
 which costs 8.26% more than `stream_medium` on the very same eight records), since the
 line-delimited route grew a pair of its own (`documents_short_strings` and `documents_long_strings`,
-the same eight records at value widths of 9 and 256 - 76,864,750<!-- ir-floor: documents_short_strings --> against 119,434,806<!-- ir-floor: documents_long_strings -->, so the long
+the same eight records at value widths of 9 and 256 - 76,864,771<!-- ir-floor: documents_short_strings --> against 119,434,827<!-- ir-floor: documents_long_strings -->, so the long
 body costs 1.55x the short one on that route), since the TOML loader's own route joined
 (`load_toml_medium` and `load_toml_long_strings`, driven through `bench_load_toml` on the row the file
 keys `20261023.334.3` at 144,902,515<!-- ir-floor: load_toml_medium @ 20261023.334.3 --> and
@@ -626,12 +626,12 @@ the third hot computation `AGENTS.md` names had no floor at all, because no scen
 (`stream_json_medium` and `stream_json_stop`, the second stopped a quarter into the first): the
 cancellation half that `parse_stream(..., on_event=...)` sells had no number either, and one number
 alone cannot tell a slower prefix from a slower whole, which is why the pair exists; and since the
-writer's note shape joined (`serialize_note_flow`, 60,237,908<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
-with it (`to_jsonc_notes` 13,489,705<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 13,607,705<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,726,107<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,906,107<!-- ir-floor: from_json5_notes -->, one six-note document through
+writer's note shape joined (`serialize_note_flow`, 62,273,831<!-- ir-floor: serialize_note_flow -->) and the dialect writers' note shape
+with it (`to_jsonc_notes` 13,489,692<!-- ir-floor: to_jsonc_notes -->, `to_json5_notes` 13,607,692<!-- ir-floor: to_json5_notes --> and their reader twins `from_jsonc_notes` 50,726,107<!-- ir-floor: from_jsonc_notes --> and `from_json5_notes` 50,906,107<!-- ir-floor: from_json5_notes -->, one six-note document through
 each) — every YAML input the writer scenarios ran before them carries zero `#` and, in the five
 `serialize_*` rows, zero braces, so the flow-to-block demotion and both note lifts ran for no
 measured price until a scenario could reach them. The same fixture joined the two readers on the
-mirror gap: `parse_notes` 712,650,233<!-- ir-floor: parse_notes --> and `stream_notes` 579,063,578<!-- ir-floor: stream_notes -->,
+mirror gap: `parse_notes` 711,847,536<!-- ir-floor: parse_notes --> and `stream_notes` 579,063,561<!-- ir-floor: stream_notes -->,
 while the five `parse_*` rows and both document-carrying `stream_*` rows run over text holding zero
 `#`, so `comment.rs`'s scan, the receiver's note-owner decision and the pending-note carriage were
 priced where a note is written and nowhere it is read. One fixture, two routes, so what separates the
@@ -643,7 +643,7 @@ and 93,952,438 on the event route (+16.30 % and +19.37 %, which is 4,473 and 4,2
 note), and 31,022,014 of the first and 33,738,000 of the second sit in eight functions the note-free
 control never enters at all; `docs/dev/perf.md` names them. TOML grew both halves of the same pair on
 a fixture of its own, because a note there has a shape neither bridge shows:
-`to_toml_notes` 11,921,506<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
+`to_toml_notes` 11,941,493<!-- ir-floor: to_toml_notes --> writes the six-note YAML document the two
 dialect writers write, so its number sits beside `to_jsonc_notes` and `to_json5_notes` as the same
 document through a third writer, and `from_toml_notes` 146,755,266<!-- ir-floor: from_toml_notes -->
 reads a seven-comment TOML document holding `MEDIUM_TOML`'s values and nothing else
@@ -825,7 +825,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (217 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (223 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

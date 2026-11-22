@@ -57,8 +57,14 @@ pub(crate) fn is_null_key(key: &CustomNode) -> bool {
 /// YAML explicitly permits a mapping to repeat `<<` (`<<: *a` plus `<<: *b`),
 /// so the value-key duplicate check must exempt it — collapsing two merge keys
 /// would reject well-formed documents (`nested_self_anchor_merge_terminates`).
+///
+/// The identity is the merge pass's own (`yaml::merge::is_merge_key`), not the text:
+/// a quoted `"<<"` or a tagged `!x <<` is a data key, so folding it against a real
+/// merge key silently dropped the earlier pair — `! <<: ~` above `!G <<: ~` came
+/// back as one pair, and the writer's emission of both re-read as one (libFuzzer
+/// `yaml_roundtrip` crash-85764e37, minimised to 21 bytes).
 fn is_merge_key(key: &CustomNode) -> bool {
-    matches!(key, CustomNode::Scalar { value, .. } if value.as_ref() == "<<")
+    yaml::merge::is_merge_key(key)
 }
 /// What the reader does when one mapping holds two keys that YAML counts as one key.
 ///
@@ -3284,14 +3290,15 @@ mod tests {
             "# c\n?\n  - a: b\n:\n  1\n",
             "the walk continues into the item's marker spine"
         );
-        // Only the first item: a note above a later one already round-trips where it
-        // sits, and hoisting it would move a note a reader reports back correctly.
+        // A later item's note stays in the body, one line above its dash: below the
+        // dash the reader has not resolved the item and buffers the note until it
+        // does (see `write_sequence_item`).
         assert_eq!(
             crate::serializer::to_yaml(
                 &parse("?\n  - k: v\n  # c\n  - 2\n: 1\n", YamlSchema::Core).unwrap()
             ),
-            "?\n  - k: v\n  - \n    # c\n    2\n:\n  1\n",
-            "a second item's note must stay in the body"
+            "?\n  - k: v\n  # c\n  - 2\n:\n  1\n",
+            "a second item's note must stay in the body, above its dash"
         );
         // And only for keys: a sequence in value context is written by the item path,
         // which the reader agrees with, so the hoist must not reach it.

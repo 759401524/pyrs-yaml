@@ -14946,3 +14946,763 @@ records for this host, not a term of this change; the enforcing image owns that 
 Closure: both seeds replay clean and the registry names none of them, which is the closure line on
 issues #732 and #733; closing them stays a separate, user-approved act, and this entry does not
 perform it.
+
+### (mc) A merge repair speaks the body it resolved (2026-11-18)
+
+Four archived artifacts, one blind spot: the expansion empties the merge entry's value because its
+pairs travel as content, and the repair that keeps an anchor defined there alive inlines whatever
+node the entry still holds. For four shapes that node was not what the expansion had read from.
+
+- **91652883** (19 bytes: `<<: &b` LF ` <<:` LF `  : *b`) - the value is a mapping that itself
+  merges. The expansion collected its pairs from a clone whose own `<<` had been resolved; the
+  repair inlined the unresolved copy, so the emission spelled `<<:` back as data, the next read
+  consumed it, and the two rounds never agreed. The resolved body is now kept (`resolved_source`)
+  and inlined by the repair, cloned lazily because a value without a nested `<<` is still moved as
+  it was.
+- **0fae03be** (15 bytes: `<<:` LF `- &b` LF ` : *b`) - the source is a sequence and the anchor sits
+  on an item mapping, the one container the expansion splices away. Its pairs travelled as content
+  and the anchor did not, so the emission carried `*b` with no `&b` anywhere: text this reader
+  refuses. The item-mapping arm registers the anchor before splicing.
+- **8baf41a3** (21 bytes: `<<:` LF `-` LF `- &b : *b` LF `: *b`) - an item that is neither scalar
+  nor mapping invalidates the whole source, because a partially applied sequence is not a merge. The
+  sequence then leaves entire with the consumed entry, every anchor inside it included. The
+  invalidated arm walks the source with `collect_anchored_nodes`.
+- **b3c57280** (20 bytes: `<<: &b` LF `- <<: *b` LF `: *b`) - the same unresolved body as 91652883,
+  reached through a sequence item that merges the anchor the consumed entry defined. Inlined raw,
+  the first emission kept `- <<: *b` under `~: &b`; the next read consumed that key and the item
+  came back `{}`, so the two rounds disagreed (`~: &b` LF `  - <<: *b` LF against `~: &b` LF
+  `  - {}` LF). The same `resolved_source` covers it: the repaired definition now inlines `- {}`.
+
+Gates: merge.rs gained `an_orphan_repaired_definition_speaks_the_resolved_body`,
+`a_repaired_definition_does_not_re_merge_on_the_next_read`,
+`a_sequence_item_anchor_the_merge_splices_away_is_inlined` and
+`an_invalidated_sequence_source_takes_its_anchors_through_the_repair`, each replaying the artifact's
+shape and asking the emission for the definition its alias names. `note_survival.rs`'s corpus walk
+asked settlement only of seeds carrying a note, which skipped all four of these shapes - none has a
+comment - so the deterministic suite never replayed the property libFuzzer had just falsified; it
+now charges every seed that parses across all three YAML spokes (161 `yaml_roundtrip` + 69
+`edit_yaml` document halves + 4 `parse_yaml`, measured 2026-11-18, floor 215). The other two
+spokes needed the charge rather than inheriting it: `edit_yaml`'s fuzz target asserts the fixed
+point but no test replays that corpus, and `parse_yaml`'s target asks nothing of a writer. The
+four seeds are archived under
+`fuzz/seeds/yaml_roundtrip/former-crash-*.seed` as minimisations of the artifacts (`91652883`'s
+artifact is 113 bytes with CRs under `target/audit/43156160019/`; the seed is the 19-byte
+reduction), not as copies of them. `cargo nextest run --all` 949 passed; `uv run pytest tests/ -q`
+4849 passed, 11 skipped; `quality_matrix.py --check-rows` puts the rows at 962 Rust `#[test]`, 337
+seeds of which 223 are `former-crash-*`; both clippy scopes clean. The 142 `former-crash-*.seed`
+files in `fuzz/seeds/yaml_roundtrip/` and the three artifacts this host still holds under
+`target/audit/*/artifacts/yaml_roundtrip/` (91652883 included) reach a fixed point through the
+rebuilt extension.
+
+Mutations, each `--no-fail-fast`, so the count is of the whole suite rather than of the tests a
+fail-fast run reached: inlining the unresolved value again reads 946 of 949 and reddens three
+tests - 91652883's and b3c57280's, plus the corpus walk, which names both seeds by their two
+emissions - so each archived seed is charged twice, by its pinned shape and by the corpus. Leaving
+the spliced item's anchor unregistered also reads 946 of 949 (its test, the anchor-graph property
+and the corpus walk); not walking the invalidated source reads 946 of 949 (the same three, with the
+corpus walk failing on 8baf41a3's emitted text as an unknown anchor, the refusal the fix exists to
+prevent).
+
+Cost, from one full gate run on this host (`RUSTUP_TOOLCHAIN` pinned, binary hashes differ from the
+baseline build, so these are code movements and pair with no other run's numbers):
+`parse_inline_merge` 361,588,346 → 361,537,100 (−0.01%) and `parse_anchors` 270,747,719 →
+271,442,492 (+0.26%), the second being the walk's own size. The walk runs only where a source is
+invalidated and the clone only where a source carries a `<<`.
+
+### (md) A tagged `<<` is data, and one predicate decides it (2026-11-18)
+
+**85764e37** (21 bytes: `<<:` LF `- ! <<:` LF `- !G <<:`) - one document, two answers to "is this
+key the merge marker". The writer asked the tag-aware predicate and emitted both keys as data pairs;
+the duplicate-key fold asked the text and the plain style alone, so `! <<` and `!G <<` folded
+against each other, the document came back as one pair, and the pair the writer had emitted was
+gone. Only an untagged plain `<<` merges, and the reader that said otherwise was a second copy of
+the rule.
+
+The fold now delegates to `yaml::merge::is_merge_key` (the one that requires
+`meta.tag().is_none()`), so the merge pass, the duplicate-key check and the writer's `write_pair`
+share one answer instead of three readings of it. The decision is pinned by
+`a_tagged_merge_key_is_data_and_stays_so` - both spellings emit as data and the emission re-reads as
+itself - beside the existing `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key`.
+
+Mutations, `--no-fail-fast`: dropping the tag test from the predicate reads 946 of 948 and reddens
+both tests. Either one alone would have been satisfied by a wrong rule - the look-alike test against
+a `!` marker, the round test against a predicate that happened to stay consistent - which is why the
+answer has one home rather than two.
+
+Cost: `parse_inline_merge` 361,588,346 → 361,537,100 (−0.01%) on this host. The predicate itself
+adds one tag test per `<<` candidate, and it deleted a duplicate rather than adding a scan.
+
+### (me) A sequence item's note stack rides above its dash (2026-11-18)
+
+**c5f32014** (562 bytes: an unresolved `<<: #b` entry followed by a stack of notes inside a nested
+sequence) - a noted item that took a line of its own put its stack under the dash, where the reader
+has not yet resolved the entry's value and buffers the notes until it does. granit refuses the 97th
+buffered note (`Options::max_buffered_comment_events`, default 96), so the writer's own output
+stopped re-parsing once a stack was long enough; 100 notes is the narrowest drawn length that fails.
+Under the dash the notes also read back onto the sequence rather than onto the item, so the emission
+was not a fixed point either.
+
+The writer now hoists a scalar or flow item's stack above its dash, where the reader takes the same
+lines back as the item's own notes at any length. The branch that gives an item a line of its own is
+now block containers only; it used to take any item carrying a legacy standalone note as well
+(`item.leading_comment().is_some()`), which is the shape that put a simple item's stack under its
+dash. A block container keeps its stack below, because above the dash the reader files it on the
+enclosing sequence, and an empty container keeps its own arm (its notes are demoted inline, since a
+bare `{}`/`[]` cannot hold a line of notes). A compact item already hoisted before this change - its
+`- key: value` line has no room for a stack - and the compact branch never reaches the child's
+prologue, so it needs no count.
+
+The mechanism is a count, not a flag: `write_sequence_item` writes the stack, then sets
+`suppress_leading_notes = stack.len()`, and `write_note_line` decrements-and-returns at its top, so
+exactly the child's own prologue lines are skipped and a stack deeper inside still lands. The
+child's prologue stays byte-for-byte the parent's, which is the point: every variant that passed the
+decision through `serialize_node_internal`'s signature or a new field moved `serialize_block` by
++0.94% to +6.05%, and the clone-and-strip variant that avoided the signature read +0.36% there and
++4.00% on `serialize_note_flow`, whose fixture's flow items carry notes. The count is set only under
+`if !compact`, because a compact item never reaches the child's prologue and a stray count would
+swallow the next pair's key notes.
+
+Gates: `a_note_stack_on_a_sequence_item_is_written_where_it_reads_back` builds the 100-note
+document, asserts the stack above the dash and the fixed point, then replays the seed; ir_fixtures'
+`the_note_flow_fixture_reaches_every_answer_the_writer_gives` now demands the noted member (`over:`
+LF `  # lead` LF `  - x`), the shape the demotion exists to measure; and
+`tests/test_node_metadata.py::test_comment_sequence_item` pins `- a` LF `# second` LF `- b` plus the
+re-read `leading_comments == ["second"]`, where it used to accept the below-dash line the reader
+then handed to the sequence. The seed is archived as `former-crash-c5f32014.seed` and replayed with
+the 141-file corpus above.
+
+Mutations, `--no-fail-fast`: disabling the hoist reads 928 of 948 - 20 red, among them the new test,
+both ir_fixtures note_flow premises,
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission`, the anchor-graph property,
+five property tests and the parser's own note-ownership tests
+(`stacked_comments_above_a_key_all_survive`, `comment_line_ownership_is_stable_across_rounds`). The
+placement rule is the most-tested thing in this entry for exactly the reason the crash shows: it is
+a reader-side attribution, not a formatting preference.
+
+Cost: `serialize_block` 11,071,353 → 11,053,367 (−0.16%) and `serialize_note_flow` 60,237,908 →
+60,533,902 (+0.49%), the second inside the 0.5% line by 40 instructions across three samples and the
+price of writing each hoisted stack once and counting it - the alternative designs above paid 8×
+that in the same scenario. `safe_dump_small` (+0.24%) and `safe_dump_medium` (+0.57%, the one row
+past the line) belong to `direct_dump`, a writer this change does not touch; `(mb)` already records
+that movement as this host's build-layout distance, and this run's own note says why the image owns
+the verdict: the tree sits −1.02% below the `ubuntu24` row's floor (110,233,946). Every other
+scenario is inside ±0.26%.
+
+### (mg) The JSON note gate read two corpora while its target replayed three (2026-11-18)
+
+`crates/pyrs-json/tests/corpus_notes.rs` walked `json_events_replay` and `json_roundtrip`. The third
+JSON corpus, `parse_json`, was read by no deterministic test at all: its fuzz target asks only
+panic-freedom and refusal parity, and the walk that does assert note conservation never opened the
+directory. Two of its seven seeds spell notes (`jsonc-comments`, `former-crash-comment-feff`), so
+the walk now takes all three corpora: 46 seeds x 2 comment-capable dialects, 92 trials, 72 accepted
+documents and 34 of them note-bearing, against 62 and 31 for the first two.
+
+The floors are what make the third corpus load-bearing, because the conservation assertions pass
+either way - a lost note is the only thing they look for, and neither corpus in isolation loses one.
+Set at 66 and 32, between the two measurements, dropping `parse_json` reddens the walk with "the
+corpus only drove 62 accepted documents; expected at least 66", and with the first floor relaxed it
+reddens again with "only 31 accepted documents carried a note; expected at least 32". Both are real
+runs; the file was restored before the tree was measured whole.
+
+`note_survival.rs` carried the other half of the claim, and it had gone stale: its "not charged
+here" paragraph described a JSONC conservation half as "left unbuilt" and gave the three corpora 16,
+15 and 6 seeds. The half exists in `corpus_notes.rs` and the corpora hold 17, 22 and 7 today, so the
+paragraph now points at the file that makes the claim and states the counts it measures. Its
+`parse_schema` sentence said "one seed"; that corpus holds 19 schema documents, and the claim with
+work left in it is the one kept: a schema has no comment vocabulary.
+
+Two counts in the neighbouring gates had drifted the same way, and both were re-measured rather than
+left to their dates: `events_replay.rs` said 21 seeds drove 63 pairs and replayed 35, and the corpus
+is 22 seeds, 66 pairs and 36 replays; `note_survival.rs` said all 31 `edit_yaml` seeds hold a NUL
+and none parses whole, and all 69 do and none does. The properties those sentences argue for still
+hold - the split is still what makes that corpus a corpus - so both now state the reading and its
+date.
+
+Readings on this tree: `cargo nextest run --all` 949 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped.
+
+### (mh) The seed-reach gate trusted a target list the corpus could outgrow (2026-11-18)
+
+`crates/pyrs-yaml-core/tests/seed_reach.rs` derives `.ci/seed-reach.txt` from the six targets named
+in `SKIP_ON_REFUSAL`. `fuzz/seeds` is the authority for which targets exist, and nothing compared
+the two: a tenth target arriving with a corpus would be walked by nothing and reported by nothing,
+and the registry would stay empty and green - the same blindness as a stale `.ci/seed-reach.txt`,
+one level up. The reverse costs the same to check and fails the same way in practice: a renamed
+target leaves a name that matches no directory, and the list keeps reading as coverage of something
+that moved.
+
+The three corpora this gate does not walk now live in `EXPLAINED_ABSENT`, each with the reason read
+from its own target: `json_events_replay` compares the tree's and the stream's refusals on its
+`(Err, Err)` arm, so a refusal is the claim it makes; `parse_yaml` compares the two doors' messages
+on its refusal arm; `parse_schema` holds its result in `let _ =`, which leaves "no panic on any
+input" as the assertion every seed reaches. `every_seed_corpus_is_walked_or_explained` reads the
+directory set from `fuzz/seeds` - nine measured on 2026-11-18, six walked and three explained - and
+refuses a corpus in neither list, a listed name whose directory went missing, and a corpus whose
+`fuzz/fuzz_targets/<name>.rs` does not exist.
+
+Each assert was made to fire, then reverted. Dropping `parse_schema` from the list: "seed corpora
+neither walked nor explained: [\"parse_schema\"] - add each to SKIP_ON_REFUSAL if its target skips
+on a refusal, or to EXPLAINED_ABSENT with the reason it needs no reach check". Adding
+`ghost_target`: "targets named here with no seed corpus: [\"ghost_target\"] - a name kept after its
+corpus moved reads as coverage of nothing". An empty `fuzz/seeds/ghost_corpus`, listed as explained
+to get past the first refusal, read "seed corpora with no target source: [\"ghost_corpus\"] - their
+inputs replay nothing"; the directory was removed afterwards.
+
+Readings on this tree: `cargo nextest run --all` 950 passed (was 949; the new test is the
+difference), `uv run pytest tests/ -q` 4849 passed and 11 skipped, and
+`scripts/quality_matrix.py --check-rows` OK after `--write-rows` took the unit / integration row
+from 962 to 963 Rust `#[test]`.
+
+### (mi) The TOML fixed point was asked of one corpus while two carried TOML (2026-11-18)
+
+`crates/pyrs-toml/tests/roundtrip_corpus.rs` walked `fuzz/seeds/toml_roundtrip`, and the
+`parse_toml` corpus was replayed by its fuzz target alone. That target asks two narrower questions -
+the writer output re-reads under the 1.1 gate, and a note-free 1.0-read tree writes 1.0-loadable
+text - so the binary fixed point was asked of those ten seeds by nothing deterministic. This is the
+shape `note_survival.rs` closed for `edit_yaml`, one crate over: a writer regression can settle
+inside a corpus that no test ever asks a writer about.
+
+The walk now reads both corpora and the floor charges each. Measured 2026-11-18: 25
+`toml_roundtrip` seeds drive 48 rounds and 10 `parse_toml` seeds drive 20, 68 together, and every
+round settles - a coverage gap, not a defect. `MIN_SEEDED_ROUNDS` is 58: above either corpus alone
+(48) and below their sum, so a walk that silently loses one reddens instead of reporting a smaller
+number. Both asserts were made to fire, then reverted. Walking `toml_roundtrip` only: "the corpora
+only drove 48 writer rounds; expected at least 58". With both corpora and the floor at 100000: "the
+corpora only drove 68 writer rounds; expected at least 100000".
+
+The same gap is open on the JSON side, measured while writing this: the JSON twin
+(`crates/pyrs-json/tests/roundtrip_corpus.rs`) walks `json_roundtrip` only,
+`fuzz/fuzz_targets/parse_json.rs` asserts nothing about a writer, and `corpus_notes.rs` charges
+conservation over `parse_json`'s 7 seeds rather than settlement. It is left open here rather than
+folded in, because it is a second crate's walk and needs its own measurement.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
+`scripts/quality_matrix.py --check-rows` stays at 963.
+
+### (mj) The JSON fixed point was asked of one corpus while two answered it (2026-11-18)
+
+`crates/pyrs-json/tests/roundtrip_corpus.rs` walked `json_roundtrip` only. `json_events_replay`
+was already charged - `events_replay.rs` asserts the same `once == twice` over its own seeds - but
+`parse_json` was not: its fuzz target asserts nothing about a writer, and `corpus_notes.rs`
+charges conservation rather than settlement over the same seven seeds. The pair is the TOML twin's
+shape (`(mi)`): a writer regression can settle inside a corpus no test ever asks a writer about.
+
+The walk now reads both corpora. Measured 2026-11-18: 17 `json_roundtrip` seeds drive 40 rounds and
+7 `parse_json` seeds drive 12, 52 together, every round settling - a coverage gap, not a defect.
+`MIN_SEEDED_ROUNDS` is 46: above either corpus alone (40) and below their sum. Both asserts were
+made to fire, then reverted. Walking `json_roundtrip` only: "the corpus only drove 40 writer
+rounds; expected at least 46". With both corpora and the floor at 100000: "the corpus only drove 52
+writer rounds; expected at least 100000".
+
+The constant's doc block recorded "17 seeds driving 38 rounds", measured when the sign-strip seed
+joined; this tree drives 40 over the same 17 seeds, and 9d6ecd9ce ("two dead JSON seeds re-mined to
+reach") is the later change that would move that number, so the block now carries the measured 40
+rather than the earlier reading. `note_survival.rs`'s module doc also said the TOML and JSON twins
+"replay the same corpora", which was already loose and is now false for `json_events_replay`; its
+summary of who charges settlement is corrected in the same change to name that corpus's separate
+charge in `events_replay.rs`.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The test count is unchanged - an existing test was widened, not added - so
+`scripts/quality_matrix.py --check-rows` stays at 963.
+
+Both `events_replay.rs` claims above are wrong - that file compares the tree walk against the event
+replay of the *same* input and never writes twice, so it charges no fixed point. See (mo), which
+walks that corpus here, charges the pretty writer shapes the walk never asked, and corrects the two
+doc comments that repeated the claim.
+
+### (mk) The JSON note gate asked only that a note appear, not where (2026-11-18)
+
+`crates/pyrs-json/tests/corpus_notes.rs` flattened every note the tree carried and asserted the
+flattened text occurred somewhere in the emitted document. A writer that re-homed a note onto
+another key passes that: the text is in the document, under the wrong member. This is the YAML
+family's re-homing defect class, and it was invisible here because presence was the whole claim.
+
+The walk now re-reads each emission with the dialect's own reader and compares multisets of
+`(path, text)`: a mapping key and its value share one segment (the slot is not part of the claim),
+a sequence item takes its index, a container key collapses to `?`. Presence follows from placement,
+so it is not asserted twice - the separate `contains` oracle is gone rather than kept beside a
+stricter one that implies it. A re-read the dialect refuses is a panic naming the seed, the same
+reading `roundtrip_corpus.rs` gives.
+
+Measured 2026-11-18: 46 seeds over the three corpora x 2 comment-capable dialects is 92 trials, 72
+accepted documents, 34 note-bearing, 68 placements compared - 46 from `json_events_replay`, 16 from
+`json_roundtrip`, 6 from `parse_json` - and every one matches: a coverage gap, not a defect.
+`MIN_PLACED_TRIALS` is 56, which the replay and round-trip corpora clear together (62) and neither
+clears alone (46 and 16), while `parse_json`'s removal is caught by the two existing floors -
+measured: "the corpus only drove 62 accepted documents; expected at least 66".
+
+Both asserts were made to fire, then reverted. Moving each trial's first note onto a sibling
+member before the comparison, which is what a re-homing writer does to the re-read tree, reddens
+with "a note left its node" and the two multisets. Deleting `emit_inline_comment(node, &mut out)`
+from `to_jsonc_text` reddens on `json_events_replay/shape-root-line-note.seed [jsonc/compact]`,
+the root's line-end slot - the claim the file already carried, re-verified against the stricter
+oracle.
+
+The generative tiers are still presence-only (`json_missing_notes`, `yaml_missing_notes`), and so
+are the TOML and YAML corpus walks (`note_survival.rs` filters on `emitted.contains`), so a shape a
+generator draws or a corpus outside JSON still cannot see a re-homed note. That is left open here:
+each is another crate's oracle and needs its own measurement of what placement the generated trees
+already satisfy.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped. The first run of the suite read one failure, `test_extension_freshness`, because
+the source mutation that re-verified the root-note claim touched `crates/pyrs-json/src/writer.rs`
+and left its mtime newer than the loaded extension; the content was restored, the extension
+rebuilt, and the suite re-run.
+The test count is unchanged - one test replaced another - so the matrix's `--check-rows` gate
+stays at 963.
+
+### (ml) The YAML and TOML note walks asked for presence, and one TOML writer put a note after the separator (2026-11-18)
+
+(mk) closed the placement question for the JSON family and left two clauses open in the same
+sentence: the TOML and YAML corpus walks in `crates/pyrs-yaml-core/tests/note_survival.rs` still
+flattened every note and asserted `emitted.contains(text)`. A writer that re-homes a note keeps the
+text in the document, so that oracle passes while the note has changed owner - the defect class the
+JSON walk had just been given a route multiset to see.
+
+Both walks now key every note by the route the reader walks to it: a mapping key and its value
+share one segment (the note names the member, not the slot it was stored in), a sequence item takes
+its index, a container key the route cannot spell collapses to `?`, and the text is whitespace-
+collapsed on both sides so a note the writer re-lays over several `# ` lines compares equal to the
+one line the reader stored. TOML is asked for the exact multiset in both directions. YAML cannot be:
+granit reports a note line at the head of a block as the block's, so a child's leading note comes
+back on its parent. The contract there is "the node that carried it or any ancestor" - a move can
+cross several levels - and deciding whether two multisets can be paired that way is a bipartite
+matching, not a per-note scan. The greedy version reddened this corpus with three notes the
+emission had not moved (`former-crash-e1e921af` among them) because the root `""` is an ancestor of
+everything; Kuhn's augmenting-path search answers it exactly and is far less code than the argument
+it replaces.
+
+The text half of that rule - collapse every whitespace run, on both sides - was retired later the
+same day, when (mm)'s own lesson was applied to it; see (mn).
+
+The first reading found two defects, both in `crates/pyrs-toml/src/writer.rs` and both the same
+mistake: a notated array-table element and a notated multi-line inline-table member wrote the note
+*after* the separator (`1 # x,`), and a `#` runs to end of line, so the reader handed the note to
+the next member - `p[2]`'s note came back on `p[3]`. The note now stays on its own member's line and
+the separator moves down to a line of its own (`1 # x\n  ,`), which this reader accepts and re-reads
+as the member's own inline note. The pinned test
+`a_same_line_note_on_a_non_last_member_stays_on_its_member` holds the exact text; it was renamed
+from a spelling that described the old inline-table shape.
+
+The last class is the document's own note, and it is a ruling rather than a defect. #113 ruled that
+a mapping's note whose block ends inside a nested sequence takes the node that ends the block as its
+owner, and that no new emission position should be added for it; (eo) and (ep) recorded the same for
+the tail slot - the ownership stays, the text settles. The writer therefore leaves the document's
+note on the last line of the body and the reader reports it on whichever node that line ends, so the
+gate accepts exactly the routes on the body's final line - the last child at each level down from
+the root - and nothing else. Two mutations were made and reverted: passing an empty chain reddens on
+the three seeds that place it that way (`former-crash-200342d3`, `-2eaa5599`, `-c2343438`), and
+taking the *first* child instead of the last reddens on `200342d3` alone, so "the last line" is
+load-bearing rather than "any descendant". A third reading matters here: the first attempt at this
+change was the opposite one - a serializer branch giving the root its own note line below the body -
+and `the_roots_own_note_settles_in_one_round` reddened on it, which is #113 saying no. That change
+and the two test edits that had been made to match it were reverted; the ruling is now encoded where
+it belongs, in the gate's tolerance.
+
+Measured 2026-11-18: the YAML spokes carry notes on 120 + 2 + 1 = 123 seeds and all 123 now place
+every note - 59 exactly, 61 with only the ancestor direction, 3 on the body's last line - and 234
+seeds parse and settle (161 + 69 + 4), so the floors are 116/2/1 and 215 against those readings. The
+TOML spokes carry 11 + 3 = 14 note-bearing seeds and every one is exact, at floors 10/3. The
+generative property tiers remain presence-only, as (mk) said of its own family.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped, `python scripts/quality_matrix.py --check-rows` OK. No test was added - two walks
+were widened and one was renamed - so the matrix's row stays at 963 Rust `#[test]`.
+
+### (mm) The generative note tiers were presence-only; the JSON family is the one that already places (2026-11-18)
+
+(ml) closed with the sentence "the generative property tiers remain presence-only, as (mk) said of
+its own family", and (mk) had said why it stopped there: "each is another crate's oracle and needs
+its own measurement of what placement the generated trees already satisfy." This entry is that
+measurement, taken before any property was widened, so the widening reports a fact about the writer
+rather than an oracle fitted to whatever the writer does.
+
+Method: a temporary probe module in `fmt_pbt.rs` drew 3000 `arb_custom_node()` trees - the same
+generator the tier uses - routed every note through the format's writer, re-read the text with that
+format's own reader, and compared the two sides as route-keyed multisets: a mapping key and its
+value share one segment (the note names the member, not the slot), a sequence item takes its index.
+The probe was deleted after reading; `fmt_pbt.rs` was byte-identical to HEAD before the widening
+below.
+
+The comparison rule took three runs to get right. The first whitespace-collapsed both sides, the
+YAML corpus walk's rule: one JSONC tree "strayed" only because a note carried two adjacent spaces,
+so a rule that loses information manufactured a difference. The second compared raw text and 1072
+of the 1097 in-domain JSONC trees "strayed", because the writers flatten a note's newlines to
+spaces on emission - raw equality was comparing a note to its own spelling. The rule that stands is
+the reach oracle's own: trim, turn newlines and carriage returns into spaces, keep every other byte
+literal, and accept the documented split of an inner block-comment terminator into `* /`.
+
+Numbers, 3000 draws, per route (YAML and TOML under the collapsing rule, which can only under-count
+strays):
+
+| route | exact | tolerated | stray |
+| --- | --- | --- | --- |
+| YAML | 1875 | 607 | 199 |
+| TOML | 87 | 0 | 9 |
+| JSONC pretty | 1097 | 0 | 0 |
+| JSONC compact | 1073 | 24 | 0 |
+| JSON5 pretty and compact | identical to JSONC | | |
+
+TOML's 2787 refused draws, 114 note-free trees and 3 out-of-domain trees, and the JSON rows' 972
+refusals, 319 note-free trees and 612 out-of-domain trees, are what remain of the 3000.
+
+YAML stays presence-only on its number: 199 strays is not a threshold to argue with, and the
+lost-note relations split almost evenly between "down" (238, a container's own note re-read on a
+descendant - the shape #113 ruled for the root) and a different branch (250). An exact claim would
+need a new ruling generalising #113 to every collection; the ancestor tolerance the corpus walk
+already encodes is that contract's existing form. TOML stays presence-only for a different reason:
+all nine strays are one shape - a root note plus the first member's note emitted as two adjacent
+`#` lines that TOML cannot attribute to two owners - which `toml_root_note_ok` already assumes away
+in its own property. Widening TOML's claim would mostly widen that carve-out, not measure a writer,
+and 2787 of the 3000 draws are refused before a note is written anyway.
+
+The JSON family was widened. Presence remains on every sample - it caught the class the
+duplicate-collapse fix closed, and nothing here should unlearn it - and placement is added inside
+`json_object_domain`, the set the JSON fixed points already use, because outside it two distinct
+keys spell one name and the reader's last-wins fold is entitled to move the loser's note. Two
+helpers: `note_routes` walks a tree into route-and-text pairs, and `json_note_misplacements`
+compares carried with re-read as a multiset in both directions, accepting the block split as a
+spelling. The module header now says the two JSON-family writers are held to both claims.
+
+Priced by mutation: hoisting every member's notes onto the first member of its mapping reddens both
+properties with "2 note(s) moved off their node by compact JSONC/JSON5", while the presence
+assertion that runs first passed - which is exactly the gap this closes - and
+`prop_json_writers_are_fixed_points` and `prop_json5_writer_is_fixed_point` stayed green at 3000
+cases, because the hoisted shape re-reads as member zero carrying the notes and hoists them there
+again. The mutation was reverted from a backup, the two regression seeds that failing run wrote into
+`proptest-regressions/fmt_pbt.txt` were dropped (they describe a writer that no longer exists),
+and the file's content is identical to HEAD. The
+restore's mtime alone reddened `test_extension_freshness` naming `crates/pyrs-json/src/writer.rs`;
+the extension was rebuilt with `uv run maturin develop --release` and the suite re-read.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped, `cargo clippy --all --all-targets -- -D warnings` clean, `cargo fmt --check` clean,
+`python scripts/quality_matrix.py --check-rows` OK. No test was added - two properties were widened
+
+- so the matrix's row stays at 963 Rust `#[test]`.
+
+### (mn) The corpus note walks flattened by collapsing runs; the writers only flatten breaks (2026-11-18)
+
+(mm) recorded the lesson and left it in the property tier: "the first whitespace-collapsed both
+sides", a rule that "loses information [and] manufactured a difference". The YAML and TOML corpus
+walks in `crates/pyrs-yaml-core/tests/note_survival.rs` were still using exactly that rule - every
+note text went through `split_whitespace()` joined by one space, on both sides of the comparison -
+so the class (mm) had just learned to distrust was still deciding (ml)'s placement gate. A note
+whose stored text holds a tab or two adjacent spaces could change inside the line and the comparison
+would collapse the change away on both sides.
+
+The rule is now the writers' own: drop the outer blanks, write every line break as a space, keep
+every other byte literal. That is what `push_note_text` does in both writers
+(`crates/pyrs-yaml-core/src/serializer.rs` and `crates/pyrs-toml/src/writer.rs`), so the gate asks
+the question the writer is trying to answer rather than a coarser one. The JSON corpus walk
+(`crates/pyrs-json/tests/corpus_notes.rs`) already used this rule - it also splits an inner block
+terminator - so all three corpus walks now state one comparison contract.
+
+Both walks pass under it unchanged: `every_note_in_the_seed_corpus_survives_one_emission` and
+`every_note_in_the_toml_corpus_survives_one_emission` are green at the 123 + 14 note-bearing seeds
+(ml) measured, and no floor moved - the strict rule is not a new demand the writers were failing, it
+is the same demand stated correctly.
+
+Priced by mutation, in the shape (mm) used: each writer's `push_note_text` was rewritten to collapse
+runs - the comparison rule being retired - and both walks were run against it twice each. Under the
+strict rule the TOML walk reddened on `former-crash-2a5ea394` (its note is
+`6666666%66666666oteaamea=  ""` with two adjacent spaces; the mutated writer emitted one) and the
+YAML walk reddened across the seeds whose notes carry a run, `former-crash-95b66309` (`/:  ~~`),
+`-c5f32014` (`-- <  b<<: #b`), `-c9031de4`, `-dbbe50f6`, `-fd1938f7` and their neighbours included.
+Under the collapsing rule the same two mutated writers stayed green on both walks - the mutation is
+invisible to the rule that was in use, which is what makes this a tightening rather than a rewrite.
+Both sources were restored from backups afterwards (the TOML writer is byte-identical to what it was
+before the mutation, and `git diff --quiet crates/pyrs-yaml-core/src/serializer.rs` is clean), so
+nothing of the mutation is left in the tree.
+
+A pre-scan of the corpora said in advance that the change would be load-bearing: nine seed files
+carry a note line with an internal tab or two adjacent spaces, eight under `yaml_roundtrip` and one
+under `toml_roundtrip` (the same `former-crash-2a5ea394`), so the corpus can tell the two rules
+apart on seeds it already holds rather than only on generated input. The mutated run reddened on
+more than those nine, because a note the writer re-lays over several lines also exposes runs the old
+rule collapsed.
+
+Readings on this tree: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed
+and 11 skipped, `cargo clippy --all --all-targets -- -D warnings` clean, `cargo fmt --check` clean,
+`python scripts/quality_matrix.py --check-rows` OK. No test was added - one comparison rule was
+tightened and one doc comment rewritten - so the matrix's row stays at 963 Rust `#[test]`.
+
+### (mo) The JSON fixed point was asked of three corpora but one writer shape (2026-11-18)
+
+(mj) closed the corpus dimension for the JSON fixed point and left the shape dimension open, on a
+premise that was false: "`json_events_replay` was already charged - `events_replay.rs` asserts the
+same `once == twice` over its own seeds". That file asserts `to_json_text(&node) ==
+to_json_text(&replay)`, where `replay` is the event replay of the *same* input: two trees, one write
+each, and no write-parse-write anywhere, so the corpus was charged a fixed point by nothing. The
+walk it widened also asked only the compact writers, while both container arms of
+`write_value_inner` fork on `pretty` - the multi-line layout path was charged over generated trees
+by `fmt_pbt::prop_pretty_json_writers_are_fixed_points` and over no corpus at all.
+
+`crates/pyrs-json/tests/roundtrip_corpus.rs` now walks the three corpora in all six published shapes
+
+- the three compact writers and `to_json_text_pretty` / `to_jsonc_text_pretty` /
+`to_json5_text_pretty` at `indent = 2` - with reader and writer still paired per dialect. Measured
+2026-11-18 through a probe before the floor was set: `json_roundtrip` 10/10/13/17/13/17,
+`parse_json` 2/2/3/7/3/7, `json_events_replay` 4/4/14/18/14/18 (json, json-pretty, jsonc, json5,
+jsonc-pretty, json5-pretty), 176 rounds together and all of them settling. A coverage gap, not a
+defect.
+
+The floors are per corpus - `json_roundtrip` 74 (measured 80), `parse_json` 22 (24),
+`json_events_replay` 66 (72) - plus a total of 166. The smallest single shape contributes 16 rounds
+(the strict pair over the three corpora), so 166 sits below 176 but above 176 - 16: removing any one
+shape, or any one corpus, reddens a line rather than reporting a smaller number.
+
+Priced by mutation, and this mutation needed both new dimensions at once. `emit_pair_notes` stopped
+writing a value's leading notes above the pair and the pretty mapping branch wrote them after the
+colon - a parseable layout whose note the reader re-reports on the value's line, so the second round
+moves it. On that tree the probe read every compact counter unchanged and five outputs unsettled,
+all of them `jsonc-pretty` or `json5-pretty` and all under `json_events_replay` - the exact
+combination the old gate could not see. The widened walk reddened with
+`json_events_replay/crash-dup-key-after-line-note.seed [json5-pretty]`:
+`{\n  "a": // {\n0\n}` against `{\n  "a": 0 // {\n\n}`.
+
+Both floors were made to fire. Dropping the `json_events_replay` row: "the corpus only drove 104
+writer rounds; expected at least 166". Dropping the `json5-pretty` row did not reach the assertion
+at all - the unused import refuses the build (`error: unused import: to_json5_text_pretty` under the
+tree's `-D warnings`), so a shape cannot vanish silently - and the floor question was asked the
+other way instead, by making `to_json5_text_pretty` refuse everything: "the json_roundtrip corpus
+only drove 63 writer rounds; expected at least 74", the per-corpus row firing before the total. The
+writer was restored byte-identical (`git diff --quiet` clean), the probe target was deleted.
+
+Two doc comments repeated (mj)'s premise and are corrected here: this module's own header, and
+`note_survival.rs`'s "(`json_events_replay`'s settlement is charged by the JSON crate's own
+`events_replay.rs`, which asserts the same pair)". `corpus_notes.rs` keeps its sentence about
+`events_replay.rs`, because what it says there is narrower and true: that file compares the two
+*walks* through the strict writer, which drops every comment slot.
+
+Readings: `cargo nextest run --all` 950 passed, `uv run pytest tests/ -q` 4849 passed and 11
+skipped (after `uv run maturin develop --release`, since the writer file was touched and restored),
+both clippy scopes clean, `cargo fmt --check` clean, `python scripts/quality_matrix.py --check-rows`
+OK, `prek run --all-files` passed. An existing test was widened rather than added, so the matrix's
+row stays at 963.
+
+### (mp) The YAML fixed point was asked of three corpora but one writer shape, and four shapes were broken (2026-11-18)
+
+(ml) closed the corpus dimension for the YAML fixed point - 234 seeds across the three spokes - and
+asked every one of them through `to_yaml` alone, the default `SerializeOptions`. The writer
+publishes ten options, and eight of their combinations are shapes a caller can ask for and a reader
+must re-read: the indent triplet, the offset, the explicit markers, the folding width (including
+folding off) and `sort_keys`, the last also combined with a wider indent and folding. Each is a
+branch the default spelling never enters, and the first run of that charge over the same 234 seeds
+found four defects.
+
+`indent_sequence: 4` put a compact sequence item's *second* pair at `indent_width + 4` while the
+first key sits at `indent_width + 2` after `- `, and the reader refuses the shallower line ("mapping
+values are not allowed in this context", `former-crash-094d4d6a`); the pair column is where the
+first key landed, not the block-body step, so `write_sequence_item` now uses `indent_width + 2`.
+`indent4` read 231 of 234.
+
+`indent_offset: 2` moved a hoisted note below its `&a` header: `header_gap_start` measures the
+body's indent from the text at the spot, and at a tail nothing is written yet, so it read 0, stopped
+at the indent-2 header and left the note where the next round hoists it.
+`header_gap_start_over(at, body_indent)` takes the column the caller knows (`indent_width`) and the
+walk crosses the header; `offset2` read 217 of 234.
+
+`sort_keys` is the remaining two, and both are about order rather than columns. Sorting emitted
+`use: *x` before `~: {abase: &x 1}` - an alias before the `&x` it resolves to - and the reader
+refused the emission with "found unknown anchor"; `repair_orphaned_anchors` is a parse-time remedy
+and cannot help a writer that produced the text. `sort_breaks_anchor_order` keeps source order for a
+mapping that both defines and uses an anchor name locally (a name defined around the mapping is
+already in scope, so only local pairs can be broken by the reorder). The second: the preamble lift
+read the source's first pair while the sorted emission wrote a different one first
+(`former-crash-8d630b22`), leaving that pair's stack between the header and the body;
+`lift_first_entry_notes` takes the index the emission writes first, and the caller supplies
+`sorted_first_index` when `sort_keys` is on. The localized option pages (for example
+`docs/en/api/yaml-document.md`) still describe `sort_keys` as sorting alphabetically; the sentence
+naming this exception belongs with this fix's delivery, next to its changelog line - delivered in
+the same change: the parameter bullet on the four `api/yaml-document.md` pages now names the
+local-anchor exception, and the five writer fixes carry `[Unreleased]` entries in `CHANGELOG.md`
+and its four mirror pages.
+
+The sentence alone would have been the only coverage, so the behaviour is charged at the API door:
+`tests/test_gaps.py` gains `test_sort_keys_keeps_the_pair_that_defines_an_anchor_above_its_alias`,
+which sorts `~: {abase: &x 1}\nuse: *x` and asserts the text comes back unchanged and still reads
+back with `use == 1`. With the guard disabled the test reddens on exactly the swap the sentence
+describes - `use: *x` written above the pair that defines `&x`, text the reader refuses - so the
+exception is priced, not just named. The neighbouring `sort-keys` case in that file's option table
+ended in `or True` (`sorted(o.split()[:3]) == ["a:", "m:", "z:"] or True`), asserting nothing at
+all; it now reads the emitted key order and requires `["a", "m", "z"]`, which is the
+`a: 2\nm: 3\nz: 1\n` the option produces.
+
+`note_survival.rs` runs a shape table - `settlement_shapes`, eight named option sets - over every
+seed that parses, per shape, with a per-shape floor of 215 against the measured 234 and the shape
+name as the lookup key, so a shape removed from the table reads 0 and reddens instead of thinning
+the walk. `note_placement: header_first` stays out: `docs/en/features.md` documents it as not
+settling, and the probe read 217 of 234 with the 17 remaining inputs moving a note across its
+header - a documented non-fixed-point is stated, not encoded as the expected answer. Conservation
+asked the default emission alone in this first pass; the next entry widens it to every shape, and
+the reading there is what retires the "default spelling" scope.
+
+Priced three ways, all reverted. Restoring `key_base = indent_width + self.indent_sequence` reddens
+`former-crash-0766a06e.seed [indent4]`: "emitted text must re-parse: ... did not find expected key
+at char 117 line 15 column 5" - a shape only the widened walk asks, and `default` had passed earlier
+in the same walk. Disabling the anchor guard (`if false && sort_breaks_anchor_order(...)`) reddens
+`former-crash-04f90374.seed [sorted]`: "found unknown anchor at char 29 line 5 column 5". Deleting
+the `width0` row reddens `expected the width0 shape to settle at least 215 seeds, got 0`. After each
+revert the gate was green again, and the three probe targets used for the readings
+(`tmp_shape_probe.rs`, `tmp_detail_probe.rs`, `tmp_ast_probe.rs`) were deleted.
+
+Measured 2026-11-18 after the fixes, the probe read 234 of 234 for all eight shapes with zero
+refusals and zero drifts. Readings on this tree: `cargo nextest run --all` 950 passed,
+`uv run pytest tests/ -q` 4849 passed and 11 skipped (after `uv run maturin develop --release`,
+since `serializer.rs` changed), both clippy scopes clean, `cargo fmt --check` clean,
+`python scripts/quality_matrix.py --check-rows` OK, `prek run --all-files` passed. An existing test
+was widened rather than added, so the matrix's row stays at 963.
+
+### (mq) Note conservation was asked of one YAML writer shape, leaving seven branches unpriced (2026-11-18)
+
+(mp) charged the fixed point in eight writer shapes and conservation against `to_yaml` alone, on
+the argument that the routing exceptions in the module doc were measured on that spelling. The
+argument does not hold: settlement is blind to a lost note (an emission that drops one is a fixed
+point on its very next round, the failure mode `(hw)` and `(hy)` name for TOML), so a shape that
+settles can still be the shape that silently loses one, and seven writer branches were never asked
+the question this file exists for. Conservation now rides the same per-shape loop: each shape's
+emission is re-parsed, `note_sites` walks that tree, and `stray_notes` compares against
+`body_tail_routes` of the same re-read tree - so the one accepted downward move follows the sorted
+view automatically, because it is computed from the emission rather than assumed from the source.
+
+Measured 2026-11-18, every shape keeps every note on its node or an ancestor over all 234 seeds: the
+YAML spoke's 120 + 2 + 1 note-bearing inputs agree in `default`, `indent4`, `offset2`, `explicit`,
+`width20`, `width0`, `sorted` and `sorted-indent4-width20`, and no writer defect surfaced here -
+the note paths do not branch on these options except through the two fixes (mp) had already made.
+
+Priced by making `write_note_line` return early when `sort_keys` is set: every failure carried a
+`[sorted]` or `[sorted-indent4-width20]` tag and none carried `[default]`, led by
+`anchor-tag-comment.seed [sorted]: "" lost "standalone leading"` - so the loss exists only in the
+rows a default-only conservation pass never reads. Reverted; the module doc's eight-shape paragraph
+now states that conservation rides the loop. An existing test was widened again rather than added,
+so the matrix's row stays at 963.
+
+### (mr) The `edit_yaml` corpus had no deterministic replay, and its first run found a writer gap (2026-11-18)
+
+Every seed under `fuzz/seeds/edit_yaml` is a `document NUL script` pair, and 69 of them were
+committed because an edit session over that document broke a promise: text the reader refused, an
+emission that did not settle, a value that did not read back, a tree one of the sibling writers
+could not carry. Those promises were asserted by the fuzz target alone, which runs them only when
+a fuzzer runs; `note_survival.rs` charges the *document* half of the same files for conservation
+and the fixed point in eight writer shapes, but the *script* half had no deterministic charge at
+all. Between fuzz runs the corpus was a regression set nobody replayed.
+
+The driver's loop body moved to `fuzz/edit_driver.rs`, which both consumers include by path
+(`#[path = "../edit_driver.rs"]` in the target, `#[path = "../../../fuzz/edit_driver.rs"]` in the
+new `crates/pyrs-yaml-core/tests/edit_scripts.rs`) so the replay cannot drift into asking less. It
+returns a `Report { records, applied }`, and the replay re-raises a panic with the seed's file name
+around it. The settle assertion now names the edit it died on - record index, verb, path, and the
+text the edit was applied to - because the emission alone does not say which script step produced
+it.
+
+Measured 2026-11-18 over the 69 seeds: 937 script records, 734 edits applied, the replay green -
+*after* one writer fix the replay itself forced. `former-crash-fb62e776.seed`, record 7 (verb 8,
+a style edit at `[Index(0), Index(0)]`), turns a nested block sequence into a flow one, and the
+first emission wrote:
+
+```text
+-
+  !fuzz6
+  # fuzz 47
+  - &a0 [{}]
+```
+
+The note is the item's own leading note, and `write_sequence_item` hoisted it above the dash with
+`write_note_line`, which appends at the tail - the gap under the enclosing `!fuzz6` header line,
+where granit reports it on the *header's* node. The second emission therefore lifted it above the
+header, so the document settled only on its second round. The stack now goes through
+`write_hoisted_note_line`, which crosses a header at the item's own column and appends exactly
+where `write_note_line` did whenever no header sits above. Priced by the replay: the seed reddens
+without the one-line change, and `settles_in_one_round`, `note_survival` and the replay's 47 tests
+pass with it. The floors are the measured counts (69 seeds, 937 records, 734 applied) so a corpus
+that loses its scripts, or a driver that begins refusing edits it used to apply, reddens instead of
+passing on less. The new test binary adds one Rust `#[test]`, so `quality_matrix.py --write-rows`
+moves the unit / integration row 963 -> 964; `seed_reach.rs`'s two line references into the harness
+moved with the code to `fuzz/edit_driver.rs:384-593` and `:386`.
+
+The corpus totals were the first floors, and they are the ones that leave a seed uncovered:
+`seed_reach.rs` documents its `edit_yaml` predicate as measuring the document half alone, since
+deciding the rest would duplicate the harness's verb dispatch - "a script whose every verb refuses
+would be counted reachable here while the target asserts nothing". The replay can now charge that
+without a second copy of anything, because the driver already reports `applied` per run: every seed
+must apply at least one accepted edit, or the test names the seed and its record count. Measured
+2026-11-18, all 69 clear it - the minimum is one accepted edit, which is what each of the seven
+1-record seeds applies - so the per-seed floor is a measured fact about today's corpus, not a hope.
+Priced by raising the floor to 999:
+`anchor-and-alias-session.seed: the script applied no edit (records=4) ...` and the walk stops
+there, so the assertion reads each seed's own report rather than the aggregate. A seed that applies
+nothing would now redden instead of sitting in the totals. `seed_reach.rs`'s paragraph was rewritten
+to point at this floor and its "62 of 62" figure kept as the pre-replay instrumented reading it was,
+instead of standing as a claim about today's 69.
+
+The wave was measured against the Ir floor before any of its work was believed. Against the
+committed baseline (image 127.1) seven writer scenarios sit past the 0.5% line - serialize_small
++1.60%, serialize_medium +0.89%, serialize_block +0.96%, serialize_block_scalars +0.60%,
+serialize_anchors +0.83%, serialize_note_flow +3.38%, safe_dump_medium +0.57% - while every reader,
+JSON/TOML, stream, edit and Python-conversion scenario stays inside ±0.26%. A same-host control on
+the parent tree (`42e81ae4`) separates code from host, and the parent reads 3,013,399 / 27,949,381 /
+11,053,373 / 8,015,002 / 22,953,384 / 60,533,943 / 111,356,381: the wave adds
++1.39% / +0.83% / +1.12% / +0.52% / +0.68% / +2.87% to the six core writers and 60 instructions to
+`safe_dump_medium`, so six of the reds are this change and the seventh was already there. The
+profile pair says where the six sit: `header_gap_start_over` climbs from below 0.7M to 1,354,000
+self instructions (the hoisted-note walk now serves sequence items too), the inlined dispatch copy
+`serialize_node_internal'2` gains 422,000, the second `note_text_to_write` trim in
+`write_hoisted_note_line` gains 152,000, and every note-agnostic engine row is byte-identical
+between the two trees. The route is the fix, so delivery goes through the Ir refresh dispatch with
+the six named in `accept_drift` - never a local `--update`, which would move the floors to this
+host.
+
+### (ms) A property named the invalid-UTF-8 class its own guard skipped (2026-11-18)
+
+The `or True` retired in (mp) is one instance of a class - a check that cannot fail - and (mp)
+asked whether the class was wider. The Python suite answered no: the four remaining `or True`
+literals are `lambda e: seen.append(e) or True` callback returns, and the AST hits without an
+`assert` are benchmarks, hypothesis no-raise properties, `pytest.warns` uses and helpers that
+delegate their assertion. On the Rust side the first probe had to be rebuilt before its answer
+counted: it brace-matched each `#[test]` body and reported 14 candidates, all of which do assert,
+because the matcher missed the bodies of `proptest!` functions and the keyword list never matched
+`assert_yaml_eq!` (no word boundary inside `assert_\w`). The rebuilt probe skips strings, raw
+strings, char literals, lifetimes and both comment forms, strips comments before matching, and is
+itself controlled by a fixture where four vacuous bodies are flagged and five asserting ones -
+including `assert_yaml_eq!`, a bare `unwrap()` and a body whose braces sit inside string and char
+literals - are not. Over 126 files it reads all 964 `#[test]` bodies with zero skipped, so the
+five hits are a count, not a silence.
+
+Four are no-panic oracles in name and in fact: `prop_dialect_parsers_never_panic`,
+`prop_dialect_writers_never_panic`, `prop_schema_parse_no_panic` and `prop_merge_alias_never_panics`
+fail through the harness itself when a panic escapes, and the last one's comment already says why a
+green proptest run is the regression proof for an abort. The fifth named a class it could not
+reach: `prop_no_crash_invalid_utf8` generated arbitrary bytes and then wrote
+`if let Ok(s) = std::str::from_utf8(&bytes)`, so the only branch that could have exercised the
+invalid half was empty, and nearly every long sample was discarded before the parser saw it. Priced
+two-sided with a probe at the top of `parse_with_options` that panics on any `yaml.len() >= 200`:
+the old property stayed green under it - it never handed the parser a long input - and the rewritten
+property reddened on its first sample; the probe was then reverted and the property is green, with
+`pbt::` and `fmt_pbt::` reading 37 passed. `parse_with_options` takes `&str`, so the rewrite reaches
+arbitrary bytes through `String::from_utf8_lossy`, the same door `fmt_pbt.rs` opens for the other
+four dialects, and the test now carries that reason in its doc comment under the name
+`prop_parse_never_panics_on_arbitrary_bytes`. The old name appeared nowhere but its own definition.
+A rename moves no count, so the unit / integration row stays at 2,194.
+
+### (mt) The `_register_third_party` row asserted "does not raise", not its docstring's claim (2026-11-18)
+
+The last item of the same sweep was a Python row whose docstring said `_register_third_party()`
+"registers nothing when library is absent" while its body only called the function under a fake
+importer - a registration made from an import that failed would have left it green. Tightening it
+meant spying on `register_type`, and the first version of the spy was itself a defect: `fake_import`
+delegated with a bare `__import__(name, ...)`, which under the `builtins.__import__` patch is the
+fake again, so the interpreter recursed and pytest printed `20 passed` next to
+`INTERNALERROR> RecursionError`. That is the "a watcher exit code is not a verdict" shape inside one
+run - the test line was green and the session had crashed, so the exit code, not the pass count, was
+the reading. Capturing `builtins.__import__` before the patch fixed it.
+
+Priced two-sided with one mutation, `except ImportError: register_type("!duration", None)` in the
+pendulum arm: the new assertion failed (`- []`, `+ [('!duration', None)]`) while the old body,
+run against the same mutation with the same spy, reached its end with
+`registrations the old body could not see: [('!duration', None)]` - it could not observe what it
+claimed. The mutation was reverted and the file reads 20 passed; `prek run --all-files` exits 0 over
+30 hooks. The row already existed, so no test count moves.

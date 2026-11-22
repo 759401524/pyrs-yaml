@@ -12,7 +12,9 @@
 //!   writer is idempotent on its own output).
 //! - **note conservation** - every note the tree carries reaches the emitted
 //!   text of all four writers; a writer that drops one passes everything above,
-//!   because the note is absent from both passes.
+//!   because the note is absent from both passes. The two JSON-family writers
+//!   are held to the stronger claim as well: the note must re-read on the node
+//!   that carried it, not merely somewhere in the document.
 
 #![cfg(test)]
 
@@ -144,6 +146,100 @@ fn yaml_missing_notes(node: &crate::ast::CustomNode, emitted: &str) -> Vec<Strin
     let mut missing = Vec::new();
     collect_note_texts(node, emitted, &mut missing, false);
     missing
+}
+
+/// A key's route segment: a scalar spells its value, a null spells `null`, and anything else —
+/// which the JSON writers refuse outright, so this comparison never sees it — spells `?`.
+fn note_key_segment(key: &crate::ast::CustomNode) -> String {
+    use crate::ast::CustomNode as N;
+    match key {
+        N::Scalar { value, .. } => value.to_string(),
+        N::Null { .. } => "null".to_string(),
+        _ => "?".to_string(),
+    }
+}
+
+/// Every note the tree carries, paired with the route it hangs on: `{path}/{key}` for a mapping
+/// member (its key and value share the segment), `{path}[{i}]` for a sequence item.
+fn note_routes(node: &crate::ast::CustomNode, path: &str, into: &mut Vec<(String, String)>) {
+    use crate::ast::CustomNode as N;
+    for text in node
+        .comment()
+        .filter(|c| !c.standalone)
+        .map(|c| vec![c.text.to_string()])
+        .unwrap_or_default()
+        .into_iter()
+        .chain(node.leading_comments().iter().map(|c| c.text.to_string()))
+    {
+        // Same flattening the reach oracle applies: `push_note_text` writes each interior break as
+        // a space, so `\n` / `\r` are spelling, and every other byte is the note's own.
+        let flat = text.trim().replace(['\n', '\r'], " ");
+        if !flat.is_empty() {
+            into.push((path.to_string(), flat));
+        }
+    }
+    match node {
+        N::Mapping { pairs, .. } => {
+            for (key, value) in pairs {
+                let child = format!("{path}/{}", note_key_segment(key));
+                note_routes(key, &child, into);
+                note_routes(value, &child, into);
+            }
+        }
+        N::Sequence { items, .. } => {
+            for (index, item) in items.iter().enumerate() {
+                note_routes(item, &format!("{path}[{index}]"), into);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Notes that came back on a different node than the one that carried them.
+///
+/// [`json_missing_notes`] answers "did the note arrive"; this answers "did it arrive on its own
+/// node". The stronger claim is asserted only for the JSON family because that is where it was
+/// measured — 3000 drawn trees, restricted to [`json_object_domain`], produced zero strays under
+/// this comparison: pretty JSONC 1097 exact, compact JSONC 1073 exact plus 24 that differ by the
+/// `*/` → `* /` split alone, JSON5 the same. The same measurement rules the other two out: YAML
+/// re-read 199 notes off their node (250 of the lost ones landed on a different branch), and
+/// TOML's nine are the root-note fold [`toml_root_note_ok`] already names.
+fn json_note_misplacements(
+    carried: &crate::ast::CustomNode,
+    reread: &crate::ast::CustomNode,
+) -> Vec<String> {
+    let mut want = Vec::new();
+    note_routes(carried, "", &mut want);
+    let mut got = Vec::new();
+    note_routes(reread, "", &mut got);
+    want.sort();
+    got.sort();
+    if want == got {
+        return Vec::new();
+    }
+    // The compact flow loop writes a note as a block comment and splits an inner `*/` so it cannot
+    // close early - but a note written as a line comment keeps its `*/` verbatim. Two spellings of
+    // one note is not a move, so accept either the original text or its split form per note, and
+    // still require the path and every other byte to match. Comparing one globally-spliced vector
+    // against `got` was wrong: it split the line-comment spellings too and reported a move.
+    let mut left = got.iter().collect::<Vec<_>>();
+    let mut diff = Vec::new();
+    for (path, text) in &want {
+        let split = text.replace("*/", "* /");
+        let hit = left.iter().position(|(other_path, other_text)| {
+            other_path == path && (other_text == text || other_text == &split)
+        });
+        match hit {
+            Some(index) => {
+                left.remove(index);
+            }
+            None => diff.push(format!("{path:?} lost {text:?}")),
+        }
+    }
+    for (path, text) in left {
+        diff.push(format!("{path:?} gained {text:?}"));
+    }
+    diff
 }
 
 fn collect_note_texts(
@@ -388,6 +484,12 @@ proptest! {
     // below shrank to the root's *inline* slot — `{"a": 1} // after` parse -> write came back as
     // `{"a": 1}` — because every note-emitting helper is reached from a member loop and the
     // document root is not a member of anything.
+    // Note on the two newer assertions: presence is the older claim and stays on every sample.
+    // Placement is the stronger one, and it rides inside `json_object_domain` because that is the
+    // set it was measured over — outside the domain two distinct keys spell one name, and the
+    // reader's last-wins fold is entitled to move the loser's note (the duplicate-collapse fix).
+    // Zero strays in 3000 drawn trees within the domain is what earns the assertion; the YAML and
+    // TOML measurements that ruled those two out are recorded on `json_note_misplacements`.
     #[test]
     fn prop_jsonc_writer_carries_every_note(node in arb_custom_node()) {
         let Ok(compact) = json::to_jsonc_text(&node) else { return Ok(()) };
@@ -398,6 +500,16 @@ proptest! {
             missing.len(),
             missing.join("\n")
         );
+        if json_object_domain(&node) {
+            let reread = json::from_jsonc(&compact)?;
+            let misplaced = json_note_misplacements(&node, &reread);
+            prop_assert!(
+                misplaced.is_empty(),
+                "{} note(s) moved off their node by compact JSONC, on:\n{compact}\nstrays:\n{}",
+                misplaced.len(),
+                misplaced.join("\n")
+            );
+        }
         let Ok(pretty) = json::to_jsonc_text_pretty(&node, 2) else { return Ok(()) };
         let missing = json_missing_notes(&node, &pretty);
         prop_assert!(
@@ -406,6 +518,16 @@ proptest! {
             missing.len(),
             missing.join("\n")
         );
+        if json_object_domain(&node) {
+            let reread = json::from_jsonc(&pretty)?;
+            let misplaced = json_note_misplacements(&node, &reread);
+            prop_assert!(
+                misplaced.is_empty(),
+                "{} note(s) moved off their node by pretty JSONC, on:\n{pretty}\nstrays:\n{}",
+                misplaced.len(),
+                misplaced.join("\n")
+            );
+        }
     }
 
     #[test]
@@ -418,6 +540,16 @@ proptest! {
             missing.len(),
             missing.join("\n")
         );
+        if json_object_domain(&node) {
+            let reread = json::from_json5(&compact)?;
+            let misplaced = json_note_misplacements(&node, &reread);
+            prop_assert!(
+                misplaced.is_empty(),
+                "{} note(s) moved off their node by compact JSON5, on:\n{compact}\nstrays:\n{}",
+                misplaced.len(),
+                misplaced.join("\n")
+            );
+        }
         let Ok(pretty) = json::to_json5_text_pretty(&node, 2) else { return Ok(()) };
         let missing = json_missing_notes(&node, &pretty);
         prop_assert!(
@@ -426,6 +558,16 @@ proptest! {
             missing.len(),
             missing.join("\n")
         );
+        if json_object_domain(&node) {
+            let reread = json::from_json5(&pretty)?;
+            let misplaced = json_note_misplacements(&node, &reread);
+            prop_assert!(
+                misplaced.is_empty(),
+                "{} note(s) moved off their node by pretty JSON5, on:\n{pretty}\nstrays:\n{}",
+                misplaced.len(),
+                misplaced.join("\n")
+            );
+        }
     }
 
     // The YAML column had no generative note-conservation claim: `tests/note_survival.rs` asserts
