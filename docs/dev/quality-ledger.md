@@ -15898,3 +15898,25 @@ parity gate measures against a reference the suite was actually measured against
 exclusion is re-evaluated when upstream rules on the behaviour, or if this engine adopts a
 deliberate divergence from it; the pin is not a judgement on 6.0.4 beyond what the two shapes
 above measure.
+
+### (my) Two ir-baseline workflow tests assert for bash on a host that has none (2026-11-23)
+
+The pin of (mx) was not the whole story of publish run 45136780406 (tag v0.19.0, 4 failed): two of
+its failures were the parity tests, and the other two were `tests/test_ir_baseline_workflow.py`'s
+`test_a_newline_separated_profile_input_reaches_every_named_scenario` and
+`test_the_drift_guard_sees_every_name_on_its_own_line`. The v0.20.0 tag's publish run 45146831755
+confirmed the split: with the `PyYAML!=6.0.4` pin in, only the musllinux aarch64 leg stayed red, on
+exactly those two tests.
+
+Their helper `_run_step` did `bash = shutil.which("bash")` and then `assert bash` - and the
+musllinux aarch64 container is Alpine/busybox `sh`, with no `bash` on the image at all. The
+x86_64 and x86 musllinux images do carry bash, so the same suite passed on the other legs and
+the failure looked like an architecture bug when it was an image-variant divergence. The
+sibling suites already knew this convention: `tests/test_fuzz_rounds.py` skips the module when
+bash is absent, and `tests/test_fuzz_file_issues.py` skips the case with the same reason line
+this fix now uses. This file alone had turned it into an assert.
+
+The two tests read `.github/workflows/ir-baseline.yml` and run its step bodies through bash;
+they ask nothing of the wheel under test, so their owner is the CI ubuntu leg that has bash.
+The helper now skips with that reason instead of asserting, and the two legs of the publish
+matrix answer only where the question can be asked.

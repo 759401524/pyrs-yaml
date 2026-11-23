@@ -586,7 +586,10 @@ def _step_body(name: str) -> str:
 def _run_step(tmp_path: Path, tag: str, body: str, var: str, value: str) -> str:
     """Run one step body with its `python3` replaced by an echo, and return everything it printed."""
     bash = shutil.which("bash")
-    assert bash, "the step is shell, so a leg without bash cannot ask this question at all"
+    if bash is None:
+        # The step is shell, so a leg without bash cannot ask this question at all. Measured on the
+        # musllinux aarch64 publish leg: that container is Alpine/busybox `sh`, with no `bash`.
+        pytest.skip("this case runs the workflow's bash step, and bash is not on this host")
     script = tmp_path / f"step-{tag}.sh"
     # `Path.open`, not `write_text`: the newline keyword on `write_text` arrived in 3.10, while the
     # supported floor is 3.8 and `test_scripts_import_on_supported_python.py` reads this file's AST

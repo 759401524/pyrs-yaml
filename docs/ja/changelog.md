@@ -15,7 +15,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.20.0] — 2026-11-23
+### [v0.21.0] — 2026-11-23
 
 <details markdown="1">
 <summary>呼び出し側で名前をつける方針 · 重複キー · 注釈の位置 · リーダーのコメント上限 ·
@@ -477,6 +477,20 @@ status: new
   アップロードされませんでした。要件は今や `PyYAML>=6.0,!=6.0.4` と書かれ、門はスイートが実測さ
   れた生きている参照に対して再び測ります。この除外は、上流がこの振る舞いに裁定を下すとき、あるい
   はこのエンジンが deliberate divergence を採用するときに再評価されます。
+- **ir-baseline workflow のテストは、bash がある場所だけでその問いを発します** — publish run
+  45136780406 の四つの失敗のうち二つは parity テストで、残る二つは
+  `tests/test_ir_baseline_workflow.py` の newline-profile と drift-guard のテストでした。そのため
+  parity の半分を直した釘打しでも、v0.20.0 tag の publish run 45146831755 は一つのレグだけ赤く、
+  ちょうどこの二つが残りました。それらの helper `_run_step` は `bash = shutil.which("bash")` の後に
+  `assert bash` としていましたが、musllinux aarch64 コンテナは Alpine/busybox の `sh` で、イメージに
+  bash は一切ありません — 一方で x86_64 と x86 の musllinux イメージは bash を運び、同じスイートが
+  その隣で緑だったので、失敗はアーキテクチャのバグに見えましたが、実際はイメージ変種の分裂でした。
+  同族のスイートは既にこの慣行を知っています： `tests/test_fuzz_rounds.py` は bash がないときモジュ
+  ールごと skip し、 `tests/test_fuzz_file_issues.py` はこの helper が今使うのと同じ理由行でそのケー
+  スを skip します。この二つのテストは `.github/workflows/ir-baseline.yml` を読み、その step の本体
+  を bash に渡して走らせます。テスト対象の wheel には何も問わないので、問いの持ち主は bash を持つ CI
+  ubuntu レグであり、helper は今や assert ではなく理由つきで skip します
+  （ `docs/dev/quality-ledger.md` (my)）。
 
 #### 変更
 
