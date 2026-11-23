@@ -55,20 +55,29 @@ fn has_merge_key(node: &CustomNode) -> bool {
     }
 }
 
-/// Whether an inline merge source names `<<` as one of its own keys - the shape whose
-/// contribution the collection step used to discard. Top level only, on purpose: a `<<`
-/// nested inside a *value* of the source is resolved by the ordinary recursive walk
-/// (every mapping in the tree is visited, and merged values are re-walked at their own
-/// level), so looking deeper here would pay a whole-subtree scan for nothing.
+/// Whether an inline merge source carries a `<<` anywhere in its subtree - the
+/// shape whose body the orphan repair below would otherwise inline unresolved.
+/// The check used to stop at the source's own keys, on the argument that a `<<`
+/// nested deeper is resolved by the ordinary recursive walk anyway. That walk
+/// never reaches the value of a *consumed* merge entry - `own_indices` excludes
+/// the merge entry itself - so the repair then inlined the raw clone with its
+/// nested `<<` intact, and the next read resolved what this read had left: the
+/// first emission kept a `<<:` line the second dropped (libFuzzer
+/// `yaml_roundtrip` crash-ec31f2ea, minimised to 21 bytes: `<<: &b` LF
+/// ` : <<: *b` LF `: *b`; its sequence-source twin crash-b3c57280 already
+/// resolved, because a sequence source checked its items' keys). Scanning the
+/// subtree is what makes the repair's `resolved_source` arm apply to mapping
+/// sources too, and it doubles as the precedence the reference libraries agree
+/// on: the source's own keys override what its nested merge brings, one level
+/// at a time, before its pairs travel up. The walk runs only where a container
+/// merge source actually exists, and the `depth` budget keeps the resolution
+/// it triggers honest.
 fn source_carries_merge_key(merge_value: &CustomNode) -> bool {
     match merge_value {
-        CustomNode::Mapping { pairs, .. } => pairs.keys().any(is_merge_key),
-        CustomNode::Sequence { items, .. } => items.iter().any(|item| {
-            matches!(
-                item,
-                CustomNode::Mapping { pairs, .. } if pairs.keys().any(is_merge_key)
-            )
-        }),
+        CustomNode::Mapping { pairs, .. } => {
+            pairs.keys().any(is_merge_key) || pairs.values().any(source_carries_merge_key)
+        }
+        CustomNode::Sequence { items, .. } => items.iter().any(source_carries_merge_key),
         _ => false,
     }
 }

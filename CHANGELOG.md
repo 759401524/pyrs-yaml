@@ -9,6 +9,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A mapping merge source that nests its `<<` below its own keys resolves before the orphan
+  repair inlines it** — the check that decides whether a merge value needs resolving read only the
+  source's own keys, so a `<<` one level deeper (`<<: &b` over ` : <<: *b`) stayed unresolved in
+  the clone the orphan repair inlined once the merge consumed its entry: the first emission kept
+  the merge line, the second read resolved it, and the entry collapsed to `~: {}` (fuzz seed
+  `former-crash-ec31f2ea`; its sequence-source twin `former-crash-b3c57280` already settled,
+  because a sequence source checks its items). The check now walks the whole subtree, so mapping
+  sources resolve on the same terms sequence sources already did
+  (`docs/dev/quality-ledger.md` (mv)).
 - **A sequence item's note lifts above the header it belongs under** — a block container keeps its
   note stack below the dash, and when the item's value opens with an `&a` / `!tag` header line that
   tail is the gap under the header, where granit files the note on the *header's* node: the first

@@ -15772,3 +15772,46 @@ no allocation was added on any of the three paths.
 
 The family is not closed here: the audit runs carry other `edit_yaml` artifacts, and no issue is
 closed by this entry.
+
+### (mv) A mapping merge source that nests its `<<` below its own keys resolves before the repair inlines it (2026-11-23)
+
+libFuzzer `yaml_roundtrip` crash-ec31f2ea, minimised to 21 bytes: `<<: &b` LF ` : <<: *b` LF
+`: *b`. Its sequence-source twin crash-b3c57280 already settled, because a sequence source checks
+its items' keys and so reached the repair's `resolved_source` arm before the body was inlined; a
+mapping source checked only its own keys, on the argument that a `<<` nested deeper is reached by
+the ordinary recursive walk anyway. That walk never reaches the value of a *consumed* merge entry
+
+- the child walk's `own_indices` excludes the merge entry itself - so the repair inlined the raw
+clone with its nested `<<: *b` intact: the first emission kept the merge, the second read had no
+top-level merge left, resolved the clone in place, and lost the entry to the empty expansion the
+path guard yields (`~: &b` over `  ~:` over `    ~: {}`), and the round drifted.
+
+The remedy is the same terms the sequence source already got: `source_carries_merge_key` walks
+the whole subtree - a mapping checks its values recursively, a sequence its items - so the source
+resolves before `collect_merge_data` runs and the repair inlines the resolved body. The added
+scan is paid only where a container merge source actually exists, and the resolution it triggers
+rides the existing `MAX_MERGE_DEPTH` budget. The self-referential family stays untouched: the
+own-naming guard (`<<: *b` inside `&b`) precedes the alias arm, and the shapes behind
+`test_self_referential_merge_terminates` expand successfully on their first pass, so their merge
+entries are still consumed exactly as that test pins.
+
+Gates: `cargo test -p pyrs-yaml-core --lib` 444 passed; the new `a_nested_self_merge_settles` in
+`tests/settles_in_one_round.rs` is green, and the one remaining red in that suite is the
+unrelated granit ` >+` chomping read (`former-crash-1c221fb0`, upstream
+bourumir-wyngs/granit-parser, unresolved there and unfiled as of this entry - that seed and its
+test stay out of this change until an upstream fix lands, because both the settles suite and the
+`note_survival` corpus would go red on it). Release build and both clippy scopes clean;
+`uv run pytest tests/ -q` reads 5017 passed with 8 failures that are all environment-not-code:
+five git-dependent gates exit 128 on `fatal: unknown repository extension found:
+relativeworktrees` under WSL git 2.43 reading a jj-managed repository, and three `quality_matrix`
+rows reflect this working copy's uncommitted seed and test. `quality_matrix.py --write-rows` puts
+the rows at 968 Rust `#[test]` and 335 seeds of which 221 are `former-crash-*`, one test and one
+seed of which are this change's.
+
+Cost: no Ir floor moves. The Ir scenarios hold no merge source at all - `benches/ir_gate.rs`
+inputs contain no `<<` - so the extra subtree scan never executes there: `resolve_merge_keys`
+already short-circuits through `has_merge_key`, and the new walk only runs where a container
+merge source sits in the merge-index slot, a path the Ir inputs never take. Where it does run
+(`yaml_bench.rs` carries `<<: *defaults` in its corpus) the work is bounded by the source
+subtree the merge actually has, and the resolution it triggers replaces the re-merge the next
+read would otherwise have paid for.

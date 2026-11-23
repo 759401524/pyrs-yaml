@@ -1618,3 +1618,17 @@ fn a_note_stack_on_a_sequence_item_is_written_where_it_reads_back() {
         "the artifact's shape does not settle in one round: {one:?} -> {again:?}"
     );
 }
+
+/// libFuzzer `yaml_roundtrip` crash-ec31f2ea, minimized to 21 bytes: a nested merge whose alias
+/// names the outer anchor. The first emission keeps `<<: *b`; re-reading it turns the merge entry
+/// into an ordinary null-keyed pair, so the second emission is `~: {}` and the merge is lost.
+#[test]
+fn a_nested_self_merge_settles() {
+    let seed = std::str::from_utf8(include_bytes!(
+        "../../../fuzz/seeds/yaml_roundtrip/former-crash-ec31f2ea.seed"
+    ))
+    .expect("seed is utf-8");
+    let one = emit(seed);
+    let again = emit(&one);
+    assert_eq!(again, one, "merge drifted: {one:?} -> {again:?}");
+}
