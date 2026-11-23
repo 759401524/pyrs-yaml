@@ -666,7 +666,7 @@ YAML の綴りも一族の内側に留まります。評価器が出荷物に無
 ## :material-information: バージョン
 
 ```python
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 ```
 
 ## 自動生成の API リファレンス

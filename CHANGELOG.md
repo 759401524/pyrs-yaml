@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [v0.20.0] — 2026-11-23
+## [v0.21.0] — 2026-11-23
 
 <details markdown="1">
 <summary>policies named at the call site · duplicate keys · note placement · the reader's
@@ -534,6 +534,21 @@ These notes state what changed for a caller.
   The requirement now reads `PyYAML>=6.0,!=6.0.4`, so the gate measures against a live reference
   the suite was measured against again; the exclusion is re-evaluated when upstream rules on the
   behaviour, or if the engine adopts a deliberate divergence.
+
+- **The ir-baseline workflow tests ask their question only where bash exists** — two of publish
+  run 45136780406's four failures were the parity tests, and the other two were
+  `tests/test_ir_baseline_workflow.py`'s newline-profile and drift-guard tests, so the pin that
+  fixed the parity half left the v0.20.0 tag's publish run 45146831755 red on one leg with
+  exactly those two. Their helper `_run_step` did `bash = shutil.which("bash")` and then
+  `assert bash`, and the musllinux aarch64 container is Alpine/busybox `sh` with no bash on the
+  image at all — while the x86_64 and x86 musllinux images carry bash, so the same suite passed
+  beside it and the failure read like an architecture bug when it was an image-variant
+  divergence. The sibling suites already knew the convention: `tests/test_fuzz_rounds.py` skips
+  its module when bash is absent and `tests/test_fuzz_file_issues.py` skips the case with the
+  same reason line this helper now uses. The two tests read
+  `.github/workflows/ir-baseline.yml` and run its step bodies through bash; they ask nothing of
+  the wheel under test, so their owner is the CI ubuntu leg that has bash, and the helper now
+  skips with a reason instead of asserting (`docs/dev/quality-ledger.md` (my)).
 
 ### Changed
 

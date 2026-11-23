@@ -17,7 +17,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.20.0] — 2026-11-23
+### [v0.21.0] — 2026-11-23
 
 <details markdown="1">
 <summary>在调用点命名的策略 · 重复键 · 注释落点 · 读取器的注释上限 · 一轮收敛的编辑与发射 ·
@@ -385,6 +385,17 @@ status: new
   一个丢数据的形状，本引擎跟随 6.0.3，于是 wheel 腿的测试层变红、0.19.0 的 wheel 一条也没上
   传。约束现在写作 `PyYAML>=6.0,!=6.0.4`，让门重新对着套件实测过的活参考库量；该排除在上游对
   此行为作出裁决时重估，或在本引擎采纳 deliberate divergence 时重估。
+- **ir-baseline workflow 的测试只在有 bash 的地方问它的问题** — publish run 45136780406 的四个失败
+  里两个是 parity 测试，另两个是 `tests/test_ir_baseline_workflow.py` 的 newline-profile 与
+  drift-guard 测试，于是修好 parity 那一半的钉子让 v0.20.0 tag 的 publish run 45146831755 只红
+  一条腿、恰好就是这两个。它们的 helper `_run_step` 先做 `bash = shutil.which("bash")` 再
+  `assert bash`，而 musllinux aarch64 容器是 Alpine/busybox `sh`，镜像里根本没有 bash —
+  x86_64 与 x86 的 musllinux 镜像却带着 bash，同一套件在旁边全绿，失败看着像架构 bug，其实是镜像变体
+  的分歧。同族套件早已知道这个惯例：`tests/test_fuzz_rounds.py` 在没有 bash 时整模块 skip，
+  `tests/test_fuzz_file_issues.py` 用与本 helper 现在相同的理由行 skip 那个用例。这两个测试读的是
+  `.github/workflows/ir-baseline.yml`，把它的 step 体交给 bash 跑；它们不问被测 wheel 的任何事，所以
+  问题的 owner 是有 bash 的 CI ubuntu 腿，helper 现在带理由 skip 而不是 assert
+  （`docs/dev/quality-ledger.md` (my)）。
 
 #### 变更
 

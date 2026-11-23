@@ -15,7 +15,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.20.0] — 2026-11-23
+### [v0.21.0] — 2026-11-23
 
 <details markdown="1">
 <summary>호출 지점에서 이름 지운 방침 · 중복 키 · 주석 위치 · 리더의 주석 상한 · 한 번 출력으로
@@ -507,6 +507,20 @@ status: new
   `PyYAML>=6.0,!=6.0.4`로 쓰여, 관문은 스위트가 실측된 살아 있는 참조에 대해 다시 잽니다. 이
   배제는 상위가 이 행동에 판결을 내릴 때, 또는 이 엔진이 deliberate divergence를 채택할 때
   재평가됩니다.
+
+- **ir-baseline workflow의 시험은 bash가 있는 곳에서만 그 질문을 던집니다** — publish run
+  45136780406의 네 실패 가운데 둘은 parity 시험이었고 나머지 둘은
+  `tests/test_ir_baseline_workflow.py`의 newline-profile과 drift-guard 시험이었으므로, parity 절반을
+  고친 고정에도 불구하고 v0.20.0 tag의 publish run 45146831755는 한 레그만 빨객게 남았고 딱 이 둘이
+  남았습니다. 그들의 helper `_run_step`은 `bash = shutil.which("bash")`를 한 뒤 `assert bash`를
+  했는데, musllinux aarch64 컨테이너는 Alpine/busybox의 `sh`로 이미지에 bash가 전혀 없습니다 — 반면
+  x86_64와 x86 musllinux 이미지는 bash를 실어 같은 스위트가 그 옆에서 녹색이었으므로, 실패는
+  아키텍처 버그처럼 읽혔지만 실제로는 이미지 변종의 갈래였습니다. 같은 계열의 스위트는 이미 이
+  관행을 알고 있었습니다: `tests/test_fuzz_rounds.py`는 bash가 없으면 모듈째 skip하고,
+  `tests/test_fuzz_file_issues.py`는 이 helper가 이제 쓰는 것과 같은 이유 행으로 그 케이스를
+  skip합니다. 이 두 시험은 `.github/workflows/ir-baseline.yml`을 읽고 그 step 본체를 bash로 넘겨
+  돌립니다. 테스트 대상 wheel에게 아무것도 묻지 않으므로 질문의 소유자는 bash를 가진 CI ubuntu
+  레그이며, helper는 이제 assert 대신 이유를 달고 skip합니다 (`docs/dev/quality-ledger.md` (my)).
 
 #### 변경
 

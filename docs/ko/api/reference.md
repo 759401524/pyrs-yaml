@@ -666,7 +666,7 @@ import 가능한 평가 엔진이 없으면 호출은 그 설치 경로를 밝�
 ## :material-information: 버전
 
 ```python
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 ```
 
 ## 자동 생성 API 참조
