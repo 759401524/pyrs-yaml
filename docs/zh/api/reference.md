@@ -660,7 +660,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## :material-information: 版本
 
 ```python
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 ```
 
 ## 生成的 API 参考

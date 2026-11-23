@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [v0.19.0] — 2026-11-23
+## [v0.20.0] — 2026-11-23
 
 <details markdown="1">
 <summary>policies named at the call site · duplicate keys · note placement · the reader's
@@ -523,6 +523,17 @@ These notes state what changed for a caller.
   `api:validate-evaluator-is-not-installed-by-anything-we-ship` residual is gone from
   `.ci/known-residuals.json` and `QUALITY_MATRIX.md` while the seven pages per locale that
   recorded the bare class now record the refusal (`docs/dev/quality-ledger.md` (lw)).
+
+- **The wheel legs' parity reference is pinned to the PyYAML the suite was measured against** —
+  the v0.19.0 publish run 45136780406 resolved the freshly released PyYAML 6.0.4 into
+  `.ci/requirements-test.txt`'s `PyYAML>=6.0`, and its chained merge resolution changed under the
+  parity tests: `<<: {<<: {x: 1}, x: 9}` reads `{'x': 9}` on 6.0.3 but `{'x': 1}` on 6.0.4, and
+  `<<: {<<: {x: 1, y: 1}, y: 2}` reads `{'x': 1, 'y': 2}` on 6.0.3 but `{'x': 1, 'y': 1}` on
+  6.0.4 — the source's own explicit keys lose to the merge it inherits, a data-losing shape this
+  engine follows 6.0.3 on, so the wheel legs' test layer reddened and no 0.19.0 wheel uploaded.
+  The requirement now reads `PyYAML>=6.0,!=6.0.4`, so the gate measures against a live reference
+  the suite was measured against again; the exclusion is re-evaluated when upstream rules on the
+  behaviour, or if the engine adopts a deliberate divergence.
 
 ### Changed
 

@@ -15876,3 +15876,25 @@ tree below its floor, so no enforcing leg moved; the flat baseline is re-recorde
 head through the Ir baseline refresh workflow (dispatched with
 `accept_drift: safe_dump_medium` as a precaution), the same channel crash-c5f32014's
 family used.
+
+### (mx) The wheel legs' parity reference is pinned off PyYAML 6.0.4, whose chained merge resolution changed under it (2026-11-23)
+
+Tag v0.19.0 (f4f14478) triggered the publish run 45136780406, and its wheel legs' test layer
+went red before any wheel uploaded: `.ci/requirements-test.txt` asked for `PyYAML>=6.0`, the
+environment resolved the freshly released 6.0.4, and the parity tests that compare this engine
+against PyYAML live at test time failed on chained merge sources. The Release job never ran and
+PyPI never saw a 0.19.0; the tag stays as the record of the failure and the content ships as
+v0.20.0 with the pin.
+
+The measured change, both shapes read against both versions: `<<: {<<: {x: 1}, x: 9}` resolves
+to `{'x': 9}` on 6.0.3 and to `{'x': 1}` on 6.0.4, and `<<: {<<: {x: 1, y: 1}, y: 2}` resolves
+to `{'x': 1, 'y': 2}` on 6.0.3 and to `{'x': 1, 'y': 1}` on 6.0.4. On 6.0.3 the merge source's
+own explicit keys win, which is what the merge specification says; on 6.0.4 the source's own
+explicit keys lose to the merge it inherits - a data-losing shape, and a suspected upstream
+regression. This engine agrees with 6.0.3 on both shapes, as it always has.
+
+The remedy is the pin: `.ci/requirements-test.txt` now reads `PyYAML>=6.0,!=6.0.4`, so the
+parity gate measures against a reference the suite was actually measured against again. The
+exclusion is re-evaluated when upstream rules on the behaviour, or if this engine adopts a
+deliberate divergence from it; the pin is not a judgement on 6.0.4 beyond what the two shapes
+above measure.

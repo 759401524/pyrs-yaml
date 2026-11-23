@@ -4,7 +4,14 @@ pytest-codspeed>=2.0
 pydantic>=2.10.6
 numpy>=1.16.0; python_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 's390x' and platform_machine != 'ppc64le'
 hypothesis>=6.113.0
-PyYAML>=6.0
+# The parity gate compares this engine against PyYAML live at test time, so the pin is what makes it a
+# gate: v0.19.0's publish run 45136780406 installed the freshly released 6.0.4 and its chained merge
+# resolution changed - `<<: {<<: {x: 1}, x: 9}` reads {'x': 9} on 6.0.3 but {'x': 1} on 6.0.4, and
+# `<<: {<<: {x: 1, y: 1}, y: 2}` reads {'x': 1, 'y': 2} on 6.0.3 but {'x': 1, 'y': 1} on 6.0.4 - the
+# source's own explicit keys lose to the inherited merge, a data-losing shape this engine follows
+# 6.0.3 on. Excluded until upstream rules on it; re-evaluate on that verdict, or if the engine
+# adopts a deliberate divergence.
+PyYAML>=6.0,!=6.0.4
 ruamel-yaml>=0.18.16
 # The TOML and JSON5 writer suites judge those formats by parsers this repository does not own, and they
 # import them at module scope on purpose: a skipped authority is the failure mode, not a fallback. The

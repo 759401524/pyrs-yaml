@@ -42,7 +42,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |---------|------|-----------|
-| v0.19.0 | 2026-11-23 | [CHANGELOG.md §[0.19.0]](CHANGELOG.md#v0190--2026-11-23) |
+| v0.20.0 | 2026-11-23 | [CHANGELOG.md §[0.20.0]](CHANGELOG.md#v0200--2026-11-23) |
 | v0.18.3 | 2026-10-22 | [CHANGELOG.md §[0.18.3]](CHANGELOG.md#v0183--2026-10-22) |
 | v0.18.1 | 2026-10-17 | [CHANGELOG.md §[0.18.1]](CHANGELOG.md#v0181--2026-10-17) |
 | v0.18.0 | 2026-10-17 | [CHANGELOG.md §[0.18.0]](CHANGELOG.md#v0180--2026-10-17) |
@@ -81,11 +81,23 @@ going to carry shipped as `v0.18.3`, together with the collection fix that the f
 tag stays as the record of the failed run rather than being deleted; the number describes no
 installable package, which is why it is absent from the table a reader uses to find one.
 
+### The v0.19.0 tag is not a release
+
+`v0.19.0` has a tag on this repository and no row above, and that is the accurate shape. The tag
+(`f4f14478`) fired Publish, the run failed at the wheel legs' test layer before a wheel was
+uploaded — the freshly released PyYAML 6.0.4 changed its chained merge resolution under the
+parity tests, four legs reddened and the rest cancelled — so the Release job never ran, and PyPI
+has `0.18.3` and never had `0.19.0`. What that release was going to carry shipped as `v0.20.0`,
+together with the pin that holds the wheel legs' parity reference to the PyYAML the suite was
+measured against. The tag stays as the record of the failed run rather than being deleted; the
+number describes no installable package, which is why it is absent from the table a reader uses
+to find one.
+
 ---
 
 ## Planned
 
-No scope is open for v0.19.0. A milestone scope is written at a milestone review; when it ships,
+No scope is open for v0.20.0. A milestone scope is written at a milestone review; when it ships,
 its entries move to `CHANGELOG.md` and its table to the ledger. Only an undecided choice with a
 live trigger belongs here.
 
