@@ -42,7 +42,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |---------|------|-----------|
-| v0.21.0 | 2026-11-23 | [CHANGELOG.md §[0.21.0]](CHANGELOG.md#v0210--2026-11-23) |
+| v0.22.0 | 2026-11-23 | [CHANGELOG.md §[0.22.0]](CHANGELOG.md#v0220--2026-11-23) |
 | v0.18.3 | 2026-10-22 | [CHANGELOG.md §[0.18.3]](CHANGELOG.md#v0183--2026-10-22) |
 | v0.18.1 | 2026-10-17 | [CHANGELOG.md §[0.18.1]](CHANGELOG.md#v0181--2026-10-17) |
 | v0.18.0 | 2026-10-17 | [CHANGELOG.md §[0.18.0]](CHANGELOG.md#v0180--2026-10-17) |
@@ -101,16 +101,30 @@ parity failures of v0.19.0's run were already held off by the pin, and the two t
 `tests/test_ir_baseline_workflow.py`'s bash-asserting tests, which the musllinux aarch64
 container cannot answer because its busybox `sh` ships no bash. The Release job never ran, and
 PyPI has `0.18.3` and never had `0.20.0`. What that release was going to carry ships as
-`v0.21.0`, together with the skip that hands those two tests to the CI ubuntu leg that owns
+`v0.22.0`, together with the skip that hands those two tests to the CI ubuntu leg that owns
 them. The tag stays as the record of the failed run rather than being deleted; the number
 describes no installable package, which is why it is absent from the table a reader uses to
 find one.
+
+### The v0.21.0 tag is not a release
+
+`v0.21.0` has a tag on this repository and no row above, and that is the accurate shape. The tag
+(`f5a15714`) fired Publish, and the run 45155434323 left only one leg dead — the PyYAML pin and
+the bash skip of the previous failures held, the other twenty-one legs were green — but GitHub
+retired the `macos-14` runner image on November 2, 2026, and the `pyq (macos-aarch64)` job still
+asked for it: four rerun attempts were each cancelled before their first step with the annotation
+"The configuration 'macos-14-arm64-us-default' is not supported", so no runner was ever
+allocated and the Release job never ran. PyPI has `0.18.3` and never had `0.21.0`. What that
+release was going to carry ships as `v0.22.0`, together with the runner label moved to
+`macos-15`, the closest supported Apple Silicon replacement. The tag stays as the record of the
+failed run rather than being deleted; the number describes no installable package, which is why
+it is absent from the table a reader uses to find one.
 
 ---
 
 ## Planned
 
-No scope is open for v0.21.0. A milestone scope is written at a milestone review; when it ships,
+No scope is open for v0.22.0. A milestone scope is written at a milestone review; when it ships,
 its entries move to `CHANGELOG.md` and its table to the ledger. Only an undecided choice with a
 live trigger belongs here.
 

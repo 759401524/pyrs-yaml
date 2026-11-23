@@ -436,7 +436,14 @@ jobs:
           # `macos` job builds x86_64 on macos-15-intel and has been green
           # across all seven runs — same proven label here.
           - { label: macos-x86_64, runner: macos-15-intel, std: x86_64-apple-darwin, container: false }
-          - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, container: false }
+          # `macos-15`, not `macos-14`: GitHub retired the macOS 14 image on
+          # November 2, 2026, and a job asking for it is cancelled before its
+          # first step ("The configuration 'macos-14-arm64-us-default' is not
+          # supported") — no runner is ever allocated, which is how v0.21.0's
+          # publish run lost this leg on four attempts in a row. The x86_64
+          # leg above pins `macos-15-intel` and has been green across runs;
+          # same host family, supported label.
+          - { label: macos-aarch64, runner: macos-15, std: aarch64-apple-darwin, container: false }
           - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, container: false }
     env:
       # Keep the build tree out of `target/` so `dist/` holds only release
