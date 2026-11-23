@@ -9,6 +9,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note stack no longer has to fit the reader's comment buffer, and the marker hoist asks
+  where the stack will actually be written** — two systemic roots behind three fuzz crashes that
+  surfaced on main right after #795. While a collection entry's value is unresolved the reader
+  buffered consecutive comments and refused past granit's `max_buffered_comment_events` (96), but
+  a block body's stack cannot move above its entry without changing the owner the reader reports
+  it on, so no stable spelling existed for a longer wall and every finite ceiling was a fuzzer
+  time bomb (`former-crash-b1e3bb70` / `former-crash-dc3ade22` at 104 buffered comments; their
+  100-note predecessor `former-crash-c5f32014` had crossed the same ceiling). The ceiling now
+  reads unbounded in the AST and stream receivers. Separately, the explicit-key hoist kept a
+  flow-spelled item's stack below the dash while the writer spelled that item on the dash line,
+  so the reader filed the line on the sequence and the next emission hoisted the stack above the
+  `?` (`former-crash-7c96b92b`); the hoist's predicate now mirrors the writer's placement rule
+  (`docs/dev/quality-ledger.md` (mw)).
 - **A mapping merge source that nests its `<<` below its own keys resolves before the orphan
   repair inlines it** — the check that decides whether a merge value needs resolving read only the
   source's own keys, so a `<<` one level deeper (`<<: &b` over ` : <<: *b`) stayed unresolved in

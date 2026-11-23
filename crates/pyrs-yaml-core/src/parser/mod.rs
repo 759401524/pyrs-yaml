@@ -303,6 +303,30 @@ pub fn parse(yaml: &str, schema: impl Into<Schema>) -> Result<CustomNode, ParseE
     parse_with_options(yaml, true, schema, 1000, DuplicateKeys::default())
 }
 
+/// granit `Options` for every parse this crate performs — the reader side of
+/// the writer↔reader contract in one place.
+///
+/// `max_buffered_comment_events` leaves granit's default (96) for an
+/// effectively unbounded value. While a collection entry's value is still
+/// unresolved the reader buffers consecutive comment events and refuses past
+/// the ceiling — but this engine's writer legally emits stacks of unbounded
+/// length there: a note stack rides its node, and a block body's stack cannot
+/// move above its entry without changing the owner the reader reports it on,
+/// so for those shapes *no* stable spelling exists under a finite ceiling.
+/// libFuzzer crossed the default in the first wall it built past the 100-line
+/// hoist of crash-c5f32014 (crash-b1e3bb70 / crash-dc3ade22: 104 buffered
+/// comments), and every larger wall would follow. The buffer is transient and
+/// linear in the input the parse already holds in memory, so the ceiling buys
+/// this embedded use nothing the contract doesn't pay for.
+pub(crate) fn granit_parse_options() -> granit_parser::Options {
+    // Field assignment, not struct syntax: granit's `Options` is `#[non_exhaustive]`
+    // and refuses literal construction from outside its crate, but a `default()`
+    // instance's public fields stay writable.
+    let mut options = granit_parser::Options::default();
+    options.max_buffered_comment_events = usize::MAX;
+    options
+}
+
 /// Whether a granit comment placement denotes a standalone (own-line)
 /// comment, as opposed to an inline trailing one. Shared by the AST and
 /// stream receivers so the placement taxonomy lives in exactly one place.
@@ -369,7 +393,7 @@ fn load_ast<'a>(
 ) -> Result<AstReceiver<'a>, ParseError> {
     let mut receiver = AstReceiver::new(yaml, max_depth, duplicate_keys);
     receiver.collect_documents = collect_documents;
-    let mut parser = SaphyrParser::new_from_str(yaml);
+    let mut parser = SaphyrParser::new_from_str_with_options(yaml, granit_parse_options());
     parser
         .load(&mut receiver, true)
         .map_err(|e| ParseError::Syntax {

@@ -15815,3 +15815,64 @@ merge source sits in the merge-index slot, a path the Ir inputs never take. Wher
 (`yaml_bench.rs` carries `<<: *defaults` in its corpus) the work is bounded by the source
 subtree the merge actually has, and the resolution it triggers replaces the re-merge the next
 read would otherwise have paid for.
+
+### (mw) The reader's comment ceiling goes unbounded and the marker hoist asks where the stack will actually be written (2026-11-23)
+
+Three `yaml_roundtrip` crashes surfaced on main right after #795 (run 45093581766, head
+93897e2f): two re-parse refusals with walls of over ninety-six consecutive comments
+(crash-b1e3bb70, crash-dc3ade22, minimised to 590 and 548 bytes) and one idempotency drift
+where a stack kept climbing from the dash to the enclosing `?` (crash-7c96b92b, minimised to
+28 bytes). They are one class with two systemic roots, both inside this repository's
+writer↔reader contract rather than in any single shape.
+
+The refusal root is granit's `max_buffered_comment_events`, default 96 - the count of
+consecutive comment events the reader buffers while a collection entry's value is still
+unresolved, refusing past it with `too many consecutive comments`. The ceiling is this
+crate's own configuration choice, not a YAML rule, and it is unsatisfiable: a block body's
+leading stack cannot move above its entry without changing the owner the reader reports it
+on (the hoist that fixed crash-c5f32014 is a fixed point only for the shapes it covered), a
+note cannot be dropped, and the stack length is unbounded because the input is. So any
+finite ceiling rejects text `to_yaml` is required to re-parse, and the fuzzer crosses it as
+soon as it builds a longer wall than the last fix - crash-c5f32014 crossed it at 100
+leading notes, these crashes at 104 buffered comments, and every longer wall would follow.
+The ceiling now reads unbounded (`granit_parse_options`, shared by the AST and stream
+receivers): `Options` is `#[non_exhaustive]` and granit ships no setter for the field in
+2.0.0 through master, so the value is assigned on the `default()` instance's public field.
+The buffer is transient and linear in the input the parse already holds in memory, so the
+ceiling bought this embedded use nothing the contract does not pay for.
+
+The drift root is a predicate disagreement inside the writer. `hoist_marker_note`'s
+sequence arm decides whether the first item's stack stays below the dash, and it asked
+`!is_compact_item` for mappings - but `write_sequence_item` hoists a stack above the dash
+iff the item writes compactly *or* not in block style at all. A flow-spelled mapping that
+carries an explicit key is neither compact nor a block container, yet it writes on the dash
+line: the hoist kept its stack below the dash while the writer hoisted it, the reader filed
+that line on the sequence, and the next emission carried the stack above the enclosing `?`
+
+- the two readings never agreed. The predicate now mirrors the writer's placement rule
+(`!is_compact_item && is_block_container` for mappings), so the question has one source of
+truth.
+
+Gates: `cargo nextest run -p pyrs-yaml-core` reads 536 passed with the two standing reds
+both `former-crash-1c221fb0` (the granit ` >+` chomping read, upstream
+bourumir-wyngs/granit-parser, unfiled there and kept out of committed trees until an
+upstream fix lands - its seed and test stay in this working copy only). fmt, both clippy
+scopes and the release build are clean; `prek run --all-files` passes;
+`uv run pytest tests/ -q` reads 5020 passed with two failures that are this host's WSL-bash
+temp-path issue in `test_ir_baseline_workflow` (system32 bash.EXE eats the backslash path),
+not code. `quality_matrix.py --write-rows` puts the rows at 970 Rust `#[test]` and 344
+seeds of which 230 are `former-crash-*`, three seeds and two tests of which are this
+change's. The new `a_flow_item_with_an_explicit_key_keeps_its_stack_at_the_marker_level`
+and `a_comment_wall_longer_than_the_old_buffer_ceiling_re_parses` in
+`tests/settles_in_one_round.rs` are green, and `note_survival` takes the two wall seeds.
+
+Cost: the local WSL gate read `safe_dump_medium` +0.57% over its baseline, past the 0.50%
+tolerance, twice with a one-instruction spread - but the refresh's own CI reading
+re-recorded the scenario at +0.00% over the old flat baseline (110,728,794 to 110,728,890),
+so the movement was this host's WSL reading, not the code: the added `is_block_container`
+conjunct lives in `hoist_marker_note`, which only the explicit-key path runs, and the Ir
+scenarios hold no explicit key. The image row for github-runner ubuntu24 still reads this
+tree below its floor, so no enforcing leg moved; the flat baseline is re-recorded on this
+head through the Ir baseline refresh workflow (dispatched with
+`accept_drift: safe_dump_medium` as a precaution), the same channel crash-c5f32014's
+family used.

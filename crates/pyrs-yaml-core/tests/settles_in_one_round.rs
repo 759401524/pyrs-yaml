@@ -1632,3 +1632,51 @@ fn a_nested_self_merge_settles() {
     let again = emit(&one);
     assert_eq!(again, one, "merge drifted: {one:?} -> {again:?}");
 }
+
+/// libFuzzer `yaml_roundtrip` crash-7c96b92b, minimized to 28 bytes: a complex key whose sequence
+/// body opens with a flow mapping that itself carries an explicit key. The body item's leading
+/// stack was kept below the dash while the writer spelled the item on the dash line, so the reader
+/// filed that line on the sequence and the next emission hoisted the stack above the `?`.
+#[test]
+fn a_flow_item_with_an_explicit_key_keeps_its_stack_at_the_marker_level() {
+    let seed = std::str::from_utf8(include_bytes!(
+        "../../../fuzz/seeds/yaml_roundtrip/former-crash-7c96b92b.seed"
+    ))
+    .expect("seed is utf-8");
+    let one = emit(seed);
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "the stack drifted between the dash and the marker: {one:?} -> {again:?}"
+    );
+}
+
+/// libFuzzer `yaml_roundtrip` crash-b1e3bb70 / crash-dc3ade22, minimized to 590 and 548 bytes: a
+/// leading stack over ninety-six comments long, emitted where the entry's value is still
+/// unresolved. The reader buffered the wall while resolving the entry and refused past granit's
+/// `max_buffered_comment_events` (96) - a ceiling no stable spelling can dodge, because a block
+/// body's stack cannot move above its entry without changing the owner the reader reports it on.
+/// The ceiling now reads unbounded (`granit_parse_options`).
+#[test]
+fn a_comment_wall_longer_than_the_old_buffer_ceiling_re_parses() {
+    for (name, seed) in [
+        (
+            "b1e3bb70",
+            include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-b1e3bb70.seed")
+                .as_slice(),
+        ),
+        (
+            "dc3ade22",
+            include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-dc3ade22.seed")
+                .as_slice(),
+        ),
+    ] {
+        let seed = std::str::from_utf8(seed).expect("seed is utf-8");
+        let one = emit(seed);
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "{name}: the buffered wall stopped the second read: {one:?} -> {again:?}"
+        );
+    }
+}

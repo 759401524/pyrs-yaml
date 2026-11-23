@@ -646,7 +646,7 @@ pub fn parse_stream_with_options(
     }
 
     let mut receiver = StreamReceiver::new_with_options(yaml, max_depth);
-    let mut parser = SaphyrParser::new_from_str(yaml);
+    let mut parser = SaphyrParser::new_from_str_with_options(yaml, super::granit_parse_options());
 
     parser
         .load(&mut receiver, true)
