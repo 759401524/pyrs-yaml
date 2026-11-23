@@ -17,464 +17,11 @@ status: new
 
 ### [Unreleased]
 
-#### 修复
-
-- **note 栈不再必须塞进读取器的注释缓冲区,标记上提也会先问这个栈实际会写到哪里** — #795 合并
-  后 main 上冒出的三个 fuzz crash 背后是两个系统性根因。当 collection entry 的值尚未解析时,
-  读取器会缓冲连续注释,并在超过 granit 的 `max_buffered_comment_events`(96)时拒绝;但块体的
-  note 栈无法上移到 entry 之上而不改变读取器判定的归属,所以更长的注释墙不存在稳定拼写,任何
-  有限上限都是留给 fuzzer 的定时炸弹(`former-crash-b1e3bb70` / `former-crash-dc3ade22`,104
-  条被缓冲的注释;它们 100 条 note 的前辈 `former-crash-c5f32014` 跨越的是同一个上限)。AST 与
-  流式两条接收路径的上限现在不再设界。另外,explicit key 的上提把 flow 拼写 item 的 note 栈留
-  在了短横线之下,而 writer 实际把这个 item 写在短横线行上,于是读取器把该行记在 sequence 名
-  下,下一轮输出便把栈提到 `?` 之上(`former-crash-7c96b92b`);上提的谓词现在镜像 writer 的放
-  置规则(`docs/dev/quality-ledger.md` (mw))。
-- **把 `<<` 藏在自身键位之下的映射型 merge 源,会在 orphan 修复内联之前完成解析** — 判断 merge
-  值是否需要解析的检查只读取源自身的键,于是更深一层的 `<<`(`<<: &b` 之下的 ` : <<: *b`)在被
-  merge 消费后由 orphan 修复内联的克隆里保持未解析:首次发射保留了 merge 行,第二次读取把它解析
-  掉,该条目坍缩成 `~: {}`(fuzz 种子 `former-crash-ec31f2ea`;它的序列源孪生
-  `former-crash-b3c57280` 早已收敛,因为序列源会检查自己的条目)。检查现在遍历整棵子树,映射源
-  与序列源按同样的条件完成解析(`docs/dev/quality-ledger.md` (mv))。
-- **序列项的 note 提升到它所属的头部行之上** — 块容器把 note 栈写在短横线之下,而当该项的值以
-  `&a` / `!tag` 头部行开头时，那个尾部正是头部之下的空隙，granit 会把 note 记在*头部*节点上：首次
-  发射写出 `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`，第二次才把 note 提到 `!fuzz6` 之上
-  （fuzz 种子 `former-crash-fb62e776`，第 7 条记录，由 `edit_yaml` 语料新增的确定性回放发现）。note
-  栈现在走那条在项自身列上跨过头部行的写行路径，上方没有头部时落点与原来完全一致
-  （`docs/dev/quality-ledger.md` (mr)）。
-- **`sort_keys` 把它最先写出的那个 pair 的 note 栈一并提升** — 前导提升读的是源中的第一个 pair，而
-  排序后的发射写的是另一个，于是那个 pair 的栈留在头部与正文之间，发射要到第二轮才收敛（fuzz 种子
-  `former-crash-8d630b22`）。提升现在取发射最先写出的位置，`sort_keys` 开启时由排序结果提供
-  （`docs/dev/quality-ledger.md` (mp)）。
-- **排序会先用锚点后定义时，`sort_keys` 保留源顺序** — 排序把 `use: *x` 写在 `~: {abase: &x 1}`
-  之上，本引擎自己的读取器以 "found unknown anchor" 拒绝了这段文本；解析期的孤儿修复救不了一个这
-  样写出的发射。既在局部定义又在局部使用某锚点名的映射现在保留源顺序——在映射外围定义的名字本来
-  就在作用域内，只有局部 pair 会被重排打破（`docs/dev/quality-ledger.md` (mp)）。
-- **被提升的 note 会跨过缩进的头部行** — 在 `indent_offset: 2` 下，不能留在 pair 行上的 note 被写
-  到了它的 `&a` / `!tag` 头部之下，下一轮再把它提上来：空隙游走从尾部尚未写入的文本测量正文缩进，
-  读到 0，就停在了缩进为 2 的头部行。游走现在接受调用方已知的列并跨过头部，note 在首次发射就留在
-  头部之上（`docs/dev/quality-ledger.md` (mp)）。
-- **`indent_sequence: 4` 让紧凑项的 pair 停在键所在的列** — 第一个 pair 紧跟在 `- ` 之后的序列项
-  把第二个 pair 写在 `indent_width + 4`，而第一个键在 `indent_width + 2`，读取器拒绝更浅的那一行
-  （"mapping values are not allowed in this context"，fuzz 种子 `former-crash-094d4d6a`）。pair
-  列是第一个键落下的位置，不是块体的步进，写出器现在用前者（`docs/dev/quality-ledger.md` (mp)）。
-- **合并消费其节点的锚点进入孤儿修复** — 四个 `yaml_roundtrip` 形状出过问题。三个以发射文本里没有定
-  义的别名收尾：嵌套 `<<` 在克隆上被解析，而修复内联的是原始体（`<<: &b` / ` <<:` / `  : *b`，
-  crash-91652883）；锚点落在展开会拆散的项映射上（`<<:` / `- &b` / ` : *b`，crash-0fae03be）；一个非
-  映射项让整个序列源失效，源随其实体离开树时锚点也被带走，而文档仍别名指向它（`<<:` / `-` /
-  `- &b : *b` / `: *b`，crash-8baf41a3）。第四个经一个合并该被消费条目所定义锚点的序列项保留了原始体
-  中的 `<<`（`<<: &b` / `- <<: *b` / `: *b`，crash-b3c57280），下一轮读回时该项变成了 `{}`。修复现在
-  拿到展开解析后的体，登记被拆散项自身的锚点，并把失效源的锚点交给修复，而不是随条目一起丢弃
-  （`docs/dev/quality-ledger.md` (mc)）。
-- **带标签的 `<<` 在去重折叠中是数据键** — 值键检查按文本折叠重复键，于是 `! <<: ~` 之上再加
-  `!G <<: ~` 会读回一对：写入器已经发射的那对被下一轮读丢（libFuzzer `yaml_roundtrip`
-  crash-85764e37）。检查现在询问合并流程自己的标识，只有无标签的 plain `<<` 才合并
-  （`docs/dev/quality-ledger.md` (md)）。
-- **序列项上的注释栈写在短横线上方** — 短横线下方的注释位于读取器尚未解析条目值的位置，读取器会缓冲
-  直到解析，并在超过 granit 的 96 事件上限时拒绝：携带 100 条前导注释的标量项把每一行都写在短横线下
-  方，输出无法再解析（"too many consecutive comments before resolving collection entry"，libFuzzer
-  `yaml_roundtrip` crash-c5f32014；100 条是最窄的失败计数）。标量项与流式项现在把栈写在短横线上方，
-  任意长度都能读回；块容器仍把自栈留在下方，因为写在短横线上方时读取器会把注释报在外层序列上，每轮都
-  会再提升一层（`docs/dev/quality-ledger.md` (me)）。
-- **以 `<<` 命名的编辑写出的是读者会保留的键** — 无引号写入的目标，在值别名或容器时会被读成合并运算
-  符，于是移动来的键值对被发射成 `<<: *x`，下一轮读取即被消费，调用方放置的条目不复存在
-  （libFuzzer `edit_yaml` crash-32aeadbf）。编辑创建的键现在带引号发射（`"<<"`），与 YAML 1.1 拼
-  写已有的规则相同；若文档本身就把该目标拼成无引号 `<<:`，而新值会被消费，则拒绝该编辑
-  （`cannot-edit-merge-key`），因为重新加引号会交回一个与文档所持不同的键
-  （`docs/dev/quality-ledger.md` (mc)）。
-- **提升到连字符上方的注释，先结清它落位处那行仅标签行** — 无处安放的序列项注释会被放到连字符上方；
-  当前一项是空的带标签标量时，`!t:` 仍在等待闭合它的 `~`，插在两者之间的注释让待处理标记失效：首次
-  发射保留裸 `!t:`，只有下一轮才写出 `~`（libFuzzer `edit_yaml` crash-beb3428d）。结算现在先于
-  注释插入执行，与键值写入器的既有做法一致（`docs/dev/quality-ledger.md` (mc)）。
-- **拼写成裸记号的 JSON5 字符串保持带引号** — 只要 JSON5 解析器把它判为字符串，读者就把带引号字符串
-  以无引号形式存储，但该解析器受整数边界约束：超出 `i64` 的十六进制串（`0Xeeee…`）回答 `Str`，被
-  无引号存储，写入器的裸记号遍历随后把它发射成句子从未说过的数字——一轮、两种拼写（libFuzzer
-  `edit_yaml` crash-3291d29b）。`quoted_or_plain` 现在询问写入器自己的记号问题 `is_json5_number`，
-  它为第二位调用者改成了 `pub(crate)`（`docs/dev/quality-ledger.md` (mc)）。
-- **保留的合并项由发射出的键决定，而不是整节点相等** — 判断合并贡献什么的折叠把来源的键值对与映射自
-  有的键按整节点比较，于是仅在注释或拼写上不同的键值对挺过了收集，又被覆盖过滤器的发射标识丢弃：注释
-  所依附的条目晚一轮离开了树（libFuzzer `yaml_roundtrip` crash-a3dded4d / crash-860ec5b7）。收集现
-  在询问覆盖过滤器所用的同一发射标识，不再把即将消费的条目算作自有键，也不再携带来源的 `<<` 标记作为
-  键值对；带引号的 `"<<"` 仍是数据键，PyYAML 与 ruamel 也这样读取 `<<: {"<<": {x: 1}}`
-  （`docs/dev/quality-ledger.md` (mb)）。
-- **容器体另起一行时，键的行内注释留在键值行** — 写入器问的是值、而不是那一行，键值行的槽位是否空
-  闲，于是携带自身注释的值即使体在下一行才开始也回答不空闲：键的注释被提到键值对上方，下一轮又从值上
-  读回来，发射文本不再是自身的不动点（libFuzzer `yaml_roundtrip` crash-200342d3）。槽位判断现在看那
-  一行；只有合并键仍把注释留在上方，因为 `<<: # note` 会被读成字面量键（`docs/dev/quality-ledger.md`
-  (lz)）。
-- **不产生任何贡献的合并不再丢失键值对或锚点** — `&b` 内部的 `<<: *b` 只能带回该映射自身已拥有的
-  键值对，因此被当作空合并消费；而孤儿修复在下一步内联的定义仍带着这个键，于是第一轮输出写出
-  `<<: *b`，第二轮却把它丢掉（libFuzzer `yaml_roundtrip` crash-b8fa5a3a）。现在，源指向自身所在
-  映射的合并会保留该键值对；离开树的空合并源则把它的锚点交给修复流程，而不是随键值对一起丢弃
-  （crash-87a2073f）（`docs/dev/quality-ledger.md` (ma)）。
-- **合并不再重复映射自身已拥有的容器键** — 去重折叠把贡献键当作整节点比较，而节点比较会看到内部标量
-  的样式，于是两条写出同一键行的映射（`? ! "": ~`，一条用空 plain、一条用空 literal）都存活下来，发
-  射文本把这对键写了两遍 —— 这是本引擎自己的读取器拒绝的文本（libFuzzer `yaml_roundtrip`
-  crash-0810c8b4）。折叠现在改问读取器自己的键探针，即 `duplicate_complex_key` 所做的写出再读回，并
-  在接收映射的 flow 拼写下发问（`docs/dev/quality-ledger.md` (ly)）。
-- **块头部不再被键文本里的 sigil 遮蔽** — 头部扫描取头部行上第一个尾部合法的 `|`/`>`，而带引号键
-  （`"h>+#"`）或锚点名称（`&>#`）里的 `>` 恰好合法：`+#` 被读作 Keep 加注释，于是下一行真正的头部
-  永远没有被读到，发射出的文本凭空多出一个源码从未写过的 chomping 指示符（libFuzzer
-  `yaml_roundtrip` crash-6d0caaa2 / crash-3411a423 / crash-418d64b8）。现在只有位于本行行首或空白
-  之后的 sigil 才是头部候选（`docs/dev/quality-ledger.md` (lx)）。
-- **Ir 门禁在镜像之外的失败诊断改读镜像行** — 在 runner 镜像之外运行时，门禁会为每个超限场景标出最近
-  镜像行的地板，但辅助函数拿到的是本次判定所用的展平 `{scenario: int}` 映射，于是首个失败就以
-  `'int' object has no attribute 'get'` 崩溃，丢掉了这次运行已经测到的读数；
-  CI 的执行腿位于镜像之上，从不进入该路径。诊断现在直接读 `image_floors`，跳过已有自身补救措施的
-  陈旧地板，并在文件不含任何行时不输出任何内容（`docs/dev/quality-ledger.md` (lt)）。
-- **超出读取器简单键窗口的键采用标记形式** — 简单键必须在 1024 个字符内到达它的 `:`，而写入器按节点
-  种类重新推导 `?` 标记形式，于是长键上显式写出的标记被折回简单形式，发射出本引擎读取器拒绝的文本
-  （libFuzzer `yaml_roundtrip` crash-b8731e07 / crash-dd90d50e）。窗口现在按写入器实际选择的拼写计算
-  —— 制表符在双引号形式下占六个字符 —— 覆盖块对、紧凑项守卫与流式对三处
-  （`docs/dev/quality-ledger.md` (lq)）。
-- **直接写入器采用同一个窗口** — `safe_dump` 不构建可测的节点，键无论多长都按简单形式拼写，于是 `:`
-  距键首字符超过 1024 个字符的键产出了本引擎读取器拒绝的文本（`mapping values are not allowed in
-  this context`，在 1200 字符的键上实测）。现在按刚发射的字符数计量 —— 先比字节，放得下的键跳过
-  遍历 —— 超出窗口的对交给核心写入器，覆盖映射对与紧凑序列项两处
-  （`docs/dev/quality-ledger.md` (lr)）。
-- **序列自身的注释不再搭上子节点的别名尾槽** — 一个块序列的最后一项是带头的映射、该映射最后一个对的
-  值是别名时，序列自己的注释被写在别名的行尾槽上；读取器把该注释归给子映射，而子映射的写入器会在下一
-  轮把它抬到 `&a` 头行之上，发射因此要到第二轮才稳定（libFuzzer `edit_yaml` crash-09e50854）。容器现
-  在会判断刚结束的那一行是否位于某个头行之下，并把注释放在自身块首行之上
-  （`docs/dev/quality-ledger.md` (ls)）。
-- **被内联的锚点定义会修复它自己仍持有的别名** — 重复键折叠丢弃定义了锚点的那一对，并把被丢弃子树中
-  幸存的引用内联回来；但遍历在被改写的那一处停下，于是内联副本*内部*的别名可能仍指向同一轮折叠丢弃
-  的锚点，发射里因此出现未定义锚点（libFuzzer `yaml_roundtrip` crash-e1e921af）。现在会就地遍历该
-  副本，登记它自己的锚点并内联它仍引用的内容。
-- **TOML 浮点数保留其书写时的符号** — 读取器记录指数浮点数的数字并只重新加上 `-`，因此前导 `+` 被
-  丢弃：`+0e8` 重读为 `0e8`，第二次发射就变了（libFuzzer `edit_yaml` crash-8a14f730，以及
-  crash-d161db83 的拼写部分）。现在记录含符号的整个 token，源码拼写因此是一轮不动点。
-- **紧凑序列项中的别名键不再被拼成 `null`** — 作为序列项的块映射走紧凑的 `- key: value` 形式，其键写
-  入器把任何非标量都拼成 `null`，于是别名键 `*x` 变成一个字面 `null:`，紧挨着该项自身的空键。重读把
-  两个空键折叠成一个并丢掉一对，发射因此无法在一轮内收敛（libFuzzer `yaml_roundtrip`
-  crash-cd7fab01）。紧凑形式的守卫现在像排除映射键和序列键那样排除别名键，于是该项走块体形式，由对写
-  入器发射 `? *x`，别名保住自己的身份（`docs/dev/quality-ledger.md` (lp)）。
-- **嵌套块序列中的注释跨轮保持其所在行** — 两个槽位搬迁了注释，使编辑器的发射无法在一轮内收敛。
-  写入器把块容器项的前置注释抬到序列标记之上、高了一层，下一轮读取又把它再抬一次（libFuzzer
-  `edit_yaml` crash-92e7b87c）；现在它把注释留在该项自身的体内。而 granit 把空标量的事件推迟到其
-  下方注释行之后，于是读取器把坐在标量*下方*的注释当作它的前置注释吞下，写入器再把它抬到该标量
-  的头之上（crash-12c96086）；下方注释现在只有在标量自身行已完整、且文档结束前有真实节点跟随
-  时才改乘下一个兄弟项，否则留作该值自身的前置注释（`docs/dev/quality-ledger.md` (lo)）。
-- **别名收尾的序列之后的尾随注释不再移位** — 以带行内注释的别名收尾的序列（`- *x  # A`）没有容纳
-  `A` 的槽位，于是读取器把它滞留在真正的列 0 尾随注释（`# B`）之前，文档结束的刷新把 `B` 挤到根
-  之上，编辑器的发射因此无法在一轮内收敛（libFuzzer `edit_yaml` crash-e3294ab5）。别名尾部的注释
-  现在改乘序列自身的行内槽，多余的尾随注释作为前置注释保留而非丢弃，使发射成为固定点
-  （`docs/dev/quality-ledger.md` (ln)）。
-- **别名尾部的容器注释在首次发射即收敛** — 附在某个映射上的注释，若该映射最后一个值是别名
-  （`*x`），会骑在该对的行尾槽上；但别名不携带元数据，于是重读把注释归到该对的*键*上，而键的
-  写器会把它上提到外层 `&a` 头部之上。注释因此在第二轮移动。写器现在在块以别名值结尾时，于
-  首次发射就把注释上提到头部之上——也就是重读最终安置它的位置
-  （`docs/dev/quality-ledger.md` (lm)）。
-- **把别名抬到其锚点定义之上的移动会被拒绝** — 把携带 `*x` 的子树移动到它所引用的 `&x` 定义之上，会
-  发射出读取器以 `found unknown anchor` 拒绝的文本（libFuzzer `edit_yaml` crash-aaf32b09）。set 入口
-  现在在载荷携带别名时追问是否有定义位于目的地之前：载荷内部的定义随它一起移动，外部的定义则必须已经
-  在上方。否则它回答 `anchor-is-referenced` 并保持文档不变（`docs/dev/quality-ledger.md` (ll)）。
-- **空块标量上方的注释不再丢弃其 chomping 指示符** — 一条文本以 `>` 或 `|` 开头的独立注释
-  （如 `# >`）位于空块标量上方时，头部探测器把注释里的符号误读为头部，于是 `>+\n` 重读成
-  `>\n`，`Keep` 指示符在第二轮衰减为 `Clip`。探测器现在遇到注释起始即停止扫描并读取真正的
-  头部，使作者的 chomping 成为固定点（`docs/dev/quality-ledger.md` (lk)）。
-- **JSON5 导出保留解析器读作文本的数字拼写** — 超出解析器整数解析范围的十六进制长串会被解析为
-  文本，中枢写器又给它加引号，于是一次 `from_json5` → `to_json5` 往返把 JSON5 数字变成了字符串。
-  `write_plain` 现在在文本拼出该出口自身文法的数字 token 时原样透传——JSON 文法，以及 JSON5 模式
-  下的十六进制、裸点与前置 `+` 形式——并先问 JSON 文法，常见拼写只付一次扫描
-  （`docs/dev/quality-ledger.md` (lh)、(li)）。
-- **未知的 `extends` 名被拒绝，而不是静默退化为无基础 schema** — `extends: cored` 过去会注册一个
-  完全没有基础的 schema：所有标量保持文本，`type: int` 拒绝 `port: 80`，却没有任何信息指出拼写
-  错误。读取器现在回答 `unknown schema 'cored' in extends` 并列出合法集合。内联字典入口把
-  `extends` 写进同一段文本，因此一处拒绝覆盖两个入口（`docs/dev/quality-ledger.md` (kh)）。
-- **schema 文本入口与字典入口一样拒绝空的 `rules` 列表** — `register_schema` 与 `load_schema`
-  过去接受 `rules: []`、缺失 `rules` 以及拼错的 `rule:`，注册出一个不做任何强转、也不给诊断的
-  schema，而内联字典入口拒绝同样的形状。文本入口现在对三种形状统一回答
-  `schema must contain a non-empty 'rules' list`。schema 语言做的是强转而非校验，
-  所以这条拒绝恢复的是诊断，不是校验门（`docs/dev/quality-ledger.md` (kg)）。
-- **拒绝现在报出拒绝它的那个格式** — `ParseError::Syntax` 由 YAML、JSON、TOML 与 schema 四个读取器
-  共同构造，而它的 `Display` 给每条消息都加上 `YAML parse error:` 前缀。于是一条 TOML 拒绝读作
-  `YAML parse error: TOML parse error: unterminated array …`，四个 JSON 门把 JSON 的拒绝叫作 YAML
-  的，schema 语法拒绝在 YAML 已经解析成功的情况下仍被标成 YAML 解析错误，而 `register_schema`
-  透传 YAML 拒绝时把前缀带了两遍。标签现在归写消息的那一方所有。前后各测 53 条门的回答：36 条
-  YAML 的逐字不变，16 条改变，每一条都是 JSON、TOML 或 schema 门脱掉一个本不属于它的标签
-  （`docs/dev/quality-ledger.md` (kc)）。
-- **编辑那几页点名了三种根本不会发生的拒绝** — 穿过别名的一次写入曾被写成会抛 `cannot-edit-alias`，
-  而 `set()` 曾被写成会回 `anchor-is-referenced`；在发布的构建上实测，`set`、`delete` 与 `rename` 都
-  会改写 `use: *x`，而没有任何一条 `set` 路由能到达 `cannot-edit-alias` — 那个令牌住在 delete、
-  rename、move 与元数据这几条路径上。别名的*父节点*仍被拒绝，别名节点上的那十二个元数据动词也一样。
-  `api/exceptions.md` 现在列出十五个可达的原因令牌与应答每个令牌的那次调用，而 `validate()` 的两项依
-  赖写在使用者会碰到它们的位置：本项目发布的任何东西都不安装 `jsonschema`，而作为文本传入的 schema
-  先由 `json.loads` 读取，因此一个 YAML 拼法的 schema 被 `YamlValidateError` 拒绝，其消息点名该参数
-  接受的形式。
-- **文档开头那行标签头部之下的注释，在第一轮输出就定下来** — 搭不上自己那一行的注释要
-  写在读者所报告的那个头部之上；可找头部的走查问的是头部行*之前*的换行，所以头部正好是
-  文档第一行时根本不抬升，注释就留在缝隙里。在那个位置重读会把它归给根节点，下一轮输出
-  便把它挪到头部之上。`!base:` 领一个不缩进的序列时，实测第一轮是
-  `!base: ` / `# fuzz 47` / `- etss: &a0 !s: ~  # fuzz 47`，第二轮把注释行放到最前。
-  crash-92f3fc65 与 crash-e392c402（81 与 82 字节）以及 29 字节的最小复现，现在第一轮
-  输出就是不动点；`fuzz/seeds/edit_yaml` 47 条全部干净回放，`cargo nextest run --all`
-  895 条通过。同批第三条是另一种落点——行尾注释被读者归到上一层节点——仍留在 issue #732。
-- **从嵌套 `?` 标记抬上来的注释，不再落进头部的缝隙** — `hoist_marker_note` 把搭在内层
-  标记上的注释提到那个标记自己的层级，读者报告的就是那个位置；可抬上来的那一行随后是
-  接在写器末尾写下的。当那个标记正处在一对 `&a !tag:` 领头的值里，末尾就是头部行下面
-  那道缝隙；granit 把一个节点的范围一直算到结束那一行的换行，于是重读把注释归给上一层，第二
-  轮输出又把它挪到头部之上。如今这次写也用 `note_line_above` 已经在用的那条缝隙规则，
-  并且同样先闭合挂起的纯标签行。逐一回放 issue #732 与 #733 点名的每个输入：17 条
-  `yaml_roundtrip` 输入从 `serialization not idempotent` 变成不动点（最小的一条 44 字节），
-  受审的那一批从 36 条失败降到 19 条；`yaml_roundtrip` 128 条种子全部干净回放，
-  `edit_yaml` 47 条，`cargo nextest run --all` 896 条通过。其余 19 条留在那些 issue 上。
-- **块标量的 chomping 指示符现在能扛住它上面的注释行** — 正文为空的块标量，是被拿它前面那一行
-  来读的：搜索标头时从正文回退到最近一条非空行，结果撞上注释、没找到标头，于是答成 Clip 并丢掉了
-  作者写的 `+`。这份文档在第一轮就不是固定点 — `# Irrr` 配上 `>+4` 先发射 `>+`、再发射 `>` — 指示符
-  从引擎写出的文本里消失了。标头扫描现在改为回落到 sigil 自己那一行，而且只在上面的回退找不到标头时
-  才用，所以只是以 `>` 开头的正文行仍走原来的路径。实测：引出该问题的两条 fuzz 输入
-  （`crash-aa8a0447`、`crash-95b66309`）已离开失败集合，`yaml_roundtrip` 从 9 降到 7，而 `edit_yaml`
-  仍为 14；两条都已归档为种子 — 语料 284 到 286，`seed_reach` 依旧在那四个往返目标的 242 个种子上
-  报出 11 条不可达（这道门现在走查六个目标，报出 259 条里的 10 条）。
-- **一千层深的 TOML 文档现在抛类型化错误，不再抛 Rust panic** — `from_toml` 能读入点分键链恰好
-  1000 层深的文档（读取器的预算就是这个数），随后向 YAML 写器索要文本形态，而写器在同一个数上拒绝。
-  这份拒绝原先落在 `serializer::to_yaml` 的 `expect` 里，于是 Python 看到的是
-  `PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))`——它不是 `Exception`，
-  会径直穿过语言里所有 `except Exception`。四个转换函数（`from_json`、`from_jsonc`、`from_json5`、
-  `from_toml`）现在共用一条可失败路径，用已有的 `max-depth-exceeded` 键答 `YamlMaxDepthError`；
-  JSON 三种方言从没现出这个症状，因为它们的读取器早一层就停。实测：深度 999 时四者仍各自产出
-  1,000,001 字节，`tests/test_max_depth.py` 新增三条用例钉住边界——把 helper 改回走 `to_yaml`，
-  其中一条就会以那个 panic 变红。这条没修的还在：YAML 读取器跑的是 granit 默认的
-  `block_nesting_limit` 与 `flow_nesting_limit` 两道 255 默认限制上（都按容器计数），而库里其他
-  所有深度预算都宣称 1000，所以越过第 255 个容器的转换仍会交回自家
-  读取器拒绝的文本（`docs/dev/quality-ledger.md` (jq)）。
-- **schema `type` 的拒绝消息只列 5 个拼写，实际接受 9 个** — `YamlTypeKind::from_name` 除 5 个
-  规范名外还接受 `boolean`、`integer`、`double`、`string`，所以写 `type: integer` 的人本就被
-  服务了，而写 `type: number` 的人却被告知有效集是 `null, bool, int, float, str`，只能去找一个
-  从来不缺的同义词。拒绝消息现在补上 `(aliases accepted: boolean, integer, double, string)`；
-  接受的集合不变，指南里那张 5 行的表也照原样留着，等裁定这些别名算表面能力还是意外
-  （`docs/dev/quality-ledger.md` (jz)）。实测：`register_schema` 接受全部四个别名并拒绝 `number`
-  与 `Int`；新增的具名测试同时钉住消息里的别名清单与四个拼写的可接受性，抹掉任一半都会变红。
-- **空合并源视为普通键，而不是被合并的条目** — 两处 shipped 规则对“只含 `<<:` 且无产出”的映射
-  给出相反答案：一条规则把“不产出内容的合并键”当作合并内容贡献（从而消费外层 `<<`），另一条把
-  这类源当作普通键。同一文件里的其他陈述（尤其 `is_merge_key`，它把注释或锚当作元数据而非
-  身份）使“注释所在行位置”成了唯一决定拼写走哪条读法的东西——`860ec5b7`、`a3dded4d`、`d360e9fd`
-  与 `f3a2f8cf` 在同一种拼写下测得两个层级、另一种拼写下只测到一个。`collect_inline_pairs`
-  现在跳过“键是合并键且其源为 null、标量或别名”的 pair，于是空合并源没有可解析的身份、不贡献
-  任何东西：同一条链状形状的两种拼写都保留全部两个 merge 层级，(jg) 那条钉住两种答案的断言被
-  收成一个，断言另一条拼写也能到达它（`docs/dev/quality-ledger.md` (jg)、(lj)）。实测：30 条
-  merge 测试、500 条 `pyrs-yaml-core` 测试、`cargo nextest run --all` 919 条全过，clippy 两处范围
-  干净，`prek run --all-files` 干净。
-- **YAML 拼法的 schema 现在被拒绝在文档列出的家族之内** — `Document.validate` 接受映射或映射的 JSON
-  文本，而那条文本门径裸跑 `json.loads`，于是 `doc.validate("type: object\nrequired: [port]\n")` 抛
-  `json.JSONDecodeError` — 一个 `Yaml*` 十个类之外的标准库异常，CLI 的 `except YamlValidateError` 分
-  支接不住，`pyrs-yaml validate doc.yaml --schema-file schema.yaml` 因此打印 traceback。门径现在包住
-  这次解析 —
-  `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a dict if it is not JSON`
-  — 文档字符串点名该参数接受的形式，而关闭这条残差的那条测试断言这句话，所以改动文档字符串把它删掉会
-  让测试变红。通过 console script 实测：退出 1，stderr 只有一行 `error:`，stdout 为空。
-  `api:validate-schema-text-is-json-only` 已从 `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 删
-  除，写过旧拒绝的九页改为新拒绝；求值引擎自身的 `ModuleNotFoundError` 当时仍在册
-  （`docs/dev/quality-ledger.md` (lv)）。
-- **缺失的求值引擎在文档列出的家族之内拒绝** — 基础安装不含 `jsonschema`，而 `Document.validate` 背
-  后的三处 import 让导入错误原样外泄为裸 `ModuleNotFoundError` — 一个 `Yaml*` 十个类之外的标准库异
-  常，于是照着 `docs/zh/quick-start.md` 那唯一一行 `pip install pyrs-yaml` 走下来的调用者，得到一个
-  家族从不点名的拒绝，而 CLI 的 `except YamlValidateError` 分支把 traceback 打了出去。三处导入现在都
-  走同一个辅助函数，它抛出点名安装途径的 `YamlValidateError` —
-  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install; install it with pip install jsonschema (…)`
-  — 文本里保留导入错误本身，坏掉的安装仍可诊断，文档字符串也写出同一条途径。关闭这条残差的测试用
-  `sys.modules["jsonschema"] = None` 造出失败，断言异常类、安装途径与文档字符串那句，所以无论本机装
-  没装求值器，每条腿都会测到它。`api:validate-evaluator-is-not-installed-by-anything-we-ship` 已从
-  `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 删除，四个 locale 里记录裸异常的那七页现在记录这
-  次拒绝（`docs/dev/quality-ledger.md` (lw)）。
-
-#### 变更
-
-- **文档工具链升到其范围允许的最新 `zensical`** — `zensical` 0.0.72 → 0.0.74，随之带来 `zensical-ui`
-  0.0.41，`zensical>=0.0.69` 约束未变。绿色的 `Docs` 运行不构成关于某个页面的证据：被锁的 0.0.56 会
-  发布 front matter 不是映射的页面，而 0.0.69 直接让构建失败，所以这次升级由
-  `scripts/check_doc_metadata.py`（165 个页面的元数据站点生成器读得懂）与四 locale 的 strict 构建判
-  定。
-
-#### 内部
-
-- **十个归档种子现在真正到达其模糊目标的断言** — 六个把类型化拒绝当作「通过」的目标在输入被拒时
-  跳过整个函数体，于是十个 `former-crash-*` 种子在没有任何写入断言被询问时回放为绿：
-  五个是被 TOML 深度守卫拒绝的 1,000 段以上点号键，五个是被后续裁决改为拒绝的重复键 YAML 文档。
-  九个是重挖而非搬迁——TOML 输入保持原形，只把最长的点号串截到 300 段（在守卫与写入器
-  定点测试之内）；YAML 输入中每个靠后的显式键取互不相同的标记，使键不再重复，
-  而显式键、块标量与 CR 家族原样保留。第十个同时是引擎重复键拒绝测试的
-  `include_bytes!` 夹具，因此按字节原样迁入 `parse_yaml` 语料，那里的断言正是
-  「两个入口以相同方式拒绝」。`.ci/seed-reach.txt` 现在只剩表头，这种空来自测量：
-  门禁拒绝种子目录消失的目标，并让 `reaches` 继续拒绝深度超限的 TOML 文档与
-  重复键的 YAML 文档（`docs/dev/quality-ledger.md` (lu)）。
-
-- **两处引擎形状满足 Rust 1.100.0 放宽后的 clippy** — stable 1.100.0 扩大了 `needless_bool` 与
-  `needless_range_loop` 的判定，使未固定的 `@stable` `rust-lint` 任务在 1.99.1 接受的代码上变红。
-  JSON5 数字写器 `is_json5_number` 现在直接返回末尾的布尔表达式，不再走 `if … { return true } false`
-  尾部；TOML 注释扫描器 `take_comment` 把按索引的 `for i in start..self.pos` 字节循环换成
-  `self.s[start..self.pos].iter().position(...)`，保留绝对偏移与只记首个违规的粘滞错误。两处改写
-  语义等价——注释扫描省去逐字节的边界检查——行为不变。
-
-- **`edit_yaml` 数一个名字由几对回答，而不是问它死没死** — `rename` 和 `move` 动的都是查找在身份那一
-  趟解析出的那一对；文档把同一个键文本拼两遍时，兄弟那一对经查找的拼写回落趟继续回答这个名字，所以
-  “旧名字已经没了”并不是这份输出作出的断言。这就是 2026-11-02 那批 `edit_yaml` 剩下三条输入所在的同
-  一类（issue #732），`!base k: 1` 挨着 `k: 2` 用 19 字节就能复现。这一层现在向
-  `duplicate_fold_count` —— `on_duplicate` 方针本来就在用的兄弟计数器 —— 要求每个动词留下的名字恰好
-  少一对，而 `move` 自己陈述这条断言，不再沿用 `delete` 的 `all` 保证。改问“一对也没动”会让 19 字节
-  和 26 字节两条输入一起变红；真正变红的是语料里 45 个 `edit_yaml` 种子中的 15 个，所以这个计数扛住
-  的范围远宽于为它写下的两条最小输入。引擎的答案由
-  `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与旁边那条 `move` 钉住。三条输入与两条
-  最小输入都进了那个语料，它在 `-runs=0` 下干净回放，矩阵读到 931 条 Rust `#[test]`、302 个种子。
-
-- **被目标拒绝的种子现在被计数，不再被算作保护** — 六个 fuzz 目标都以“类型化拒绝即通过”开场
-  （`yaml_roundtrip` 与 `edit_yaml` 看 `parse(Schema::Core)`，`json_roundtrip` 与 `parse_json` 看三
-  种 JSON 方言，`toml_roundtrip` 与 `parse_toml` 看 TOML 的两道门），所以一份读者拒绝的归档输入在
-  `-runs=0` 下干净回放，而它当初被归档时所要防的那条写侧承诺根本没被问过——语料总数却依旧把这个文件算
-  在内。`crates/pyrs-yaml-core/tests/seed_reach.rs` 逐目标询问它自己的引擎调用，只要
-  `.ci/seed-reach.txt` 与实测在任一方向不一致就变红；在这六个目录的 259 个种子上它量出 10 条不可达，
-  而 `scripts/quality_matrix.py` 为清单点名的每个目标导出一个 `seed-unreachable:<target>` id——现在是
-  三条，三条都已登记并写明各自移除它的条件。`parse_json` 与 `parse_toml` 是在本条写下之后才加入这个
-  总体的：`parse_json.rs:36` 与 `parse_toml.rs:57` 遇到拒绝就 `continue`，全部断言都在它们身后，这正
-  是四个往返目标的形状，而不是那句排除理由所说的“它们断言的就是拒绝本身”——同一句话还把出路说错了：把
-  一份被拒绝的种子挪进 `fuzz/seeds/parse_toml/` 只是把盲区搬走，并没有关掉它。这些输入留在语料里：10
-  条中有 5 条答的是 `max depth exceeded (max=1000)`，那正是 PR #694 自己的后置条件，所以它们防的是那
-  道拒绝，其余一概不算。登记表里已经有一条被重新挖出去了：`shape-literal-and-folded` 当初写的是
-  `l = |`，两道门都判它非法；改写成多行字面量字符串与基本字符串并排之后，它被读侧接受，在 `-runs=0`
-  下干净回放，并抵达写侧——所以 `seed-unreachable:toml_roundtrip` 现在三条里只点名两条（账本 (jo)）。
-  另有两条也按同样步骤出去了。`cr-only-break-note-ownership` 被拒的原因是 `- :` 空键，不是 CR 换行；
-  `special-keys` 被拒的原因是裸 `@literal`。各自重挖——前者改成跨 lone CR 让 note 落在两个条目之间的
-  序列，后者改成同样四种标量拼法、把保留字用引号包住——两条现在都抵达断言，并在 `-runs=0` 下干净回
-  放。裸 `@` 开头的平文拼法从合法 YAML 里根本读不出来，那一半仍由直接构造节点的 Rust 测试守住。今日
-  有两行登记此后被彻底关掉：`shape-comment-only-document` 被改成注释在值之前——这正是配对测试早已用字
-  面量问过、而目标真的能读的那一半；`former-crash-comment-feff` 去掉了只会让它被拒绝的字节，保留了它
-  当初归档的理由：注释紧随其后的 BOM。两者都在各自目标上以 `-runs=0` 干净回放，也都抵达了断言，所以
-  那两个 id 是从 `.ci/quality-holes.json` 里删掉的，不是改了措辞。读数是 259 条里的 10 条（账本
-  (jp)、(jt)）。`edit_yaml` 这一条是有意比它自己的目标少问一道前置条件：该目标还要一个 NUL 分隔符、
-  至少一条完整的两字节记录、非空的路径清单，以及一个答 ok 的动词。这道缺口是量出来的，不是想当然：把
-  目标插桩成每到前置条件就 panic，再让每条种子在自己的进程里回放，它的 62 条种子全部抵达了某条断言，
-  所以今天这个弱一点的谓词和真谓词说的是同一件事（`docs/dev/quality-ledger.md` (jm)）。
-
-- **fuzz 找到、而什么都没留下的 23 条输入现已进入语料** — 今天回放干净的 2026-11-02 与
-  2026-11-03 那批发现（15 条 `edit_yaml`、8 条 `yaml_roundtrip`，45 到 234 字节）从未被归档，
-  而一份不存在的种子什么都保护不了：矩阵按文件计数，所以那道缺口是看不见，而不是没被测出。每条
-  都按原字节登记到 `fuzz/seeds/<target>/former-crash-<short>.seed`，再向它自己目标的引擎重新发问
-  ——`seed_reach` 报出 259 条走查里 10 条不可达，而这 23 条都不在其中，所以它们都抵达了归档它的那
-  条断言，而不是
-  靠一次拒绝通过；回放层跑满 198 条中的 198 条，产物为零。仍在失败的 23 条继续挂在各自 issue 上，
-  其中包括需要注释归属裁定的 `edit_yaml` 容器 note 形态。
-
-- **导出路径里数字原文拼写的界限现在有了具名** — 抵达 `to_json5` 或 `to_toml` 的树在第一轮保住
-  原文、第二轮却规范化：`k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6`（26 位十六进制，core schema 把它判为
-  *字符串*）被导出成裸的 `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`，于是导出改变了它的类型；而
-  `k: +83e6` 先写 `k = +83e6`、再写 `k = 83e6`。`crates/pyrs-yaml-core/tests/exports_settle.rs`
-  把两个形状钉成当前状态，因为任一侧写器都无法自己回答这问题：实测在同一棵树上，`from_json5` 与
-  `parse` 对一个 JSON5 数字和一个只是长得像数字的 YAML 字符串，交回的都是同一个
-  `Scalar { style: Plain, tag: None, fidelity: None }`。把原文放进节点的 `fidelity` 槽、总是规范化，
-  还是做成按次参数，是尚未拍板的决定，连同实测记在 `docs/dev/quality-ledger.md` (je)。
-
-- **合并链的注释槽冲突已由具名测试钉住** — 合并源里只含另一个 `<<` 的 `<<`，读法取决于外层注释是否贴
-  着那一行：`<<: #a` 配 `  <<: ":!"` 得出一层，`# a` 摆在 `<<:` 上方得出两层，而这是同一棵树。两种写
-  法都一轮沉降，所以沉降预言机与属性层都看不见它。
-  `test_note_slot_currently_changes_merge_consumption` 记下当前的两个答案，并写明规则选定后该收敛哪
-  一条断言；这里没有改变任何行为。两条既有规则在此相互冲突 ——`collect_inline_pairs` 会把源里的合并键
-  一并交出，而 v0.16.0 的"无贡献 ⇒ 普通键"规则把它们保留，`is_merge_key` 又称注释只是元数据、不是身
-  份——所以哪种读法正确仍是待决问题，实测记在 `docs/dev/quality-ledger.md` (jg)。
-
-- **写入端的保留首字符规则现在被端到端地问，而不再只问判定** —
-  `serializer.rs::leading_indicator` 回答一段文本能否起头成 plain token，而
-  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` 已拿一份对这 17 个字符的独立重述
-  逐码位钉住了该判定。没人问过它的后果：以一个这类字符开头的标量，写出去之后要在键侧和值侧都按原文
-  读回来，并且一轮就收敛——那正是 `fuzz/seeds/yaml_roundtrip/special-keys.seed` 过去替我们守着的
-  主张；由于其中裸写的 `@literal` 让整份文档成了语法拒绝，那条种子已不再抵达断言
-  （`.ci/seed-reach.txt` 点了它的名）。先实测再落笔：17 个字符 × 两侧 = 34 次往返，全部保住原文。
-  `a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip` 把它落成了测试：它在
-  内存里构造节点，而不是解析带引号的源文，因为 `DoubleQuoted` 标量只能证明写器守得住别人递给它的
-  引号。突变定价：从规则中逐个删去 `@`、`*`、`|`、`>` 与反引号，这条测试都变红并报出发射的文本；
-  删去 `?` 不变红，因为 `?x` 对我们自己的读者就是合法的 plain 标量——那一成员是为与其他解析器互通
-  而存在，并非我们的往返契约，这就是这条防线的边界。实测：`--test settles_in_one_round` 29 passed
-  （此前 28），突变脚本末行读作 `restored -> GREEN`，且 `byte-identical after restore: True`。
-
-- **只含注释的 JSON 文档现在由三种方言各自具名拒绝** — 钉住这条的那份语料输入
-  `fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`，既被它自己的目标跳过（没有方言接受时
-  `json_roundtrip` 会 `continue`），也被逐条重问种子的 JSON 语料门跳过，于是规则无人断言，语料总数却
-  依旧把这个文件算在内。把当时登记为不可达的 15 条逐个问“那一类由谁防守”，只剩这一条是裸的：5 条深度
-  门输入由 PR #694 落下的带类型 `MaxDepthExceeded` 拒绝断言，CR 换行与保留首字符两类由
-  `settles_in_one_round.rs` 里具名的测试断言，TOML 多行字符串由读写两侧四条测试断言，BOM 边界则两个
-  方向都有断言。`comment_only_documents_are_refused_by_every_dialect` 把主张配成对：
-  `// nothing here`、`// c`、`/* x */` 以及 `# hash` 再接 `// c` 必须被 JSON、JSONC、JSON5 三者拒
-  绝，而同样注释放在值之前必须在两种带注释的方言里读出、在严格 JSON 里仍被拒绝（实测：12 次拒绝、6
-  次接受）。其余 10 条保留登记：它们记的是语料信用的丢失，不是防守的丢失。
-
-- **文档换行器的中日韩安全性现在用出厂页面来量，而不只用注入样本** — `--fix` 把正文重排到 100
-  显示列，保护排版的规则此前只在 `tests/test_doc_wrapping_gate.py` 里由人工注入触发，而真正出厂的
-  一万一千行没人同样问过。前几次会话里流传的那句"`--fix` 会把 Hangul 粘在一起、会把片假名拆开，
-  所以本地化页面只能手工折行"，追到底是一份临时脚本里的注释，而不是工具本身：`join_lines` 对每个
-  边界问"这里空一格算不算残渣"，只在不算的地方留空格；`_is_hangul` 的存在就是为了让韩语只在词间
-  断开。`test_reflowing_the_shipped_localized_pages_changes_only_line_breaks` 把三份本地化变更日志
-  的真实段落接成超长行，交给 `fix()` 实际写盘所用的函数，然后守住五条不变量：去空白后正文不变、
-  反引号数量不变、不切开韩语词、一轮之后按检查器自己累加的计数残渣为零、再来一轮什么都不动。
-  三页全过；把 `strip_residue` 变成空操作会让其中两页变红，放开 Hangul 断点会让第三页变红，脚本
-  结束后按字节还原。测量本身踩掉两个坑：检查器按**行**报一条并在内里带空格数，所以比 `len()` 量的
-  是行数而非排版。
-
-- **散文宽度门现在看得见它过去豁免的那些行** — 旧的豁免问的是"有没有某次合法换行能让*第一段*落进
-  100 个显示列"，所以一个以超宽代码段或链接开头的行只能答否，后面跟着多少正文都一样；而
-  `_wrap_line` 会把整段余文塞进同一行，然后当作已经处理完。在这棵树上实测：十一个受管页面里有七页
-  共 18 条超限行从未被报告，最宽的是账本里一段 1,410 列、有 169 个合法换行点的段落，`--fix` 原样
-  退回。现在折行器先吐出那个不可拆的词元，再折它后面的内容；检查器只豁免*整行就是一个原子词元*的
-  情形，所以两半依旧相互一致——被报告的行，必然是 `--fix` 能缩短的行。重排把账本从 13,024 行变为
-  13,083 行、变更日志动了一行，并以"去空白后正文一致、反引号数/标题数/表格行数一致"证明只动了断行；
-  仍以豁免留下的有 19 行，宽 101 到 153 列，每行都是一个词元。
-
-- **256 到 1000 这段深度有了具名守卫，因为没有任何一层能看见它** — 转换修复背后的同一次走查把其余部
-  分也量了出来：27 个转换形状的公开入口对 1000 层文档一律以类型化错误回答，没有一个
-  `PanicException`；而用 `set` 长起来的树在深度 999 处被类型化拒绝，随后它仍导出 1,000,100 字节
-  YAML，自家读取器在第 257 行以 `recursion limit exceeded` 拒读。套件里本来没有任何一层能发现这件
-  事：property 生成器是 `prop_recursive(6, 128, 8)`，往返 fuzz 目标用各格式自己的 1000 层预算回读，
-  而 YAML fuzz 输入早已通过 granit 的 255——它按容器计数，两种风格都一样。现在两道守卫钉住这段区间：
-  `crates/pyrs-yaml-core/tests/depth_budgets.rs`（254 层一轮往返、300 层能产出但读回被拒、写器在自己
-  的上限处以类型回答，并且读取器不论哪种风格都在第 255 个容器处停下）与
-  `tests/test_binding_serializer_gate.py`（绑定生产路径不得调用必然成功的 `serializer::to_yaml`，并
-  用使用次数校验避免空扫描被当成通过）。两者都以突变定价，各翻红一条。两个预算是否应当统一，仍是待裁
-  定事项（`docs/dev/quality-ledger.md` (jr)）。
-
-- **fuzz 发现现在只在抵达断言后才算关闭，而不是在被拒绝之后** — 报告步骤写的是“种子回放干净就关闭本
-  issue”，而它六个会抵达的目标所走查的 259 个种子里，有十个正是因为目标拒绝输入才回放干净，于是一个
-  issue 可以在没有任何承诺被问过的情况下关闭。这句话现在同时要求两半，
-  `tests/test_fuzz_file_issues.py::test_the_closure_criterion_demands_that_the_seed_reaches` 把它钉
-  在那里：删掉抵达那一半只会翻红这一条，其余 16 条仍绿（还原后 17 条通过）。按强化后的标准再问一遍，
-  今天还开着的两项发现都满足它 — #732 的三个 `edit_yaml` 输入与 #733 的两个 `yaml_roundtrip` 输入都
-  已作为种子入库，十条不可达行里都没有它们，且各自在自己目标下以 `-runs=0` 回放 `rc=0`。
-  `QUALITY_MATRIX.md` 的 fuzz 行原本说的是较弱的那句，现在是有条件的那句
-  （`docs/dev/quality-ledger.md` (ju)）。
-
-- **`parse_yaml` 现在要求 YAML 的两个入口以同样的方式拒绝** — 该目标此前用两条 `let _ =` 调用
-  `parse` 与 `parse_all`，所以它唯一的断言是"任何输入都不许 panic"，而 `load_ast` 自己的注释写明共享
-  辅助函数存在的理由正是单文档入口与流式入口不会漂移。现在断言的是：流式入口拒绝时，两个入口必须给出
-  完全相同的消息；最多读出一个文档时单文档入口必须接受；两个或以上时必须回答
-  `ParseError::SingleDocumentExpected`。`crates/pyrs-yaml-core/tests/reader_door_agreement.rs` 里的
-  五个具名用例钉住每个分支，而它们第一次运行就抓出了首版的错误 — 散文式词元 `multi-document-input`
-  是绑定层的映射（`py/mod.rs:51`），不是引擎的渲染（`pyrs-ast/src/error.rs:55`）。对已交付文件实测
-  （sha `3165fb959464`）：144 个已归档 YAML 输入回放为 145 次运行、无 panic；把期望改成错误的变体
-  后，18 字节的 `---\na: 1\n---\nb: 2\n` 就让它崩溃 — 这个输入在本条变更之前并不在归档里，所以
-  这条断言的第一轮定价在交付版与突变版两个构建上都干净回放。发现层 8 个作业共 88,704 次运行、
-  artifact 目录为空，两个最稀疏的目标也同样得到 14,786 与 13,165 次运行且无 artifact。由于 PR 层就是
-  以 `-runs=0` 回放种子，这条断言现在是合并门禁（`docs/dev/quality-ledger.md` (jv)）。
-
-- **JSON5 的非有限值文档现在会走 events 目标的拒绝分支** — `json_events_replay` 要求两次遍历
-  的答案一致，而 `fuzz/fuzz_targets/json_events_replay.rs:105` 用 `(Err(_), Err(_)) => {}`
-  容纳"两个遍历都接受、严格写器却拒绝"这一对，注释点名的正是 JSON5 无穷值。归档输入里没有一个
-  走到那里：给 21 条种子做插桩 `-runs=0` 回放时，两遍都接受的文档全都回答"写得出来"。于是
-  `{"a": Infinity}` 的 16 字节入库为
-  `fuzz/seeds/json_events_replay/shape-json5-non-finite.seed`，PR 层从此每次拉取请求都会真的
-  走一遍这条拒绝，22 条种子、23 次运行、`rc=0`。同一次插桩也给本就成立的断言定了价 —
-  注释槽位等式由 12 条种子非空洞地抵达，独占整行与内联两种归属都出现过 — 而 `:106` 那条
-  "两棵树可写性不同"记为按构造走不到：两棵树出自同一份文档（`docs/dev/quality-ledger.md` (jw)）。
-
-- **`parse_schema` 的语料现在把语法走了一遍** — 该目标只有一条断言（任何输入都不许 panic），也只
-  有一个种子，所以新增输入挣不到断言信用；买到的是发现层的起始形状，以及一份记录语法有哪些拒绝点
-  的语料。十四个输入加入 `fuzz/seeds/parse_schema/`，每个对应一处拒绝点（从这道门的代码数出十三
-  处），外加一个被接受的别名类型，且都先用交付版扩展实测：非映射的根、YAML 透传、五处非标量位置、
-  `rules:` 不是序列、规则不是映射、未知的 `type:` 名、缺 `pattern` 的规则、缺 `type` 的规则、编译
-  不了的模式。目录现有 15 个，只对这些文件直接以 `-runs=0` 回放读到 `Done 17 runs`、`rc=0`、
-  artifact 目录为空；矩阵读到 302 个种子，最稀疏的目标现在是 6 个的 `parse_yaml`
-  （`docs/dev/quality-ledger.md` (kb)）。
-
-### [v0.19.0] — 2026-11-04
+### [v0.19.0] — 2026-11-23
 
 <details markdown="1">
-<summary>在调用点命名的策略 · 重复键 · 注释落点 · 按执法镜像键控的地板</summary>
+<summary>在调用点命名的策略 · 重复键 · 注释落点 · 读取器的注释上限 · 一轮收敛的编辑与发射 ·
+按执法镜像键控的地板</summary>
 
 测量历史 — 哪一次运行拒绝了什么、哪一处归因后来被撤回 — 住在
 [`docs/dev/quality-ledger.md`](https://github.com/759401524/pyrs-yaml/blob/main/docs/dev/quality-ledger.md)。
@@ -584,6 +131,252 @@ status: new
   `rumdl fmt` 对 MD038 的一次「修复」删掉了代码跨度*内部*的空格，在钩子打印 `Passed` 的同时悄悄改写
   了五个镜像与台账，`MD038` 现已关闭。本地化的 changelog 页面把自己的小节放在版本标题自身的层级上，
   于是站点把每一个都渲成它所在版本的兄弟，而镜像检查现在也读这一点。
+- **note 栈不再必须塞进读取器的注释缓冲区，而标记提升会先问这个栈实际会写到哪里** — #795 合并后
+  main 上冒出的三个 fuzz crash 背后是两个系统性根因。当 collection entry 的值尚未解析时，读取器会
+  缓冲连续的注释，并在超过 granit 的 `max_buffered_comment_events`（96）时拒绝；但块体的 note 栈无
+  法在不改变读取器所报主人的前提下上移到它的 entry 之上，所以更长的注释墙不存在稳定拼写，任何有限
+  上限都是留给 fuzzer 的定时炸弹（`former-crash-b1e3bb70` / `former-crash-dc3ade22`，
+  104 条被缓冲的注释；它们 100 条 note 的前辈 `former-crash-c5f32014` 跨过的是同一个上限）。AST 与
+  流式两条接收路径的上限现在不再设界。另外，explicit key 的提升把一个 flow 拼写 item 的 note 栈留
+  在了短横线之下，而写器把这个 item 写在短横线行上，于是读取器把该行记在 sequence 名下，下一轮发
+  射便把栈提到 `?` 之上（`former-crash-7c96b92b`）；提升的谓词现在镜像写器的落点规则
+  （`docs/dev/quality-ledger.md` (mw)）。
+- **把 `<<` 藏在自身键位之下的映射型 merge 源，会在 orphan 修复内联它之前完成解析** — 判断 merge 值
+  是否需要解析的那项检查只读源自身的键，于是深一层的 `<<`（`<<: &b` 之下再放 ` : <<: *b`）在 merge
+  消费掉它的条目后、由 orphan 修复内联的那个克隆里仍未解析：第一次发射保住 merge 行，第二次读取才
+  解析它，而条目坍缩成 `~: {}`（fuzz 种子 `former-crash-ec31f2ea`；它的序列源孪生
+  `former-crash-b3c57280` 早已收敛，因为序列源会检查自己的条目）。检查现在走遍整棵子树，映射源与
+  序列源按同样的条件完成解析（`docs/dev/quality-ledger.md` (mv)）。
+- **序列项的 note 提到它所属的标头之上** — 块容器把 note 栈留在短横线之下，而当该项的值以 `&a` /
+  `!tag` 标头行开头时，那个尾部正是标头之下的缝隙，granit 把 note 记在*标头*的节点上：第一次发射写
+  出 `- ` / `  !fuzz6 ` / `  # fuzz 47` / `  - &a0 [{}]`，第二次才把 note 提到 `!fuzz6` 之上
+  （fuzz 种子 `former-crash-fb62e776`，记录 7，由 `edit_yaml` 语料新增的确定性回放发现）。note 栈
+  现在走那条在项自己的列上跨过标头的写行路径，而上方没有标头时，落点与它原先的完全一致
+  （`docs/dev/quality-ledger.md` (mr)）。
+- **排序后的发射在第一轮就收敛** — 前导提升读的是源里的第一个 pair，而排序后的发射写的是另一个，于
+  是那个 pair 的栈留在标头与正文之间，发射要到第二轮才收敛（fuzz 种子
+  `former-crash-8d630b22`）。提升现在取发射最先写出的那个下标，`sort_keys` 开启时由排序次序提供。
+  而排序也可能把一次使用排到它的定义之上：把 `use: *x` 发到 `~: {abase: &x 1}` 之上产生的文本，本引
+  擎自己的读取器以 "found unknown anchor" 拒绝，而解析期的 orphan 修复救不了一个这样产出文本的写
+  器，于是既在局部定义又在局部使用某锚点名的映射保留它的源顺序 — 在映射外围定义的名字本来就在作用
+  域内，所以这次重排只可能打破局部 pair（`docs/dev/quality-ledger.md` (mp)）。
+- **写器的几何算术拿调用方知道的那一列** — 在 `indent_offset: 2` 下，骑不上 pair 行的 note 被写到
+  它的 `&a` / `!tag` 标头之下，下一轮再把它提上来：空隙游走从尾部尚未写出的文本量正文缩进，读到
+  0，就停在缩进 2 的标头处；游走现在拿调用方知道的那一列并跨过标头，note 在第一次发射就留在标头之
+  上。而在 `indent_sequence: 4` 下、第一个 pair 开在 `- ` 之后的紧凑项，把第二个 pair 写在
+  `indent_width + 4`，而第一个键坐在 `indent_width + 2`，读取器拒绝更浅的那一行（"mapping values
+  are not allowed in this context"，fuzz 种子 `former-crash-094d4d6a`）；pair 列是第一个键落下的位
+  置，不是块体的步进，写器现在用前者（`docs/dev/quality-ledger.md` (mp)）。
+- **被一次合并消费掉节点的锚点能到达 orphan 修复** — 四个 `yaml_roundtrip` 形状出过问题。三个以发
+  射里有一个别名、而任何地方都没有定义收尾：嵌套的 `<<` 在克隆上被解析，而修复内联的是原始体
+  （`<<: &b` / ` <<:` / `  : *b`，crash-91652883）；锚点落在一个展开会拆散的项映射上（`<<:` /
+  `- &b` / ` : *b`，crash-0fae03be）；一个非映射项让整个序列源失效，树里留着它的锚点，而文档仍在
+  别名指向其中一个（`<<:` / `-` / `- &b : *b` / `: *b`，crash-8baf41a3）。第四个让原始体的 `<<` 穿
+  过一个合并该被消费条目所定义锚点的序列项保留下来（`<<: &b` / `- <<: *b` / `: *b`，
+  crash-b3c57280），下一轮读取把该项变成 `{}`。修复现在拿到展开解析过的那个体，登记被拆散项自己的
+  锚点，并把失效源的锚点交给修复，而不是随条目一起丢掉（`docs/dev/quality-ledger.md` (mc)）。
+- **重复键折叠问的是合并那一遍自己的身份，而不是键文本** — 两种形状从按键文本比较的折叠里漏了过去：
+  `! <<: ~` 之上再加 `!G <<: ~` 读回成一对，于是写器已经发射过的那个对在下一轮读取时消失
+  （libFuzzer `yaml_roundtrip` crash-85764e37），而两个写出同一键行的映射（`? ! "": ~`，一个用空的
+  plain、一个用空的 literal）都活过折叠，发射把这个对带了两遍 — 这是本引擎自己的读取器拒绝的文本
+  （libFuzzer `yaml_roundtrip` crash-0810c8b4）。值键检查现在问合并那一遍自己的身份 — 只有不带标记
+  的 plain `<<` 才合并 — 而折叠问读取器自己的键探针，即写出去再读回来的 `duplicate_complex_key`，
+  在接收映射的 flow 拼写下发问（`docs/dev/quality-ledger.md` (md)、(ly)）。
+- **序列项上的 note 栈写在它的短横线之上** — 短横线之下的 note 落在读取器尚未解析条目值的位置，所
+  以它缓冲这条 note 直到解析完成，并在超过 granit 的 96 事件上限时拒绝：一个携带 100 条前导 note
+  的标量项把短横线之下的每一行都发射出来，而输出停止重新解析（"too many consecutive comments
+  before resolving collection entry"，libFuzzer `yaml_roundtrip` crash-c5f32014；100 条 note 是最
+  窄的失败计数）。标量项与 flow 项现在把栈带在短横线之上，那里任何长度都读得回来；块容器把自己的
+  栈留在下方，因为在短横线之上读取器会把 note 报在外层 sequence 上，每轮都再提升一层
+  （`docs/dev/quality-ledger.md` (me)）。
+- **点名 `<<` 的一次编辑写出读取器会保留的键** — 写成 plain 的目标，在其值是别名或容器时被读成合并
+  运算符，于是被移动的 pair 发射成 `<<: *x`，下一次读取就把它消费掉，调用方放下的条目不见了
+  （libFuzzer `edit_yaml` crash-32aeadbf）。编辑创建的键现在带引号发射（`"<<"`），与一条 YAML 1.1
+  拼写已有的规则相同；而文档自己拼成 plain `<<:` 的目标，在新值会被消费时被拒绝
+  （`cannot-edit-merge-key`），因为重新加引号交回的键不再是文档持有的那个
+  （`docs/dev/quality-ledger.md` (mc)）。
+- **提到短横线之上的 note 会结清它落点之下那行只带标记的行** — 一个 note 无处可去的序列项被放在它
+  的短横线之上；当前一项是空的带标记标量时，`!t:` 还在等闭合它的 `~`，插在两者之间的 note 让挂起
+  的标记失效：第一次发射留下一个裸 `!t:`，只有下一轮才写出 `~`（libFuzzer `edit_yaml`
+  crash-beb3428d）。闭合现在跑在 note 插入之前，与 pair 写器已经在做的一样
+  （`docs/dev/quality-ledger.md` (mu)）。
+- **被受整数界限约束的解析器读成文本的令牌，跨过 JSON5 的各道门都保住它的引号与拼写** — 只要
+  JSON5 解析器把它判成字符串，读取器就把带引号的字符串存成 plain，但那个解析器受整数界限约束：一
+  个超出 `i64` 的十六进制串（`0Xeeee…`）答 `Str`，被存成 plain，写器的裸令牌游走随后把它发射成一
+  个句子从未说过的数字 — 一轮、两种拼写（libFuzzer `edit_yaml` crash-3291d29b）。`quoted_or_plain`
+  现在问写器自己的令牌问题 `is_json5_number`，它为第二位调用者改成了 `pub(crate)`
+  （`docs/dev/quality-ledger.md` (mu)）。导出曾给出相反的答案：一个超出解析器整数解析的十六进制串
+  解析成文本，中枢写器把它引起来，于是一次 `from_json5` → `to_json5` 往返把一个 JSON5 数字变成了
+  字符串。`write_plain` 现在在文本按该出口自身文法拼出数字令牌时原样透传 — JSON 的文法，外加
+  JSON5 模式下 JSON5 的十六进制、裸点与前导 `+` 形式 — 并先问 JSON 文法，常见拼写只付一次游走
+  （`docs/dev/quality-ledger.md` (lh)、(li)）。
+- **保住的合并条目由发射出的键决定，而不是整节点等值** — 决定合并贡献什么的那个折叠，把源的 pair
+  与映射自己的键按整节点比较，于是只在注释或拼写上不同的 pair 活过收集、又被覆盖过滤器的发射身份
+  丢掉：注释所挂的条目晚一轮才离开（libFuzzer `yaml_roundtrip` crash-a3dded4d / crash-860ec5b7）。
+  收集现在问覆盖过滤器所问的同一个发射身份，绝不把它即将消费的条目算作自有键，也绝不把源的 `<<`
+  标记当作 pair 携带 — 而带引号的 `"<<"` 仍是数据键，正如 PyYAML 与 ruamel 读取
+  `<<: {"<<": {x: 1}}` 那样（`docs/dev/quality-ledger.md` (mb)）。
+- **键的行内 note 留在 pair 行上，压在下一行才打开的容器体之上** — 写器问的是值、不是那一行，pair
+  的槽位是否空闲，而一个带着自己 note 的值即使它的体在下一行才打开也答不空闲：键的 note 被提到
+  pair 之上，下一轮读回来时落在值上，发射不再是不动点（libFuzzer `yaml_roundtrip`
+  crash-200342d3）。槽位的问题现在看那一行；只有合并键仍把 note 留在上方，因为 `<<: # note` 读回
+  来是一个字面键（`docs/dev/quality-ledger.md` (lz)）。
+- **不贡献任何东西的合并不再丢掉 pair 或锚点** — `&b` 内部的 `<<: *b` 只能带回映射已经拥有的
+  pair，所以它被当作空合并消费掉；orphan 修复晚一步内联的定义仍带着那个键，于是第一轮发射拼出
+  `<<: *b`，第二轮把它丢掉（libFuzzer `yaml_roundtrip` crash-b8fa5a3a）。源点名容纳它的那个映射的
+  合并现在保住自己的 pair，而离开树的空合并源把锚点交给修复那一遍，而不是随 pair 一起丢掉
+  （crash-87a2073f）（`docs/dev/quality-ledger.md` (ma)）。
+- **块标头不再被键文本里的 sigil 遮住** — 标头游走取标头行上第一个尾部能通过校验的 `|`/`>`，而带
+  引号键（`"h>+#"`）或锚点名（`&>#`）里的 `>` 有这样的尾部：`+#` 读作 Keep 加一条注释，于是下一行
+  真正的标头从未被读到，发射凭空多出一个源从未写出的 chomping 指示符（libFuzzer `yaml_roundtrip`
+  crash-6d0caaa2 / crash-3411a423 / crash-418d64b8）。sigil 只在一个令牌可能开始的位置才是候选
+  — 它自己那一行的行首或一个空行之后（`docs/dev/quality-ledger.md` (lx)）。
+- **Ir 门禁在镜像之外的失败诊断会读镜像的行** — 在 runner 镜像之外的一次运行给每个失败场景配上最
+  近一行的地板，但那个辅助函数拿到的是这次运行受判的展平 `{scenario: int}` 映射，于是第一个失败就
+  死在 `'int' object has no attribute 'get'` 上，丢掉了这次运行已经测到的读数；CI 的执法腿在镜像
+  上，从不走到那条路径。诊断现在自己读 `image_floors`，跳过一个陈旧的地板（它有自己的补救办
+  法），并在文件里没有行时什么都不打印（`docs/dev/quality-ledger.md` (lt)）。
+- **简单键的窗口在每个写器拼出键的地方量** — 简单键必须在 1024 个字符内到达它的 `:`，而节点写器从
+  节点种类重新推导 `?` 标记形式，于是长键上的显式标记坍回简单形式，发射出本引擎自己的读取器拒绝
+  的文本（libFuzzer `yaml_roundtrip` crash-b8731e07 / crash-dd90d50e）。窗口现在在写器选择的拼写
+  上量 — 一个制表符在双引号形式下花六个字符 — 在块 pair、紧凑项的守卫与 flow pair 三处
+  （`docs/dev/quality-ledger.md` (lq)）。直接写器拿同一个窗口：`safe_dump` 不建节点来量，任何长度
+  的键都拼得出来，于是 `:` 距首字符超过 1024 个字符的键产出它自己的读取器拒绝的文本（"mapping
+  values are not allowed in this context"，在 1200 字符的键上量得）；它现在数自己刚发射的字符
+  — 先数字节，放得下的键跳过游走 — 并把越过窗口的 pair 交给核心写器，在映射 pair 与紧凑序列项内
+  部两处（`docs/dev/quality-ledger.md` (lr)）。
+- **别名尾上的 note 在重读归档它的地方定居** — 别名不携带元数据，所以三种形状把 note 放在了重读不
+  再归档的槽位上。挂在最后一个值为别名（`*x`）的映射上的 note 骑着那个 pair 的行尾槽，重读把它归
+  在 pair 的*键*上，而键的写器会把它提到外层 `&a` 标头之上；写器现在在块以别名值收尾时，于第一次
+  发射就把它提到标头之上，那正是重读把它定居的位置（`docs/dev/quality-ledger.md` (lm)）。以带行内
+  note 的别名收尾的序列（`- *x  # A`）没有容纳 `A` 的槽位，于是读取器把它搁浅在一条真正的列 0 行
+  尾 note（`# B`）之前，而文档结束时的冲刷把 `B` 顶到根之上（libFuzzer `edit_yaml`
+  crash-e3294ab5）；别名尾部的 note 现在骑着序列自己的行内槽，任何多余的行尾 note 被保留为前置
+  note 而不是被丢掉（`docs/dev/quality-ledger.md` (ln)）。而最后一个项是带头映射、该映射最后一个
+  pair 的值是别名的块序列，把它自己的 note 写在那个别名的行尾槽上，读取器把它归在那个子节点上，
+  其写器会把它提到 `&a` 标头之上（libFuzzer `edit_yaml` crash-09e50854）；容器现在问它刚写完的那
+  一行是否坐在标头之下，并把 note 放在它自己块的第一行之上（`docs/dev/quality-ledger.md` (ls)）。
+- **被内联的锚点定义会修复它仍然持有的别名** — 重复键折叠丢掉定义锚点的那一对，并从被丢子树内联幸
+  存的使用，但游走在它改写的那处使用上停了，于是内联副本*内部*的别名可能仍指向同一轮折叠丢掉的锚
+  点，发射带着一个未定义的锚点（libFuzzer `yaml_roundtrip` crash-e1e921af）。副本现在被就地游走，
+  登记它自己的锚点并内联它仍然点名的使用。
+- **TOML 浮点数保住它被写下时的正负号** — 读取器记录指数浮点数的数字并只重新加前缀 `-`，于是前导
+  `+` 被丢掉：`+0e8` 重读为 `0e8`，第二次发射挪动了（libFuzzer `edit_yaml` crash-8a14f730，
+  crash-d161db83 的拼写那一半）。整个令牌现在连同符号一起被记录，源的拼写因而是不动点。
+- **紧凑序列项里的别名键不再被拼成 `null`** — 作为序列项的块映射取紧凑的 `- key: value` 形式，它
+  的键写器把任何非标量拼成 `null`，于是别名键 `*x` 变成一个字面的 `null:`，紧挨着该项自己的 null
+  键。重读把两个 null 键折成一个并丢掉一对，发射从未在一轮里收敛（libFuzzer `yaml_roundtrip`
+  crash-cd7fab01）。紧凑形式的守卫现在像它已经排除映射键与序列键那样排除别名键，于是该项取块体
+  形式，由 pair 写器发射 `? *x`，别名保住它的身份（`docs/dev/quality-ledger.md` (lp)）。
+- **嵌套块序列里的 note 跨轮保住它所在的那一行** — 两个槽位搬迁了一条注释，编辑器的发射从未在一轮
+  里收敛。写器把块容器项的前置 note 提到序列标记之上、高了一层，下一轮读取又把它再提一次
+  （libFuzzer `edit_yaml` crash-92e7b87c）；它现在把 note 留在项自己的体内。而 granit 把空标量的
+  事件推迟到它下方的注释行之后，于是读取器把坐在标量*下方*的 note 吞成它的前置 note，写器再把它
+  提到标量的标头之上（crash-12c96086）；下方 note 现在只在标量那一行已完整、且文档结束前有真实节
+  点跟随时才改骑下一个兄弟，否则仍是值自己的前置 note（`docs/dev/quality-ledger.md` (lo)）。
+- **把别名提到它的锚点之上的移动被拒绝** — 把携带 `*x` 的子树移到它点名的 `&x` 之上的目的地，发射
+  出读取器以 `found unknown anchor` 拒绝的文本（libFuzzer `edit_yaml` crash-aaf32b09）。set 门现
+  在在载荷携带别名时问：定义是否在目的地之前 — 载荷内部的定义随它一起走，外部的定义必须已经坐在
+  上方。否则它答 `anchor-is-referenced` 并让文档不变（`docs/dev/quality-ledger.md` (ll)）。
+- **chomping 指示符在空块标量旁边的注释行旁活下来** — 标头搜索可能去读空体前面那一行而不是标头：
+  一条文本以 `>` 或 `|` 开头的独立注释（如 `# >`）坐在空块标量上方，标头探测器把注释的 sigil 读成
+  标头，于是 `>+\n` 重读成 `>\n`，`Keep` 指示符在第二轮衰减成 `Clip`；探测器现在停在注释开头并读
+  真正的标头，作者的 chomping 因而是不动点（`docs/dev/quality-ledger.md` (lk)）。一条 note 行从另
+  一个方向引来同样的答案：标头搜索从正文回退到最近一条非空行，找到的是 note 而不是标头，答成
+  Clip 并丢掉作者的 `+` — `>+4` 上的 `# Irrr` 先发射 `>+` 再发射 `>`。标头扫描现在回落到 sigil 自
+  己那一行，且只在上面那次回退找不到标头之后才用，这让一条只是以 `>` 开头的正文行留在正常路径上。
+  实测：引来这个问题的两条 fuzz 输入（`crash-aa8a0447`、`crash-95b66309`）离开失败集合，
+  `yaml_roundtrip` 从 9 到 7，`edit_yaml` 不变仍为 14，两条都归档为种子 — 语料从 284 到 286，
+  `seed_reach` 仍在那四个往返目标当时的 242 个种子里报 11 条不可达（这道门现在走六个目标，报 259
+  条里的 10 条）。
+- **schema 文本门给出字典门所给的答案** — `register_schema` 与 `load_schema` 接受内联字典门拒绝的
+  形状。一个未知的 `extends` 名退化成完全没有基础：`extends: cored` 让所有标量保持文本，
+  `type: int` 拒绝 `port: 80`，而没有任何东西点名那个拼写错误 — 门现在答
+  `unknown schema 'cored' in extends` 并列出已知的集合，而字典门把 `extends` 写进同一段文本，一处
+  拒绝同时盖住两道门（`docs/dev/quality-ledger.md` (kh)）。空的 `rules` 列表注册一个不做任何强
+  转、也不说任何话的 schema：`rules: []`、缺失的 `rules` 键与拼错的 `rule:` 现在都被答以
+  `schema must contain a non-empty 'rules' list`。schema 语言做的是强转而不是校验，所以这条拒绝恢
+  复的是一条诊断，不是一道校验门（`docs/dev/quality-ledger.md` (kg)）。
+- **拒绝点名拒绝它的那个格式** — `ParseError::Syntax` 由 YAML、JSON、TOML 与 schema 读取器共同构
+  造，而它的 `Display` 给每条消息加 `YAML parse error:` 前缀。于是一条 TOML 拒绝读作
+  `YAML parse error: TOML parse error: unterminated array …`，四道 JSON 门把 JSON 的拒绝叫成
+  YAML 的，schema 语法拒绝在 YAML 明明解析成功时被标成 YAML 解析错误，而 `register_schema` 在一次
+  YAML 透传上把前缀带了两遍。标签现在归写下消息的那一方。前后各量 53 条门的回答：36 条 YAML 的逐
+  字节相同，16 条改变，每一条都是 JSON、TOML 或 schema 门丢掉一个从来不属于它的标签
+  （`docs/dev/quality-ledger.md` (kc)）。
+- **编辑那几页点名了三种不会发生的拒绝** — 穿过别名的一次写入被文档写成抛 `cannot-edit-alias`，
+  而 `set()` 被写成答 `anchor-is-referenced`；在已发布的构建上量得，`set`、`delete` 与 `rename`
+  都改写 `use: *x`，而没有任何 `set` 路由到达 `cannot-edit-alias` — 那个令牌住在 delete、rename、
+  move 与元数据路径上。别名的*父节点*仍被拒绝，别名节点上的十二个元数据动词也一样。
+  `api/exceptions.md` 现在列出十五个可达的原因令牌与应答每一个的那次调用，而 `validate()` 的两个
+  依赖在使用者碰到它们的地方写明：本项目发布的任何东西都不安装 `jsonschema`，而作为文本传入的
+  schema 先由 `json.loads` 读取，所以 YAML 拼法的 schema 被点名该参数所接受形式的
+  `YamlValidateError` 拒绝。
+- **打开文档的标记标头之下的 note 在第一次发射就定居** — 骑不上自己那一行的 note 被写在读取器报告
+  它的那个标头之上，而找标头的游走问的是标头行*之前*的换行，于是打开文档的标头从未被跨过：note
+  留在缝隙里，重读把它归在根上，下一次发射把它挪到标头之上。`!base:` 领着一个不缩进的序列，量得
+  `!base: ` / `# fuzz 47` / `- etss: &a0 !s: ~  # fuzz 47`，对照把 note 行放到最前的第二轮；
+  crash-92f3fc65 与 crash-e392c402（81 与 82 字节）以及它们的 29 字节缩减现在一轮回来逐字节相同，
+  `fuzz/seeds/edit_yaml` 回放 47 条中的 47 条干净，`cargo nextest run --all` 895 条通过。这一批的
+  第三条输入是另一种落点 — 一条被读者归到上一节点的行内 note — 仍作为 issue #732 开着。
+- **从嵌套 `?` 标记提上来的 note 不再落进标头的缝隙** — `hoist_marker_note` 把骑着内层标记的 note
+  提到那个标记自己的层级，那正是读取器报告它的地方，而提上来的那一行随后被接在写器的末尾写下。当
+  那个标记坐在一个 `&a !tag:` 领头的 pair 的值里，末尾就是标头之下的缝隙；granit 把节点的范围一直
+  算到结束那一行的换行，于是重读把 note 归给高一层的主人，第二次发射把它提到标头之上。
+  `note_line_above` 已经在用的那条缝隙规则现在也是这次写所用的规则，取的时机在挂起的只带标记行被
+  闭合之后。逐一回放 issue #732 与 #733 点名的每个输入，把 17 条 `yaml_roundtrip` 输入从
+  `serialization not idempotent` 挪到不动点（44 字节最小），受审集合从 36 条失败降到 19 条；
+  `yaml_roundtrip` 回放 128 条种子中的 128 条，`edit_yaml` 47 条中的 47 条，
+  `cargo nextest run --all` 896 条通过。其余 19 条仍在那些 issue 上开着。
+- **1000 层深的 TOML 文档以带类型的错误转换，而不是 Rust panic** — `from_toml` 能读点分键链恰好
+  1000 层深的文档，因为那是读取器的预算，然后向 YAML 写器要文本形式，而写器在同一个数上拒绝。拒
+  绝曾落在 `serializer::to_yaml` 的 `expect` 里，于是 Python 看到
+  `PanicException: serialization failed: MaxDepthExceeded(DepthError(1000))` — 不是
+  `Exception`，于是径直穿过语言里每一个 `except Exception`。四个转换（`from_json`、`from_jsonc`、
+  `from_json5`、`from_toml`）现在共用一条可失败路径，在已有的 `max-depth-exceeded` 键下答
+  `YamlMaxDepthError`；JSON 方言从未现出这个症状，因为它们的读取器早一层停下。实测：深度 999 仍
+  通过四者各发射 1,000,001 字节，`tests/test_max_depth.py` 的三条新用例钉住边界 — 把 helper 改回
+  经 `to_yaml` 会让其中一条恰好以那个 panic 变红。这条没有修的：YAML 读取器跑 granit 的两条默认嵌
+  套限制各 255（`block_nesting_limit` 与 `flow_nesting_limit`，都按容器计数），而本库宣传的其它每
+  一个深度预算都是 1000，所以超过第 255 个容器的转换仍会交回它自己的读取器拒绝的文本
+  （`docs/dev/quality-ledger.md` (jq)）。
+- **schema `type` 的拒绝列出五个拼写、却接受九个** — `YamlTypeKind::from_name` 除五个规范名之外还
+  应答 `boolean`、`integer`、`double` 与 `string`，于是写下 `type: integer` 的作者被照单服务，而
+  写下 `type: number` 的作者被告知有效集合是 `null, bool, int, float, str`，被打发去找一个从来不
+  缺的同义词。拒绝现在补上 `(aliases accepted: boolean, integer, double, string)`；接受的集合不
+  变，指南那张五行的表也原样留着，等一道关于这些别名算表面能力还是意外的裁定
+  （`docs/dev/quality-ledger.md` (jz)）。实测：`register_schema` 接受全部四个别名并拒绝 `number`
+  与 `Int`；新的具名测试同时断言消息里的别名清单与四个拼写被接受，丢掉任何一半都会让运行变红。
+- **空的合并源是普通的键，不是被合并的条目** — 同一映射只装 `<<: <nothing>` 时，两条已发布的规则
+  对哪些层级活下来给出相反答案：一条规则贡献一个产不出任何东西作合并内容的合并键（消费掉外层的
+  `<<`），另一条把这样的源读成普通键。同一文件里的其它陈述（尤其是把注释或锚点当元数据而不是身份
+  的 `is_merge_key`）让 note 的行槽位成了唯一决定拼写的东西 — `860ec5b7`、`a3dded4d`、
+  `d360e9fd` 与 `f3a2f8cf` 在一种拼写下量得两个层级、另一种拼写下量得一个。`collect_inline_pairs`
+  现在跳过键是合并键且源为 null、标量或别名的 pair，于是空的合并源没有可解析的身份、不贡献任何东
+  西：链式形状的两种拼写都保住两个合并层级，而钉住两个答案的那条 (jg) 断言收成一条，断言另一种拼
+  写到达它（`docs/dev/quality-ledger.md` (jg)、(lj)）。实测：30 条 merge 测试、500 条
+  `pyrs-yaml-core` 测试、`cargo nextest run --all` 共 919 条，clippy 两个范围干净，
+  `prek run --all-files` 干净。
+- **Document.validate 在文档写明的家族之内拒绝** — 文本门裸跑 `json.loads`，于是
+  `doc.validate("type: object\nrequired: [port]\n")` 抛 `json.JSONDecodeError` — 一个在这十个
+  `Yaml*` 类之外的标准库类，CLI 的 `except YamlValidateError` 分支接不住它，于是
+  `pyrs-yaml validate doc.yaml --schema-file schema.yaml` 打印 traceback。门现在包住那次解析 —
+  `schema text must be JSON (Expecting value: line 1 column 1 (char 0)); pass the schema as a
+  dict if it is not JSON` — docstring 点名该参数接受的形式，而关闭残差的那条测试断言这一句，于是
+  删掉它的 docstring 编辑让运行变红；经 console script 量得：退出 1，stderr 一行 `error:`，
+  stdout 为空，而 `api:validate-schema-text-is-json-only` 残差从 `.ci/known-residuals.json` 与
+  `QUALITY_MATRIX.md` 消失，写下旧拒绝的九页改说新拒绝
+  （`docs/dev/quality-ledger.md` (lv)）。基础安装不附带 `jsonschema`，而 `Document.validate` 背
+  后的三处导入让导入错误以裸 `ModuleNotFoundError` 冒出来，于是照着 `docs/en/quick-start.md` 唯一
+  一行 `pip install pyrs-yaml` 走下来的调用者，落进一个该家族从不点名的拒绝。导入现在经过一个抛
+  出点名安装途径的 `YamlValidateError` 的 helper —
+  `JSON Schema evaluation needs the jsonschema package, which this distribution does not install;
+  install it with pip install jsonschema (…)` — 导入错误保留在文本里，坏掉的安装仍可诊断，
+  docstring 也带着同一条途径；关闭残差的测试用 `sys.modules["jsonschema"] = None` 强造失败，断言
+  类、途径与 docstring 那一句，于是无论本机装没装求值器，每条腿都量到它，而
+  `api:validate-evaluator-is-not-installed-by-anything-we-ship` 残差从
+  `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 消失，每个 locale 里记录裸类的那七页现在记录
+  这次拒绝（`docs/dev/quality-ledger.md` (lw)）。
 
 #### 变更
 
@@ -613,6 +406,11 @@ status: new
   `dtolnay/rust-toolchain@1.96` 改写成 `@1.120`，而那个 ref 正是 `msrv-check` 安装的编译器；这个名字
   现在被排除，而三个把 `ignore`/`allow` 的词表用在 `update-types`（它只收短形式）上的 `groups` 条目
   已改正并由一条测试钉住。
+- **文档工具链移到它的范围允许的最新 `zensical`** — `zensical` 0.0.72 → 0.0.74，`zensical-ui`
+  0.0.41 随之而来，`zensical>=0.0.69` 约束不变。一次绿色的 `Docs` 运行不构成关于某个页面的证据：
+  被锁定的 0.0.56 发布过 front matter 不是映射的页面，而 0.0.69 直接让构建失败，所以这次 bump 由
+  `scripts/check_doc_metadata.py`（165 个页面带着生成器读得懂的元数据）与一次四 locale 的 strict
+  构建来判定。
 
 #### 性能
 
@@ -654,6 +452,174 @@ status: new
   `? hF&a?k !tag o: |+1` 与 `? hF&a?k !tag o: |` 各留一份；写器对每一个空体强制 `Clip`、两者都拼成
   `|`，而它自己的读者把这次发射拒绝成 `DuplicateKey`。`effective_chomping` 现在对一个空值给出声明的
   chomping，于是只差在那里的两个容器键仍是两个键。
+
+#### 内部
+
+- **十个归档种子现在到达它们的 fuzz 目标所作的那条断言** — 把类型化拒绝当作通过的六个目标在输入被
+  拒时跳过整个函数体，于是十个 `former-crash-*` 种子在没有被问任何写器承诺的情况下回放为绿：五个
+  是被 TOML 深度守卫拒绝的 1,000 段以上点分键，五个是被后来一道裁定改为拒绝的重复键 YAML 文档。九
+  个是重挖而非搬移 — TOML 输入保住它们的形状，只把最长的点分串截到 300 段（在守卫与写器的不动点
+  测试之内），而 YAML 输入里每个靠后的显式键取一个不同的标记，键因而不重复，同时显式键、块标量与
+  CR 家族活下来。第十个同时是引擎重复键拒绝测试的 `include_bytes!` 夹具，所以它按字节原样搬到
+  `parse_yaml` 语料，那里的主张是两个入口点拒绝得一样。`.ci/seed-reach.txt` 只剩表头，而这份空是
+  量出来的：门禁拒绝种子目录消失的目标，并让 `reaches` 继续拒绝一份深度被拒的 TOML 文档与一份重
+  复键的 YAML 文档（`docs/dev/quality-ledger.md` (lu)）。
+- **两处引擎形状满足 Rust 1.100.0 放宽后的 clippy** — stable 1.100.0 扩大了 `needless_bool` 与
+  `needless_range_loop`，让未钉住的 `@stable` `rust-lint` 作业在 1.99.1 接受的代码上变红。JSON5
+  数字写器 `is_json5_number` 现在直接返回它末尾的布尔表达式，而不是 `if … { return true } false`
+  的尾部；TOML 注释扫描器 `take_comment` 把按索引的 `for i in start..self.pos` 字节循环换成
+  `self.s[start..self.pos].iter().position(...)`，保住绝对偏移与只记首个违规的粘滞错误。两处改写
+  在语义上等价 — 注释扫描省掉逐字节的边界检查 — 行为不变。
+- **`edit_yaml` 数一个名字由几对回答，而不是问那个名字死没死** — rename 或 move 作用在查找的身份
+  那一趟解析出的那一对上，而文档把那个键文本拼两遍时，兄弟那一对经查找回落到的那一趟能继续应答这
+  个名字："旧名字没了"不是发射所作的主张。那是剩下的三条 2026-11-02 `edit_yaml` 发现
+  （issue #732）所处的开放类，`!base k: 1` 挨着 `k: 2` 用 19 字节就能复现它。这一层现在向
+  `duplicate_fold_count` — `on_duplicate` 方针已经在用的那个兄弟计数器 — 要求每个动词留下的名字
+  之下恰好少一对，而 `move` 自己陈述这条主张，不再继承 `delete` 的 `all` 保证。改问"没有 pair 被
+  动过"会让语料 45 个 `edit_yaml` 种子中的 15 个变红，所以这个计数扛住的远不止为它写下的那两条缩
+  减；引擎的答案由
+  `rename_moves_one_pair_of_a_name_the_document_spells_twice` 与它旁边的 move 钉住。三条输入与两
+  条缩减加入那个语料，它在 `-runs=0` 下回放干净，矩阵读到 302 个种子上的 931 条 Rust `#[test]`。
+- **被它的目标拒绝的种子现在被计数，而不是被记功** — 六个 fuzz 目标以一条类型化拒绝作为通过来开启
+  函数体（`yaml_roundtrip` 与 `edit_yaml` 在 `parse(Schema::Core)` 上，`json_roundtrip` 与
+  `parse_json` 在三种 JSON 方言上，`toml_roundtrip` 与 `parse_toml` 在两道 TOML 门上），于是读取
+  器拒绝的一份归档输入在 `-runs=0` 下回放干净，而它被归档时所防的写器承诺从未被问，语料总数却仍
+  把这个文件算在内。`crates/pyrs-yaml-core/tests/seed_reach.rs` 向每个目标问它自己的引擎调用，并
+  在 `.ci/seed-reach.txt` 与实测在任一方向不一致时变红；在这六个目录的 259 个种子上它量出 10 条
+  不可达，而 `scripts/quality_matrix.py` 为清单点名的每个目标导出一个 `seed-unreachable:<target>`
+  洞 — 现在三条，都以移除它们所处的状态登记。`parse_json` 与 `parse_toml` 是在本条首次写下之后加
+  入这个总体的：`parse_json.rs:36` 与 `parse_toml.rs:57` 遇拒绝就 `continue`，身后是全部断言，这
+  是四个往返目标所具有的形状，而不是那条排除理由所声称的"对拒绝本身作断言" — 而且那句话还把补救
+  说小了，因为把一条被拒的种子搬进 `fuzz/seeds/parse_toml/` 只是把盲区搬走，并没有关掉它。输入留
+  在语料里：10 条中的 5 条答 `max depth exceeded (max=1000)`，那是 PR #694 自己的后置条件，所以它
+  们保护那道拒绝，此外不记功。一条登记行此后被重挖出去：`shape-literal-and-folded` 原是 `l = |`，
+  在两份 profile 里都非法，被改写成一条它解析得动的多行字面串与一条基本串并排，在 `-runs=0` 下回
+  放干净并到达写器 — 所以 `seed-unreachable:toml_roundtrip` 现在三条里点名两条（ledger (jo)）。
+  `edit_yaml` 有意比它的 harness 少量一条前置条件 — 目标还要一个 NUL 分隔符、一条完整的两字节记
+  录、一份非空的路径清单与一个答 ok 的动词 — 而这道缺口是量出来的，不是假设的：对在每个前置条件
+  上 panic 的插桩目标回放，它的 62 条种子有 62 条到达了断言，所以较弱的谓词与真谓词在今天的语料上
+  意见一致（`docs/dev/quality-ledger.md` (jm)）。又有两条登记行走了同样的路：
+  `cr-only-break-note-ownership` 被拒是因为它的 `- :` 空键而不是它的 CR 断行，`special-keys` 是因
+  为一个裸 `@literal`；重挖 — 一条改成 note 行落在两个条目之间、跨越 lone CR 的序列，一条改成同
+  样四种标量拼写、保留的那个加引号 — 每条现在都到达断言并在 `-runs=0` 下回放干净。第二个文件过去
+  要的那条裸 `@` 开头拼写从合法 YAML 根本读不出来，仍由直接构造节点的 Rust 测试钉住。两条登记行
+  此后被彻底关掉：`shape-comment-only-document` 被放宽成值*之前*的一条注释，那是配对测试早已向字
+  面量要的、也是目标真能读的那一半；`former-crash-comment-feff` 丢掉只让它被拒的字节，保住它归档
+  时所防的注释后接 BOM 的相邻关系。两者都在各自目标上于 `-runs=0` 回放干净，也都到达了断言，所以
+  那两个 id 是从 `.ci/quality-holes.json` 里删掉的，而不是改了措辞。今天的读数是 259 条里的 10 条
+  （`docs/dev/quality-ledger.md` (jp)、(jt)）。
+- **fuzz 找到而什么都没留下的 23 条输入现已进入语料** — 今天回放干净的 2026-11-02 与 2026-11-03
+  的发现（15 条 `edit_yaml`、8 条 `yaml_roundtrip`，45 到 234 字节）从未被归档，而缺席的种子什么
+  也保护不了：矩阵按文件计数，所以那道缺口是看不见、而不是被量出为零。每条按原样登记在
+  `fuzz/seeds/<target>/former-crash-<short>.seed` 下，并向它自己目标的引擎重新发问 — `seed_reach`
+  走查的 259 条里报 10 条不可达，而这二十三条都不在其中，所以它们都到达为归档它们而设的那条断
+  言，而不是靠一次拒绝通过；回放层 198 条里跑 198 条，零 artifact。仍在失败的 23 条发现留在它们
+  的 issue 上开着，其中包括那条需要落点裁定的 `edit_yaml` 容器 note 形状。
+- **数字的源拼写现在在导出路径里有一条具名的界限** — 到达 `to_json5` 或 `to_toml` 的树在第一轮保
+  住文本、第二轮才规范化：`k: 0Xeeeeeeeeeeeeeeeeeeeeeeee4e6`（26 位十六进制，core schema 把它解析
+  成*字符串*）被导出成裸令牌 `{"k":0Xeeeeeeeeeeeeeeeeeeeeeeee4e6}`，导出于是改变了它的类型；而
+  `k: +83e6` 写出 `k = +83e6`，随后是 `k = 83e6`。
+  `crates/pyrs-yaml-core/tests/exports_settle.rs` 把两个形状钉成它们现在所处的状态，因为两个写器
+  都无法自己回答这个问题：在同一棵树上量得，`from_json5` 与 `parse` 对一个 JSON5 数字与一个只是看
+  着像数字的 YAML 字符串交回的是同一个
+  `Scalar { style: Plain, tag: None, fidelity: None }`。把源文本装进节点的 `fidelity` 槽、总是规
+  范化、或做成按调用而定，是一个开放的决定，连同它的测量记在 `docs/dev/quality-ledger.md` (je)。
+- **合并链的 note 冲突由一条具名测试钉住** — 合并源里只装另一个 `<<` 的 `<<`，按外层 note 是否骑
+  着它的行有两种不同读法：`<<: #a` 之上放 `  <<: ":!"` 得一个层级，`# a` 放在 `<<:` 之上得两个，
+  而这是同一棵树。两种拼写都在一轮里收敛，所以收敛预言机与属性层都看不见它。
+  `test_note_slot_currently_changes_merge_consumption` 记下当前的两个答案，并点名规则一旦选定该
+  收敛的那条断言；这里没有行为改变。两条已发布的规则在其中相撞 — `collect_inline_pairs` 把源的合
+  并键贡献出来，而 v0.16.0 的"产不出东西，所以是普通键"规则把它们留住，`is_merge_key` 又陈述注
+  释是元数据而不是身份 — 所以哪种读法正确是一个开放的决定，连同测量写在
+  `docs/dev/quality-ledger.md` (jg)。
+- **写器的保留指示符规则现在被端到端地问，而不只是被决定** —
+  `serializer.rs::leading_indicator` 回答一段文本能否开一个 plain 令牌，而
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` 拿一份对全部 17 个字符的独立重
+  述钉住那个决定。没有任何东西问过它的后果：文本以其中一个字符开头的标量，发射出来的样子要在键侧
+  与值侧都重读成同一段文本，一轮收敛 — 那是 `fuzz/seeds/yaml_roundtrip/special-keys.seed` 过去所
+  代表、如今不再携带的主张，因为它裸写的 `@literal` 让整份文档成了一次拒绝
+  （`.ci/seed-reach.txt` 点了它的名）。
+  `a_plain_scalar_leading_with_a_reserved_indicator_survives_the_round_trip` 走 17 × 2 侧：34 条
+  中的 34 条今天都成立，而这条测试按突变定价 — 从规则里删掉 `b'@'`、`b'*'`、`b'|'`、`b'>'` 或反
+  引号备选项会让它变红，点名发射的文本与读取器的消息。删掉 `b'?'` 不会，而那是边界而不是缺口：
+  `?x` 对我们自己的读者是合法的 plain 标量，所以那个成员是互通性顺从，不是我们的往返契约。
+- **只含注释的 JSON 文档现在在三种方言里都被具名拒绝** — 钉住它的那条语料输入
+  （`fuzz/seeds/json_roundtrip/shape-comment-only-document.seed`）被它自己的目标跳过（没有方言接
+  受文本时 `json_roundtrip` 会 `continue`），也被逐条重问每条种子的 JSON 语料门跳过，所以语料仍
+  把该文件算在内、规则却无人断言。把当时不可达的 15 条登记行逐一审它们的类别由谁防守，只剩这一条
+  是裸的：5 条深度守卫输入由 PR #694 发布的带类型 `MaxDepthExceeded` 拒绝断言，CR 断行与保留指示
+  符两类由 `settles_in_one_round.rs` 里的具名测试断言，TOML 多行形状由四条读取器与写器测试断言，
+  BOM 边界两个方向都有断言。
+  `comment_only_documents_are_refused_by_every_dialect` 把主张配对 —
+  `// nothing here`、`// c`、`/* x */` 与 `# hash` 接 `// c` 被 JSON、JSONC 与 JSON5 拒绝，而同样
+  的注释放在值之前在两种带注释方言里读出、在严格 JSON 里仍被拒绝（实测：12 次拒绝、6 次接受）。
+  其余 10 条保留它们的登记行：它们记录的是语料信用的丢失，不是防守的丢失。
+- **文档门测量的是出厂的页面，而不只是它们过去豁免的那些行** — `--fix` 把正文重排到 100 显示列，
+  它的排版规则此前只在 `tests/test_doc_wrapping_gate.py` 里由人工注入触发，而出厂的一万一千行没人
+  问过同样的问题。从前几次会话带来的主张 — `--fix` 会把谚文粘在一起、把片假名拆开，所以本地化页
+  面必须手工折行 — 追到底是一份草稿文件里的注释，而不是工具：`join_lines` 对每个边界问那里留一个
+  空格是否是残渣，只在不是的地方粘起来，而 `_is_hangul` 的存在正是为了让韩语断在词空上。
+  `test_reflowing_the_shipped_localized_pages_changes_only_line_breaks` 把三份本地化 changelog 的
+  真实段落接成超长行，跑 `fix()` 写盘所用的那个函数，并守住五条不变量：去空白后文本不变、反引号
+  不变、不切断韩语词、一轮之后按检查器自己累加的计数残渣为零、再来一轮什么都不动。3 页中的 3 页通
+  过；把 `strip_residue` 中和会让两页变红，放开谚文断行会让第三页变红，工具事后按字节还原。把测量
+  做对还拿掉了两个陷阱：检查器按*行*报一条、内里带一个缺口计数，所以比较 `len()` 量的是行数而不
+  是排版。在同一道门上，散文宽度豁免问的是某种合法切分能否让一行的*第一段*落在 100 显示列之内，
+  于是以更宽的代码跨度或链接开头的行无论后面跟着多少正文都答否，而 `_wrap_line` 随后把整段余文塞
+  进同一行并宣布完成 — 在此量得：十一个受管页面中的七页有 18 条超限行未被报告，最宽的是账本里一
+  段 1,410 列、带 169 个合法断点的段落，`--fix` 原样退回。修复器现在先发射那个不可回避的令牌、再
+  折它后面的内容，而检查只对*整行就是一个原子令牌*的行让步 — 所以两半仍然一致，而被报告的任何东
+  西都是修复能缩短的东西。这次重排把账本从 13,024 行挪到 13,083 行、一条 changelog 行，以去空白后
+  文本相同、以及反引号、标题与表格行数证明了只动断行；19 条行仍以 101 到 153 列被豁免，每条都是
+  一个跨度。
+- **256 到 1000 的深度段得到了具名守卫，因为没有任何层能看见它** — 在转换修复的背后，同一次走查把
+  其余的也量了：27 个转换形状的可调用对象对 1000 层深的文档以带类型的错误回答、完全没有
+  `PanicException`，而由 `set` 长出来的一棵树拒绝通过深度 999，随后导出 1,000,100 字节的 YAML，
+  本库自己的读取器在第 257 行拒绝它（`recursion limit exceeded`）。套件里本来没有任何东西能发现
+  它：属性生成器是 `prop_recursive(6, 128, 8)`，往返 fuzz 目标按各格式自己的 1000 层预算重读，而
+  YAML fuzz 输入早已通过按任一种风格都数容器的 granit 的 255。现在两道守卫钉住这个段 —
+  `crates/pyrs-yaml-core/tests/depth_budgets.rs`（254 层一轮往返，300 层发射、随后在读被拒，写器
+  在它自己的上限处以类型回答，而读取器无论哪种风格拼都在 255 个容器处停下）与
+  `tests/test_binding_serializer_gate.py`（生产绑定路径不得调用必然成功的 `serializer::to_yaml`，
+  带一次使用计数检查，空扫描读不成通过）；每条都按突变定价，各有一条红测试。预算是否应当一致仍是
+  开放的决定（`docs/dev/quality-ledger.md` (jr)）。
+- **fuzz 发现现在在到达断言时关闭，而不是在遭到拒绝时** — 报告步骤写的是"种子回放干净就关闭这个
+  issue"，而它六个会到达的目标所走查的 259 条种子里有十条*正因为*目标拒绝输入才回放干净，于是一
+  个 issue 可以在没有问过任何承诺的情况下关闭。这句话现在同时要求两半，而
+  `tests/test_fuzz_file_issues.py::test_the_closure_criterion_demands_that_the_seed_reaches` 把它
+  钉在那里：删掉到达那一半让那一条测试变红、其余十六条保持绿（恢复后 17 条通过）。按强化后的判据
+  量得，今天开着的两条发现都满足它 — #732 的三条 `edit_yaml` 输入与 #733 的两条 `yaml_roundtrip`
+  输入都已归档为种子，没有一条出现在十条不可达行里，且每条都在它自己的目标下以 `-runs=0` 回放
+  `rc=0`。`QUALITY_MATRIX.md` 的 fuzz 行原本陈述较弱的主张，现在陈述带条件的那句
+  （`docs/dev/quality-ledger.md` (ju)）。
+- **`parse_yaml` 现在要两个 YAML 入口拒绝得一样** — 目标以两条 `let _ =` 语句调用 `parse` 与
+  `parse_all`，所以它唯一的主张是"没有输入让解析器 panic"，而 `load_ast` 自己的注释说共享
+  helper 的存在正是为了让单文档门与流门不漂移。现在断言的是：一次流拒绝在两道门上带着逐字相同的
+  消息，最多一份被接受的文档意味着单文档门接受，两份或更多必须答
+  `ParseError::SingleDocumentExpected`。`crates/pyrs-yaml-core/tests/reader_door_agreement.rs` 里
+  的五个具名用例守住每个分支，而它们在第一次运行就抓到了第一版的错误 — 散文令牌
+  `multi-document-input` 是绑定的映射（`py/mod.rs:51`），不是引擎的渲染
+  （`pyrs-ast/src/error.rs:55`）。按出厂的文件量得（sha `3165fb959464`）：144 条归档的 YAML 输入
+  回放为 145 次运行、无 panic，而变异后的期望在 18 字节的 `---\na: 1\n---\nb: 2\n` 上崩溃 — 一条
+  直到这次变更才进归档的输入，这也是预言机的第一次定价在出厂构建与变异构建上都回放干净的原因。发
+  现共 8 个作业 88,704 次运行、artifact 树为空，两条最薄的目标 14,786 与 13,165 次运行、同样为
+  空。由于 PR 层以 `-runs=0` 回放种子，这是一道合并门（`docs/dev/quality-ledger.md` (jv)）。
+- **JSON5 的非有限文档现在走 events 目标的拒绝分支** — `json_events_replay` 断言两次走查意见一
+  致，而 `fuzz/fuzz_targets/json_events_replay.rs:105` 为"两次都接受文档、严格写器却拒绝它"的情
+  形写着 `(Err(_), Err(_)) => {}`，注释点名的正是 JSON5 无穷。没有归档输入到达过它：对全部 21 条
+  种子的插桩 `-runs=0` 回放，对两次走查都接受的每份文档打印了可写的裁决。`{"a": Infinity}` 的 16
+  字节被登记为 `fuzz/seeds/json_events_replay/shape-json5-non-finite.seed`，所以 PR 层走的是那条
+  拒绝而不只是描述它，22 条种子、23 次运行干净。同一次探针给已经稳固的主张定了价 — note 槽位等
+  值由 12 条种子非空洞地到达，前导归属与行内归属的 note 都出现过 — 并把 `:106` 处非对称可写分支
+  点名为按构造走不到，因为两棵树出自同一份文档（`docs/dev/quality-ledger.md` (jw)）。
+- **`parse_schema` 的语料现在把语法走一遍** — 目标持有一条主张（任何输入都不 panic）与一条种子，
+  所以新输入买不到断言信用；它们买到的是发现层的起始形状，以及一份哪些拒绝存在的记录。十四条输入
+  加入 `fuzz/seeds/parse_schema/` — 每处拒绝点一条，从门的自身代码导出十三条 — 外加一条被接受的
+  别名类型，每条都先经出厂的扩展量过：一个非映射的根、YAML 透传、五个非标量位置、一个不是序列的
+  `rules:`、一条不是映射的规则、一个未知的 `type:` 名、一条缺 `pattern` 的规则、一条缺 `type` 的
+  规则，以及一个编译不过的 pattern。目录现有 15 条，仅对这些文件直接以 `-runs=0` 回放读到
+  `Done 17 runs`、`rc=0`、artifact 树为空；矩阵读到 302 个种子，最薄的目标现在是 6 条的
+  `parse_yaml`（`docs/dev/quality-ledger.md` (kb)）。
 
 </details>
 
