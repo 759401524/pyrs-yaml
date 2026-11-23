@@ -17,7 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [Unreleased]
 
-### [v0.21.0] — 2026-11-23
+### [v0.19.1] — 2026-11-23
 
 <details markdown="1">
 <summary>policies named at the call site · duplicate keys · note placement · the reader's
