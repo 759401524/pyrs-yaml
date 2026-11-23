@@ -3059,9 +3059,22 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
                 // lifting it here put it one level too high where the next read hoisted it
                 // again (libFuzzer `edit_yaml` crash-92e7b87c). The walk still descends - a
                 // deeper compact marker can carry a stack the reader reports at this level.
+                //
+                // The question is what [`Serializer::write_sequence_item`] will *do* with
+                // the stack, not what the item claims: its stack goes above the dash iff
+                // the item writes compactly or not in block style at all. A flow-spelled
+                // mapping that carries an explicit key is neither compact (`is_compact_item`
+                // wants a block container) nor a block container, yet it writes on the dash
+                // line - so asking only `!is_compact_item` here kept its stack below the
+                // dash while the writer hoisted it, and the reader filed that line on the
+                // sequence: the next emission carried the stack above the enclosing `?`,
+                // and the pair of readings never agreed (libFuzzer `yaml_roundtrip`
+                // crash-7c96b92b, minimised to `?` + `-` + `#?` + an indented flow map).
                 let body_below = !Serializer::is_empty_container(first)
                     && match first {
-                        CustomNode::Mapping { .. } => !is_compact_item(first),
+                        CustomNode::Mapping { .. } => {
+                            !is_compact_item(first) && is_block_container(first)
+                        }
                         _ => is_block_container(first),
                     };
                 if !body_below {

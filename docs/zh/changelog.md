@@ -19,6 +19,16 @@ status: new
 
 #### 修复
 
+- **note 栈不再必须塞进读取器的注释缓冲区,标记上提也会先问这个栈实际会写到哪里** — #795 合并
+  后 main 上冒出的三个 fuzz crash 背后是两个系统性根因。当 collection entry 的值尚未解析时,
+  读取器会缓冲连续注释,并在超过 granit 的 `max_buffered_comment_events`(96)时拒绝;但块体的
+  note 栈无法上移到 entry 之上而不改变读取器判定的归属,所以更长的注释墙不存在稳定拼写,任何
+  有限上限都是留给 fuzzer 的定时炸弹(`former-crash-b1e3bb70` / `former-crash-dc3ade22`,104
+  条被缓冲的注释;它们 100 条 note 的前辈 `former-crash-c5f32014` 跨越的是同一个上限)。AST 与
+  流式两条接收路径的上限现在不再设界。另外,explicit key 的上提把 flow 拼写 item 的 note 栈留
+  在了短横线之下,而 writer 实际把这个 item 写在短横线行上,于是读取器把该行记在 sequence 名
+  下,下一轮输出便把栈提到 `?` 之上(`former-crash-7c96b92b`);上提的谓词现在镜像 writer 的放
+  置规则(`docs/dev/quality-ledger.md` (mw))。
 - **把 `<<` 藏在自身键位之下的映射型 merge 源,会在 orphan 修复内联之前完成解析** — 判断 merge
   值是否需要解析的检查只读取源自身的键,于是更深一层的 `<<`(`<<: &b` 之下的 ` : <<: *b`)在被
   merge 消费后由 orphan 修复内联的克隆里保持未解析:首次发射保留了 merge 行,第二次读取把它解析
