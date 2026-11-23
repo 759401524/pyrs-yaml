@@ -15,7 +15,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.19.0] — 2026-11-23
+### [v0.20.0] — 2026-11-23
 
 <details markdown="1">
 <summary>呼び出し側で名前をつける方針 · 重複キー · 注釈の位置 · リーダーのコメント上限 ·
@@ -467,6 +467,16 @@ status: new
   れを測ります。 `api:validate-evaluator-is-not-installed-by-anything-we-ship` の残差は
   `.ci/known-residuals.json` と `QUALITY_MATRIX.md` から消え、裸のクラスを記録していたローケールごと
   の七つのページはその拒否を記録します（ `docs/dev/quality-ledger.md` (lw)）。
+- **wheel レグの parity 参照ライブラリは、スイートが実測した PyYAML に釘打しされます** —
+  v0.19.0 の publish run 45136780406 は出たばかりの PyYAML 6.0.4 を
+  `.ci/requirements-test.txt` の `PyYAML>=6.0` に解決し、その merge 連鎖解決は parity テストの
+  目の前で変わりました： `<<: {<<: {x: 1}, x: 9}` は 6.0.3 では `{'x': 9}`、6.0.4 では
+  `{'x': 1}` と読み、 `<<: {<<: {x: 1, y: 1}, y: 2}` は 6.0.3 では `{'x': 1, 'y': 2}`、6.0.4 では
+  `{'x': 1, 'y': 1}` と読みます — 源の自身の明示キーが受け継いだ merge に負ける、データを失う形
+  で、このエンジンは 6.0.3 に従うので、wheel レグのテスト層は赤くなり、0.19.0 の wheel は一つも
+  アップロードされませんでした。要件は今や `PyYAML>=6.0,!=6.0.4` と書かれ、門はスイートが実測さ
+  れた生きている参照に対して再び測ります。この除外は、上流がこの振る舞いに裁定を下すとき、あるい
+  はこのエンジンが deliberate divergence を採用するときに再評価されます。
 
 #### 変更
 

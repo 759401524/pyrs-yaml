@@ -17,7 +17,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.19.0] — 2026-11-23
+### [v0.20.0] — 2026-11-23
 
 <details markdown="1">
 <summary>在调用点命名的策略 · 重复键 · 注释落点 · 读取器的注释上限 · 一轮收敛的编辑与发射 ·
@@ -377,6 +377,14 @@ status: new
   `api:validate-evaluator-is-not-installed-by-anything-we-ship` 残差从
   `.ci/known-residuals.json` 与 `QUALITY_MATRIX.md` 消失，每个 locale 里记录裸类的那七页现在记录
   这次拒绝（`docs/dev/quality-ledger.md` (lw)）。
+- **wheel 腿的 parity 参考库钉在套件实测过的那个 PyYAML 上** — v0.19.0 的 publish run
+  45136780406 把刚发布的 PyYAML 6.0.4 解析进了 `.ci/requirements-test.txt` 的 `PyYAML>=6.0`，
+  而它的 merge 链式解析在 parity 测试眼皮底下变了：`<<: {<<: {x: 1}, x: 9}` 在 6.0.3 读作
+  `{'x': 9}`、在 6.0.4 读作 `{'x': 1}`；`<<: {<<: {x: 1, y: 1}, y: 2}` 在 6.0.3 读作
+  `{'x': 1, 'y': 2}`、在 6.0.4 读作 `{'x': 1, 'y': 1}` — 源自身的显式键输给了它继承的 merge，
+  一个丢数据的形状，本引擎跟随 6.0.3，于是 wheel 腿的测试层变红、0.19.0 的 wheel 一条也没上
+  传。约束现在写作 `PyYAML>=6.0,!=6.0.4`，让门重新对着套件实测过的活参考库量；该排除在上游对
+  此行为作出裁决时重估，或在本引擎采纳 deliberate divergence 时重估。
 
 #### 变更
 

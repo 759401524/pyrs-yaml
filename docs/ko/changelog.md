@@ -15,7 +15,7 @@ status: new
 
 ### [Unreleased]
 
-### [v0.19.0] — 2026-11-23
+### [v0.20.0] — 2026-11-23
 
 <details markdown="1">
 <summary>호출 지점에서 이름 지운 방침 · 중복 키 · 주석 위치 · 리더의 주석 상한 · 한 번 출력으로
@@ -496,6 +496,17 @@ status: new
   `api:validate-evaluator-is-not-installed-by-anything-we-ship` 잔여는 `.ci/known-residuals.json`과
   `QUALITY_MATRIX.md`에서 사라지고 맨 클래스를 기록하던 로캘별 일곱 페이지는 이제 거부를 기록합니다
   (`docs/dev/quality-ledger.md` (lw)).
+
+- **wheel 레그의 parity 참조 라이브러리는 스위트가 실측한 PyYAML에 고정됩니다** — v0.19.0의
+  publish run 45136780406는 갓 나온 PyYAML 6.0.4를 `.ci/requirements-test.txt`의 `PyYAML>=6.0`에
+  해결했고, 그 merge 연쇄 해석은 parity 시험 눈앞에서 바뀌었습니다: `<<: {<<: {x: 1}, x: 9}`는
+  6.0.3에서 `{'x': 9}`로, 6.0.4에서는 `{'x': 1}`로 읽히고, `<<: {<<: {x: 1, y: 1}, y: 2}`는
+  6.0.3에서 `{'x': 1, 'y': 2}`로, 6.0.4에서는 `{'x': 1, 'y': 1}`로 읽힙니다 — 소스 자신의
+  명시 키가 물려받은 merge에 지는, 데이터를 잃는 모양이고, 이 엔진은 6.0.3을 따르므로 wheel
+  레그의 시험 층이 빨객게 되고 0.19.0의 wheel은 하나도 업로드되지 않았습니다. 요구 사항은 이제
+  `PyYAML>=6.0,!=6.0.4`로 쓰여, 관문은 스위트가 실측된 살아 있는 참조에 대해 다시 잽니다. 이
+  배제는 상위가 이 행동에 판결을 내릴 때, 또는 이 엔진이 deliberate divergence를 채택할 때
+  재평가됩니다.
 
 #### 변경
 
