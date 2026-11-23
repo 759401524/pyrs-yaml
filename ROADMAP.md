@@ -42,7 +42,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |---------|------|-----------|
-| v0.21.0 | 2026-11-23 | [CHANGELOG.md §[0.21.0]](CHANGELOG.md#v0210--2026-11-23) |
+| v0.19.1 | 2026-11-23 | [CHANGELOG.md §[0.19.1]](CHANGELOG.md#v0191--2026-11-23) |
 | v0.18.3 | 2026-10-22 | [CHANGELOG.md §[0.18.3]](CHANGELOG.md#v0183--2026-10-22) |
 | v0.18.1 | 2026-10-17 | [CHANGELOG.md §[0.18.1]](CHANGELOG.md#v0181--2026-10-17) |
 | v0.18.0 | 2026-10-17 | [CHANGELOG.md §[0.18.0]](CHANGELOG.md#v0180--2026-10-17) |
@@ -83,34 +83,48 @@ installable package, which is why it is absent from the table a reader uses to f
 
 ### The v0.19.0 tag is not a release
 
-`v0.19.0` has a tag on this repository and no row above, and that is the accurate shape. The tag
-(`f4f14478`) fired Publish, the run failed at the wheel legs' test layer before a wheel was
+`v0.19.0` has no row above, and that is the accurate shape. Its tag (`f4f14478`, since
+removed) fired Publish, the run failed at the wheel legs' test layer before a wheel was
 uploaded — the freshly released PyYAML 6.0.4 changed its chained merge resolution under the
 parity tests, four legs reddened and the rest cancelled — so the Release job never ran, and PyPI
-has `0.18.3` and never had `0.19.0`. What that release was going to carry shipped as `v0.20.0`,
+has `0.18.3` and never had `0.19.0`. What that release was going to carry ships as `v0.19.1`,
 together with the pin that holds the wheel legs' parity reference to the PyYAML the suite was
-measured against. The tag stays as the record of the failed run rather than being deleted; the
+measured against. The Actions run and the commit behind it remain the record of the failure; the
 number describes no installable package, which is why it is absent from the table a reader uses
 to find one.
 
 ### The v0.20.0 tag is not a release
 
-`v0.20.0` has a tag on this repository and no row above, and that is the accurate shape. The tag
-(`4d5f7c2d`) fired Publish, and the run 45146831755 left only one leg red — the PyYAML 6.0.4
+`v0.20.0` has no row above, and that is the accurate shape. Its tag (`4d5f7c2d`, since removed)
+fired Publish, and the run 45146831755 left only one leg red — the PyYAML 6.0.4
 parity failures of v0.19.0's run were already held off by the pin, and the two that remained were
 `tests/test_ir_baseline_workflow.py`'s bash-asserting tests, which the musllinux aarch64
 container cannot answer because its busybox `sh` ships no bash. The Release job never ran, and
 PyPI has `0.18.3` and never had `0.20.0`. What that release was going to carry ships as
-`v0.21.0`, together with the skip that hands those two tests to the CI ubuntu leg that owns
-them. The tag stays as the record of the failed run rather than being deleted; the number
+`v0.19.1`, together with the skip that hands those two tests to the CI ubuntu leg that owns
+them. The Actions run and the commit behind it remain the record of the failure; the number
 describes no installable package, which is why it is absent from the table a reader uses to
 find one.
+
+### The v0.21.0 tag is not a release
+
+`v0.21.0` has no row above, and that is the accurate shape. Its tag (`f5a15714`, since removed)
+fired Publish, and the run 45155434323 left only one leg dead — the PyYAML pin and
+the bash skip of the previous failures held, the other twenty-one legs were green — but GitHub
+retired the `macos-14` runner image on November 2, 2026, and the `pyq (macos-aarch64)` job still
+asked for it: four rerun attempts were each cancelled before their first step with the annotation
+"The configuration 'macos-14-arm64-us-default' is not supported", so no runner was ever
+allocated and the Release job never ran. PyPI has `0.18.3` and never had `0.21.0`. What that
+release was going to carry ships as `v0.19.1`, together with the runner label moved to
+`macos-15`, the closest supported Apple Silicon replacement. The Actions run and the commit
+behind it remain the record of the failure; the number describes no installable package, which
+is why it is absent from the table a reader uses to find one.
 
 ---
 
 ## Planned
 
-No scope is open for v0.21.0. A milestone scope is written at a milestone review; when it ships,
+No scope is open for v0.19.1. A milestone scope is written at a milestone review; when it ships,
 its entries move to `CHANGELOG.md` and its table to the ledger. Only an undecided choice with a
 live trigger belongs here.
 

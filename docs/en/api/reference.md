@@ -662,7 +662,7 @@ See [Exceptions](exceptions.md) for full details.
 ### :material-information: Version
 
 ```python
-__version__ = "0.21.0"
+__version__ = "0.19.1"
 ```
 
 ## Generated API reference

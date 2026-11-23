@@ -15920,3 +15920,34 @@ The two tests read `.github/workflows/ir-baseline.yml` and run its step bodies t
 they ask nothing of the wheel under test, so their owner is the CI ubuntu leg that has bash.
 The helper now skips with that reason instead of asserting, and the two legs of the publish
 matrix answer only where the question can be asked.
+
+### (mz) The v0.21.0 publish run died on a runner image GitHub had already retired (2026-11-23)
+
+The skip of (my) was not the whole story of publish run 45155434323 (tag v0.21.0): twenty-one of
+its twenty-two legs were green — both earlier fixes held — but `pyq (macos-aarch64)` was
+cancelled before its first step, four times across three reruns, always with the same annotation:
+"The configuration 'macos-14-arm64-us-default' is not supported". Zero steps, no runner, one
+second of lifetime; the rest of the run could not be reraised by `gh run rerun --failed` because
+the label itself was dead.
+
+GitHub retired the `macos-14` hosted-runner image on November 2, 2026; a job that asks for it is
+refused at allocation, not queued. The status page stayed green throughout, and the failure
+looked transient — the instinct to rerun, correct for the macOS queue stall the x86_64 pyq leg
+survived earlier, was wrong here: three wasted attempts before the check-run annotation was read
+instead of guessed at. The repo had already paid this exact tax once: when `macos-13` retired,
+the x86_64 pyq leg was moved to `macos-15-intel` with a comment recording the retirement, and
+the aarch64 leg next to it was not moved. The fix pins `macos-15`, the closest supported Apple
+Silicon label; the wheel `macos` job's aarch64 leg was never exposed because it follows
+`macos-latest`, which tracks supported images by construction. A runner label is
+infrastructure, not a release note: the retirement cost a tag number (v0.21.0 joins v0.18.2,
+v0.19.0 and v0.20.0 in the not-a-release table) but carries no changelog entry, matching the
+`macos-15-intel` precedent.
+
+**Update, same day (maintainer ruling):** the numbering walked back once more — the release
+ships as `v0.19.1`, a patch increment on the 0.19 line, since no 0.2x version ever reached PyPI
+and the published floor is 0.18.3. With it, the maintainer ruled the three 0.19-line tags
+deleted rather than kept: v0.19.0, v0.20.0 and v0.21.0 are gone from the ref namespace, and the
+not-a-release sections in `ROADMAP.md` no longer claim a tag exists. The commits stay reachable
+through `main`'s history (no rewrite) and the Actions runs keep their ids, so every citation
+above remains verifiable; the v0.18.2 tag predates this ruling and stays as the one surviving
+failed-tag record.
