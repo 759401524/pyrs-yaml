@@ -42,17 +42,43 @@ DATA_FIXTURES = (
     "crates/pyrs-yaml-core/benches/ir_gate.rs",
 )
 
+# The CSV corpus holds one fixture whose record separator is CRLF, and those CR bytes are
+# the input rather than the formatting: the reader is measured on a file whose rows end in
+# CRLF, so normalising it here would replace the case under test with the LF case. The
+# reason is the same as the fuzz seeds' - a byte stream that means something - and it is
+# declared in `.gitattributes` as `-text` so a checkout does not convert it either.
+#
+# What this list carries today is stated plainly, because a defence that is registered
+# rather than measured is the shape of hole this repository keeps refusing to build:
+# `.csv` is not in `CHECKED_IN`, so this fixture was never in the scope of the absolute
+# rule to begin with. The CRLF bytes are caught by the prek `mixed-line-ending` hook and by
+# the `.gitattributes` declaration, not by the file listing below. The entry is here so
+# that the two declarations cannot drift apart when the extension list changes, and so
+# that the reason it would matter is written down rather than rediscovered.
+CRLF_FIXTURES = ("crates/pyrs-csv/tests/fixtures/crlf.csv",)
+
+
+def is_excluded(rel: str) -> bool:
+    """The paths this policy does not own, whatever they are written in.
+
+    One predicate for both callers, so the file listing and the scope test cannot
+    drift apart: a path excluded from the listing but not from the scope test
+    would be checked by one and skipped by the other, which is the shape of
+    hole this gate exists to close.
+    """
+    return rel.startswith(SKIP_PREFIXES) or rel in DATA_FIXTURES or rel in CRLF_FIXTURES
+
 
 def is_checked_path(rel: str) -> bool:
     """Whether a repository-relative path is in scope for the policy.
 
     Split out of the file listing so the exclusions are testable without a repository:
-    the two data fixtures are the part a future reader is most likely to "clean up" by
-    mistake, and their CRLFs are benchmark input, not formatting.
+    the data fixtures are the part a future reader is most likely to "clean up" by
+    mistake, and their CRLFs are benchmark input and corpus input, not formatting.
     """
     if not rel.endswith(CHECKED_IN):
         return False
-    return not (rel.startswith(SKIP_PREFIXES) or rel in DATA_FIXTURES)
+    return not is_excluded(rel)
 
 
 def line_ending_counts(data: bytes) -> tuple[int, int]:
@@ -90,7 +116,7 @@ def tracked_text_files() -> list[Path]:
         rel = rel.strip().replace("\\", "/")
         if not rel or not rel.endswith(CHECKED_IN):
             continue
-        if rel.startswith(SKIP_PREFIXES) or rel in DATA_FIXTURES:
+        if is_excluded(rel):
             continue
         path = REPO / rel
         if path.is_file():

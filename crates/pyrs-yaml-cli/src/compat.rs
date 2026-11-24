@@ -43,9 +43,11 @@ const NATIVE_COMMANDS: &[&str] = &[
     "merge",
     "to-json",
     "to-toml",
+    "to-csv",
     "from-json",
     "from-toml",
     "from-ini",
+    "from-csv",
     "completion",
 ];
 

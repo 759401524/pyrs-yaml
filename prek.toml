@@ -27,7 +27,7 @@ hooks = [
   # semantic: `!y5%7c ` is a tag plus its required separator, and stripping the
   # space leaves a 6-byte input that no longer reproduces the crash it was added
   # for. Keep the hygiene hook off the fuzz input trees.
-  { id = "trailing-whitespace", priority = "format", exclude = { glob = ["fuzz/seeds/**", "fuzz/corpus/**", "fuzz/artifacts/**"] } },
+  { id = "trailing-whitespace", priority = "format", exclude = { glob = ["fuzz/seeds/**", "fuzz/corpus/**", "fuzz/artifacts/**", "crates/pyrs-csv/tests/fixtures/crlf.csv"] } },
   # Line endings, the same declaration `.gitattributes` makes. Nothing else in the gate
   # set reads them, so a helper script that wrote a tracked file with the platform default
   # newline produced a 600-2,500 line diff out of a dozen changed lines and passed every
@@ -42,6 +42,10 @@ hooks = [
   # using the platform default - reads as consistent and passes. Verified, not assumed:
   # injecting all-CRLF into a file left this hook Passed while the script below reported
   # the line count. So the absolute rule is enforced by its own hook, next down.
+  #
+  # The CSV corpus fixture is excluded for the reason the fuzz trees are: its record
+  # separator is CRLF, and those CR bytes are the input the reader is measured against.
+  # Normalising it here would swap the case under test for the LF case.
   {
     id = "mixed-line-ending",
     priority = "checks",
@@ -53,6 +57,7 @@ hooks = [
         "fuzz/artifacts/**",
         "crates/pyrs-yaml-core/src/bench_inputs.rs",
         "crates/pyrs-yaml-core/benches/ir_gate.rs",
+        "crates/pyrs-csv/tests/fixtures/crlf.csv",
       ],
     },
   },

@@ -1,12 +1,12 @@
 ---
-title: TOML, JSON, INI 형식
-description: pyrs-yaml로 TOML·JSON·INI를 주고받되 편집 가능한 표현은 YAML 하나로 유지하는 가이드.
+title: TOML, JSON, CSV/TSV, INI 형식
+description: pyrs-yaml로 TOML·JSON·CSV/TSV·INI를 주고받되 편집 가능한 표현은 YAML 하나로 유지하는 가이드.
 tags:
   - docs
 status: new
 ---
 
-TOML·JSON·INI 읽기/쓰기 — 허브는 YAML.
+TOML·JSON·CSV/TSV·INI 읽기/쓰기 — 허브는 YAML.
 
 ## 허브-스포크 모델
 
@@ -15,8 +15,8 @@ pyrs-yaml은 여러 설정 형식을 지원하지만, **편집 가능한 표현�
 입출력 변환을 담당합니다:
 
 ```text
-load_toml / load_ini / JSON 텍스트 ──▶ 값과 YAML ──▶ parse() / edit() / dump
-to_toml  ◀── YAML 텍스트 ◀──────────────────┘
+load_toml / load_ini / load_csv / JSON 텍스트 ──▶ 값과 YAML ──▶ parse() / edit() / dump
+to_toml  ◀── YAML 텍스트 ◀──────────────────────────────┘
 ```
 
 ## JSON: 이미 네이티브
@@ -115,6 +115,52 @@ TOML로 표현할 수 없는 YAML 구조는 데이터를 몰래 잃는 대신 �
 - 앵커 / 별칭, 그리고 `!!timestamp` 이외의 태그
 - 비스칼라 맵 키
 
+## CSV / TSV
+
+문서가 아니라 표입니다. 헤더 행이 열 이름을 정하고, 각 데이터 레코드는 매핑이
+됩니다. 셀은 YAML 코어 스키마로 유형이 정해져 `42`는 정수, `true`는 불리언이
+됩니다. 다만 전달되는 것은 언제나 셀의 **원문**이므로 CSV → YAML → CSV 왕복은
+원래 바이트열을 그대로 재현합니다:
+
+```python title="CSV 입력"
+import pyrs_yaml
+
+table = pyrs_yaml.load_csv("name,port\nweb-1,8080\n")
+# [{'name': 'web-1', 'port': 8080}]
+
+yaml_text = pyrs_yaml.from_csv("name,port\nweb-1,8080\n")
+# - name: web-1\n  port: 8080\n
+```
+
+동작 요점:
+
+- 구분자는 기본이 `,`, TSV는 `\t`이며 `;`와 `|`도 받습니다(Python 쪽은
+  `delimiter=`, `pyq`는 `--input csv|tsv`);
+- 따옴표는 RFC 4180을 따릅니다 — 따옴표 안에는 구분자와 줄바꿈이 들어갈 수
+  있고 `""`는 따옴표 하나를 뜻합니다;
+- 맨 앞의 UTF-8 BOM은 제거되고 CRLF와 LF를 모두 받습니다;
+- 빈 셀은 null이며, 앞자리가 0인 셀은 철자를 그대로 유지합니다(`007`은 `007`
+  그대로) 정수로 해석됩니다;
+- 엔진 자체 왕복은 바이트 단위로 동일합니다. YAML **텍스트**를 거치면 세 가지가 정규화됩니다 —
+  CRLF는 LF가 되고, BOM은 제거되어 되돌려 쓰이지 않으며, 빈 셀과 `null`로 적힌 셀은 같은
+  문서가 됩니다(YAML의 null 표기는 한 종류뿐이라);
+- 여기서 따옴표는 구문이지 타입 선언이 아닙니다. `"true"`로 적힌 셀은 불리언으로 추론되므로
+  따옴표는 텍스트 경유로 보존되지 않습니다. 모든 셀을 문자열로 유지하려면 `--no-infer`
+  (또는 `infer=False`)를 사용하세요. 숫자나 날짜처럼 보이는 문자열도 마찬가지입니다;
+- 헤더와 열 수가 다른 행, 같은 열 이름이 겹친 헤더는 **위치를 붙여 거부**되며
+  조용히 채우거나 고치지 않습니다;
+- TSV는 탭 구분으로 바꾼 같은 엔진이지 별도 형식이 아닙니다.
+
+쓰기 역시 같은 방향이며 CSV가 담을 수 없는 것은 거부합니다 — 셀 안의 중첩
+매핑은 CSV로 표현할 자리가 없습니다:
+
+```python title="YAML에서 CSV로"
+import pyrs_yaml
+
+csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
+# name,port\nweb-1,8080\n
+```
+
 ## INI
 
 의도적으로 읽기 전용 — INI에는 공식 문법이 없으므로 pyrs-yaml은 표준
@@ -146,5 +192,5 @@ yaml_text = pyrs_yaml.safe_dump(pyrs_yaml.load_ini("[s]\nport = 8080\n"))
 ## 관련 문서
 
 - [사용자 정의 스키마](custom-schema.md) — `json` 스칼라 해석 스키마
-- [명령줄 인터페이스](cli.md) — `to-json` / `from-json` 하위 명령
+- [명령줄 인터페이스](cli.md) — `to-json` / `from-json` / `to-csv` / `from-csv` 하위 명령
 - [라운드트립 보존](round-trip.md) — YAML이 편집 허브인 이유

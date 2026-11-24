@@ -240,6 +240,7 @@ FORMAT_ROWS = (
     FormatRow("YAML", "pyrs-yaml-core", "yaml", "yaml", ("yaml",)),
     FormatRow("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
     FormatRow("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
+    FormatRow("CSV", "pyrs-csv", "csv", "csv", ("csv",)),
     FormatRow("JSON Schema validation", None, "document_validate", None, ("json_schema",), writer=False),
     FormatRow(
         "Schema rule language",
@@ -267,6 +268,7 @@ ORACLE_IMPORTS = {
     "json": "json",
     "tomllib": "tomllib",
     "jsonschema": "jsonschema",
+    "csv": "csv",
 }
 
 #: Readers that ship with the interpreter, and the version that introduced each. These are bounded by
@@ -276,7 +278,7 @@ ORACLE_IMPORTS = {
 #: search matches any requirement that *starts with* the name - `_dependency_marker("json")` answers
 #: `python_version < '3.9'`, from `jsonschema>=4.18.0,<4.25.1`, and would report the always-present
 #: reader as bounded by a package nobody imports here.
-STDLIB_SINCE = {"json": (3, 0), "tomllib": (3, 11)}
+STDLIB_SINCE = {"json": (3, 0), "tomllib": (3, 11), "csv": (3, 0)}
 
 _IMPORT_LINE = re.compile(
     r"^\s*import ([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)(?: as ([a-z_][a-z0-9_]*))?",
@@ -421,8 +423,10 @@ SKIP_SHAPES = ("skipif", "xfail", "importorskip", "pytest.skip(")
 #: The dialect a pyrs call asks for, read off the loader's own name. The alternation is ordered so
 #: `load_json5` cannot be credited to the narrower `json`. The unsuffixed verbs are YAML's own:
 #: `test_yaml_crosslib.py` compares through `safe_load`, `safe_dump` and `parse`, which carry no
-#: dialect suffix because YAML is the default format.
-DIALECT_CALL = re.compile(r"pyrs_yaml\.(?:[a-z0-9_]*_(json5|jsonc|json|toml|yaml)|safe_load|safe_dump|parse)\b")
+#: dialect suffix because YAML is the default format. CSV's verbs are `from_csv` / `to_csv` /
+#: `load_csv`; TSV is the same engine with a tab delimiter rather than a dialect of its own, so it
+#: is compared in the same module and the row is named for the format that owns the grammar.
+DIALECT_CALL = re.compile(r"pyrs_yaml\.(?:[a-z0-9_]*_(json5|jsonc|json|toml|yaml|csv)|safe_load|safe_dump|parse)\b")
 
 
 def _dialect(match) -> str:

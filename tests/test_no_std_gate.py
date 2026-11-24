@@ -171,7 +171,7 @@ def test_the_gate_reports_a_narrowed_recheck() -> None:
     }
     no_std = FOUNDATION
     missing = _std_narrower_than_no_std(no_std, narrowed)
-    assert missing == {"pyrs-event", "pyrs-json", "pyrs-toml", "pyrs-yaml-core"}, sorted(missing)
+    assert missing == {"pyrs-csv", "pyrs-event", "pyrs-json", "pyrs-toml", "pyrs-yaml-core"}, sorted(missing)
 
 
 _JOB_RE = re.compile(r"^  no-std-check:\n((?:.*\n)*?)(?=^  [a-z][a-z0-9-]*:\n)", re.MULTILINE)

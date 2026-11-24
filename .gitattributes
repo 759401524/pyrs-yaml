@@ -33,6 +33,13 @@ fuzz/seeds/** -text
 crates/pyrs-yaml-core/src/bench_inputs.rs -text
 crates/pyrs-yaml-core/benches/ir_gate.rs -text
 
+# The CRLF corpus fixture is the same kind of thing: its record separator is the input the
+# reader is measured against. A file whose rows end in CRLF is what the CSV engine has to
+# parse, and a normalisation here would silently replace the case under test with the LF
+# case, which is a different case. `-text` stops the conversion in both directions, so the
+# bytes Python's `csv` module wrote are the bytes the Rust engine reads.
+crates/pyrs-csv/tests/fixtures/crlf.csv -text
+
 # Binary: never diff or normalize.
 *.pyd binary
 *.so binary

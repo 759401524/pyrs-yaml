@@ -235,7 +235,13 @@ names, on `main` at `27031d12`:
 | `pyrs-event` | 11 |
 | `pyrs-json` (JSON + JSONC + JSON5) | 12 |
 | `pyrs-toml` | 12 |
+| `pyrs-csv` (CSV + TSV) | 12 |
 | `pyrs-yaml-core` | 75 |
+
+The CSV row was measured on the branch that added `pyrs-csv` rather than on `27031d12`, where the
+crate did not exist; the other rows are the older reading and have not been re-measured here. The
+two sets are not one table's worth of comparable numbers, and the distinction is written down
+rather than blended.
 
 A qualifier the first draft lacked, because the table over-reads: `cargo tree -e normal` counts the
 closure a consumer *builds*, not what ends up linked. Part of `pyrs-yaml-core`'s 75 is host-only.
@@ -258,8 +264,8 @@ So a project that only needs to read JSON5 carries twelve crates, not seventy-fi
 engine's parser, its schema resolver, `granit-parser`, `rust-i18n`, `regex`, `proptest`-adjacent
 machinery and the PyO3 stack are simply not in that graph. That is the fine-grained claim, and
 `AGENTS.md`'s `no_std` story is the same graph proved a second way - the `no_std` job builds
-`pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json`, `pyrs-toml` and `pyrs-yaml-core` for
-`thumbv7em-none-eabi`, a target with no std at all, so those closures cannot be reaching `std`
+`pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`, `pyrs-csv` and `pyrs-yaml-core`
+for `thumbv7em-none-eabi`, a target with no std at all, so those closures cannot be reaching `std`
 anywhere.
 
 **Incremental cost, probed - and the probe says the claim is only half true.** Unit counts, not wall
@@ -273,7 +279,7 @@ one comment line, count units, restore.
   re-checks **1**, and `cargo check -p pyrs-json -p pyrs-toml` re-checks **1**: `pyrs-json`, while
   `pyrs-toml` stayed fresh.
 
-So the YAML engine does not touch the TOML engine, and the hub's 7 is the price of the shared node
+So the YAML engine does not touch the TOML engine, and the hub's 8 is the price of the shared node
 model - both are what the split is supposed to buy. The anomaly reported here in an earlier draft
 did not survive a controlled re-run. With one comment line added to
 `crates/pyrs-yaml-core/src/serializer.rs`, `cargo check -p pyrs-json -p pyrs-toml` re-checks **0**
@@ -282,7 +288,7 @@ the marker read back out of the file (count 1) and a warmed baseline of 0. So th
 YAML-engine edit pulled the JSON engine in was produced by the probe itself: the `cp`/`mv`
 round-trip used to restore the edited files bumped the mtimes of unrelated sources, and the recheck
 attributed to coupling was the probe's own residue. Engine isolation therefore holds as the closure
-table predicts, and the hub's 7 is the only real fan-out.
+table predicts, and the hub's 8 is the only real fan-out.
 
 Two traps this chased, both worth naming because they fabricate results rather than hiding them:
 `cargo check` prints `Checking`, so counting `Compiling` yields a convincing zero for every run; and

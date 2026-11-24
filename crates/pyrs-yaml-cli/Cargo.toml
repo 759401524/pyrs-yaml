@@ -17,6 +17,7 @@ indexmap = { version = "2", features = ["std"] }
 pyrs-yaml-core = { path = "../pyrs-yaml-core", version = "0.19.1" }
 pyrs-json = { path = "../pyrs-json", version = "0.19.1" }
 pyrs-toml = { path = "../pyrs-toml", version = "0.19.1" }
+pyrs-csv = { path = "../pyrs-csv", version = "0.19.1" }
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "6.0" }

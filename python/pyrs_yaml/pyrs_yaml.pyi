@@ -448,6 +448,17 @@ def dump_file(data: "Any", path: "str") -> "None":
     Serialize a Python object to YAML and write to a file.
     """
 
+def from_csv(csv_str: "str", delimiter: "str" = ",", header: "bool" = True, infer: "bool" = True) -> "str":
+    """
+    Convert a CSV/TSV string to a YAML string (hub-and-spoke exchange).
+
+    The header row names the columns, so every record becomes a mapping. The
+    cells are typed against the YAML core schema while their source text is
+    what travels: `007` stays `007` and still resolves to an integer. With
+    `infer=False` every cell stays a string; with `header=False` every record
+    becomes a sequence of cells instead.
+    """
+
 def from_dict(data: "dict[str, Any] | list[Any]") -> "str":
     """
     Convert a Python dict/list to a YAML string (auto-selects block/flow style).
@@ -517,6 +528,15 @@ def list_schemas() -> "list[str]":
 
     Returns the four built-in schemas (`failsafe`, `json`, `core`, `yaml1.1`)
     plus any schemas registered via `register_schema()` / `load_schema()`.
+    """
+
+def load_csv(csv_str: "str", delimiter: "str" = ",", header: "bool" = True) -> "list":
+    """
+    Parse a CSV/TSV string directly into Python values.
+
+    A table, not a document: the result is a list of dicts (one per record)
+    with the header row's names as keys, or a list of lists when the file has
+    no header row.
     """
 
 def load_json(json_str: "str") -> "dict[str, Any] | list[Any]":
@@ -710,6 +730,15 @@ def safe_loads(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000
 def set_language(lang: "str") -> "None":
     """
     Set the error message language.
+    """
+
+def to_csv(yaml: "str", delimiter: "str" = ",") -> "str":
+    """
+    Render a YAML document as CSV text.
+
+    Rejects the shapes CSV cannot hold (a scalar document, a mapping inside a
+    cell, a row whose columns differ) with stable `csv-serialize-error`
+    messages.
     """
 
 def to_toml(yaml: "str", schema: "str" = "core") -> "str":

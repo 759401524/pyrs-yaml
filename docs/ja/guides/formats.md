@@ -1,12 +1,12 @@
 ---
-title: TOML・JSON・INI 形式
-description: pyrs-yaml で TOML・JSON・INI をやり取りし、編集可能な表現は YAML のままにするガイド。
+title: TOML・JSON・CSV/TSV・INI 形式
+description: pyrs-yaml で TOML・JSON・CSV/TSV・INI をやり取りし、編集可能な表現は YAML のままにするガイド。
 tags:
   - docs
 status: new
 ---
 
-TOML・JSON・INI の読み書き — ハブは YAML。
+TOML・JSON・CSV/TSV・INI の読み書き — ハブは YAML。
 
 ## ハブ・スポークモデル
 
@@ -15,8 +15,8 @@ pyrs-yaml は複数の設定形式に対応しますが、**編集可能なの�
 交換形式は入出力の変換を担います。
 
 ```text
-load_toml / load_ini / JSON テキスト ──▶ 値と YAML ──▶ parse() / edit() / dump
-to_toml  ◀── YAML テキスト ◀──────────────────┘
+load_toml / load_ini / load_csv / JSON テキスト ──▶ 値と YAML ──▶ parse() / edit() / dump
+to_toml  ◀── YAML テキスト ◀──────────────────────────────┘
 ```
 
 ## JSON: もともとネイティブ
@@ -113,6 +113,51 @@ TOML で表現できない YAML 構造は、黙ってデータを落とす代わ
 - アンカー / エイリアス、および `!!timestamp` 以外のタグ
 - 非スカラーのマップキー
 
+## CSV / TSV
+
+文書ではなく表です: ヘッダ行が列名を示し、各データ行がマッピングになります。
+セルは YAML コアスキーマで型付けされ、`42` は整数、`true` は真偽値になります。
+ただし運ばれるのは常にセルの**原文**なので、CSV → YAML → CSV の往復は元の
+バイト列を再現します:
+
+```python title="CSV 入力"
+import pyrs_yaml
+
+table = pyrs_yaml.load_csv("name,port\nweb-1,8080\n")
+# [{'name': 'web-1', 'port': 8080}]
+
+yaml_text = pyrs_yaml.from_csv("name,port\nweb-1,8080\n")
+# - name: web-1\n  port: 8080\n
+```
+
+動作の要点:
+
+- 区切り文字は既定で `,`、TSV は `\t`。`;` と `|` も受け付けます（Python 側では
+  `delimiter=`、`pyq` では `--input csv|tsv`）;
+- クォートは RFC 4180 に従います — クォート内のフィールドは区切り文字や改行を
+  含み、`""` は 1 つのクォート;
+- 先頭の UTF-8 BOM は取り除かれ、CRLF と LF のどちらも受け付けます;
+- 空セルは null。先頭ゼロのあるセルは綴じを保ち（`007` は `007` のまま）整数に解決;
+- エンジン自身の往復はバイト単位で一致します。YAML の**テキスト**を経由すると三つ正規化されます——
+  CRLF は LF になり、BOM は剥がれて書き戻されず、空セルと `null` と書かれたセルは同じ文書になります
+  （YAML の null の書き方は一種類のため）;
+- 引用符はここでは構文であり型の宣言ではありません。`"true"` と書かれたセルは真偽値と
+  推論されるため、引用符はテキスト経由では保持されません。すべてのセルを文字列に保つには
+  `--no-infer`（または `infer=False`）を使ってください。数字や日付に見える文字列も同様です;
+- ヘッダと列数が違う行、同じ列名が重複するヘッダは、**位置を添えて拒否**され、
+  黙って埋めたり直したりはされません;
+- TSV はタブ区切りにすれば同じエンジンであり、別形式ではありません。
+
+書き出しも同じ向きに動き、CSV が持てないものは拒否します — セル内の入れ子
+マッピングに CSV での書き方はありません:
+
+```python title="YAML から CSV へ"
+import pyrs_yaml
+
+csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
+# name,port\nweb-1,8080\n
+```
+
 ## INI
 
 意図的に読み取り専用 — INI には正式な文法がないため、pyrs-yaml は標準
@@ -143,5 +188,5 @@ yaml_text = pyrs_yaml.safe_dump(pyrs_yaml.load_ini("[s]\nport = 8080\n"))
 ## 関連
 
 - [カスタムスキーマ](custom-schema.md) — `json` スカラー解決スキーマ
-- [コマンドラインインターフェース](cli.md) — `to-json` / `from-json`
+- [コマンドラインインターフェース](cli.md) — `to-json` / `from-json` / `to-csv` / `from-csv`
 - [ラウンドトリップ保持](round-trip.md) — YAML が編集ハブである理由

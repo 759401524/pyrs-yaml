@@ -32,8 +32,8 @@ const DIALECT_HELP: &str = concat!(
     "pyq is a jq/yq-style processor over the pyrs-yaml core engine.\n",
     "\n",
     "Native grammar: `pyq <command> [args]` - fmt, get, set, delete, rename, move, append,\n",
-    "insert, validate, frontmatter, sort-keys, diff, merge, to-json, to-toml, from-json,\n",
-    "from-toml, from-ini, completion.\n",
+    "insert, validate, frontmatter, sort-keys, diff, merge, to-json, to-toml, to-csv,\n",
+    "from-json, from-toml, from-ini, from-csv, completion.\n",
     "\n",
     "Compatibility shell: an argv that does not start with a subcommand is read as `jq` 1.8\n",
     "or mikefarah `yq` v4, chosen by the name this binary was invoked as (`jq`, `yq`) or\n",
@@ -46,8 +46,9 @@ const DIALECT_HELP: &str = concat!(
     "                default), -o json|yaml, -p json|yaml|toml|ini\n",
     "Everything else is refused with the flag or construct named, never ignored: jq's\n",
     "--arg/--argjson/-s/-c/-S/--stream and any edit expression (pyq writes YAML, jq writes\n",
-    "JSON), yq's -n/-e/-P/--split-exp/--front-matter/--xml-*/--lua-*; pipes other than one\n",
-    "trailing select; and every function (keys, length, map, to_entries, env, ...).\n",
+    "JSON), yq's -n/-e/-P/--split-exp/--front-matter/--xml-*/--lua-*/--csv-*; pipes other\n",
+    "than one trailing select; and every function (keys, length, map, to_entries, env,\n",
+    "...).\n",
 );
 
 #[derive(Parser)]
@@ -307,6 +308,38 @@ pub enum Command {
         #[arg(long)]
         raw: bool,
     },
+    /// Read CSV/TSV text, emit YAML (the header row becomes the keys).
+    FromCsv {
+        file: Option<PathBuf>,
+        /// The dialect the file is written in; `auto` picks by extension.
+        #[arg(long, value_enum, default_value_t = CsvDialect::Auto)]
+        input: CsvDialect,
+        #[arg(long, default_value = "$")]
+        get: String,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
+        /// Emit JSON (an identity check / re-serialization of the input).
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        raw: bool,
+        /// The file has no header row: every record is a sequence of cells.
+        #[arg(long)]
+        no_header: bool,
+        /// Keep every cell a string: do not type it against the core schema.
+        #[arg(long)]
+        no_infer: bool,
+    },
+    /// Convert a YAML/JSON/TOML document to CSV text.
+    ToCsv {
+        file: Option<PathBuf>,
+        /// The dialect the output is written in; `auto` picks by extension.
+        #[arg(long, value_enum, default_value_t = CsvDialect::Auto)]
+        input: CsvDialect,
+        /// Write no header row.
+        #[arg(long)]
+        no_header: bool,
+    },
     /// Print a shell completion script (bash, zsh, fish, ...).
     Completion {
         #[arg(value_enum)]
@@ -340,6 +373,12 @@ pub enum Format {
     Json5,
     Toml,
     Ini,
+    /// Comma-separated values. The header row names the columns and every
+    /// record becomes a mapping, so a CSV file is a table rather than a
+    /// document.
+    Csv,
+    /// Tab-separated values: the same engine with a tab where the comma was.
+    Tsv,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -348,6 +387,43 @@ pub enum SchemaKind {
     Json,
     Failsafe,
     Yaml11,
+}
+
+/// The CSV dialect a `from-csv` / `to-csv` run uses.
+///
+/// The delimiter is a choice the two verbs share, so it gets its own
+/// vocabulary rather than borrowing the source-format one: `pyq from-csv
+/// --input tsv rows.tsv` says "this is a TSV", and nothing else does.
+#[derive(Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+pub enum CsvDialect {
+    /// Pick by the file extension (`.csv` -> comma, `.tsv` -> tab); stdin
+    /// reads as comma-separated.
+    Auto,
+    /// Comma-separated values.
+    Csv,
+    /// Tab-separated values.
+    Tsv,
+}
+
+impl CsvDialect {
+    /// The delimiter this dialect names.
+    ///
+    /// `auto` resolves by the file extension, which is how `pyq from-csv
+    /// rows.tsv` finds the tab without being told; a file whose extension
+    /// says nothing (and stdin) reads as comma-separated.
+    pub fn delimiter(self, path_hint: Option<&Path>) -> pyrs_csv::Delimiter {
+        match self {
+            Self::Csv => pyrs_csv::Delimiter::Comma,
+            Self::Tsv => pyrs_csv::Delimiter::Tab,
+            Self::Auto => match path_hint
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+            {
+                Some("tsv") | Some("tab") => pyrs_csv::Delimiter::Tab,
+                _ => pyrs_csv::Delimiter::Comma,
+            },
+        }
+    }
 }
 
 impl From<SchemaKind> for Schema {
@@ -714,6 +790,51 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let node = ini_to_node(&read_input(&file)?)?;
             emit_selected(&node, &get, &verbs, json, raw)?;
         }
+        Command::FromCsv {
+            file,
+            input,
+            get,
+            verbs,
+            json,
+            raw,
+            no_header,
+            no_infer,
+        } => {
+            let src = read_input(&file)?;
+            // The dialect decides the delimiter; `auto` reads the extension.
+            let options = pyrs_csv::CsvOptions {
+                delimiter: input.delimiter(file.as_deref()),
+                header: !no_header,
+                infer_types: !no_infer,
+                ..pyrs_csv::CsvOptions::default()
+            };
+            let node = pyrs_csv::from_csv_with_options(&src, &options)?;
+            emit_selected(&node, &get, &verbs, json, raw)?;
+        }
+        Command::ToCsv {
+            file,
+            input,
+            no_header,
+        } => {
+            let src = read_input(&file)?;
+            // The source is read by the extension - a `.json` file is JSON, a
+            // `.toml` file is TOML - and the dialect says which separator the
+            // output carries.
+            let node = load_source(
+                &src,
+                file.as_deref(),
+                &InputOpts {
+                    input: Format::Auto,
+                    schema: SchemaKind::Core,
+                },
+            )?;
+            let options = pyrs_csv::CsvOptions {
+                delimiter: input.delimiter(file.as_deref()),
+                header: !no_header,
+                ..pyrs_csv::CsvOptions::default()
+            };
+            emit_str(&pyrs_csv::to_csv_text_with_options(&node, &options)?)?;
+        }
         Command::Completion { shell } => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             clap_complete::generate(shell, &mut cmd, "pyq", &mut std::io::stdout());
@@ -910,7 +1031,7 @@ pub fn load_docs(
     }
     if matches!(
         input.input,
-        Format::Toml | Format::Ini | Format::Jsonc | Format::Json5
+        Format::Toml | Format::Ini | Format::Jsonc | Format::Json5 | Format::Csv | Format::Tsv
     ) {
         return Err("--all-docs only applies to YAML or JSON input".into());
     }
@@ -965,6 +1086,8 @@ pub fn load_source(
             Some("json5") => Format::Json5,
             Some("toml") => Format::Toml,
             Some("ini") => Format::Ini,
+            Some("csv") => Format::Csv,
+            Some("tsv") => Format::Tsv,
             _ => Format::Yaml,
         },
         f => f,
@@ -987,8 +1110,24 @@ pub fn load_source(
             Err(e) => return Err(e.into()),
         },
         Format::Ini => ini_to_node(src)?,
+        // CSV/TSV: one engine, two delimiters. The header row names the
+        // columns, so a table is a sequence of mappings.
+        Format::Csv => csv_to_node(src, pyrs_csv::Delimiter::Comma)?,
+        Format::Tsv => csv_to_node(src, pyrs_csv::Delimiter::Tab)?,
         Format::Auto => unreachable!("resolved above"),
     })
+}
+
+/// A CSV/TSV document as the shared AST.
+fn csv_to_node(
+    src: &str,
+    delimiter: pyrs_csv::Delimiter,
+) -> Result<CustomNode, Box<dyn std::error::Error>> {
+    let options = pyrs_csv::CsvOptions {
+        delimiter,
+        ..pyrs_csv::CsvOptions::default()
+    };
+    Ok(pyrs_csv::from_csv_with_options(src, &options)?)
 }
 
 /// `{section: {key: str}}` as an all-quoted AST, mirroring `load_ini`
