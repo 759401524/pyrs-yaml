@@ -1,0 +1,6 @@
+root:
+  +@id: "7"
+  name: Ada
+  item:
+    - a
+    - b

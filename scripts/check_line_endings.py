@@ -55,7 +55,16 @@ DATA_FIXTURES = (
 # the `.gitattributes` declaration, not by the file listing below. The entry is here so
 # that the two declarations cannot drift apart when the extension list changes, and so
 # that the reason it would matter is written down rather than rediscovered.
-CRLF_FIXTURES = ("crates/pyrs-csv/tests/fixtures/crlf.csv",)
+#
+# The XML fixture is the same kind of measured input: its CRLF separators are one of
+# the six lexical normalisations the XML reader is tested against. It adds one honest
+# caveat: `.xml` is not in `CHECKED_IN` either, so this listing carries no weight for
+# it today. The load-bearing declarations for both fixtures are `.gitattributes`
+# (`-text`, so a checkout cannot rewrite the bytes) and the two prek hooks.
+CRLF_FIXTURES = (
+    "crates/pyrs-csv/tests/fixtures/crlf.csv",
+    "crates/pyrs-xml/tests/fixtures/crlf.xml",
+)
 
 
 def is_excluded(rel: str) -> bool:

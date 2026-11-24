@@ -739,3 +739,113 @@ fn a_csv_file_is_readable_by_the_ordinary_verbs() {
     assert_eq!(code, Some(0), "{err}");
     assert_eq!(out, "web-1\n");
 }
+
+#[test]
+fn from_xml_emits_yaml() {
+    let (code, out, err) = run_with_stdin(
+        &["from-xml", "-"],
+        "<root><name>Ada</name><item>a</item><item>b</item></root>",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "root:\n  name: Ada\n  item:\n    - a\n    - b\n");
+}
+
+#[test]
+fn from_xml_get_and_json_use_the_shared_tail() {
+    let xml = "<root><a>7</a></root>";
+    let (_, out, _) = run_with_stdin(&["from-xml", "--get", ".root.a", "-"], xml);
+    assert_eq!(out, "\"7\"\n");
+    let (_, json, err) = run_with_stdin(&["from-xml", "--json", "-"], xml);
+    assert_eq!(
+        json, "{\n  \"root\": {\n    \"a\": \"7\"\n  }\n}\n",
+        "{err}"
+    );
+}
+
+#[test]
+fn from_xml_no_comments_and_no_pi_drop_only_those_parts() {
+    let xml = "<root><!--note--><?pi go?><a>1</a></root>";
+    let (_, both, _) = run_with_stdin(&["from-xml", "-"], xml);
+    assert!(both.contains("+c_0"), "{both}");
+    assert!(both.contains("+p_1"), "{both}");
+    let (_, none, _) = run_with_stdin(&["from-xml", "--no-comments", "--no-pi", "-"], xml);
+    assert!(!none.contains("+c_"), "{none}");
+    assert!(!none.contains("+p_"), "{none}");
+    assert!(none.contains("a: \"1\""), "{none}");
+}
+
+#[test]
+fn from_xml_refuses_a_dtd_with_exit_one() {
+    let (code, out, err) = run_with_stdin(
+        &["from-xml", "-"],
+        "<!DOCTYPE root [<!ENTITY x 'boom'>]><root>&x;</root>",
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("pyq:"), "{err}");
+    assert!(err.contains("DTD declaration refused"), "{err}");
+}
+
+#[test]
+fn to_xml_is_not_a_subcommand() {
+    let (code, out, err) = run(&["to-xml", "-"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(out.is_empty(), "{out}");
+    // An unknown first word falls into the compatibility shell, which
+    // refuses it by name with exit 2; no XML document is ever emitted.
+    assert!(err.contains("pyq:"), "{err}");
+}
+
+#[test]
+fn an_xml_file_is_read_by_the_ordinary_verbs_via_extension() {
+    let dir = fixture_dir("pyq-xml-get");
+    let path = dir.join("doc.xml");
+    std::fs::write(&path, b"<root><a>ok</a></root>").unwrap();
+    let (code, out, err) = run(&["get", ".root.a", path.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "ok\n");
+}
+
+#[test]
+fn help_flags_show_the_same_full_help() {
+    let (short_code, short, short_err) = run(&["-h"]);
+    let (long_code, long, long_err) = run(&["--help"]);
+    assert_eq!(short_code, Some(0), "{short_err}");
+    assert_eq!(long_code, Some(0), "{long_err}");
+    assert_eq!(short, long, "`-h` and `--help` must match line for line");
+    assert!(short.starts_with(
+        "jq/yq-style processor for YAML, JSON/JSONC/JSON5, TOML, INI, CSV/TSV and XML"
+    ));
+    assert!(short.contains("Native grammar:"), "{short}");
+    assert!(short.contains("Compatibility shell:"), "{short}");
+    assert!(short.contains("Examples:"), "{short}");
+    assert!(
+        short.contains("https://759401524.github.io/pyrs-yaml/"),
+        "{short}"
+    );
+}
+
+#[test]
+fn no_arguments_show_examples_and_the_docs_link() {
+    // clap reports the missing subcommand on stderr with exit 2, but the help
+    // it prints there is the same concise screen plus examples and the link.
+    let (code, out, err) = run(&[]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.starts_with(
+        "jq/yq-style processor for YAML, JSON/JSONC/JSON5, TOML, INI, CSV/TSV and XML"
+    ));
+    assert!(err.contains("Examples:"), "{err}");
+    assert!(
+        err.contains("https://759401524.github.io/pyrs-yaml/"),
+        "{err}"
+    );
+}
+
+#[test]
+fn subcommand_help_stays_subcommand_specific() {
+    let (code, out, err) = run(&["from-xml", "-h"]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.contains("Read XML text and emit YAML"), "{out}");
+    assert!(!out.contains("Native grammar:"), "{out}");
+}

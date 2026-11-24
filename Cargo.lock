@@ -844,6 +844,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrs-xml"
+version = "0.19.1"
+dependencies = [
+ "indexmap",
+ "pyrs-ast",
+ "pyrs-schema",
+]
+
+[[package]]
 name = "pyrs-yaml"
 version = "0.19.1"
 dependencies = [
@@ -854,6 +863,7 @@ dependencies = [
  "pyrs-csv",
  "pyrs-json",
  "pyrs-toml",
+ "pyrs-xml",
  "pyrs-yaml-core",
 ]
 
@@ -868,6 +878,7 @@ dependencies = [
  "pyrs-csv",
  "pyrs-json",
  "pyrs-toml",
+ "pyrs-xml",
  "pyrs-yaml-core",
 ]
 

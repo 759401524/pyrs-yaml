@@ -684,12 +684,14 @@ __version__ = "0.19.1"
         - from_json5
         - from_toml
         - from_csv
+        - from_xml
         - load_json
         - load_jsonc
         - load_json5
         - load_json_lines
         - load_toml
         - load_csv
+        - load_xml
         - load_ini
         - to_toml
         - to_csv

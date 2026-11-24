@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 1,037 Rust `#[test]`, 2,220 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 1,085 Rust `#[test]`, 2,235 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 344 seeds of which 230 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 165 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -102,6 +102,7 @@ Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell agains
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | yes | yes |
 | TOML | yes | yes | yes | yes | yes | yes |
 | CSV | yes | no | no | no | yes | yes |
+| XML | yes | no | no | n/a | yes | yes |
 | JSON Schema validation | no | yes | no | n/a | n/a | yes |
 | Schema rule language | yes | yes | yes | n/a | n/a | yes |
 

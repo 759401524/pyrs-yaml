@@ -48,6 +48,7 @@ const NATIVE_COMMANDS: &[&str] = &[
     "from-toml",
     "from-ini",
     "from-csv",
+    "from-xml",
     "completion",
 ];
 
@@ -882,6 +883,14 @@ mod tests {
             "--split-exp",
             "--front-matter",
             "--string-interpolation",
+            "--xml-attribute-prefix",
+            "--xml-content-name",
+            "--xml-directive-name",
+            "--xml-keep-namespace",
+            "--xml-proc-inst-prefix",
+            "--xml-raw-token",
+            "--xml-skip-directives",
+            "--xml-skip-proc-inst",
             "--xml-strict-mode",
             "--lua-globals",
             "--security-disable-file-ops",

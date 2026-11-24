@@ -25,6 +25,16 @@ status: new
   `pyq from-csv` / `pyq to-csv` と `pyrs_yaml.from_csv` / `to_csv` / `load_csv`。TSV は同じ
   エンジンによるタブ区切り版。CSV はここでは交換形式であり、編集できる表現は YAML のまま。
 
+- **`pyrs-xml` は共有 AST へ XML を読み込む（読み取り専用）** —— `pyrs-csv` の隣に
+  置かれた新しい `#![no_std]` エンジン crate。要素、属性、コメント、processing
+  instruction、文字データは `+` 接頭辞（`+@attr`、`+content`、`+c_<n>`、`+p_<n>`）
+  で写され、属性のないテキストだけの要素は裸のスカラーのままです。`007` や `true`
+  のような文字は文字列のまま。DTD、`<!ENTITY`、宣言のない参照はマークアップ境界で
+  安定した `E-XML-*` コードにより拒否され、実体展開と外部読み込みは構造上不可能です。
+  呼び出し口は `pyq from-xml` と `pyrs_yaml.from_xml` / `load_xml` で、
+  `--no-comments` / `--no-pi` や `comments=` / `pi=` で該当部分を捨てられます。
+  このスライスには書き手がなく、`to-xml` も `to_xml` もありません。
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

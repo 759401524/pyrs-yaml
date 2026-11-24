@@ -1210,7 +1210,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
     """
     text = DOC_PATH.read_text(encoding="utf-8")
     cells = re.findall(
-        r"^\| (YAML|JSON / JSONC / JSON5|TOML|CSV|JSON Schema validation|Schema rule language)"
+        r"^\| (YAML|JSON / JSONC / JSON5|TOML|CSV|XML|JSON Schema validation|Schema rule language)"
         r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a)"
         r" \| (yes|no) \|$",
         text,
@@ -1220,7 +1220,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
         label: (unit, prop, parse, trip, parity, authority)
         for label, unit, prop, parse, trip, parity, authority in cells
     }
-    assert len(claimed) == 6, f"the page no longer states all six surface rows: {claimed}"
+    assert len(claimed) == 7, f"the page no longer states all seven surface rows: {claimed}"
 
     derived = {}
     for line in measured["format_verdicts"]:

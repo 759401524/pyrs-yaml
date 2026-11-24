@@ -26,6 +26,15 @@ status: new
   悄悄补齐。调用点是 `pyq from-csv` / `pyq to-csv` 与 `pyrs_yaml.from_csv` / `to_csv` /
   `load_csv`；TSV 是同一个引擎换用制表符。CSV 在这里是交换格式 —— YAML 仍是唯一可编辑的表示。
 
+- **`pyrs-xml` 只读地把 XML 读入共享 AST** —— 与 `pyrs-csv` 并列的新 `#![no_std]`
+  引擎 crate：元素、属性、注释、处理指令和字符数据以 `+` 前缀映射（`+@attr`、
+  `+content`、`+c_<n>`、`+p_<n>`），没有属性的纯文本元素仍是普通标量。`007`、
+  `true` 这类文本保持字符串。DTD、`<!ENTITY` 和未声明的引用会在标记边界以稳定的
+  `E-XML-*` 代码被拒绝，因此实体展开与外部读取从结构上不可能发生。调用点是
+  `pyq from-xml` 与 `pyrs_yaml.from_xml` / `load_xml`，可用 `--no-comments` /
+  `--no-pi` 与 `comments=` / `pi=` 丢弃相应部分。本切片没有写入方向：既无
+  `to-xml` 也无 `to_xml`。
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">
