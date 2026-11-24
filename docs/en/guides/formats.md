@@ -145,6 +145,10 @@ Behavior notes:
   three things normalize — CRLF becomes LF, a BOM is stripped and not written
   back, and an empty cell and a cell spelled `null` are the same document,
   because YAML has one null spelling;
+- quoting is syntax here, not a type assertion: a cell written `"true"` is inferred as a
+  boolean, so quoting is not preserved through the text hop. Use `--no-infer` (or
+  `infer=False`) when every cell must stay a string; the same applies to a string that
+  looks like a number or a date;
 - a row whose cell count differs from the header's, and a header that names
   the same column twice, are **refused with a position**, never padded or
   silently repaired;

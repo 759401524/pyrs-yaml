@@ -141,6 +141,38 @@ fn the_corpus_holds_no_fixture_the_test_does_not_know() {
     );
 }
 
+/// The byte-for-byte promise covers the corpus, not every possible CSV cell.
+///
+/// A quoted cell that the core schema types is written back unquoted: `"true"`
+/// resolves to a boolean and comes back as `true`. That is the inference
+/// decision the design locks — quoting is RFC 4180 syntax, not a type
+/// assertion — so it is not a round-trip bug. It is stated as a test because
+/// the corpus has no such fixture, and a reader of `every_fixture_survives...`
+/// should not infer that the promise is wider than the corpus it measures.
+///
+/// Callers who need every cell to stay a string pass `infer: false` (or
+/// `--no-infer` in the CLI); with inference off, the spelling survives.
+#[test]
+fn a_quoted_typed_cell_is_re_inferred_and_loses_its_quotes() {
+    let options = CsvOptions::default();
+    let typed = "flag,note\n\"true\",\"007\"\n";
+    let node = from_csv_with_options(typed, &options).expect("the typed fixture parses");
+    let written = to_csv_text_with_options(&node, &options).expect("the typed fixture writes back");
+    assert_eq!(
+        written, "flag,note\ntrue,007\n",
+        "the inferred spelling is written bare"
+    );
+
+    let options = CsvOptions {
+        infer_types: false,
+        ..CsvOptions::default()
+    };
+    let node = from_csv_with_options(typed, &options).expect("the string fixture parses");
+    let written =
+        to_csv_text_with_options(&node, &options).expect("the string fixture writes back");
+    assert_eq!(written, typed, "with inference off the spelling survives");
+}
+
 #[test]
 fn a_cell_reading_007_comes_back_as_007() {
     // The claim the whole engine rests on: the spelling travels, the type is

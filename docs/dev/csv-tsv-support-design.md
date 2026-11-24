@@ -17,13 +17,16 @@ Language: English per the `pyq-multidoc-edit-design.md` precedent.
 3. **Scope of slice 1** — the whole stack: a new engine crate, the `pyq`
    verbs, the Python API, the four-locale docs, the changelog and the CI
    gates. TSV is the same engine with a tab delimiter, not a second engine.
-4. **XML is slice 2** — round-trip-first with a custom convention, *not*
-   the `@attr` / `#text` family. Two facts found in this repository make
-   that family unusable here: `@` is a YAML reserved indicator (a key
-   spelled `@attr` is a parse error), and a key spelled `#text` is read as
-   a comment, which is silent data loss. A slice-2 convention needs a
-   prefix family outside YAML's reserved indicators — `+@attr` / `+content`
-   / `+p_` is the candidate.
+4. **XML is slice 2 — direction locked, spelling open.** The direction is
+   round-trip-first with a custom convention, *not* the `@attr` / `#text`
+   family. Two facts found in this repository make that family unusable
+   here: `@` is a YAML reserved indicator (a key spelled `@attr` is a
+   parse error), and a key spelled `#text` is read as a comment, which is
+   silent data loss. A slice-2 convention therefore needs a prefix family
+   outside YAML's reserved indicators; `+` is outside the XML Name
+   production, so it cannot collide with a real element name. `+@attr` /
+   `+content` / `+p_` are the candidates to evaluate when slice 2 opens —
+   they are not decided here, and this document does not fix a mapping.
 
 ## Investigated facts that shape the design
 
@@ -307,7 +310,14 @@ engine's own — CSV → AST → CSV — and it is the one the corpus exists to
 defend. Through the YAML *text* hop the promise is narrower, and three things
 normalize: CRLF becomes LF, a BOM is stripped and not written back, and an
 empty cell and a cell spelled `null` are the same document, because YAML has
-one null spelling. The AST keeps the two apart; the text cannot.
+one null spelling. The AST keeps the two apart; the text cannot. Quoting is
+syntax, not a type assertion, and is not preserved through the text hop: a
+cell written `"true"` resolves to a boolean and comes back unquoted. Callers
+who need every cell to stay a string use `--no-infer` (or `infer=False`),
+which also covers strings that look like numbers or dates. The hub boundary
+is therefore not a closed list of three normalisations — these are the three
+that are structural to the YAML text format; the guides point at the
+whitespace and reader differences that the cross-library tests measure.
 
 ### 10. Acceptance criteria that must be demonstrated, not asserted
 

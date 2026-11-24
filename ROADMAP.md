@@ -136,7 +136,7 @@ representation, exactly as TOML and JSON are.
 | Item | State | Notes |
 |:-----|:------|:------|
 | CSV/TSV reading and writing | In progress | A new `pyrs-csv` engine crate beside `pyrs-json` and `pyrs-toml`: the header row becomes the keys of a sequence of mappings, cells are typed against the YAML core schema, and the cell's source text is what travels, so a CSV → YAML → CSV cycle reproduces the original bytes. A ragged row and a duplicate column name are refused with a position. |
-| XML reading and writing | Decided, not started | Round-trip-first with a custom convention — and not the `@attr` / `#text` family, which this repository cannot use: `@` is a YAML reserved indicator (a parse error) and `#text` is read as a comment (silent data loss). The convention needs a prefix outside YAML's reserved indicators; `+@attr` / `+content` / `+p_` is the candidate, to be verified when the slice opens. A DTD is refused by design, which closes the XXE and entity-expansion surface structurally. |
+| XML reading and writing | Direction decided, convention open | Round-trip-first with a custom convention — and not the `@attr` / `#text` family, which this repository cannot use: `@` is a YAML reserved indicator (a parse error) and `#text` is read as a comment (silent data loss). The convention needs a prefix outside YAML's reserved indicators; `+@attr` / `+content` / `+p_` is the candidate, to be verified when the slice opens. A DTD is refused by design, which closes the XXE and entity-expansion surface structurally. |
 
 The two decisions, the refusals and the defence-tier gap are written down in
 [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md) as entry `(na)`; the design and its
