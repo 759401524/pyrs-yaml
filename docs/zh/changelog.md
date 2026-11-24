@@ -17,6 +17,15 @@ status: new
 
 ### [Unreleased]
 
+#### 新增
+
+- **`pyrs-csv` 通过 YAML 枢纽所用的同一棵 AST 读写 CSV/TSV** —— 与 `pyrs-json`、`pyrs-toml`
+  并列的新引擎 crate：表头行成为一组映射的键，每个单元格按 YAML 核心 schema 定型（`007` 仍是
+  `007` 且解析为整数，`true` 是布尔值，空单元格是 null），而行走的始终是单元格的**源文本**，
+  于是 CSV → YAML → CSV 一轮往返能逐字节复现原文。列数不齐的行与重名列名会被带位置拒绝，绝不
+  悄悄补齐。调用点是 `pyq from-csv` / `pyq to-csv` 与 `pyrs_yaml.from_csv` / `to_csv` /
+  `load_csv`；TSV 是同一个引擎换用制表符。CSV 在这里是交换格式 —— YAML 仍是唯一可编辑的表示。
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

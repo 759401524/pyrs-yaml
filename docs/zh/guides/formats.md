@@ -1,12 +1,12 @@
 ---
-title: TOML、JSON 与 INI 格式
-description: 使用 pyrs-yaml 在 TOML、JSON 与 INI 之间交换数据，YAML 仍是唯一可编辑表示。
+title: TOML、JSON、CSV/TSV 与 INI 格式
+description: 使用 pyrs-yaml 在 TOML、JSON、CSV/TSV 与 INI 之间交换数据，YAML 仍是唯一可编辑表示。
 tags:
   - docs
 status: new
 ---
 
-读写 TOML、JSON 与 INI — 以 YAML 为中枢。
+读写 TOML、JSON、CSV/TSV 与 INI — 以 YAML 为中枢。
 
 ## 轮毂模型
 
@@ -14,8 +14,8 @@ pyrs-yaml 支持多种配置格式，但 **YAML 是唯一可编辑的表示**：
 （注释、锚点、原位拼装）为 YAML 专属。交换格式负责进出转换：
 
 ```text
-load_toml / load_ini / JSON 文本 ──▶ 值与 YAML ──▶ parse() / edit() / dump
-to_toml  ◀── YAML 文本 ◀──────────────────┘
+load_toml / load_ini / load_csv / JSON 文本 ──▶ 值与 YAML ──▶ parse() / edit() / dump
+to_toml  ◀── YAML 文本 ◀──────────────────────────────┘
 ```
 
 ## JSON：天然原生
@@ -109,6 +109,43 @@ TOML 无法表达部分 YAML 结构；以下情况抛出带稳定消息的 `Valu
 - 锚点 / 别名，以及 `!!timestamp` 之外的 tag
 - 非标量映射键
 
+## CSV / TSV
+
+它是一张表而不是一份文档：表头行给出列名，每条数据记录成为一个映射。
+单元格按 YAML 核心 schema 定型，`42` 是整数、`true` 是布尔值 —— 而行走的
+始终是单元格的**源文本**，于是 CSV → YAML → CSV 一轮往返能逐字节复现原文：
+
+```python title="CSV 输入"
+import pyrs_yaml
+
+table = pyrs_yaml.load_csv("name,port\nweb-1,8080\n")
+# [{'name': 'web-1', 'port': 8080}]
+
+yaml_text = pyrs_yaml.from_csv("name,port\nweb-1,8080\n")
+# - name: web-1\n  port: 8080\n
+```
+
+行为要点：
+
+- 分隔符默认是 `,`，TSV 用 `\t`；`;` 与 `|` 也接受（Python 入口用
+  `delimiter=`，`pyq` 用 `--input csv|tsv`）；
+- 引号遵循 RFC 4180 —— 引号内的字段可以含分隔符、换行，`""` 表示一个引号；
+- 开头的 UTF-8 BOM 会被剥掉，CRLF 与 LF 都接受；
+- 空单元格是 null；带前导零的单元格保留拼写（`007` 仍是 `007`），并解析为整数；
+- 引擎自身的往返是逐字节的；经 YAML **文本**中转时有三处归一——CRLF 变 LF、BOM 被剥掉且不再写回、
+  空单元格与写作 `null` 的单元格是同一份文档（YAML 只有一种 null 写法）；
+- 列数与表头不一致的行、以及重复出现的列名，会**带位置被拒绝**，绝不悄悄补齐或改写；
+- TSV 是同一个引擎换用制表符，不是第二种格式。
+
+写回同理，并拒绝 CSV 装不下的结构 —— 单元格里的嵌套映射没有 CSV 写法：
+
+```python title="YAML 转 CSV"
+import pyrs_yaml
+
+csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
+# name,port\nweb-1,8080\n
+```
+
 ## INI
 
 按设计只读 — INI 没有官方语法，pyrs-yaml 用标准库解析器接收它，写出
@@ -139,5 +176,5 @@ yaml_text = pyrs_yaml.safe_dump(pyrs_yaml.load_ini("[s]\nport = 8080\n"))
 ## 另见
 
 - [自定义 Schema](custom-schema.md) — `json` 标量解析 schema
-- [命令行工具](cli.md) — `to-json` / `from-json` 子命令
+- [命令行工具](cli.md) — `to-json` / `from-json` / `to-csv` / `from-csv` 子命令
 - [往返保真](round-trip.md) — YAML 为何是编辑中枢

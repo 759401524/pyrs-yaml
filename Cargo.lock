@@ -802,6 +802,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrs-csv"
+version = "0.19.1"
+dependencies = [
+ "indexmap",
+ "pyrs-ast",
+ "pyrs-schema",
+]
+
+[[package]]
 name = "pyrs-event"
 version = "0.19.1"
 dependencies = [
@@ -842,6 +851,7 @@ dependencies = [
  "indexmap",
  "pyo3",
  "pyo3-build-config",
+ "pyrs-csv",
  "pyrs-json",
  "pyrs-toml",
  "pyrs-yaml-core",
@@ -855,6 +865,7 @@ dependencies = [
  "clap_complete",
  "codspeed-divan-compat",
  "indexmap",
+ "pyrs-csv",
  "pyrs-json",
  "pyrs-toml",
  "pyrs-yaml-core",

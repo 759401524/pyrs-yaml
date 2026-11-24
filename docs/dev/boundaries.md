@@ -258,8 +258,8 @@ So a project that only needs to read JSON5 carries twelve crates, not seventy-fi
 engine's parser, its schema resolver, `granit-parser`, `rust-i18n`, `regex`, `proptest`-adjacent
 machinery and the PyO3 stack are simply not in that graph. That is the fine-grained claim, and
 `AGENTS.md`'s `no_std` story is the same graph proved a second way - the `no_std` job builds
-`pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json`, `pyrs-toml` and `pyrs-yaml-core` for
-`thumbv7em-none-eabi`, a target with no std at all, so those closures cannot be reaching `std`
+`pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`, `pyrs-csv` and `pyrs-yaml-core`
+for `thumbv7em-none-eabi`, a target with no std at all, so those closures cannot be reaching `std`
 anywhere.
 
 **Incremental cost, probed - and the probe says the claim is only half true.** Unit counts, not wall

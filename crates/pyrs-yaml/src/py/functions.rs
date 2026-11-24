@@ -862,6 +862,109 @@ pub(crate) fn load_toml(py: Python, toml_str: &str) -> PyResult<Py<PyAny>> {
     crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &schema, false)
 }
 
+/// The delimiter a Python argument names.
+///
+/// The engine has four separators and the argument is one character, so
+/// anything else is refused rather than quietly treated as "some separator":
+/// a separator the writer cannot spell back would break the round trip.
+fn csv_delimiter(delimiter: &str) -> PyResult<pyrs_csv::Delimiter> {
+    let mut chars = delimiter.chars();
+    let named = match (chars.next(), chars.next()) {
+        (Some(ch), None) => pyrs_csv::Delimiter::from_char(ch),
+        _ => None,
+    };
+    named.ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(
+            "Unsupported CSV delimiter. Supported: ',', '\\t', ';', '|'",
+        )
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (csv_str: "str", delimiter: "str" = ",", header: "bool" = true, infer: "bool" = true) -> "str")]
+/// Convert a CSV/TSV string to a YAML string (hub-and-spoke exchange).
+///
+/// The header row names the columns, so every record becomes a mapping. The
+/// cells are typed against the YAML core schema while their source text is
+/// what travels: `007` stays `007` and still resolves to an integer. With
+/// `infer=False` every cell stays a string; with `header=False` every record
+/// becomes a sequence of cells instead.
+pub(crate) fn from_csv(
+    csv_str: &str,
+    delimiter: &str,
+    header: bool,
+    infer: bool,
+) -> PyResult<String> {
+    let options = pyrs_csv::CsvOptions {
+        delimiter: csv_delimiter(delimiter)?,
+        header,
+        infer_types: infer,
+        ..pyrs_csv::CsvOptions::default()
+    };
+    let node = pyrs_csv::from_csv_with_options(csv_str, &options).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "csv-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    yaml_of_node(&node)
+}
+
+#[pyfunction]
+#[pyo3(signature = (yaml: "str", delimiter: "str" = ",") -> "str")]
+/// Render a YAML document as CSV text.
+///
+/// Rejects the shapes CSV cannot hold (a scalar document, a mapping inside a
+/// cell, a row whose columns differ) with stable `csv-serialize-error`
+/// messages.
+pub(crate) fn to_csv(py: Python, yaml: &str, delimiter: &str) -> PyResult<String> {
+    let schema_enum = parse_schema("core")?;
+    let schema_clone = schema_enum.clone();
+    let node = py.detach(|| {
+        crate::parser::parse_with_options(yaml, true, schema_clone, 1000, DuplicateKeys::AsIs)
+            .map_err(|e| parse_error_to_py_err(e, yaml, 1000))
+    })?;
+    let options = pyrs_csv::CsvOptions {
+        delimiter: csv_delimiter(delimiter)?,
+        ..pyrs_csv::CsvOptions::default()
+    };
+    pyrs_csv::to_csv_text_with_options(&node, &options).map_err(|e| {
+        YamlSerializeError::new_err(format_i18n_error(
+            "csv-serialize-error",
+            &[("detail", &e.to_string())],
+        ))
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (csv_str: "str", delimiter: "str" = ",", header: "bool" = true) -> "list")]
+/// Parse a CSV/TSV string directly into Python values.
+///
+/// A table, not a document: the result is a list of dicts (one per record)
+/// with the header row's names as keys, or a list of lists when the file has
+/// no header row.
+pub(crate) fn load_csv(
+    py: Python,
+    csv_str: &str,
+    delimiter: &str,
+    header: bool,
+) -> PyResult<Py<PyAny>> {
+    let schema = parse_schema("core")?;
+    let options = pyrs_csv::CsvOptions {
+        delimiter: csv_delimiter(delimiter)?,
+        header,
+        ..pyrs_csv::CsvOptions::default()
+    };
+    let mut ast = pyrs_csv::from_csv_with_options(csv_str, &options).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "csv-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &schema, false)
+}
+
 #[pyfunction]
 #[pyo3(signature = (data: "Any", path: "str") -> "None")]
 /// Serialize a Python object to YAML and write to a file.

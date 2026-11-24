@@ -95,12 +95,15 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
+pyq from-csv table.csv           # CSV -> YAML（表头行成为各行的键）
+pyq to-csv config.yaml           # YAML -> CSV
+pyq from-csv --input tsv rows.tsv # TSV：同一引擎，改用制表符
 pyq validate k8s.yaml --schema rules.yaml   # 解析检查 + schema 语言规则校验
 pyq frontmatter README.md --body-out body.md # 分离 Markdown front matter
 ```
 
-输入格式按文件扩展名识别（`.json`、`.jsonc`、`.json5`、`.toml`、`.ini`），
-可用 `--input yaml|json|jsonc|json5|toml|ini` 覆盖。由于 YAML 是 JSON 的超集，
+输入格式按文件扩展名识别（`.json`、`.jsonc`、`.json5`、`.toml`、`.ini`、`.csv`、`.tsv`），
+可用 `--input yaml|json|jsonc|json5|toml|ini|csv|tsv` 覆盖。由于 YAML 是 JSON 的超集，
 JSON 内容走 YAML 通道也能原样解析；JSONC/JSON5 内容则经由原生方言引擎，
 注释与 JSON5 写法会挂在 AST 上——`pyq to-json --input jsonc --jsonc`
 即可完成保留注释的往返。

@@ -15,6 +15,16 @@ status: new
 
 ### [Unreleased]
 
+#### 追加
+
+- **`pyrs-csv` は YAML ハブが使う同じ AST を通じて CSV/TSV を読書きする** —— `pyrs-json`、
+  `pyrs-toml` と並ぶ新しいエンジン crate。ヘッダ行がマッピングのキーになり、各セルは YAML コア
+  スキーマで型付けされる（`007` は `007` のまま整数に解決し、`true` は真偽値、空セルは null）。
+  伝われるのは常にセルの**原文**なので、CSV → YAML → CSV の往復は元のバイト列を再現する。
+  列数が揃わない行と重複した列名は位置を添えて拒否され、黙って補完されることはない。呼び出し口は
+  `pyq from-csv` / `pyq to-csv` と `pyrs_yaml.from_csv` / `to_csv` / `load_csv`。TSV は同じ
+  エンジンによるタブ区切り版。CSV はここでは交換形式であり、編集できる表現は YAML のまま。
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

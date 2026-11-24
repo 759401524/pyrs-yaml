@@ -520,6 +520,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-csv
           -p pyrs-yaml-core
 
       # Building for `thumbv7em-none-eabi` proves the code links without std; it does not prove the
@@ -549,6 +550,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-csv
           -p pyrs-yaml-core
 
       # Re-enabling `std` must not have been "achieved" by deleting the
@@ -565,6 +567,7 @@ jobs:
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml
+          -p pyrs-csv
           -p pyrs-yaml-core
 
       # The `mmap` read path is off by default, so no other matrix leg exercises it, and a default-off

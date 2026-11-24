@@ -98,13 +98,16 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML (values are strings)
+pyq from-csv table.csv           # CSV -> YAML (the header row becomes the keys)
+pyq to-csv config.yaml           # YAML -> CSV
+pyq from-csv --input tsv rows.tsv # TSV: the same engine, tab-delimited
 pyq validate k8s.yaml --schema rules.yaml   # parse + schema-language rules
 pyq frontmatter README.md --body-out body.md # split Markdown front matter
 ```
 
 Input format resolves by file extension (`.json`, `.jsonc`, `.json5`,
-`.toml`, `.ini`); override with
-`--input yaml|json|jsonc|json5|toml|ini`. Since YAML is a JSON superset,
+`.toml`, `.ini`, `.csv`, `.tsv`); override with
+`--input yaml|json|jsonc|json5|toml|ini|csv|tsv`. Since YAML is a JSON superset,
 JSON content also parses on the YAML path unchanged. JSONC/JSON5 content
 routes through the native dialect engine, so comments and JSON5
 spellings ride the AST - `pyq to-json --input jsonc --jsonc` is a

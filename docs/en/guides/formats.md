@@ -1,12 +1,12 @@
 ---
-title: TOML, JSON & INI Formats
-description: Exchange TOML, JSON and INI with pyrs-yaml while keeping YAML as the single editable representation.
+title: TOML, JSON, CSV/TSV & INI Formats
+description: Exchange TOML, JSON, CSV/TSV and INI with pyrs-yaml while keeping YAML as the single editable representation.
 tags:
   - docs
 status: new
 ---
 
-Read and write TOML, JSON and INI — with YAML as the hub.
+Read and write TOML, JSON, CSV/TSV and INI — with YAML as the hub.
 
 ## The Hub Model
 
@@ -15,8 +15,8 @@ representation**: round-trip editing (comments, anchors, in-place splices)
 is YAML-exclusive by design. The exchange formats convert in and out:
 
 ```text
-load_toml / load_ini / JSON text ──▶ values & YAML ──▶ parse() / edit() / dump
-to_toml  ◀── YAML text ◀──────────────────┘
+load_toml / load_ini / load_csv / JSON text ──▶ values & YAML ──▶ parse() / edit() / dump
+to_toml  ◀── YAML text ◀──────────────────────────────┘
 ```
 
 ## JSON: Native Already
@@ -114,6 +114,52 @@ messages instead of silently losing data:
 - anchors / aliases and tags other than `!!timestamp`
 - non-scalar mapping keys
 
+## CSV / TSV
+
+A table, not a document: the header row names the columns, and every data
+record becomes a mapping. Cells are typed against the YAML core schema, so
+`42` is an integer and `true` a boolean — while the cell's **source text**
+is what travels, so a CSV → YAML → CSV round trip reproduces the original
+bytes:
+
+```python title="CSV input"
+import pyrs_yaml
+
+table = pyrs_yaml.load_csv("name,port\nweb-1,8080\n")
+# [{'name': 'web-1', 'port': 8080}]
+
+yaml_text = pyrs_yaml.from_csv("name,port\nweb-1,8080\n")
+# - name: web-1\n  port: 8080\n
+```
+
+Behavior notes:
+
+- the delimiter is `,` by default and `\t` for TSV; `;` and `|` are accepted
+  too (`delimiter=` on the Python entry points, `--input csv|tsv` on `pyq`);
+- quoting follows RFC 4180 — a quoted field may hold the delimiter, a line
+  break, and `""` for one quote;
+- a leading UTF-8 BOM is stripped, and CRLF and LF are both accepted;
+- an empty cell is null; a cell with a leading zero keeps its spelling
+  (`007` stays `007`) and resolves to an integer;
+- the engine's own round trip is byte-for-byte; through the YAML *text* hop
+  three things normalize — CRLF becomes LF, a BOM is stripped and not written
+  back, and an empty cell and a cell spelled `null` are the same document,
+  because YAML has one null spelling;
+- a row whose cell count differs from the header's, and a header that names
+  the same column twice, are **refused with a position**, never padded or
+  silently repaired;
+- TSV is the same engine with a tab delimiter, not a second format.
+
+Writing goes back the same way, and refuses what CSV cannot hold — a nested
+mapping inside a cell has no CSV spelling:
+
+```python title="YAML to CSV"
+import pyrs_yaml
+
+csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
+# name,port\nweb-1,8080\n
+```
+
 ## INI
 
 Read-only by design — INI has no official grammar, so pyrs-yaml ingests it
@@ -145,5 +191,5 @@ yaml_text = pyrs_yaml.safe_dump(pyrs_yaml.load_ini("[s]\nport = 8080\n"))
 ## See Also
 
 - [Custom Schemas](custom-schema.md) — the `json` scalar-resolution schema
-- [Command-Line Interface](cli.md) — `to-json` / `from-json` subcommands
+- [Command-Line Interface](cli.md) — `to-json` / `from-json` / `to-csv` / `from-csv` subcommands
 - [Round-Trip Preservation](round-trip.md) — what makes YAML the editing hub

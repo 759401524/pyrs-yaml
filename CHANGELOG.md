@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`pyrs-csv` reads and writes CSV/TSV through the same AST the YAML hub uses** — a new
+  engine crate beside `pyrs-json` and `pyrs-toml`: the header row becomes the keys of a
+  sequence of mappings, each cell is typed against the YAML core schema (`007` stays `007`
+  and resolves to an integer, `true` is a boolean, an empty cell is null), and the cell's
+  source text is what travels, so a CSV → YAML → CSV cycle reproduces the original bytes.
+  A ragged row and a duplicate column name are refused with a position, never repaired.
+  `pyq from-csv` / `pyq to-csv` and `pyrs_yaml.from_csv` / `to_csv` / `load_csv` are the
+  call sites; TSV is the same engine with a tab delimiter. CSV is an exchange format here —
+  YAML stays the only editable representation.
+
 ## [v0.19.1] — 2026-11-23
 
 <details markdown="1">

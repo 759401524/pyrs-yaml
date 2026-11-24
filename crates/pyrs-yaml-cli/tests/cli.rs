@@ -609,3 +609,133 @@ fn all_docs_rejects_dialect_inputs() {
         "{err}"
     );
 }
+
+// --- CSV / TSV -----------------------------------------------------------------
+//
+// The table verbs: the header row names the columns, the cells keep their
+// spelling, and the two refusals the engine owns are refusals here too -
+// exit 1 with a `pyq:` message, never a repaired file.
+
+#[test]
+fn from_csv_turns_the_header_row_into_the_keys() {
+    let (_, out, _) = run_with_stdin(&["from-csv", "-"], "id,name\n1,web-1\n");
+    assert_eq!(out, "- id: 1\n  name: web-1\n");
+}
+
+#[test]
+fn from_csv_keeps_a_leading_zero() {
+    // The spelling travels: the cell resolves to the integer 7 and is still
+    // written back as `007`.
+    let (_, out, _) = run_with_stdin(&["from-csv", "-"], "code\n007\n");
+    assert_eq!(out, "- code: 007\n");
+}
+
+#[test]
+fn from_csv_reads_a_tsv_by_extension() {
+    let dir = fixture_dir("pyq-csv");
+    let path = dir.join("rows.tsv");
+    std::fs::write(&path, "id\tname\n1\tweb-1\n").unwrap();
+    let (code, out, err) = run(&["from-csv", path.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "- id: 1\n  name: web-1\n");
+}
+
+#[test]
+fn from_csv_reads_a_tsv_when_asked() {
+    let (_, out, _) = run_with_stdin(&["from-csv", "--input", "tsv", "-"], "id\tname\n1\tweb-1\n");
+    assert_eq!(out, "- id: 1\n  name: web-1\n");
+}
+
+#[test]
+fn from_csv_without_a_header_row_makes_sequences() {
+    let (_, out, _) = run_with_stdin(&["from-csv", "--no-header", "-"], "1,2\n");
+    assert_eq!(out, "- \n  - 1\n  - 2\n");
+}
+
+#[test]
+fn from_csv_without_inference_keeps_the_cells_as_strings() {
+    let (_, out, _) = run_with_stdin(&["from-csv", "--no-infer", "-"], "a\ntrue\n007\n");
+    assert_eq!(out, "- a: \"true\"\n- a: \"007\"\n");
+}
+
+#[test]
+fn to_csv_writes_a_table() {
+    let (_, out, _) = run_with_stdin(&["to-csv", "-"], "- id: 1\n  name: web-1\n");
+    assert_eq!(out, "id,name\n1,web-1\n");
+}
+
+#[test]
+fn to_csv_without_a_header_row_writes_the_rows_only() {
+    let (_, out, _) = run_with_stdin(&["to-csv", "--no-header", "-"], "- id: 1\n  name: web-1\n");
+    assert_eq!(out, "1,web-1\n");
+}
+
+#[test]
+fn to_csv_writes_a_tsv_when_asked() {
+    let (_, out, _) = run_with_stdin(
+        &["to-csv", "--input", "tsv", "-"],
+        "- id: 1\n  name: web-1\n",
+    );
+    assert_eq!(out, "id\tname\n1\tweb-1\n");
+}
+
+#[test]
+fn from_csv_refuses_a_ragged_row() {
+    let (code, out, err) = run_with_stdin(&["from-csv", "-"], "a,b\n1\n");
+    assert_eq!(code, Some(1));
+    assert_eq!(out, "");
+    assert!(err.starts_with("pyq: "), "{err}");
+    assert!(err.contains("ragged row"), "{err}");
+}
+
+#[test]
+fn from_csv_refuses_a_duplicate_column() {
+    let (code, out, err) = run_with_stdin(&["from-csv", "-"], "a,a\n1,2\n");
+    assert_eq!(code, Some(1));
+    assert_eq!(out, "");
+    assert!(err.starts_with("pyq: "), "{err}");
+    assert!(err.contains("duplicate header"), "{err}");
+}
+
+#[test]
+fn to_csv_refuses_a_shape_csv_cannot_hold() {
+    let (code, out, err) = run_with_stdin(&["to-csv", "-"], "just a scalar\n");
+    assert_eq!(code, Some(1));
+    assert_eq!(out, "");
+    assert!(err.starts_with("pyq: "), "{err}");
+    assert!(err.contains("unsupported shape"), "{err}");
+}
+
+#[test]
+fn to_csv_refuses_a_nested_mapping_in_a_cell() {
+    // The document is spelled out line by line so the indentation of the
+    // nested mapping cannot be lost to an escape.
+    let input = ["- a:", "    b: 1", ""].join("\n");
+    let (code, out, err) = run_with_stdin(&["to-csv", "-"], &input);
+    assert_eq!(code, Some(1));
+    assert_eq!(out, "");
+    assert!(err.contains("unsupported cell"), "{err}");
+}
+
+#[test]
+fn the_csv_verbs_round_trip_a_document() {
+    // The claim the corpus defends, over the CLI: CSV -> YAML -> CSV is the
+    // same document. (The corpus carries the byte-for-byte version of this;
+    // here the shape of the round trip is what is pinned.)
+    let (_, yaml, _) = run_with_stdin(&["from-csv", "-"], "id,name\n007,web-1\n");
+    let (_, csv, _) = run_with_stdin(&["to-csv", "-"], &yaml);
+    assert_eq!(csv, "id,name\n007,web-1\n");
+}
+
+#[test]
+fn a_csv_file_is_readable_by_the_ordinary_verbs() {
+    // The extension decides, so `get` reads a table too.
+    let dir = fixture_dir("pyq-csv-get");
+    let path = dir.join("table.csv");
+    std::fs::write(&path, "id,name\n1,web-1\n").unwrap();
+    let (code, out, err) = run(&["get", "$[0].name", path.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "web-1\n");
+}

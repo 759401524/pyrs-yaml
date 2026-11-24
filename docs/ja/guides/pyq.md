@@ -96,12 +96,15 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML（値はすべて文字列）
+pyq from-csv table.csv           # CSV -> YAML（ヘッダ行が各行のキーになる）
+pyq to-csv config.yaml           # YAML -> CSV
+pyq from-csv --input tsv rows.tsv # TSV: 同じエンジン、タブ区切り
 pyq validate k8s.yaml --schema rules.yaml   # 構文チェック + スキーマ言語検証
 pyq frontmatter README.md --body-out body.md # Markdown フロントマター分割
 ```
 
-入力形式は拡張子で判定（`.json`・`.jsonc`・`.json5`・`.toml`・`.ini`）され、
-`--input yaml|json|jsonc|json5|toml|ini` で上書きできます。YAML は JSON の上位互集合
+入力形式は拡張子で判定（`.json`・`.jsonc`・`.json5`・`.toml`・`.ini`・`.csv`・`.tsv`）され、
+`--input yaml|json|jsonc|json5|toml|ini|csv|tsv` で上書きできます。YAML は JSON の上位互集合
 なので、JSON 内容は YAML 経路でもそのまま解析できます。JSONC/JSON5 内容は
 ネイティブ方言エンジンを経由し、コメントや JSON5 表記は AST に載るため、
 `pyq to-json --input jsonc --jsonc` でコメント保持の往復が可能です。

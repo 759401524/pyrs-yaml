@@ -202,6 +202,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::dump_file;
     #[pymodule_export]
+    pub(crate) use super::functions::from_csv;
+    #[pymodule_export]
     pub(crate) use super::functions::from_dict;
     #[pymodule_export]
     pub(crate) use super::functions::from_json;
@@ -221,6 +223,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::list_plugins;
     #[pymodule_export]
     pub(crate) use super::functions::list_schemas;
+    #[pymodule_export]
+    pub(crate) use super::functions::load_csv;
     #[pymodule_export]
     pub(crate) use super::functions::load_json;
     #[pymodule_export]
@@ -265,6 +269,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::safe_loads;
     #[pymodule_export]
     pub(crate) use super::functions::set_language;
+    #[pymodule_export]
+    pub(crate) use super::functions::to_csv;
     #[pymodule_export]
     pub(crate) use super::functions::to_toml;
     #[pymodule_export]

@@ -7,8 +7,9 @@ tracked file with the platform's default newline. Measured, not assumed: an inje
 all-CRLF file left the builtin hook `Passed` while this checker named its line count.
 
 So the cases below are the shapes the builtin hook is blind to, plus the exclusions that
-must not be "cleaned up" by a future reader: fuzz seeds and the two Ir benchmark fixtures,
-whose CR bytes are data the committed baseline was measured against.
+must not be "cleaned up" by a future reader: fuzz seeds, the two Ir benchmark fixtures,
+whose CR bytes are data the committed baseline was measured against, and the CSV corpus
+fixture whose CRLF record separator is the input the reader is measured against.
 """
 
 from __future__ import annotations
@@ -92,6 +93,8 @@ def test_normalisation_is_the_documented_transform(gate):
         # Benchmark fixtures whose bytes the committed Ir baseline was measured against.
         ("crates/pyrs-yaml-core/src/bench_inputs.rs", False),
         ("crates/pyrs-yaml-core/benches/ir_gate.rs", False),
+        # The CSV corpus fixture whose CRLF record separator is the input.
+        ("crates/pyrs-csv/tests/fixtures/crlf.csv", False),
         # Everything else that is text is in scope, including generated-and-committed.
         ("python/pyrs_yaml/pyrs_yaml.pyi", True),
         ("CHANGELOG.md", True),
@@ -123,10 +126,30 @@ def test_the_two_data_fixtures_are_the_declared_ones(gate):
         assert (REPO_ROOT / fixture).exists(), f"{fixture}: excluded a file that moved"
 
 
+def test_the_crlf_corpus_fixture_is_excluded_for_the_same_reason(gate):
+    """The CSV corpus holds one CRLF fixture, and its CR bytes are the input.
+
+    The reader is measured on a file whose rows end in CRLF. Normalising it here would
+    swap the case under test for the LF case, which is a different case, and the
+    round-trip claim the corpus exists to prove would then be proved about the wrong
+    bytes. This is the fuzz seeds' reason and the Ir fixtures' reason: a byte stream
+    that means something, rather than formatting.
+    """
+    assert gate.CRLF_FIXTURES == ("crates/pyrs-csv/tests/fixtures/crlf.csv",)
+    fixture = gate.CRLF_FIXTURES[0]
+    assert gate.is_checked_path(fixture) is False, fixture
+    assert (REPO_ROOT / fixture).exists(), f"{fixture}: excluded a file that moved"
+
+    # And it is the CRLF file it claims to be: two records, two CRLF separators.
+    data = (REPO_ROOT / fixture).read_bytes()
+    assert data.count(b"\r\n") == 2, data
+    assert b"\n" not in data.replace(b"\r\n", b""), data
+
+
 def test_prek_and_the_script_agree_on_the_exclusions(gate):
     """Two declarations of one policy drift apart silently unless a test pins them."""
     prek = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
-    for fixture in gate.DATA_FIXTURES:
+    for fixture in gate.DATA_FIXTURES + gate.CRLF_FIXTURES:
         assert fixture in prek, f"{fixture}: excluded here but not in the hook"
     assert "line-endings-lf" in prek, "the absolute rule is not wired as a hook"
 
@@ -150,7 +173,7 @@ def test_the_checkout_rule_preserves_what_the_policy_excludes(gate):
     """
     attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
     lines = [ln.strip() for ln in attributes.splitlines() if ln.strip() and not ln.startswith("#")]
-    for fixture in gate.DATA_FIXTURES:
+    for fixture in gate.DATA_FIXTURES + gate.CRLF_FIXTURES:
         entry = next((ln for ln in lines if ln.startswith(fixture)), None)
         assert entry is not None, f"{fixture}: excluded from rewriting but not declared in .gitattributes"
         assert "-text" in entry, f"{entry}: checkout would still convert line endings"
@@ -190,7 +213,7 @@ def test_the_fixtures_commit_exactly_what_the_tree_holds(gate):
     hook exclusion still earn their keep is a question with a measurable answer, not one to settle
     inside a performance-instrument PR.
     """
-    for fixture in gate.DATA_FIXTURES:
+    for fixture in gate.DATA_FIXTURES + gate.CRLF_FIXTURES:
         filtered, as_stored = _filter_hashes(REPO_ROOT, fixture.replace(chr(92), "/"))
         assert filtered == as_stored, (
             f"{fixture}: the repository's filters rewrite these bytes on commit "
