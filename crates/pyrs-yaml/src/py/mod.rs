@@ -214,6 +214,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::from_toml;
     #[pymodule_export]
+    pub(crate) use super::functions::from_xml;
+    #[pymodule_export]
     pub(crate) use super::functions::get_language;
     #[pymodule_export]
     pub(crate) use super::functions::get_plugin;
@@ -237,6 +239,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::load_schema;
     #[pymodule_export]
     pub(crate) use super::functions::load_toml;
+    #[pymodule_export]
+    pub(crate) use super::functions::load_xml;
     #[pymodule_export]
     pub(crate) use super::functions::negotiate_language;
     #[pymodule_export]

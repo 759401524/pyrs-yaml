@@ -25,6 +25,16 @@ status: new
   `pyq from-csv` / `pyq to-csv`와 `pyrs_yaml.from_csv` / `to_csv` / `load_csv`. TSV는 같은
   엔진의 탭 구분 버전이다. CSV는 여기서 교환 형식이며, 편집 가능한 표현은 여전히 YAML이다.
 
+- **`pyrs-xml`은 공유 AST로 XML을 읽기만 한다** — `pyrs-csv` 옆에 놓인 새
+  `#![no_std]` 엔진 crate. 요소, 속성, 주석, 처리 명령, 문자 데이터는 `+` 접두사
+  (`+@attr`, `+content`, `+c_<n>`, `+p_<n>`)로 매핑되고 속성이 없는 텍스트 전용
+  요소는 그대로 스칼라입니다. `007`, `true` 같은 문자열은 문자열로 남습니다.
+  DTD, `<!ENTITY`, 선언되지 않은 참조는 마크업 경계에서 안정적인 `E-XML-*` 코드로
+  거부되므로 엔티티 확장과 외부 참조는 구조상 불가능합니다. 호출 지점은
+  `pyq from-xml` 과 `pyrs_yaml.from_xml` / `load_xml` 이며 `--no-comments` /
+  `--no-pi`, `comments=` / `pi=` 로 해당 부분을 버릴 수 있습니다. 이 슬라이스에는
+  기록기가 없어 `to-xml` 과 `to_xml` 은 없습니다.
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

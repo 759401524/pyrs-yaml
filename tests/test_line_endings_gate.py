@@ -95,6 +95,11 @@ def test_normalisation_is_the_documented_transform(gate):
         ("crates/pyrs-yaml-core/benches/ir_gate.rs", False),
         # The CSV corpus fixture whose CRLF record separator is the input.
         ("crates/pyrs-csv/tests/fixtures/crlf.csv", False),
+        # The XML fixture whose CRLF separators are one of the six documented
+        # normalisations. `.xml` is not in CHECKED_IN, so this predicate already
+        # excludes it; the declaration is here so a future extension-list change
+        # cannot quietly bring it into scope.
+        ("crates/pyrs-xml/tests/fixtures/crlf.xml", False),
         # Everything else that is text is in scope, including generated-and-committed.
         ("python/pyrs_yaml/pyrs_yaml.pyi", True),
         ("CHANGELOG.md", True),
@@ -126,24 +131,29 @@ def test_the_two_data_fixtures_are_the_declared_ones(gate):
         assert (REPO_ROOT / fixture).exists(), f"{fixture}: excluded a file that moved"
 
 
-def test_the_crlf_corpus_fixture_is_excluded_for_the_same_reason(gate):
-    """The CSV corpus holds one CRLF fixture, and its CR bytes are the input.
+def test_the_crlf_corpus_fixtures_are_excluded_for_the_same_reason(gate):
+    """Both CRLF fixtures hold measured input, not formatting.
 
-    The reader is measured on a file whose rows end in CRLF. Normalising it here would
-    swap the case under test for the LF case, which is a different case, and the
-    round-trip claim the corpus exists to prove would then be proved about the wrong
-    bytes. This is the fuzz seeds' reason and the Ir fixtures' reason: a byte stream
-    that means something, rather than formatting.
+    The CSV reader is measured on CRLF-separated records, and the XML reader on
+    CRLF whitespace between elements - one of the six documented normalisations.
+    Normalising either here swaps the case under test for the LF case. This is the
+    fuzz seeds' reason and the Ir fixtures' reason: a byte stream that means
+    something, rather than formatting.
     """
-    assert gate.CRLF_FIXTURES == ("crates/pyrs-csv/tests/fixtures/crlf.csv",)
-    fixture = gate.CRLF_FIXTURES[0]
-    assert gate.is_checked_path(fixture) is False, fixture
-    assert (REPO_ROOT / fixture).exists(), f"{fixture}: excluded a file that moved"
-
-    # And it is the CRLF file it claims to be: two records, two CRLF separators.
-    data = (REPO_ROOT / fixture).read_bytes()
-    assert data.count(b"\r\n") == 2, data
-    assert b"\n" not in data.replace(b"\r\n", b""), data
+    assert gate.CRLF_FIXTURES == (
+        "crates/pyrs-csv/tests/fixtures/crlf.csv",
+        "crates/pyrs-xml/tests/fixtures/crlf.xml",
+    )
+    expected_crlf = {
+        "crates/pyrs-csv/tests/fixtures/crlf.csv": 2,
+        "crates/pyrs-xml/tests/fixtures/crlf.xml": 4,
+    }
+    for fixture in gate.CRLF_FIXTURES:
+        assert gate.is_checked_path(fixture) is False, fixture
+        assert (REPO_ROOT / fixture).exists(), f"{fixture}: excluded a file that moved"
+        data = (REPO_ROOT / fixture).read_bytes()
+        assert data.count(b"\r\n") == expected_crlf[fixture], data
+        assert b"\n" not in data.replace(b"\r\n", b""), data
 
 
 def test_prek_and_the_script_agree_on_the_exclusions(gate):

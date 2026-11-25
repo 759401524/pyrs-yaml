@@ -241,6 +241,7 @@ FORMAT_ROWS = (
     FormatRow("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
     FormatRow("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
     FormatRow("CSV", "pyrs-csv", "csv", "csv", ("csv",)),
+    FormatRow("XML", "pyrs-xml", "xml", "xml", ("xml",), writer=False),
     FormatRow("JSON Schema validation", None, "document_validate", None, ("json_schema",), writer=False),
     FormatRow(
         "Schema rule language",
@@ -269,6 +270,7 @@ ORACLE_IMPORTS = {
     "tomllib": "tomllib",
     "jsonschema": "jsonschema",
     "csv": "csv",
+    "xml.etree.ElementTree": "xml.etree.ElementTree",
 }
 
 #: Readers that ship with the interpreter, and the version that introduced each. These are bounded by
@@ -278,7 +280,12 @@ ORACLE_IMPORTS = {
 #: search matches any requirement that *starts with* the name - `_dependency_marker("json")` answers
 #: `python_version < '3.9'`, from `jsonschema>=4.18.0,<4.25.1`, and would report the always-present
 #: reader as bounded by a package nobody imports here.
-STDLIB_SINCE = {"json": (3, 0), "tomllib": (3, 11), "csv": (3, 0)}
+STDLIB_SINCE = {
+    "json": (3, 0),
+    "tomllib": (3, 11),
+    "csv": (3, 0),
+    "xml.etree.ElementTree": (3, 0),
+}
 
 _IMPORT_LINE = re.compile(
     r"^\s*import ([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)(?: as ([a-z_][a-z0-9_]*))?",
@@ -426,7 +433,7 @@ SKIP_SHAPES = ("skipif", "xfail", "importorskip", "pytest.skip(")
 #: dialect suffix because YAML is the default format. CSV's verbs are `from_csv` / `to_csv` /
 #: `load_csv`; TSV is the same engine with a tab delimiter rather than a dialect of its own, so it
 #: is compared in the same module and the row is named for the format that owns the grammar.
-DIALECT_CALL = re.compile(r"pyrs_yaml\.(?:[a-z0-9_]*_(json5|jsonc|json|toml|yaml|csv)|safe_load|safe_dump|parse)\b")
+DIALECT_CALL = re.compile(r"pyrs_yaml\.(?:[a-z0-9_]*_(json5|jsonc|json|toml|yaml|csv|xml)|safe_load|safe_dump|parse)\b")
 
 
 def _dialect(match) -> str:

@@ -29,6 +29,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   call sites; TSV is the same engine with a tab delimiter. CSV is an exchange format here —
   YAML stays the only editable representation.
 
+- **`pyrs-xml` reads XML into the shared AST, read-only** — a new `#![no_std]`
+  engine crate beside `pyrs-csv`: elements, attributes, comments, processing
+  instructions and character data map under a `+` prefix (`+@attr`, `+content`,
+  `+c_<n>`, `+p_<n>`), and a text-only element without attributes stays a plain
+  scalar. Typed-looking text such as `007` and `true` stays a string. A DTD,
+  `<!ENTITY` or undeclared reference is refused at the markup boundary with a
+  stable `E-XML-*` code, so entity expansion and external fetch are impossible
+  by construction. `pyq from-xml` and `pyrs_yaml.from_xml` / `load_xml` are the
+  call sites, with `--no-comments` / `--no-pi` and `comments=` / `pi=` to drop
+  those parts. There is no writer in this slice: no `to-xml`, no `to_xml`.
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

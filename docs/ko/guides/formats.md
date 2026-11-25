@@ -161,6 +161,34 @@ csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
 # name,port\nweb-1,8080\n
 ```
 
+## XML
+
+읽기 전용입니다. 이 슬라이스에서는 XML을 YAML로만 변환하고 반대 방향은 없습니다.
+요소, 속성, 주석, 처리 명령, 문자 데이터는 유지되고 XML 선언, BOM, CDATA 구분자,
+엔티티 표기, 자기 닫힘 형식, 속성 인용 부호 스타일은 정규화됩니다.
+
+```python title="XML 입력"
+import pyrs_yaml
+
+values = pyrs_yaml.load_xml('<root id="7"><name>Ada</name></root>')
+# {'root': {'+@id': '7', 'name': 'Ada'}}
+
+yaml_text = pyrs_yaml.from_xml("<root><item>a</item><item>b</item></root>")
+# root:\n  item:\n    - a\n    - b\n
+```
+
+동작 메모:
+
+- 예약 키는 `+` 접두사를 씁니다: `+@attr`, `+content`, 주석은 `+c_<n>`,
+  처리 명령은 `+p_<n>`. 속성이 없는 텍스트 전용 요소는 그대로 스칼라입니다.
+- `007`, `true`, `null` 같은 문자 데이터는 문자열로 남아 YAML 허브를 지나도
+  유형이 몰래 바뀌지 않습니다.
+- DTD, `<!ENTITY`, 선언되지 않은 `&name;` 는 안정적인 `E-XML-*` 코드로 거부됩니다.
+  엔티티 확장도 외부 참조도 없습니다.
+- `comments=False` / `pi=False` (CLI에서는 `--no-comments` / `--no-pi`)로 해당 부분을
+  버릴 수 있습니다.
+- CLI 동사는 `pyq from-xml` 뿐입니다. `to-xml` 과 `to_xml` 은 없습니다.
+
 ## INI
 
 의도적으로 읽기 전용 — INI에는 공식 문법이 없으므로 pyrs-yaml은 표준

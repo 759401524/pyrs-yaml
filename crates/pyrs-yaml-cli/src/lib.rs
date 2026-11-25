@@ -33,7 +33,7 @@ const DIALECT_HELP: &str = concat!(
     "\n",
     "Native grammar: `pyq <command> [args]` - fmt, get, set, delete, rename, move, append,\n",
     "insert, validate, frontmatter, sort-keys, diff, merge, to-json, to-toml, to-csv,\n",
-    "from-json, from-toml, from-ini, from-csv, completion.\n",
+    "from-json, from-toml, from-ini, from-csv, from-xml, completion.\n",
     "\n",
     "Compatibility shell: an argv that does not start with a subcommand is read as `jq` 1.8\n",
     "or mikefarah `yq` v4, chosen by the name this binary was invoked as (`jq`, `yq`) or\n",
@@ -49,14 +49,29 @@ const DIALECT_HELP: &str = concat!(
     "JSON), yq's -n/-e/-P/--split-exp/--front-matter/--xml-*/--lua-*/--csv-*; pipes other\n",
     "than one trailing select; and every function (keys, length, map, to_entries, env,\n",
     "...).\n",
+    "\n",
+    "Examples:\n",
+    "  pyq get '.user.name' config.yaml\n",
+    "  pyq from-xml document.xml --get '.root'\n",
+    "\n",
+    "Full documentation: https://759401524.github.io/pyrs-yaml/\n",
 );
+
+/// The one-line description clap puts in `-h`, `--help` and the no-argument
+/// help. It names every input grammar this build can actually read.
+const ABOUT: &str =
+    "jq/yq-style processor for YAML, JSON/JSONC/JSON5, TOML, INI, CSV/TSV and XML (pyrs-yaml core)";
 
 #[derive(Parser)]
 #[command(
     name = "pyq",
     version,
-    about = "jq/yq-style processor for YAML, JSON, TOML and INI (pyrs-yaml core)",
-    long_about = DIALECT_HELP
+    about = ABOUT,
+    // clap's `-h` uses `about` and `--help` uses `long_about`; with no
+    // `long_about`, long help falls back to the same `about`. The full dialect
+    // contract lives in `after_help`, which both forms print, so `-h` and
+    // `--help` are identical and subcommands keep their own help flags.
+    after_help = DIALECT_HELP
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -330,6 +345,25 @@ pub enum Command {
         #[arg(long)]
         no_infer: bool,
     },
+    /// Read XML text and emit YAML (DTD/entities are refused, not expanded).
+    FromXml {
+        /// Input file; omit or `-` for stdin.
+        file: Option<PathBuf>,
+        #[arg(long, default_value = "$")]
+        get: String,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        raw: bool,
+        /// Drop comments inside the root element.
+        #[arg(long)]
+        no_comments: bool,
+        /// Drop processing instructions inside the root element.
+        #[arg(long)]
+        no_pi: bool,
+    },
     /// Convert a YAML/JSON/TOML document to CSV text.
     ToCsv {
         file: Option<PathBuf>,
@@ -379,6 +413,8 @@ pub enum Format {
     Csv,
     /// Tab-separated values: the same engine with a tab where the comma was.
     Tsv,
+    /// Extensible Markup Language: read-only, mapped into the shared AST.
+    Xml,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -811,6 +847,24 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let node = pyrs_csv::from_csv_with_options(&src, &options)?;
             emit_selected(&node, &get, &verbs, json, raw)?;
         }
+        Command::FromXml {
+            file,
+            get,
+            verbs,
+            json,
+            raw,
+            no_comments,
+            no_pi,
+        } => {
+            let src = read_input(&file)?;
+            let options = pyrs_xml::XmlOptions {
+                comments: !no_comments,
+                processing_instructions: !no_pi,
+                ..pyrs_xml::XmlOptions::default()
+            };
+            let node = pyrs_xml::from_xml_with_options(&src, &options)?;
+            emit_selected(&node, &get, &verbs, json, raw)?;
+        }
         Command::ToCsv {
             file,
             input,
@@ -1031,7 +1085,13 @@ pub fn load_docs(
     }
     if matches!(
         input.input,
-        Format::Toml | Format::Ini | Format::Jsonc | Format::Json5 | Format::Csv | Format::Tsv
+        Format::Toml
+            | Format::Ini
+            | Format::Jsonc
+            | Format::Json5
+            | Format::Csv
+            | Format::Tsv
+            | Format::Xml
     ) {
         return Err("--all-docs only applies to YAML or JSON input".into());
     }
@@ -1088,6 +1148,7 @@ pub fn load_source(
             Some("ini") => Format::Ini,
             Some("csv") => Format::Csv,
             Some("tsv") => Format::Tsv,
+            Some("xml") => Format::Xml,
             _ => Format::Yaml,
         },
         f => f,
@@ -1114,6 +1175,7 @@ pub fn load_source(
         // columns, so a table is a sequence of mappings.
         Format::Csv => csv_to_node(src, pyrs_csv::Delimiter::Comma)?,
         Format::Tsv => csv_to_node(src, pyrs_csv::Delimiter::Tab)?,
+        Format::Xml => pyrs_xml::from_xml(src)?,
         Format::Auto => unreachable!("resolved above"),
     })
 }

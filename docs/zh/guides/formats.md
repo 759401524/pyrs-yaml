@@ -149,6 +149,31 @@ csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
 # name,port\nweb-1,8080\n
 ```
 
+## XML
+
+只读：本切片只把 XML 转成 YAML，不做反向。元素、属性、注释、处理指令和字符数据会保留，
+XML 声明、BOM、CDATA 分隔符、实体拼写、自闭合形式和属性引号风格会被规范化掉。
+
+```python title="XML 输入"
+import pyrs_yaml
+
+values = pyrs_yaml.load_xml('<root id="7"><name>Ada</name></root>')
+# {'root': {'+@id': '7', 'name': 'Ada'}}
+
+yaml_text = pyrs_yaml.from_xml("<root><item>a</item><item>b</item></root>")
+# root:\n  item:\n    - a\n    - b\n
+```
+
+行为要点：
+
+- 保留键一律带 `+` 前缀：`+@attr`、`+content`，注释是 `+c_<n>`，处理指令是 `+p_<n>`；
+  没有属性的纯文本元素仍是普通标量。
+- `007`、`true`、`null` 这类字符数据保持字符串，经过 YAML 枢纽时不会被悄悄改型。
+- DTD、`<!ENTITY` 和未声明的 `&name;` 会以稳定的 `E-XML-*` 代码被拒绝：没有实体展开，
+  也没有外部读取。
+- `comments=False` / `pi=False`（CLI 对应 `--no-comments` / `--no-pi`）可丢弃相应部分。
+- CLI 动词只有 `pyq from-xml`；没有 `to-xml` 或 `to_xml`。
+
 ## INI
 
 按设计只读 — INI 没有官方语法，pyrs-yaml 用标准库解析器接收它，写出

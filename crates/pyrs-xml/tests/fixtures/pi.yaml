@@ -1,0 +1,7 @@
+root:
+  +content:
+    - 
+      +p_0:
+        target: pi
+        data: go
+    - a: "1"

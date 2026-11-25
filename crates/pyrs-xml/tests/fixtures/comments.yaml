@@ -1,0 +1,4 @@
+root:
+  +content:
+    - +c_0: note
+    - a: "1"

@@ -911,6 +911,28 @@ pub(crate) fn from_csv(
 }
 
 #[pyfunction]
+#[pyo3(signature = (xml_str: "str", comments: "bool" = true, pi: "bool" = true) -> "str")]
+/// Convert XML text to a YAML string (read-only; no `to_xml` exists).
+///
+/// Element, attribute, comment, PI and character-data structure is kept under
+/// the `+` key convention. DTDs and entity declarations are refused with the
+/// localized `xml-parse-error` carrying the engine's stable code.
+pub(crate) fn from_xml(xml_str: &str, comments: bool, pi: bool) -> PyResult<String> {
+    let options = pyrs_xml::XmlOptions {
+        comments,
+        processing_instructions: pi,
+        ..pyrs_xml::XmlOptions::default()
+    };
+    let node = pyrs_xml::from_xml_with_options(xml_str, &options).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "xml-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    yaml_of_node(&node)
+}
+
+#[pyfunction]
 #[pyo3(signature = (yaml: "str", delimiter: "str" = ",") -> "str")]
 /// Render a YAML document as CSV text.
 ///
@@ -958,6 +980,30 @@ pub(crate) fn load_csv(
     let mut ast = pyrs_csv::from_csv_with_options(csv_str, &options).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "csv-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &schema, false)
+}
+
+#[pyfunction]
+#[pyo3(signature = (xml_str: "str", comments: "bool" = true, pi: "bool" = true) -> "object")]
+/// Parse XML text directly into Python values.
+///
+/// Mirrors `load_csv`: the mapping is built under the core schema and the
+/// returned value graph holds strings for XML character data, so `007` and
+/// `true` read back as strings rather than being silently retyped.
+pub(crate) fn load_xml(py: Python, xml_str: &str, comments: bool, pi: bool) -> PyResult<Py<PyAny>> {
+    let schema = parse_schema("core")?;
+    let options = pyrs_xml::XmlOptions {
+        comments,
+        processing_instructions: pi,
+        ..pyrs_xml::XmlOptions::default()
+    };
+    let mut ast = pyrs_xml::from_xml_with_options(xml_str, &options).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "xml-parse-error",
             &[("detail", &e.to_string())],
         ))
     })?;

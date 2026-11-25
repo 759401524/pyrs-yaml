@@ -497,6 +497,15 @@ def from_toml(toml_str: "str") -> "str":
     the `!timestamp` tag consumed by the built-in plugin.
     """
 
+def from_xml(xml_str: "str", comments: "bool" = True, pi: "bool" = True) -> "str":
+    """
+    Convert XML text to a YAML string (read-only; no `to_xml` exists).
+
+    Element, attribute, comment, PI and character-data structure is kept under
+    the `+` key convention. DTDs and entity declarations are refused with the
+    localized `xml-parse-error` carrying the engine's stable code.
+    """
+
 def get_language() -> "str":
     """
     Return the current error message language.
@@ -594,6 +603,15 @@ def load_toml(toml_str: "str") -> "dict[str, Any]":
     """
     Parse TOML directly into a Python dict (values, not a document).
     Anchors cannot occur in TOML, so no alias resolution pass is needed.
+    """
+
+def load_xml(xml_str: "str", comments: "bool" = True, pi: "bool" = True) -> "object":
+    """
+    Parse XML text directly into Python values.
+
+    Mirrors `load_csv`: the mapping is built under the core schema and the
+    returned value graph holds strings for XML character data, so `007` and
+    `true` read back as strings rather than being silently retyped.
     """
 
 def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str":

@@ -1,0 +1,1 @@
+<!DOCTYPE root [<!ENTITY x "boom">]><root>&x;</root>

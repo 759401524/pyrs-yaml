@@ -164,6 +164,36 @@ csv_text = pyrs_yaml.to_csv("- name: web-1\n  port: 8080\n")
 # name,port\nweb-1,8080\n
 ```
 
+## XML
+
+Read-only: XML goes into YAML, never the other way in this slice. Elements,
+attributes, comments, processing instructions and character data are kept;
+the XML declaration, BOM, CDATA delimiters, entity spelling, self-closing form
+and attribute quote style are normalised away.
+
+```python title="XML input"
+import pyrs_yaml
+
+values = pyrs_yaml.load_xml('<root id="7"><name>Ada</name></root>')
+# {'root': {'+@id': '7', 'name': 'Ada'}}
+
+yaml_text = pyrs_yaml.from_xml("<root><item>a</item><item>b</item></root>")
+# root:\n  item:\n    - a\n    - b\n
+```
+
+Behavior notes:
+
+- the reserved keys carry a `+` prefix: `+@attr`, `+content`, `+c_<n>` for
+  comments and `+p_<n>` for processing instructions; a text-only element with
+  no attributes stays a plain scalar;
+- character data that looks typed (`007`, `true`, `null`) stays a string, so
+  an XML value never silently changes type when it crosses the YAML hub;
+- a DTD, `<!ENTITY`, or an undeclared `&name;` is refused with a stable
+  `E-XML-*` code: there is no entity expansion and no external fetch;
+- `comments=False` / `pi=False` (CLI `--no-comments` / `--no-pi`) drop the
+  corresponding parts;
+- `pyq from-xml` is the only CLI verb -- there is no `to-xml` or `to_xml`.
+
 ## INI
 
 Read-only by design — INI has no official grammar, so pyrs-yaml ingests it
