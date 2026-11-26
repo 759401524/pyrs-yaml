@@ -849,3 +849,54 @@ fn subcommand_help_stays_subcommand_specific() {
     assert!(out.contains("Read XML text and emit YAML"), "{out}");
     assert!(!out.contains("Native grammar:"), "{out}");
 }
+
+// --- Typo hints ---------------------------------------------------------------
+
+#[test]
+fn a_misspelled_native_command_suggests_the_verb() {
+    let (code, out, err) = run(&["fro-xml"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert_eq!(
+        err.trim_end(),
+        "pyq: unknown command 'fro-xml'; did you mean 'from-xml'?"
+    );
+    let (code, _, err) = run(&["from-xm"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(err.contains("did you mean 'from-xml'"), "{err}");
+}
+
+#[test]
+fn to_xml_still_refuses_without_a_suggestion() {
+    // XML is read-only in this slice: `to-xml` must keep its documented
+    // refusal even though it is two edits from the real `to-toml` verb.
+    let (code, out, err) = run(&["to-xml"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("pyq:"), "{err}");
+    assert!(!err.contains("did you mean"), "{err}");
+}
+
+#[test]
+fn a_compat_expression_typo_suggests_a_supported_form() {
+    let (code, out, err) = run(&["slect(.a > 1)", "f.yaml"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("did you mean 'select(.a > 1)'"), "{err}");
+}
+
+#[test]
+fn a_valid_compat_path_gets_no_suggestion() {
+    let (code, out, err) = run_with_stdin(&[".a.b"], "a:\n  b: 1\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "1\n");
+    assert!(!err.contains("did you mean"), "{err}");
+}
+
+#[test]
+fn piped_stdin_still_reads_as_a_filter() {
+    // The TTY guard must not turn an ordinary pipe into a help screen.
+    let (code, out, err) = run_with_stdin(&["from-csv", "-"], "id,name\n1,web-1\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "- id: 1\n  name: web-1\n");
+}

@@ -193,6 +193,84 @@ fn refuse(what: &str, dialect: Dialect, because: &str) -> String {
     format!("the {tool} compatibility shell does not implement {what}: {because}")
 }
 
+/// A near-miss of a form this shell really supports, offered as a hint *after*
+/// the refusal. Structural rather than fuzzy on purpose: a path such as
+/// `.a.b` must never be re-spelled into a different construct, so no hint is
+/// ventured unless the rewritten form survives the grammar's own parser.
+fn expression_hint(expression: &str) -> Option<String> {
+    let text = expression.trim();
+
+    // `<name>(<args>)` where the name is one or two edits from `del` or
+    // `select`. `map(.a)` stays a plain refusal: its name is three edits away.
+    if let Some(open) = text.find('(')
+        && text.ends_with(')')
+    {
+        let name = &text[..open];
+        let inner = text[open + 1..text.len() - 1].trim();
+        if !inner.is_empty() && !inner.contains(['(', ')']) {
+            // Two names can be equally near (`delet` is two edits from both
+            // `del` and `select`). Let the grammar of the arguments decide:
+            // a path belongs to `del`, a comparison to `select`. If both or
+            // neither parse, keep the plain refusal.
+            let mut found: Option<String> = None;
+            for fixed in ["del", "select"] {
+                if name == fixed || crate::suggest::edit_distance(name, fixed) > 2 {
+                    continue;
+                }
+                let parses = if fixed == "del" {
+                    !inner.contains(',') && path_expression(inner).is_some()
+                } else {
+                    selection(&format!("select({inner})")).is_some()
+                };
+                if !parses {
+                    continue;
+                }
+                if found.is_some() {
+                    found = None;
+                    break;
+                }
+                found = Some(format!("{fixed}({inner})"));
+            }
+            if let Some(hint) = found {
+                return Some(hint);
+            }
+        }
+    }
+
+    // `select(.a = 1)` is a common slip for the predicate operator; `=` alone
+    // is an assignment at top level but never inside `select(...)`.
+    if let Some(inner) = text
+        .strip_prefix("select(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        let inner = inner.trim();
+        if !inner.contains("==")
+            && !inner.contains("!=")
+            && !inner.contains(">=")
+            && !inner.contains("<=")
+            && inner.contains('=')
+        {
+            let fixed = inner.replacen('=', "==", 1);
+            if selection(&format!("select({fixed})")).is_some() {
+                return Some(format!("select({fixed})"));
+            }
+        }
+    }
+
+    // The one pipe this shell composes needs spaces around `|`; a missing
+    // space is a spelling slip, not a different evaluation order.
+    if let Some(at) = text.find('|')
+        && !text[at + 1..].contains('|')
+    {
+        let normalized = format!("{} | {}", text[..at].trim(), text[at + 1..].trim());
+        if normalized != text && select_pipe(&normalized).is_some() {
+            return Some(normalized);
+        }
+    }
+
+    None
+}
+
 /// Flags the shell understood, each one already decided to be safe to honour.
 #[derive(Default, Debug)]
 struct Choices {
@@ -468,7 +546,7 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
                     &format!("{why} - a range needs the real engine"),
                 )
             });
-        return Err(named.unwrap_or_else(|| {
+        let why = named.unwrap_or_else(|| {
             refuse(
                 &format!("the expression {expression:?}"),
                 dialect,
@@ -476,7 +554,11 @@ pub fn translate(argv: &[OsString], dialect: Dialect) -> Result<Vec<OsString>, S
                  select() predicate - pipes, functions and arithmetic need the real engine \
                  (see `pyq get --help` for the verbs it can reach)",
             )
-        }));
+        });
+        return Err(match expression_hint(&expression) {
+            Some(hint) => format!("{why}; did you mean '{hint}'?"),
+            None => why,
+        });
     };
 
     // Only `get` carries the input-format and output-form knobs; on any other
@@ -624,6 +706,15 @@ pub fn plan(argv: &[OsString]) -> Result<(Vec<OsString>, Option<Dialect>), Strin
             || matches!(head.as_str(), "-h" | "--help" | "-V" | "--version"))
     {
         return Ok((rest, None));
+    }
+    // A `pyq` invocation speaks the native grammar: a bare word one or two
+    // edits from a subcommand is a typo, not a jq/yq expression. Invoked
+    // `jq`/`yq` and `--as` runs are shells and keep the shell's own refusal.
+    if forced.is_none()
+        && dialect_of(&rest[0]).is_none()
+        && let Some(why) = crate::suggest::native_command(&head, NATIVE_COMMANDS)
+    {
+        return Err(why);
     }
     let dialect = forced.unwrap_or_else(|| dialect_of(&rest[0]).unwrap_or(Dialect::Yq));
     Ok((translate(&rest, dialect)?, Some(dialect)))
@@ -923,5 +1014,69 @@ mod tests {
         let bare = os(&["pyq"]);
         assert_eq!(plan(&bare).unwrap().0, bare);
         assert!(refused(&["pyq", "-r"]).contains("no expression"));
+    }
+
+    #[test]
+    fn a_misspelled_native_subcommand_gets_a_command_hint() {
+        let argv = os(&["pyq", "fro-xml"]);
+        assert_eq!(
+            plan(&argv).unwrap_err(),
+            "unknown command 'fro-xml'; did you mean 'from-xml'?"
+        );
+        let argv = os(&["pyq", "from-xm"]);
+        assert_eq!(
+            plan(&argv).unwrap_err(),
+            "unknown command 'from-xm'; did you mean 'from-xml'?"
+        );
+    }
+
+    #[test]
+    fn to_xml_is_refused_without_a_hint() {
+        // `to-xml` is two edits from `to-toml`, yet deliberately absent while
+        // XML is read-only here. A hint would overturn the documented refusal.
+        let why = refused(&["pyq", "to-xml"]);
+        assert!(why.contains("does not implement"), "{why}");
+        assert!(!why.contains("did you mean"), "{why}");
+    }
+
+    #[test]
+    fn an_invoked_yq_keeps_the_shell_wording() {
+        // The native command hint belongs to `pyq`; an invoked `yq` speaks the
+        // compatibility grammar and is not answered in pyq's terms.
+        let why = refused(&["yq", "fro-xml", "f.yaml"]);
+        assert!(why.contains("does not implement"), "{why}");
+        assert!(!why.contains("did you mean"), "{why}");
+    }
+
+    #[test]
+    fn a_typo_of_a_supported_call_gets_a_concrete_hint() {
+        let why = refused(&["yq", "delet(.a)", "f.yaml"]);
+        assert!(why.contains("did you mean 'del(.a)'"), "{why}");
+        let why = refused(&["yq", "slect(.a > 1)", "f.yaml"]);
+        assert!(why.contains("did you mean 'select(.a > 1)'"), "{why}");
+    }
+
+    #[test]
+    fn a_wrong_predicate_operator_gets_a_concrete_hint() {
+        let why = refused(&["yq", "select(.a = 1)", "f.yaml"]);
+        assert!(why.contains("did you mean 'select(.a == 1)'"), "{why}");
+    }
+
+    #[test]
+    fn a_missing_pipe_space_is_a_spelling_hint() {
+        let why = refused(&["yq", ".a|select(.b > 1)", "f.yaml"]);
+        assert!(why.contains("did you mean '.a | select(.b > 1)'"), "{why}");
+    }
+
+    #[test]
+    fn a_legal_path_is_never_rewritten_into_a_hint() {
+        assert_eq!(
+            translated(&["yq", ".a.b", "f.yaml"]),
+            vec!["yq", "get", ".a.b", "--raw", "--no-doc", "f.yaml"]
+        );
+        // A two-path delete needs two edits the shell cannot compose; that is
+        // a capability refusal, not a spelling slip.
+        let why = refused(&["yq", "del(.a, .b)", "f.yaml"]);
+        assert!(!why.contains("did you mean"), "{why}");
     }
 }
