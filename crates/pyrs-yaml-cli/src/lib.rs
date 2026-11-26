@@ -12,6 +12,7 @@ pub mod compat;
 pub mod json;
 pub mod multidoc;
 pub mod paths;
+mod suggest;
 pub mod verbs;
 
 use clap::{Parser, Subcommand};
@@ -22,7 +23,7 @@ use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::{parser, serializer};
 use std::borrow::Cow;
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
 /// The dialect contract, declared where a drop-in user will read it: `pyq --help`.
@@ -1253,19 +1254,41 @@ fn write_text(
     Ok(())
 }
 
+/// A verb expecting a document would block forever on an interactive stdin.
+/// clig.dev says display help and quit rather than appear hung.
+const STDIN_TTY_HELP: &str = concat!(
+    "stdin is a terminal; pyq needs a document from a pipe or a file.\n",
+    "Examples:\n",
+    "  pyq get '.user.name' config.yaml\n",
+    "  cat config.yaml | pyq get '.user.name'\n",
+);
+
+/// `None` and `-` both mean stdin; an explicit file never triggers the guard,
+/// even when stdin is interactive.
 fn read_input(file: &Option<PathBuf>) -> Result<String, Box<dyn std::error::Error>> {
+    read_input_with_tty(file, std::io::stdin().is_terminal())
+}
+
+/// The guard is a parameter so both sides are testable without a pseudo-
+/// terminal; the process entry always passes the real detection.
+fn read_input_with_tty(
+    file: &Option<PathBuf>,
+    stdin_is_terminal: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let from_stdin = match file {
+        None => true,
+        Some(f) => f.as_os_str() == "-",
+    };
+    if from_stdin && stdin_is_terminal {
+        return Err(STDIN_TTY_HELP.into());
+    }
     match file {
-        None => {
+        Some(f) if !from_stdin => Ok(std::fs::read_to_string(f)?),
+        _ => {
             let mut buf = String::new();
             std::io::stdin().read_to_string(&mut buf)?;
             Ok(buf)
         }
-        Some(f) if f.as_os_str() == "-" => {
-            let mut buf = String::new();
-            std::io::stdin().read_to_string(&mut buf)?;
-            Ok(buf)
-        }
-        Some(f) => Ok(std::fs::read_to_string(f)?),
     }
 }
 
@@ -1290,4 +1313,32 @@ fn emit_str(text: &str) -> Result<(), Box<dyn std::error::Error>> {
     so.write_all(text.as_bytes())?;
     so.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tty_stdin_answers_with_help_instead_of_blocking() {
+        let err = read_input_with_tty(&None, true).unwrap_err().to_string();
+        assert!(err.contains("stdin is a terminal"), "{err}");
+        assert!(err.contains("pyq get"), "{err}");
+        assert!(!err.contains("did you mean"), "{err}");
+        let err = read_input_with_tty(&Some(PathBuf::from("-")), true)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(err, STDIN_TTY_HELP);
+    }
+
+    #[test]
+    fn an_explicit_file_ignores_the_tty_guard() {
+        let dir = std::env::temp_dir().join(format!("pyq-tty-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("doc.yaml");
+        std::fs::write(&path, "a: 1\n").unwrap();
+        let text = read_input_with_tty(&Some(path), true).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(text, "a: 1\n");
+    }
 }

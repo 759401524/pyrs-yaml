@@ -40,6 +40,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   call sites, with `--no-comments` / `--no-pi` and `comments=` / `pi=` to drop
   those parts. There is no writer in this slice: no `to-xml`, no `to_xml`.
 
+- **`pyq` names the closest command for a typo and the closest form for a near-miss** —
+  `fro-xml` suggests `from-xml` and `slect(...)` suggests `select(...)`, while deliberate
+  refusals such as `to-xml` stay un-suggested. A command that reads stdin with no file now
+  prints a short help and exits instead of waiting when stdin is a terminal; piped input and
+  explicit files are unchanged.
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">
