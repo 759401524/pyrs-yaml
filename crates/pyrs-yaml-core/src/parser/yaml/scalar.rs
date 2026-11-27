@@ -1,3 +1,4 @@
+use super::comment::opens_quoted_node;
 use crate::ast::Chomping;
 use alloc::string::{String, ToString};
 
@@ -235,33 +236,82 @@ pub fn detect_block_header(yaml: &str, content_start: usize) -> BlockHeader {
 
     // `|` (0x7C) and `>` (0x3E) are ASCII and never occur inside a multi-byte
     // UTF-8 sequence, so a byte scan locates every candidate sigil safely.
-    for idx in line_start..end {
+    // A header's sigil is a token of its own: it starts its line or follows a blank, and it is
+    // never inside a quoted scalar. The position guard alone is not enough — a quoted key such as
+    // `"0 >+#"` puts its `>` after a blank and gives it a validating tail (`+#` reads as Keep plus
+    // a comment), so the `>` shadowed the real `|` on the next line and the emission gained a `+`
+    // the source never wrote (GitHub issue #800, `? 0 >+#: |`). Track the quote the line is in and
+    // skip every byte inside it. A quote opens a region only where a node can begin, per
+    // `opens_quoted_node`: an apostrophe inside a plain key (`don't: |+`) is that key's own text.
+    // A backslash escapes the next byte in a double-quoted scalar, and a doubled single quote is
+    // one escaped quote inside a single-quoted scalar.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Quote {
+        None,
+        Single,
+        Double,
+    }
+    let mut quote = Quote::None;
+    let mut idx = line_start;
+    while idx < end {
+        let byte = bytes[idx];
+        match quote {
+            Quote::Double => {
+                if byte == b'\\' {
+                    idx += 1;
+                } else if byte == b'"' {
+                    quote = Quote::None;
+                }
+                idx += 1;
+                continue;
+            }
+            Quote::Single => {
+                if byte == b'\'' {
+                    if bytes.get(idx + 1) == Some(&b'\'') {
+                        idx += 2;
+                        continue;
+                    }
+                    quote = Quote::None;
+                }
+                idx += 1;
+                continue;
+            }
+            Quote::None => {}
+        }
+        if matches!(byte, b'"' | b'\'') && opens_quoted_node(bytes, line_start, idx) {
+            quote = if byte == b'"' {
+                Quote::Double
+            } else {
+                Quote::Single
+            };
+            idx += 1;
+            continue;
+        }
         // A `#` at the line start or after a blank opens a comment: every byte
         // after it (including a `|`/`>`) is comment text, not a header. Stop the
         // scan so a comment like `# >` above an empty block scalar is not read as
         // the header — its empty tail would validate as Clip and shadow the real
         // `>+` on the next line, which the content-start fallback below recovers
         // (libFuzzer `yaml_roundtrip` crash-4886e2a5 / crash-ea1fdf7a).
-        if bytes[idx] == b'#' && (idx == line_start || matches!(bytes[idx - 1], b' ' | b'\t')) {
+        if byte == b'#' && (idx == line_start || matches!(bytes[idx - 1], b' ' | b'\t')) {
             break;
         }
-        // A sigil inside a key's own text is not the header, whatever its tail looks
-        // like: `"?\n  \"h>+#\": |\n:\n  ~"` reports its empty body at 14..14, and the
-        // `>` in the quoted key validated as Keep (its `+#` read as a comment), so the
-        // real `|` on the next line was never reached; the anchor in `&>#` shadowed the
-        // `>+` the same way (libFuzzer `yaml_roundtrip` crash-6d0caaa2 /
-        // crash-3411a423). A header's sigil is a token of its own: it starts its line
-        // or follows a blank.
+        // The other shadowing shape is an anchor's name: `&>#` has the `>` flush against
+        // `&`, so the position guard still rejects it (libFuzzer `yaml_roundtrip`
+        // crash-6d0caaa2 / crash-3411a423). Both guards answer one question: is this a sigil
+        // token, or a byte embedded in a key, an anchor or a comment?
         if idx != line_start && !matches!(bytes[idx - 1], b' ' | b'\t') {
+            idx += 1;
             continue;
         }
-        if bytes[idx] == b'|' || bytes[idx] == b'>' {
+        if byte == b'|' || byte == b'>' {
             // The first sigil whose tail reaches the line end (or a comment) as
             // a valid header is the block header — at most one can qualify.
             if let Some(header) = parse_block_header_tail(bytes, idx + 1, end) {
                 return header;
             }
         }
+        idx += 1;
     }
 
     // Nothing above the content held a sigil, so the backup stopped on some other line. That is a
@@ -497,6 +547,35 @@ mod tests {
         let s = "&>#\r>+\r8";
         let h = detect_block_header(s, s.find('8').unwrap());
         assert_eq!(h.chomping, Chomping::Keep);
+    }
+
+    /// GitHub issue #800: the `>` inside `"0 >+#"` follows a blank and has a validating tail
+    /// (`+#` reads as Keep plus a comment), so the position guard alone took it for the header and
+    /// the real `|` below was never reached. A quote is a token boundary now, so the quoted key's
+    /// text is skipped. The single-quoted spelling is the same defect one quote style over.
+    #[test]
+    fn detect_block_header_skips_a_sigil_inside_a_quoted_key() {
+        for (src, content) in [
+            ("?\n  \"0 >+#\": |\n:\n  ~\n", 15usize),
+            ("?\n  '0 >+#': |\n:\n  ~\n", 15usize),
+        ] {
+            assert_eq!(
+                detect_block_header(src, content),
+                BlockHeader::default(),
+                "{src:?}"
+            );
+        }
+    }
+
+    /// A quote opens a quoted region only where a node can begin. An apostrophe inside a plain
+    /// scalar key is that key's own text, so `|+` after `don't:` is still the real header.
+    #[test]
+    fn detect_block_header_keeps_an_apostrophe_inside_a_plain_key() {
+        let src = "don't: |+\n  x\n";
+        assert_eq!(
+            detect_block_header(src, src.find('x').unwrap()).chomping,
+            Chomping::Keep
+        );
     }
 
     #[test]

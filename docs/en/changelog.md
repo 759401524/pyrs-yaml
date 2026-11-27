@@ -46,6 +46,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   prints a short help and exits instead of waiting when stdin is a terminal; piped input and
   explicit files are unchanged.
 
+#### Fixed
+
+- **`to_yaml` settles in one pass again for the two shapes fuzzed in issue #800** — a merge key
+  whose value carries comments no longer moves its own comment between the pair line and the line
+  above on a second formatting pass; a block scalar behind an explicitly keyed pair whose quoted
+  key contains indicator characters no longer lets the `>` in that key shadow the real `|` chomping
+  indicator. Both minimized inputs are now named regression tests and reachable fuzz seeds.
+
 ### [v0.19.1] — 2026-11-23
 
 <details markdown="1">

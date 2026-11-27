@@ -1680,3 +1680,33 @@ fn a_comment_wall_longer_than_the_old_buffer_ceiling_re_parses() {
         );
     }
 }
+
+/// GitHub issue #800, bug A: a merge key carrying an inline note over a block sequence body whose
+/// trailing note lands on the last line of that body.
+///
+/// The key note is written inline on the `<<:` line in round one because the value carries no note
+/// yet; the re-read files the trailing note of the body on the sequence, and round two then hoists
+/// the key note above the pair. Nothing is lost, but the emission is one round short of a fixed
+/// point. The minimized input is the 17-byte `<<: #:` / `#[` / ` [3]` / `##` (no trailing newline),
+/// archived as `fuzz/seeds/yaml_roundtrip/issue800-merge-key-comment.seed`.
+#[test]
+fn yaml_roundtrip_is_idempotent_for_merge_key_with_comment() {
+    let src = "<<: #:\n#[\n [3]\n##";
+    let one = emit(src);
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}
+
+/// GitHub issue #800, bug B: an explicit key whose quoted text holds `>+#`, followed by a
+/// content-less block scalar.
+///
+/// `detect_block_header` scans the header line for a `|`/`>` token. The `>` inside `"0 >+#"`
+/// follows a blank and has a validating tail (`+#` reads as Keep plus a comment), so it shadowed
+/// the real `|` on the next line and the emission gained a `+` the source never wrote. The
+/// minimized input is the 10-byte `? 0 >+#: |` (no trailing newline), archived as
+/// `fuzz/seeds/yaml_roundtrip/issue800-explicit-key-block-scalar.seed`.
+#[test]
+fn yaml_roundtrip_is_idempotent_for_explicit_key_with_block_scalar() {
+    let src = "? 0 >+#: |";
+    let one = emit(src);
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}
