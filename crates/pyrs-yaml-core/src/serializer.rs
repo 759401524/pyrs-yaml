@@ -1937,7 +1937,19 @@ impl Serializer {
                     && !self.pending_line_is_last()
                     && (matches!(value, CustomNode::Scalar { .. } | CustomNode::Null { .. })
                         || !crate::parser::yaml::merge::is_merge_key(key));
-                if (body_below_leaves_the_line || value.comment().is_none())
+                // A merge key over a container written below must keep its note above the pair,
+                // whatever note the value carries: `<<: # note` reads back as a literal key, while
+                // the same note above the pair keeps the merge (crash-69931a77). The value's own
+                // note may not decide the slot, because a re-read can move that note from the
+                // parent container onto the value and flip the placement on the next emission
+                // (GitHub issue #800, `<<: #:` over a noted sequence body).
+                let merge_over_body = key_note_at.is_some()
+                    && crate::parser::yaml::merge::is_merge_key(key)
+                    && matches!(
+                        value,
+                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                    );
+                if (body_below_leaves_the_line || (value.comment().is_none() && !merge_over_body))
                     && self.output.ends_with('\n')
                 {
                     let fallback = key_note_at.unwrap_or(self.output.len() - 1);

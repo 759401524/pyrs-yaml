@@ -196,7 +196,7 @@ pub fn anchor_name_within(yaml: &str, byte_start: usize, floor: Option<usize>) -
 /// (`a ': &m6 >-4  # it's`), and a region started there swallows the `#` that really opens
 /// the comment. A quoted node *begins* a token, so what precedes it has to be a boundary -
 /// the line start, a value or flow indicator, or the anchor/tag property it follows.
-fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
+pub(super) fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
     let mut before = at;
     while before > line && matches!(bytes[before - 1], b' ' | b'\t') {
         before -= 1;

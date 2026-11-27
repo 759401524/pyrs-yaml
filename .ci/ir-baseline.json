@@ -85,6 +85,17 @@
       "to_python_anchors": 324583743,
       "to_python_medium": 390659764,
       "to_python_small": 56971274
+    },
+    "github-runner ubuntu24, image 20261122.23.1": {
+      "load_json_long_strings": 94851690,
+      "load_json_medium": 57112634,
+      "load_toml_long_strings": 139444047,
+      "load_toml_medium": 145192586,
+      "safe_dump_medium": 110728595,
+      "safe_dump_small": 13336301,
+      "to_python_anchors": 324160374,
+      "to_python_medium": 389506797,
+      "to_python_small": 56921031
     }
   },
   "scenarios": {
