@@ -384,12 +384,7 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
                 // routes it through `write_mapping_pair`, which emits `? *x` — the
                 // only spelling the reader accepts (libFuzzer `yaml_roundtrip`
                 // crash-cd7fab01).
-                !matches!(
-                    k,
-                    CustomNode::Mapping { .. }
-                        | CustomNode::Sequence { .. }
-                        | CustomNode::Alias { .. }
-                )
+                !key_needs_explicit_marker(k, false)
                     // A standalone note cannot share the `- key:` line: it
                     // would emit `# …` mid-line and strand the value. An empty
                     // container is the exception `write_mapping_pair` already
@@ -402,7 +397,6 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
                     // reader's 1024-character window either. Such a key takes the
                     // `?`-marker form in `write_mapping_pair`, which is the block body
                     // this guard routes it to.
-                    && !key_needs_window_marker(k, false)
                     && inlineable_value(v)
             })
     )
@@ -463,6 +457,21 @@ fn key_crosses_simple_window(key: &CustomNode, flow: bool) -> bool {
         width += Serializer::yaml_tag_text(tag).chars().count() + 1; // `tag `
     }
     width > SIMPLE_KEY_WINDOW
+}
+
+/// The one question behind the `?`-marker form: a collection or alias key has no
+/// simple spelling at all, and a scalar/null key leaves the reader's simple-key
+/// window once its anchor, tag or width pushes the colon past it. `write_mapping_pair`
+/// dispatches on this; `is_compact_item` must refuse exactly the same keys, or the
+/// compact path would spell a key the pair writer would have marked. The width half
+/// stays behind [`key_needs_window_marker`]'s cheap prefix so the common short key
+/// still answers from two fields.
+#[inline]
+fn key_needs_explicit_marker(key: &CustomNode, flow: bool) -> bool {
+    matches!(
+        key,
+        CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. }
+    ) || key_needs_window_marker(key, flow)
 }
 
 /// The spelled width, in characters, of a scalar used as a simple key.
@@ -760,7 +769,10 @@ impl Serializer {
         } else {
             " ~"
         };
-        self.output.insert_str(at, text);
+        // Through `insert_note_at` like the other insertion site: the marker was
+        // taken above, so there is no offset left to rebase here, but one writer
+        // path for output insertion keeps a future rebase from being forgotten.
+        self.insert_note_at(at, text);
         text.len()
     }
 
@@ -1602,6 +1614,16 @@ impl Serializer {
                 } else if self.trailing_note_slot_open
                     && self.output.ends_with('\n')
                     && !self.tail_line_has_note()
+                    // A container writing its own note outside value context is a
+                    // document-level owner: when its body ends on an alias, the
+                    // reader has no node metadata to attach a trailing note to and
+                    // drops it (issue #808's `: *b  # ?`). Fall through to the note
+                    // line below, which the reader files on the owner. In value
+                    // context the editor's `- *x  # A` shape is a fixed point - the
+                    // reader files that note on the containing collection - so the
+                    // slot stays. Value context, not the indent, is the split:
+                    // `indent_offset` shifts a document owner off column zero.
+                    && !(self.tail_slot_is_alias && !in_value_context)
                 {
                     self.output.pop();
                     self.output.push_str("  # ");
@@ -1735,28 +1757,12 @@ impl Serializer {
         // ("simple key expected ':'"), and ruamel.yaml's scanner raises on it from 0.19 while
         // 0.18.16 reads it as an empty-tuple key (both measured). The marker is the only form
         // that reads the same everywhere, and the durable refusal is ours, not theirs.
-        let explicit_key_marker = match key {
-            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. } => {
-                true
-            }
-            // A key whose simple spelling cannot reach its `:` inside the reader's window
-            // (`key_crosses_simple_window`) takes the marker too: the reader accepts an
-            // explicit key of any length, while re-reading the long simple form fails — so
-            // the writer would otherwise emit text its own reader refuses (the 2026-11-14
-            // `yaml_roundtrip` inputs: 1023-character quoted content, 1025-character plain).
-            //
-            // The length test is the cheap prefix of that question and shares this dispatch,
-            // so a short key that carries nothing answers from two fields: only a scalar
-            // longer than `SIMPLE_KEY_PREFIX_BYTES`, or a node carrying an anchor or tag,
-            // asks for a width.
-            CustomNode::Scalar { value, meta, .. } => {
-                (value.len() > SIMPLE_KEY_PREFIX_BYTES || meta.has_properties())
-                    && key_crosses_simple_window(key, false)
-            }
-            CustomNode::Null { meta, .. } => {
-                meta.has_properties() && key_crosses_simple_window(key, false)
-            }
-        };
+        // A key whose simple spelling cannot reach its `:` inside the reader's window
+        // takes the marker too: the reader accepts an explicit key of any length, while
+        // re-reading the long simple form fails (the 2026-11-14 `yaml_roundtrip` inputs:
+        // 1023-character quoted content, 1025-character plain). The question is shared
+        // with `is_compact_item` so neither branch can spell a key the other would mark.
+        let explicit_key_marker = key_needs_explicit_marker(key, false);
         // Only the marker branches consult the alias flag, so it is read after the dispatch:
         // the simple-key path — every key of every ordinary document — never asks.
         let alias_key = explicit_key_marker && matches!(key, CustomNode::Alias { .. });
@@ -1883,7 +1889,9 @@ impl Serializer {
             // next-line branch only under a complex key, and now writes its
             // own anchor/tag in `write_container_node`, so pre-emitting would
             // duplicate it (`: !a` … `!a {}`).
-            if is_block_container(value) {
+            if writes_header_where_reader_sees_it(value.anchor(), value.tag(), || {
+                is_block_container(value)
+            }) {
                 if let Some(anchor_name) = value.anchor() {
                     self.output.push_str(" &");
                     self.output.push_str(anchor_name);
@@ -1943,12 +1951,7 @@ impl Serializer {
                 // note may not decide the slot, because a re-read can move that note from the
                 // parent container onto the value and flip the placement on the next emission
                 // (GitHub issue #800, `<<: #:` over a noted sequence body).
-                let merge_over_body = key_note_at.is_some()
-                    && crate::parser::yaml::merge::is_merge_key(key)
-                    && matches!(
-                        value,
-                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                    );
+                let merge_over_body = key_note_at.is_some() && pair_line_slot_owner(key, value);
                 if (body_below_leaves_the_line || (value.comment().is_none() && !merge_over_body))
                     && self.output.ends_with('\n')
                 {
@@ -3018,7 +3021,8 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
             // a flow-marked key that the demotion sends to block has the same spine, so asking the
             // flag alone left its notes below `? ` where the next round hoists them (see
             // [`mapping_is_spelled_flow`]).
-            if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
+            let spelled_flow = pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style);
+            if spelled_flow {
                 return notes;
             }
             // Only a container that writes its own anchor/tag header line re-reads a note placed
@@ -3026,7 +3030,10 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
             // header, the body keeps the note on the inner key - the reader honours that, and the
             // position is load-bearing: it is what tells two mapping keys apart when the note is
             // the only difference (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`).
-            let header = meta.anchor().is_some() || meta.tag().is_some();
+            // The early return above already answered the spelling question; handing
+            // that answer on costs a captured bool instead of a second walk.
+            let header =
+                writes_header_where_reader_sees_it(meta.anchor(), meta.tag(), || !spelled_flow);
             // `IndexMap` never hands out `&mut K` (it would break the hash invariant),
             // so take the entry out, work on the owned key, and put it back where it
             // was.
@@ -3044,7 +3051,9 @@ fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
                 // above the entry, which the reader reports on the key mapping rather than on the
                 // entry - so the next round hoists it above `?` (crash-430f4f0e).
                 if let Some(inline) = first_entry_inline_note(&first_key)
-                    && (header || first_entry_note_climbs(&first_value))
+                    && (header
+                        || first_entry_note_climbs(&first_value)
+                        || pair_line_slot_owner(&first_key, &first_value))
                 {
                     notes.push(inline);
                     first_key.remove_comment();
@@ -3116,6 +3125,24 @@ fn first_entry_inline_note(key: &CustomNode) -> Option<Comment> {
     }
 }
 
+/// Who owns a pair line's single trailing slot when a container value is written below:
+/// the merge key's note must go above the pair. `<<: # note` over a body re-reads as a
+/// literal key and loses the merge (crash-69931a77 / #800), so the writer moves the note
+/// above. [`hoist_marker_note`] needs the same answer one level up: a note left above
+/// the pair inside a `?` body re-reads on the key mapping, and the next emission lifts
+/// it above the marker - #808 paid that second round before this rule was shared.
+///
+/// The writer still applies its own line-state guard (`key_note_at`); only the durable
+/// key/value question lives here, so the two sites cannot disagree about it again.
+#[inline]
+fn pair_line_slot_owner(key: &CustomNode, value: &CustomNode) -> bool {
+    crate::parser::yaml::merge::is_merge_key(key)
+        && matches!(
+            value,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        )
+}
+
 /// Whether a first entry's key note cannot keep its pair line without a header: the value's own
 /// note owns the line's trailing slot, so the pair writer puts the key note on a line of its own
 /// above the entry. Inside a marker body the reader reports that line on the key mapping, not on
@@ -3153,7 +3180,8 @@ fn empty_slot_notes(meta: &NodeMeta) -> (Option<&Comment>, &[Comment]) {
 /// containers keep the header on their own line, and a container in value context
 /// has the parent pre-emit the header, so neither is affected.
 fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool) -> bool {
-    !flow_style && !in_value_context && (meta.anchor().is_some() || meta.tag().is_some())
+    !in_value_context
+        && writes_header_where_reader_sees_it(meta.anchor(), meta.tag(), || !flow_style)
 }
 
 /// Does this trimmed line hold nothing but the header tokens of the line below it?
@@ -3300,6 +3328,30 @@ fn is_block_container(node: &CustomNode) -> bool {
         } => !items.is_empty() && !sequence_is_spelled_flow(items, *flow_style),
         _ => false,
     }
+}
+
+/// Whether a container's anchor/tag is written as a header line the reader spans
+/// the body from. The question is the *spelling*, not the `flow_style` flag: a
+/// flow-marked container whose members veto the braces still takes the block branch
+/// and writes a header, so asking the flag alone left a note below a line the reader
+/// attributed to the container. Three decisions ask this one question - the marker
+/// hoist and its `spine_has_notes` twin, which must take a note that would fall under
+/// such a line, and `write_mapping_pair`, which pre-emits the header for a block
+/// value. [`writes_block_header`] adds one guard for the lift paths: in value context
+/// the parent pre-emits onto its own colon line, leaving no gap to lift out of.
+///
+/// The properties are asked first and the spelling question is deferred to
+/// `spelled_block`, because the common container carries neither an anchor nor a
+/// tag and must not pay the walk its spelling test costs (measured: eager
+/// arguments put serialize_medium +0.58% and serialize_anchors +0.69% past the
+/// Ir floor, and the deferral alone returned both inside it).
+#[inline]
+fn writes_header_where_reader_sees_it(
+    anchor: Option<&str>,
+    tag: Option<&Tag>,
+    spelled_block: impl FnOnce() -> bool,
+) -> bool {
+    (anchor.is_some() || tag.is_some()) && spelled_block()
 }
 
 /// Lift a block mapping's first-entry leading-note stack above the anchor/tag
@@ -3524,7 +3576,8 @@ fn spine_has_notes(key: &CustomNode) -> bool {
             flow_style,
             meta,
         } => {
-            if pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style) {
+            let spelled_flow = pairs.is_empty() || mapping_is_spelled_flow(pairs, *flow_style);
+            if spelled_flow {
                 return false;
             }
             let (first_key, _) = match pairs.get_index(0) {
@@ -3536,7 +3589,8 @@ fn spine_has_notes(key: &CustomNode) -> bool {
             // walk would have made, so the first emission left the note under the header, the
             // reader handed it to the container, and the next emission hoisted it - the
             // one-round failure of libFuzzer `edit_yaml` crash-db718a7e.
-            let header = meta.anchor().is_some() || meta.tag().is_some();
+            let header =
+                writes_header_where_reader_sees_it(meta.anchor(), meta.tag(), || !spelled_flow);
             !first_key.leading_comments().is_empty()
                 || (header && first_entry_inline_note(first_key).is_some())
                 || spine_has_notes(first_key)

@@ -130,7 +130,7 @@ use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
-use pyrs_yaml_core::serializer::{SerializeOptions, to_yaml_with_options};
+use pyrs_yaml_core::serializer::{SIMPLE_KEY_WINDOW, SerializeOptions, to_yaml_with_options};
 
 /// The path segment a mapping key contributes. The key and its value share it: a
 /// note on either names the member, not the slot it was stored in.
@@ -302,6 +302,45 @@ fn stray_notes(
     stray
 }
 
+/// A mapping pair whose key cannot take the simple `key: value` spelling. Classified
+/// from the AST, never from a seed name: the writer takes the `?`-marker branch for a
+/// collection or alias key, and for a scalar/null key whose anchor, tag or length puts
+/// its colon past the reader's `SIMPLE_KEY_WINDOW`. Counting the shape rather than the
+/// filename means a renamed seed cannot silently leave this census while still reaching
+/// the writer branch it exists to cover.
+fn explicit_key_pair(key: &CustomNode) -> bool {
+    match key {
+        CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. } => true,
+        CustomNode::Scalar { value, meta, .. } => {
+            meta.anchor().is_some()
+                || meta.tag().is_some()
+                || value.chars().count() > SIMPLE_KEY_WINDOW
+        }
+        CustomNode::Null { meta, .. } => meta.anchor().is_some() || meta.tag().is_some(),
+    }
+}
+
+/// Count every explicit-key pair in a node's subtree, keys and values included.
+fn count_explicit_keys(node: &CustomNode, into: &mut usize) {
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs {
+                if explicit_key_pair(key) {
+                    *into += 1;
+                }
+                count_explicit_keys(key, into);
+                count_explicit_keys(value, into);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                count_explicit_keys(item, into);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn seed_dirs() -> Vec<(&'static str, PathBuf)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fuzz/seeds");
     ["yaml_roundtrip", "parse_yaml", "edit_yaml"]
@@ -402,6 +441,8 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
     let mut settled = vec![0usize; shapes.len()];
     let mut noted = Vec::<(&str, usize)>::new();
     let mut failures = Vec::new();
+    let mut explicit_key_seeds = 0usize;
+    let mut explicit_key_pairs = 0usize;
 
     for (name, dir) in seed_dirs() {
         // Every spoke is charged, not only the one whose target asks for it: `edit_yaml`'s
@@ -430,6 +471,15 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
             if !carried.is_empty() {
                 noted_here += 1;
             }
+            // A second, independent census of the corpus: how many documents actually drive
+            // the writer's explicit-key branch. This is a count, not a second placement
+            // assertion - the settlement loop below still asks every seed the same question.
+            let mut pairs_here = 0usize;
+            count_explicit_keys(&node, &mut pairs_here);
+            if pairs_here > 0 {
+                explicit_key_seeds += 1;
+            }
+            explicit_key_pairs += pairs_here;
             // Settlement is asked of every seed that parsed, not only the note-bearing ones:
             // the assertion the fuzz tier makes by replaying these files is a property of the
             // input, and crash-b3c57280 (no note anywhere) is the shape that escaped when it
@@ -475,6 +525,15 @@ fn every_note_in_the_seed_corpus_survives_one_emission() {
         noted.push((name, noted_here));
     }
 
+    // Explicit-key coverage. Measured 2026-11-27: 103 seeds / 203 pairs across the three YAML
+    // spokes (the two #808 seeds included). The floor is 103 - 10 = 93, slack for retirements;
+    // it must stay well above zero so a corpus that stopped carrying explicit keys cannot pass.
+    println!("explicit-key seeds: {explicit_key_seeds}");
+    println!("explicit-key pairs: {explicit_key_pairs}");
+    assert!(
+        explicit_key_seeds >= 93,
+        "expected explicit-key coverage, got {explicit_key_seeds} seeds / {explicit_key_pairs} pairs"
+    );
     assert!(
         failures.is_empty(),
         "note placement broken over the committed corpus:\n{}",
