@@ -572,7 +572,7 @@ fn tagged_keys_collide(a: &CustomNode, b: &CustomNode) -> bool {
 /// [`read_back_key`] - the reader's own probe, in this mapping's `flow` spelling - keeps the
 /// two verdicts from drifting apart, and the caller asks it only when both keys are containers
 /// (`container_keys_collide`), so the scalar comparison below stays the whole hot path.
-fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
+pub(crate) fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
     if is_null_key(a) && is_null_key(b) {
         return true;
     }

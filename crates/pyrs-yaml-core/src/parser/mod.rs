@@ -252,12 +252,30 @@ fn fold_rewritten_key(
     displaced: &mut Vec<(String, CustomNode)>,
 ) {
     let is_merge = is_merge_key(key);
-    if !is_merge && !is_null_key(key) {
+    // A rewritten key can also become a tagged twin of a sibling the map already
+    // holds. The merge expansion drops the pair whose node collides with an own
+    // key, but an alias that still named that node is inlined HERE as a key, and
+    // the inlined copy carries the identity the filter never saw: the reader
+    // refuses the emission those two pairs spell (`! "": ~` beside `&.?- ! "": ~`,
+    // GitHub issue #810 bug A). The identity is the merge filter's own
+    // (`same_emitted_key`), so the three rules - this fold, the merge filter and
+    // the receiver's `duplicate_tagged_key` - keep answering one question. The
+    // scan stays behind the tag, so an ordinary rewritten scalar keeps the cheap
+    // exit it always had; container keys stay on the whole-node path, which the
+    // map's own insert already folds.
+    let tagged = matches!(
+        key,
+        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta }
+            if meta.tag().is_some()
+    );
+    if !is_merge && !is_null_key(key) && !tagged {
         return;
     }
     let duplicate = pairs.keys().position(|k| {
         if is_merge {
             is_merge_key(k)
+        } else if tagged {
+            yaml::merge::same_emitted_key(k, key)
         } else {
             is_null_key(k)
         }
