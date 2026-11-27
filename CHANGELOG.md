@@ -36,6 +36,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   prints a short help and exits instead of waiting when stdin is a terminal; piped input and
   explicit files are unchanged.
 
+### Changed
+
+- **The idempotence corpus gate now carries the two issue-#808 discovery inputs as reachable
+  seeds** — explicit-key seeds are counted from the parsed AST (103 of the corpus, floor 93);
+  the writer's duplicated note-ownership predicates (pair-line slot, header location, marker
+  form) are folded into single functions, with all 1,944 recorded per-shape seed emissions
+  byte-for-byte unchanged.
+
 ### Fixed
 
 - **`to_yaml` settles in one pass again for the two shapes fuzzed in issue #800** — a merge key
