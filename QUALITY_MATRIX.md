@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 1,106 Rust `#[test]`, 2,235 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 1,111 Rust `#[test]`, 2,235 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 36 proptest properties (32 named `prop_*`, 4 named in prose: 3 in `pyrs-event`, 1 in `pyrs-yaml-core`), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 348 seeds of which 230 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 169 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 351 seeds of which 230 are `former-crash-*`, thinnest 7 (`parse_json`) / fullest 172 (`yaml_roundtrip`) | a historical crash cannot regress (the PR tier replays seeds with `-runs=0`, and a clean replay is only the promise `crates/pyrs-yaml-core/tests/seed_reach.rs` turns into a reached assertion) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`

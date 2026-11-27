@@ -223,8 +223,32 @@ pub(super) fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
     }
     // A value or explicit-key indicator opens a node only across a blank: `- 'x'` and `k: 'x'` do,
     // while the `?` inside a plain key (`A?': &x >-2  # o'k &evil`) is that key's own text.
+    // The indicator itself has to *begin a token* too: a `?` or a `-` in the middle of a plain
+    // scalar (`0? '` - the `?` follows the token's own `0`) is that scalar's text, and a region
+    // started on the quote after it swallowed the rest of the line, so the real `|+` header
+    // behind it read as Clip and the round trip lost the Keep (GitHub issue #810, bug B,
+    // `? 0? ': |+`). A `:` is exempt: the value separator acts from wherever it stands, so
+    // `k: 'x'` keeps answering through the flush-quote test below.
     if matches!(bytes[before - 1], b':' | b'?' | b'-') {
-        return before != at;
+        if bytes[before - 1] == b':' {
+            return before != at;
+        }
+        let indicator = before - 1;
+        if indicator == line
+            || matches!(
+                bytes[indicator - 1],
+                b' ' | b'\t' | b'\n' | b'\r' | b',' | b'[' | b']' | b'{' | b'}'
+            )
+        {
+            return before != at;
+        }
+        // Not a token start, but not automatically text either: the run check below decides by
+        // what the longer token IS. Its tail may close an anchor or a tag name (`&a- " #": [&b
+        // null]`), which is a property - the quote after it opens the key node, and refusing it
+        // made the `#` inside that key read as a comment that swallowed the next node's own
+        // `&b`, renaming the item with the key's anchor (proptest round-trip, found by
+        // msrv-check on the #810 fix). A plain scalar's tail (`0? '`) is its own text, and the
+        // run check answers false for it.
     }
     // A node also follows its own properties, where what precedes the quote is an anchor or a
     // tag and ends in its name or suffix (`&x 'v'`, `!!str "v"`), so the token decides, not the
@@ -323,6 +347,32 @@ mod tests {
     }
 
     /// Position-isolated name recovery for the plain, same-line case.
+    /// The tail of an anchor name is a property, not a mid-token dash: the quote after
+    /// `&a- ` opens the key node, so the `#` inside `" #"` stays quoted text and the next
+    /// node's own `&b` is not swallowed as comment text (proptest anchor round trip).
+    #[test]
+    fn opens_quoted_node_after_an_anchor_name_tail() {
+        let src = b"&a- \" #\": [&b null]";
+        let at = src
+            .iter()
+            .position(|byte| *byte == b'"')
+            .expect("the quote");
+        assert!(opens_quoted_node(src, 0, at));
+    }
+
+    /// The tail of a plain scalar is that scalar's own text: the quote after `0? ` opens
+    /// nothing, or a region started there swallows the `|+` header behind it (issue #810,
+    /// bug B, `? 0? ': |+`).
+    #[test]
+    fn opens_quoted_node_refuses_a_plain_scalar_tail() {
+        let src = b"  0? ': |+";
+        let at = src
+            .iter()
+            .position(|byte| *byte == b'\'')
+            .expect("the quote");
+        assert!(!opens_quoted_node(src, 0, at));
+    }
+
     #[test]
     fn anchor_name_before_reads_maximal_run() {
         assert_eq!(

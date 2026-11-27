@@ -46,6 +46,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Fuzzing found the writer emitting a document its own reader refuses** — merge expansion's
+  orphaned-anchor repair could resurrect a tagged key that a sibling alias key had collided
+  with, so two `! ""` keys appeared in one mapping. Rewritten tagged keys now fold with the
+  same identity predicate merge filtering uses. Chomping Keep also survives behind an explicit
+  key whose text contains a `?` character: the block-header scanner no longer treats a
+  quote-opening `?` as an indicator unless it sits at a token start.
+
 - **`to_yaml` settles in one pass again for the two shapes fuzzed in issue #800** — a merge key
   whose value carries comments no longer moves its own comment between the pair line and the line
   above on a second formatting pass; a block scalar behind an explicitly keyed pair whose quoted

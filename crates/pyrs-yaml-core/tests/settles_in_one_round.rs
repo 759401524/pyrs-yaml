@@ -1710,3 +1710,53 @@ fn yaml_roundtrip_is_idempotent_for_explicit_key_with_block_scalar() {
     let one = emit(src);
     assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
 }
+
+/// GitHub issue #810, bug A: a tagged empty explicit key beside a merge key whose body anchors and
+/// aliases that same key node.
+///
+/// The source pairs a tag-only explicit key (`? !`) with `<<:` over a body whose own pairs anchor
+/// the empty key (`&.?- ! "": ~`) and spell it again as an alias key (`* .?-: ~`). The merge
+/// expansion's ownership filter correctly dropped the anchored pair - it collides with the
+/// mapping's own `! ""` by the reader's (tag, text) identity - but the alias key survived the
+/// filter, and the orphaned-anchor repair then inlined the dropped definition INTO that key,
+/// resurrecting the colliding pair beside its twin. Two pairs spelled one `! ""` key and the
+/// engine's own reader refused the emission ("duplicate key"): the writer produced an unparseable
+/// document, not merely an unstable one. `fold_rewritten_key` now folds a rewritten tagged key
+/// against the sibling its (tag, text) identity duplicates - the same fold it already ran for
+/// null and merge keys, with the merge filter's own identity predicate. The minimized inputs
+/// are the 25-byte `? !\n<<:\r ? ! &.?\n ? *.?-` and its `<<`-first reorder, archived as
+/// `fuzz/seeds/yaml_roundtrip/issue810-duplicate-tagged-key-221b.seed` and
+/// `fuzz/seeds/yaml_roundtrip/issue810-duplicate-tagged-key-ef51.seed`.
+#[test]
+fn yaml_roundtrip_emission_re_parses_for_tagged_explicit_key_beside_merge_key() {
+    for src in [
+        "? !\n<<:\r ? ! &.?-\n ? *.?-",
+        "<<:\n ? ! &.?-\n ? *.?-\r? !",
+    ] {
+        let one = emit(src);
+        let reparsed = parse(&one, Schema::Core).unwrap_or_else(|e| {
+            panic!("the emission is not parseable: {e}\n---\n{one}\n---\n{src}")
+        });
+        let again = to_yaml(&reparsed);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {src:?} -> {one:?}"
+        );
+    }
+}
+
+/// GitHub issue #810, bug B: an explicit key whose plain text holds an apostrophe, mapping to a
+/// content-less Keep block scalar.
+///
+/// `? 0? ': |+` writes the value's block header on the key line. The first emission kept the `+`; the
+/// re-parse of that emission dropped it back to Clip, so round two spelled `|` and the round trip
+/// was not idempotent - the same quote-state shadowing #800 fixed for a quoted key (`"0 >+#": |`),
+/// now with the apostrophe ending a plain key inside an explicit-key body. The minimized input is
+/// the 10-byte `? 0? ': |+` (no trailing newline), archived as
+/// `fuzz/seeds/yaml_roundtrip/issue810-apostrophe-key-keep-chomping.seed`.
+#[test]
+fn yaml_roundtrip_is_idempotent_for_apostrophe_key_with_keep_block_scalar() {
+    let src = "? 0? ': |+";
+    let one = emit(src);
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}

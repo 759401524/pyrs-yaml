@@ -195,3 +195,52 @@ fn the_anchor_graph_survives_one_emission() {
         "anchors lost across one emission: {lost:?}"
     );
 }
+
+/// An anchored flow item keeps its own anchor beside a dash-ended anchored hash key.
+///
+/// The key's anchor name may end in `-` (`&a-`), and the key's own text may be a quoted hash
+/// (`" #"`). The quote-state reader used to refuse that quote as a node opener — it follows a
+/// blank after a `-`, and the `-`-is-an-indicator check read the anchor name's tail as a
+/// mid-token dash — so the `#` inside the key text was read as a comment opener, the first
+/// item's own `&b` was swallowed as comment text, and the recovery walked back to the key's
+/// `&a-`: the item was renamed with the key's anchor and the round trip moved the anchor graph
+/// (`anchor at $." #"[0]: Some("b") -> Some("a-")`, proptest, found by msrv-check on the #810
+/// fix). The indicator check now falls through to the property-run test, which answers by what
+/// the longer token is: the tail of an anchor name is a property, so the quote opens; the tail
+/// of a plain scalar (`0? '`) is that scalar's text, so it does not.
+#[test]
+fn an_anchored_flow_item_keeps_its_own_anchor_beside_a_dash_ended_hash_key() {
+    let src = "&a- \" #\": [&b null, c]";
+    let node = parse(src, Schema::Core).expect("the pinned input parses");
+    let emitted = to_yaml(&node);
+    let reread = parse(&emitted, Schema::Core)
+        .unwrap_or_else(|e| panic!("{emitted:?} must re-read, the reader said {e:?}"));
+
+    let (mut key_anchor, mut item_anchor) = (None, None);
+    if let CustomNode::Mapping { pairs, .. } = &reread {
+        for (key, value) in pairs.iter() {
+            key_anchor = key.anchor().map(|name| name.to_string());
+            if let CustomNode::Sequence { items, .. } = value
+                && let Some(first) = items.first()
+            {
+                item_anchor = first.anchor().map(|name| name.to_string());
+            }
+        }
+    }
+    assert_eq!(
+        key_anchor.as_deref(),
+        Some("a-"),
+        "the key lost its own anchor: {emitted:?}"
+    );
+    assert_eq!(
+        item_anchor.as_deref(),
+        Some("b"),
+        "the first item took the key's anchor instead of its own: {emitted:?}"
+    );
+    assert_eq!(
+        to_yaml(&reread),
+        emitted,
+        "not a fixed point in one round: {emitted:?}"
+    );
+    assert!(aliases_of(&node).is_empty() && aliases_of(&reread).is_empty());
+}
